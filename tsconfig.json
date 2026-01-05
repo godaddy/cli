@@ -1,0 +1,45 @@
+{
+	"compilerOptions": {
+		// Enable latest features
+		"lib": ["ESNext", "DOM"],
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"allowJs": true,
+
+		// Bundler mode
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+
+		// Best practices
+		"strict": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"resolveJsonModule": true,
+		"esModuleInterop": true,
+
+		// Stricter flags for code quality
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noPropertyAccessFromIndexSignature": false,
+
+		"paths": {
+			"@/*": ["./src/*"],
+			"@core/*": ["./src/core/*"],
+			"@cli/*": ["./src/cli/*"],
+			"@tui/*": ["./src/tui/*"],
+			"@shared/*": ["./src/shared/*"]
+		},
+
+		"plugins": [
+			{
+				"name": "gql.tada/ts-plugin",
+				"schema": "./schema.graphql",
+				"tadaOutputLocation": "./graphql-env.d.ts"
+			}
+		]
+	}
+}
