@@ -25,7 +25,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev build-essential python3
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
