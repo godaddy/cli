@@ -1,18 +1,19 @@
-name: CI
-
-on:
+name: CICD
+on: 
   push:
-    branches: [main]
+    branches:
+      - 'main'
   pull_request:
-    branches: [main]
+    branches:
+     - '*'
 
 jobs:
-  test:
+  cicd:
     runs-on: ubuntu-latest
-
+    concurrency: ${{ github.workflow }}-${{ github.ref }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -21,9 +22,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev build-essential python3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: ".nvmrc"
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install
