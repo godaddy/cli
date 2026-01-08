@@ -29,6 +29,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Rebuild native modules
+        run: pnpm rebuild keytar
+
+      - name: Build CLI
+        run: pnpm run build
+
       - name: Type check
         run: pnpm run check
 
