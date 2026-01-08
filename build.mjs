@@ -55,17 +55,12 @@ if (isDevBuild) {
 		name: "dev-shebang",
 		setup(build) {
 			build.onEnd(async () => {
-				const outFile = path.resolve(`${OUT_DIR}/cli.js`);
+				const outFile = path.resolve(`${OUT_DIR}/cli-dev.js`);
 
 				let code = await fs.promises.readFile(outFile, "utf8");
 				if (code.startsWith("#!")) {
 					code = code.replace(/^#!.*\n/, devShebangLine);
 					await fs.promises.writeFile(outFile, code, "utf8");
-
-					// For dev builds, also create a cli-dev.js file
-					if (isDevBuild) {
-						await fs.promises.writeFile(`${OUT_DIR}/cli-dev.js`, code, "utf8");
-					}
 				}
 			});
 		},
@@ -93,4 +88,7 @@ esbuild
 			"typescript",
 		],
 	})
-	.catch(() => process.exit(1));
+	.catch((e) => {
+		console.error(e);
+		process.exit(1);
+	});

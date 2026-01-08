@@ -7,7 +7,13 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": ["node_modules", "dist", "build", "tests/fixtures/**/*.mjs"]
+		"ignore": [
+			"node_modules",
+			"dist",
+			"build",
+			"tests/fixtures/**/*.mjs",
+			"tests/fixtures/extensions/invalid-syntax/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,

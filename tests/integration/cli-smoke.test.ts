@@ -5,6 +5,21 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 const CLI_PATH = join(process.cwd(), "dist", "cli.js");
 
+function isKeytarAvailable(): boolean {
+	try {
+		require.resolve("keytar");
+		const keytarPath = join(
+			process.cwd(),
+			"node_modules/.pnpm/keytar@7.9.0/node_modules/keytar/build/Release/keytar.node",
+		);
+		return existsSync(keytarPath);
+	} catch {
+		return false;
+	}
+}
+
+const keytarAvailable = isKeytarAvailable();
+
 describe("CLI Smoke Tests", () => {
 	beforeAll(() => {
 		if (!existsSync(CLI_PATH)) {
@@ -13,18 +28,21 @@ describe("CLI Smoke Tests", () => {
 	});
 
 	describe("--help", () => {
-		it("should display help and exit with code 0", () => {
-			const result = execSync(`node ${CLI_PATH} --help`, {
-				encoding: "utf-8",
-			});
+		it.skipIf(!keytarAvailable)(
+			"should display help and exit with code 0",
+			() => {
+				const result = execSync(`node ${CLI_PATH} --help`, {
+					encoding: "utf-8",
+				});
 
-			expect(result).toContain("GoDaddy");
-			expect(result).toContain("application");
-			expect(result).toContain("auth");
-			expect(result).toContain("env");
-		});
+				expect(result).toContain("GoDaddy");
+				expect(result).toContain("application");
+				expect(result).toContain("auth");
+				expect(result).toContain("env");
+			},
+		);
 
-		it("should display subcommand help", () => {
+		it.skipIf(!keytarAvailable)("should display subcommand help", () => {
 			const result = execSync(`node ${CLI_PATH} application --help`, {
 				encoding: "utf-8",
 			});
@@ -36,13 +54,16 @@ describe("CLI Smoke Tests", () => {
 	});
 
 	describe("--version", () => {
-		it("should display version and exit with code 0", () => {
-			const result = execSync(`node ${CLI_PATH} --version`, {
-				encoding: "utf-8",
-			});
+		it.skipIf(!keytarAvailable)(
+			"should display version and exit with code 0",
+			() => {
+				const result = execSync(`node ${CLI_PATH} --version`, {
+					encoding: "utf-8",
+				});
 
-			expect(result.trim()).toMatch(/^\d+\.\d+\.\d+$/);
-		});
+				expect(result.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+			},
+		);
 	});
 
 	describe("invalid environment", () => {

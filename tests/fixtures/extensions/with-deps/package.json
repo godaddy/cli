@@ -1,0 +1,9 @@
+{
+	"name": "extension-with-deps",
+	"version": "2.1.0",
+	"type": "module",
+	"main": "src/index.ts",
+	"dependencies": {
+		"ms": "^2.1.3"
+	}
+}

@@ -186,8 +186,11 @@ dist
 
 # Local development config, extensions, and internal docs
 godaddy.dev.toml
-extensions/
+/extensions/
 docs/
+
+# Allow test fixture extensions
+!tests/fixtures/extensions/
 
 # Generated GraphQL schema and types
 schema.graphql
