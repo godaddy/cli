@@ -26,7 +26,7 @@ architectural or core code changes. Code owners also have veto power
 over "core" package changes, which we define here as breaking change or major
 refactors to the plugin engine or the cli. Code owners are a small group by
 design, and new code owners will be added only rarely. Code owners are listed
-[here][code owners].
+in the [Javascript Github group].
 
 ## Consensus-seeking
 
@@ -49,4 +49,3 @@ majority vote.
 
 [Discussions]: https://github.com/godaddy/javascript/discussions
 [Javascript Github group]: https://github.com/orgs/godaddy/teams/javascript
-[code owners]: ./CODEOWNERS
