@@ -1,6 +1,10 @@
-# CLAUDE.md
+# CLAUDE.md - GoDaddy CLI
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Local Development Ports
+
+This is a command-line application that does not run on a network port.
 
 # GoDaddy CLI Development Guide
 

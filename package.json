@@ -2,6 +2,7 @@
 	"name": "@godaddy/cli",
 	"version": "0.1.0",
 	"description": "GoDaddy CLI for managing applications and webhooks",
+	"keywords": ["godaddy", "cli", "developer-tools"],
 	"main": "./dist/cli.js",
 	"type": "module",
 	"bin": {
