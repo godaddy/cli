@@ -7,7 +7,6 @@ import {
 	AuthenticationError,
 	type CmdResult,
 	ConfigurationError,
-	NetworkError,
 } from "../shared/types";
 import {
 	type Environment,
@@ -181,12 +180,14 @@ export async function authLogin(): Promise<CmdResult<AuthResult>> {
 
 		return { success: true, data: result };
 	} catch (error) {
+		const authError = new AuthenticationError(
+			`Authentication failed: ${error}`,
+		);
+		authError.userMessage =
+			"Authentication with GoDaddy failed. Please try again.";
 		return {
 			success: false,
-			error: new AuthenticationError(
-				`Authentication failed: ${error}`,
-				"Authentication with GoDaddy failed. Please try again.",
-			),
+			error: authError,
 		};
 	}
 }
@@ -356,6 +357,43 @@ async function getOauthClientId(): Promise<string> {
 
 function saveToKeychain(key: string, value: string): Promise<void> {
 	return keytar.setPassword(KEYCHAIN_SERVICE, key, value);
+}
+
+export interface TokenInfo {
+	accessToken: string;
+	expiresAt: Date;
+	expiresInSeconds: number;
+}
+
+/**
+ * Get token info including expiry details
+ * Returns null if no token or token is expired
+ */
+export async function getTokenInfo(): Promise<TokenInfo | null> {
+	const value = await keytar.getPassword(KEYCHAIN_SERVICE, "token");
+	if (!value) return null;
+
+	try {
+		const { accessToken, expiresAt } = JSON.parse(value);
+		const expiryDate = new Date(expiresAt);
+		const expiresInSeconds = Math.floor(
+			(expiryDate.getTime() - Date.now()) / 1000,
+		);
+
+		if (expiresInSeconds <= 0) {
+			await keytar.deletePassword(KEYCHAIN_SERVICE, "token");
+			return null;
+		}
+
+		return {
+			accessToken,
+			expiresAt: expiryDate,
+			expiresInSeconds,
+		};
+	} catch {
+		await keytar.deletePassword(KEYCHAIN_SERVICE, "token");
+		return null;
+	}
 }
 
 export async function getFromKeychain(key: string): Promise<string | null> {

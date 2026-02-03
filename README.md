@@ -24,6 +24,7 @@ pnpm tsx src/index.tsx application <command>
 
 ## Features
 
+- **API Access**: Make direct, authenticated requests to any GoDaddy API endpoint
 - **Application Management**: Create, view, and release applications
 - **Authentication**: Secure OAuth-based authentication with GoDaddy
 - **Webhook Management**: List available webhook event types
@@ -229,6 +230,102 @@ godaddy webhook events               # Lists all available webhook event types y
   Options:
     -o, --output <format>            # Output format: json or text (default: text)
 ```
+
+### API Command
+
+The `api` command allows you to make direct, authenticated requests to any GoDaddy API endpoint. This is useful for exploring APIs, debugging, automation scripts, and AI agent integrations.
+
+```bash
+# Basic GET request
+godaddy api <endpoint>
+
+# Specify HTTP method
+godaddy api <endpoint> -X <method>   # method: GET, POST, PUT, PATCH, DELETE
+
+# Full options
+godaddy api <endpoint>
+  Options:
+    -X, --method <method>            # HTTP method (default: GET)
+    -f, --field <key=value>          # Add field to request body (can be repeated)
+    -F, --file <path>                # Read request body from JSON file
+    -H, --header <header>            # Add custom header (can be repeated)
+    -q, --query <path>               # Extract value at JSON path
+    -i, --include                    # Include response headers in output
+```
+
+#### Examples
+
+```bash
+# Get current shopper info
+godaddy api /v1/shoppers/me
+
+# Get domains list
+godaddy api /v1/domains
+
+# Check domain availability (POST with field)
+godaddy api /v1/domains/available -X POST -f domain=example.com
+
+# Extract a specific field from the response
+godaddy api /v1/shoppers/me -q .shopperId
+
+# Extract nested data
+godaddy api /v1/domains -q .domains[0].domain
+
+# Include response headers
+godaddy api /v1/shoppers/me -i
+
+# Add custom headers
+godaddy api /v1/domains -H "X-Request-Context: cli-test"
+
+# POST with JSON file body
+godaddy api /v1/domains/purchase -X POST -F ./domain-request.json
+
+# Multiple fields
+godaddy api /v1/domains/contacts -X PUT \
+  -f firstName=John \
+  -f lastName=Doe \
+  -f email=john@example.com
+
+# Debug mode (shows request/response details)
+godaddy --debug api /v1/shoppers/me
+```
+
+#### Query Path Syntax
+
+The `-q, --query` option supports simple JSON path expressions:
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `.key` | Access object property | `.shopperId` |
+| `.key.nested` | Access nested property | `.customer.email` |
+| `[0]` | Access array index | `[0]` |
+| `.key[0]` | Combined access | `.domains[0]` |
+| `.key[0].nested` | Complex path | `.domains[0].status` |
+
+#### Authentication
+
+The `api` command uses the same authentication as other CLI commands. You must be logged in:
+
+```bash
+# Login first
+godaddy auth login
+
+# Then make API calls
+godaddy api /v1/shoppers/me
+```
+
+#### Common API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/v1/shoppers/me` | Current authenticated shopper |
+| `/v1/domains` | List domains |
+| `/v1/domains/available` | Check domain availability |
+| `/v1/domains/{domain}` | Get specific domain info |
+| `/v1/orders` | List orders |
+| `/v1/subscriptions` | List subscriptions |
+
+For the complete API reference, visit the [GoDaddy Developer Portal](https://developer.godaddy.com/).
 
 ### Actions Commands
 

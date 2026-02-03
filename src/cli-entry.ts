@@ -4,6 +4,7 @@ import { Command } from "commander";
 import packageJson from "../package.json";
 import { createAuthCommand, createEnvCommand } from "./cli";
 import { createActionsCommand } from "./cli/commands/actions";
+import { createApiCommand } from "./cli/commands/api";
 import { createApplicationCommand } from "./cli/commands/application";
 import { createWebhookCommand } from "./cli/commands/webhook";
 import { validateEnvironment } from "./core/environment";
@@ -60,6 +61,7 @@ Example Usage:
 	});
 
 	// Add CLI commands
+	program.addCommand(createApiCommand());
 	program.addCommand(createEnvCommand());
 	program.addCommand(createAuthCommand());
 	program.addCommand(createActionsCommand());
