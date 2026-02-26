@@ -255,32 +255,38 @@ godaddy application deploy <name> --follow
 
 Release and deploy accept `--config <path>` and `--environment <env>`.
 
-### Raw API Requests
+### API Discovery and Requests
 
-Make authenticated requests to any GoDaddy API endpoint:
+Use `godaddy api` for endpoint discovery and authenticated API calls:
 
 ```bash
-# GET request
-godaddy api /v1/commerce/catalog/products
+# List domains and endpoints
+godaddy api list
+godaddy api list --domain commerce
 
-# POST with inline fields
-godaddy api /v1/some/endpoint -X POST -f "name=value" -f "count=5"
+# Describe one endpoint (operation ID or path)
+godaddy api describe commerce.location.verify-address
+godaddy api describe /location/addresses
 
-# POST with body from file
-godaddy api /v1/some/endpoint -X POST -F body.json
+# Search endpoints by keyword
+godaddy api search address
+godaddy api search catalog
 
-# Custom headers
-godaddy api /v1/some/endpoint -H "X-Custom: value"
-
-# Extract a field from the response
-godaddy api /v1/some/endpoint -q ".data[0].id"
-
-# Include response headers in output
-godaddy api /v1/some/endpoint -i
-
-# Auto re-auth on 403 with specific scope
-godaddy api /v1/commerce/orders -s commerce.orders:read
+# Call endpoint (explicit form)
+godaddy api call /v1/commerce/catalog/products
+godaddy api call /v1/some/endpoint -X POST -f "name=value" -f "count=5"
+godaddy api call /v1/some/endpoint -X POST -F body.json
+godaddy api call /v1/some/endpoint -H "X-Custom: value"
+godaddy api call /v1/some/endpoint -q ".data[0].id"
+godaddy api call /v1/some/endpoint -i
+godaddy api call /v1/commerce/orders -s commerce.orders:read
 ```
+
+Compatibility behavior:
+- `godaddy api <endpoint>` still works. If the token after `api` is not one of `list`, `describe`, `search`, or `call`, the CLI treats it as an endpoint and executes `api call`.
+- This means legacy usage like `godaddy api /v1/commerce/location/addresses` remains supported.
+
+As with other large result sets, `api list` may be truncated in the inline JSON response. When `truncated: true`, read the `full_output` file path for complete results.
 
 ### Actions
 
