@@ -11,6 +11,76 @@ import type {
 import { CliConfig } from "./cli-config";
 
 // ---------------------------------------------------------------------------
+// Plaintext renderer
+// ---------------------------------------------------------------------------
+
+function renderValue(value: unknown, indent = 0): string {
+  const pad = "  ".repeat(indent);
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "object") return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "(none)";
+    return value
+      .map((item) => {
+        const rendered = renderValue(item, indent);
+        return `${pad}- ${rendered.trimStart()}`;
+      })
+      .join("\n");
+  }
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => {
+      const label = k.replace(/_/g, " ");
+      if (typeof v === "object" && v !== null) {
+        const inner = renderValue(v, indent + 1);
+        if (!inner) return null;
+        return `${pad}${label}:\n${inner}`;
+      }
+      return `${pad}${label}: ${v}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function renderSuccessPlaintext(result: unknown): string {
+  return renderValue(result);
+}
+
+function renderErrorPlaintext(
+  error: { message: string; code: string },
+  fix: string,
+): string {
+  return `Error: ${error.message}\nFix: ${fix}`;
+}
+
+function renderStreamEventPlaintext(event: StreamEvent): string {
+  switch (event.type) {
+    case "start":
+      return `Running ${event.command}...`;
+    case "step": {
+      const prefix =
+        event.status === "completed"
+          ? "[ok]"
+          : event.status === "failed"
+            ? "[FAILED]"
+            : "[ .. ]";
+      const suffix =
+        event.status === "failed" && event.message ? `: ${event.message}` : "";
+      return `${prefix} ${event.name}${suffix}`;
+    }
+    case "progress": {
+      const pct = event.percent !== undefined ? ` ${event.percent}%` : "";
+      const msg = event.message ? ` ${event.message}` : "";
+      return `${event.name}:${pct}${msg}`.trim();
+    }
+    case "result":
+      return renderSuccessPlaintext(event.result);
+    case "error":
+      return renderErrorPlaintext(event.error, event.fix);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Service interface
 // ---------------------------------------------------------------------------
 
@@ -80,7 +150,9 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
       const config = yield* CliConfig;
       const written = yield* Ref.make(false);
 
-      function serialize(value: unknown): string {
+      const plaintext = config.outputFormat === "plaintext";
+
+      function serializeJson(value: unknown): string {
         return config.prettyPrint
           ? JSON.stringify(value, null, 2)
           : JSON.stringify(value);
@@ -106,7 +178,11 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
             next_actions: nextActions,
           };
           if (!alreadyWritten) {
-            yield* writeLine(serialize(envelope));
+            yield* writeLine(
+              plaintext
+                ? renderSuccessPlaintext(result)
+                : serializeJson(envelope),
+            );
             yield* Ref.set(written, true);
           }
           return envelope;
@@ -128,7 +204,11 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
             next_actions: nextActions,
           };
           if (!alreadyWritten) {
-            yield* writeLine(serialize(envelope));
+            yield* writeLine(
+              plaintext
+                ? renderErrorPlaintext(error, fix)
+                : serializeJson(envelope),
+            );
             yield* Ref.set(written, true);
             yield* Effect.sync(() => {
               process.exitCode = 1;
@@ -138,7 +218,9 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
         });
 
       const emitStreamEvent = (event: StreamEvent): Effect.Effect<void> =>
-        writeLine(serialize(event));
+        writeLine(
+          plaintext ? renderStreamEventPlaintext(event) : serializeJson(event),
+        );
 
       const emitStreamResult = <T>(
         command: string,
@@ -147,13 +229,15 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
       ): Effect.Effect<void> =>
         Effect.gen(function* () {
           yield* writeLine(
-            serialize({
-              type: "result" as const,
-              ok: true,
-              command,
-              result,
-              next_actions: nextActions,
-            }),
+            plaintext
+              ? renderSuccessPlaintext(result)
+              : serializeJson({
+                  type: "result" as const,
+                  ok: true,
+                  command,
+                  result,
+                  next_actions: nextActions,
+                }),
           );
           yield* Ref.set(written, true);
         });
@@ -166,14 +250,16 @@ export const EnvelopeWriterLive: Layer.Layer<EnvelopeWriter, never, CliConfig> =
       ): Effect.Effect<void> =>
         Effect.gen(function* () {
           yield* writeLine(
-            serialize({
-              type: "error" as const,
-              ok: false,
-              command,
-              error,
-              fix,
-              next_actions: nextActions,
-            }),
+            plaintext
+              ? renderErrorPlaintext(error, fix)
+              : serializeJson({
+                  type: "error" as const,
+                  ok: false,
+                  command,
+                  error,
+                  fix,
+                  next_actions: nextActions,
+                }),
           );
           yield* Ref.set(written, true);
           yield* Effect.sync(() => {

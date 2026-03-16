@@ -9,7 +9,10 @@ import * as Layer from "effect/Layer";
 import packageJson from "../package.json";
 import { mapRuntimeError, mapValidationError } from "./cli/agent/errors";
 import type { NextAction } from "./cli/agent/types";
-import { makeCliConfigLayer } from "./cli/services/cli-config";
+import {
+  type OutputFormat,
+  makeCliConfigLayer,
+} from "./cli/services/cli-config";
 import {
   EnvelopeWriter,
   EnvelopeWriterLive,
@@ -222,6 +225,7 @@ const API_SUBCOMMANDS = new Set(["list", "describe", "search", "call"]);
 const ROOT_FLAG_WITH_VALUE = new Set([
   "--env",
   "-e",
+  "--output",
   "--log-level",
   "--completions",
 ]);
@@ -229,6 +233,8 @@ const ROOT_BOOLEAN_FLAGS = new Set([
   "--pretty",
   "--verbose",
   "-v",
+  "-p",
+  "-j",
   "--info",
   "--debug",
   "--help",
@@ -386,6 +392,12 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
   let verbosity = 0;
   let envOverride: Environment | null = null;
 
+  const envVarOutput = process.env.GODADDY_CLI_OUTPUT;
+  let outputFormat: OutputFormat =
+    envVarOutput === "plaintext" || envVarOutput === "json"
+      ? envVarOutput
+      : "json";
+
   const stripIndices = new Set<number>();
   for (let i = 0; i < normalized.length; i++) {
     const token = normalized[i];
@@ -403,33 +415,34 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
       stripIndices.add(i + 1);
       i++; // skip value
     }
+    if (token === "-p") {
+      outputFormat = "plaintext";
+      stripIndices.add(i);
+    }
+    if (token === "-j") {
+      outputFormat = "json";
+      stripIndices.add(i);
+    }
+    if (token === "--output" && i + 1 < normalized.length) {
+      const val = normalized[i + 1];
+      if (val === "plaintext" || val === "json") {
+        outputFormat = val;
+      }
+      stripIndices.add(i);
+      stripIndices.add(i + 1);
+      i++; // skip value
+    }
+    if (token.startsWith("--output=")) {
+      const val = token.slice("--output=".length);
+      if (val === "plaintext" || val === "json") {
+        outputFormat = val;
+      }
+      stripIndices.add(i);
+    }
   }
 
   const frameworkArgs = normalized.filter((_, i) => !stripIndices.has(i));
   const rewrittenFrameworkArgs = rewriteLegacyApiEndpointArgs(frameworkArgs);
-
-  // Detect unsupported --output option before handing to framework
-  const outputIdx = normalized.indexOf("--output");
-  if (outputIdx !== -1) {
-    const outputValue = normalized[outputIdx + 1] ?? "unknown";
-    const commandStr =
-      `godaddy ${rawArgv.join(" ").replace(/\s+/g, " ")}`.trim();
-    const envelope = {
-      ok: false,
-      command: commandStr,
-      error: {
-        message: `Unsupported option: --output ${outputValue}. All output is JSON by default.`,
-        code: "UNSUPPORTED_OPTION",
-      },
-      fix: "Remove --output; all godaddy CLI output is JSON envelopes by default.",
-      next_actions: rootNextActions,
-    };
-    process.stdout.write(
-      `${prettyPrint ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope)}\n`,
-    );
-    process.exitCode = 1;
-    return Promise.resolve();
-  }
 
   // Side-effects for compatibility with existing core/ code that reads globals
   if (verbosity > 0) {
@@ -441,6 +454,7 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
     prettyPrint,
     verbosity,
     environmentOverride: envOverride,
+    outputFormat,
   });
 
   const envelopeWriterLayer = EnvelopeWriterLive;

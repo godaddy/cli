@@ -9,10 +9,13 @@ import type { Environment } from "../../core/environment";
  * --env) so that every layer in the dependency graph can access them without
  * mutable module-level state.
  */
+export type OutputFormat = "json" | "plaintext";
+
 export interface CliConfigShape {
   readonly prettyPrint: boolean;
   readonly verbosity: number; // 0 = silent, 1 = basic, 2 = full
   readonly environmentOverride: Environment | null;
+  readonly outputFormat: OutputFormat;
 }
 
 export class CliConfig extends Context.Tag("CliConfig")<
@@ -25,6 +28,7 @@ export const defaultCliConfig: CliConfigShape = {
   prettyPrint: false,
   verbosity: 0,
   environmentOverride: null,
+  outputFormat: "json",
 };
 
 /** Build a layer from parsed global flags. */
