@@ -216,6 +216,22 @@ function normalizeVerbosityArgs(argv: readonly string[]): string[] {
       verbosity += token.length - 1;
       continue;
     }
+    // Expand --log-level=X to two-token form; @effect/cli only accepts the
+    // space-separated form. Verbosity levels are absorbed into the counter so
+    // the end-of-function prepend deduplicates them. Other levels pass through.
+    if (token.startsWith("--log-level=")) {
+      const level = token.slice("--log-level=".length);
+      if (level === "info") {
+        verbosity = Math.max(verbosity, 1);
+      } else if (level === "debug") {
+        verbosity = Math.max(verbosity, 2);
+      } else if (level === "trace") {
+        verbosity = Math.max(verbosity, 3);
+      } else {
+        retained.push("--log-level", level);
+      }
+      continue;
+    }
     retained.push(token);
   }
   const norm = Math.min(verbosity, 3);
@@ -300,6 +316,11 @@ const HELP_NOISE_RE =
 function cleanHelpText(text: string): string {
   return (
     text
+      // Effect renders a standalone title line (just the command name, possibly
+      // with ANSI codes) before the "name version" line. Remove it so the version
+      // line is the first thing shown.  The lookahead (?=\S+ \d) targets the
+      // "godaddy 0.2.3" pattern and keeps it anchored to the very first line.
+      .replace(/^.*\n\n(?=\S+ \d)/, "")
       .split("\n")
       .filter((line) => !HELP_NOISE_RE.test(line))
       .join("\n")
