@@ -9,7 +9,6 @@ import {
 import { envGetEffect } from "../../core/environment";
 import type { NextAction } from "../agent/types";
 import { EnvelopeWriter } from "../services/envelope-writer";
-
 // ---------------------------------------------------------------------------
 // Colocated next_actions
 // ---------------------------------------------------------------------------

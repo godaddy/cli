@@ -40,7 +40,6 @@ import {
 import { protectPayload, truncateList } from "../agent/truncation";
 import type { NextAction } from "../agent/types";
 import { EnvelopeWriter } from "../services/envelope-writer";
-
 // ---------------------------------------------------------------------------
 // Helpers (pure, no global state)
 // ---------------------------------------------------------------------------

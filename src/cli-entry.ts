@@ -3,8 +3,10 @@
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as NodeContext from "@effect/platform-node/NodeContext";
+import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 
 import packageJson from "../package.json";
 import { mapRuntimeError, mapValidationError } from "./cli/agent/errors";
@@ -53,7 +55,7 @@ const rootNextActions: NextAction[] = [
 // ---------------------------------------------------------------------------
 
 const ROOT_DESCRIPTION =
-  "GoDaddy Developer Platform CLI - Agent-first JSON interface for platform operations";
+  "GoDaddy Developer Platform CLI - Agent-first interface for platform operations";
 
 interface CommandNode {
   id: string;
@@ -186,7 +188,8 @@ const COMMAND_TREE: CommandNode = {
 // Global option pre-processing
 //
 // @effect/cli doesn't support -vv style stacking, so we normalize argv
-// before handing it to the framework.
+// before handing it to the framework. Verbosity flags are converted to
+// --log-level=X so the Effect runtime logger respects the level too.
 // ---------------------------------------------------------------------------
 
 function isShortVerboseCluster(token: string): boolean {
@@ -215,9 +218,10 @@ function normalizeVerbosityArgs(argv: readonly string[]): string[] {
     }
     retained.push(token);
   }
-  const norm = Math.min(verbosity, 2);
-  if (norm >= 2) return ["--debug", ...retained];
-  if (norm === 1) return ["--verbose", ...retained];
+  const norm = Math.min(verbosity, 3);
+  if (norm >= 3) return ["--log-level", "trace", ...retained];
+  if (norm === 2) return ["--log-level", "debug", ...retained];
+  if (norm === 1) return ["--log-level", "info", ...retained];
   return retained;
 }
 
@@ -231,12 +235,8 @@ const ROOT_FLAG_WITH_VALUE = new Set([
 ]);
 const ROOT_BOOLEAN_FLAGS = new Set([
   "--pretty",
-  "--verbose",
-  "-v",
   "-p",
   "-j",
-  "--info",
-  "--debug",
   "--help",
   "-h",
   "--version",
@@ -286,6 +286,71 @@ function rewriteLegacyApiEndpointArgs(argv: readonly string[]): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Console override — collapses 3+ consecutive blank lines in help output
+// ---------------------------------------------------------------------------
+
+function makeCleanConsole(): Console.Console {
+  const c = globalThis.console;
+  const s = Effect.sync;
+  return {
+    [Console.TypeId]: Console.TypeId as Console.TypeId,
+    log: (...args: ReadonlyArray<unknown>) =>
+      s(() => {
+        const text = args.map(String).join(" ");
+        process.stdout.write(`${text.replace(/\n{3,}/g, "\n\n")}\n`);
+      }),
+    error: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.error(...(args as unknown[]))),
+    warn: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.warn(...(args as unknown[]))),
+    info: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.info(...(args as unknown[]))),
+    debug: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.debug(...(args as unknown[]))),
+    trace: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.trace(...(args as unknown[]))),
+    assert: (condition: boolean, ...args: ReadonlyArray<unknown>) =>
+      s(() => c.assert(condition, ...(args as unknown[]))),
+    clear: s(() => c.clear()),
+    count: (label?: string) => s(() => c.count(label)),
+    countReset: (label?: string) => s(() => c.countReset(label)),
+    dir: (item: unknown, options?: unknown) => s(() => c.dir(item, options)),
+    dirxml: (...args: ReadonlyArray<unknown>) =>
+      s(() => c.dirxml(...(args as unknown[]))),
+    group: (options?: { label?: string; collapsed?: boolean }) =>
+      options?.collapsed
+        ? s(() => c.groupCollapsed(options.label))
+        : s(() => c.group(options?.label)),
+    groupEnd: s(() => c.groupEnd()),
+    table: (tabularData: unknown, properties?: ReadonlyArray<string>) =>
+      s(() => c.table(tabularData, properties)),
+    time: (label?: string) => s(() => c.time(label)),
+    timeEnd: (label?: string) => s(() => c.timeEnd(label)),
+    timeLog: (label?: string, ...args: ReadonlyArray<unknown>) =>
+      s(() => c.timeLog(label, ...(args as unknown[]))),
+    unsafe: c,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Effect logger — routes Effect.log* output to stderr with format awareness
+// ---------------------------------------------------------------------------
+
+function makeEffectLogger(outputFormat: OutputFormat) {
+  return Logger.make<unknown, void>(({ logLevel, message, date }) => {
+    const msg = typeof message === "string" ? message : String(message);
+    if (outputFormat === "json") {
+      process.stderr.write(
+        `${JSON.stringify({ ts: date.toISOString(), level: logLevel.label.toLowerCase(), msg })}\n`,
+      );
+    } else {
+      const time = date.toISOString().substring(11, 23);
+      process.stderr.write(`[${time}] ${logLevel.label.padEnd(5)}  ${msg}\n`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Root command
 // ---------------------------------------------------------------------------
 
@@ -297,17 +362,15 @@ const rootCommand = Command.make(
         "Pretty-print JSON envelopes with 2-space indentation",
       ),
     ),
-    verbose: Options.boolean("verbose").pipe(
-      Options.withAlias("v"),
+    output: Options.text("output").pipe(
       Options.withDescription(
-        "Enable basic verbose output for HTTP requests and responses",
+        "Output format: json (default) or plaintext. Use -p for plaintext shorthand.",
       ),
+      Options.optional,
     ),
-    info: Options.boolean("info").pipe(
-      Options.withDescription("Enable basic verbose output (same as -v)"),
-    ),
-    debug: Options.boolean("debug").pipe(
-      Options.withDescription("Enable full verbose output (same as -vv)"),
+    json: Options.boolean("json").pipe(
+      Options.withAlias("j"),
+      Options.withDescription("Shorthand for --output=json"),
     ),
     env: Options.text("env").pipe(
       Options.withAlias("e"),
@@ -320,7 +383,6 @@ const rootCommand = Command.make(
   (_config) =>
     Effect.gen(function* () {
       const writer = yield* EnvelopeWriter;
-      // Reconstruct the command string from raw argv for traceability
       const rawArgs = process.argv.slice(2);
       const commandStr =
         rawArgs.length > 0 ? `godaddy ${rawArgs.join(" ")}` : "godaddy";
@@ -383,7 +445,8 @@ const cliRunner = Command.run(rootCommand, {
 // ---------------------------------------------------------------------------
 
 export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
-  // Normalize -vv, --info, --debug before the framework sees them
+  // Normalize -vv, --info, --debug before the framework sees them.
+  // They become --log-level=X so Effect's runtime logger also respects the level.
   const normalized = normalizeVerbosityArgs(rawArgv);
 
   // Pre-parse global flags to build layers BEFORE Command.run, then strip
@@ -405,15 +468,23 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
       prettyPrint = true;
       stripIndices.add(i);
     }
-    if (token === "--verbose" || token === "-v")
-      verbosity = Math.max(verbosity, 1);
-    if (token === "--debug") verbosity = 2;
-    if (token === "--info") verbosity = Math.max(verbosity, 1);
+    if (token.startsWith("--log-level=")) {
+      const level = token.slice("--log-level=".length);
+      if (level === "info") verbosity = Math.max(verbosity, 1);
+      if (level === "debug") verbosity = Math.max(verbosity, 2);
+      if (level === "trace") verbosity = Math.max(verbosity, 3);
+    }
+    if (token === "--log-level" && i + 1 < normalized.length) {
+      const level = normalized[i + 1];
+      if (level === "info") verbosity = Math.max(verbosity, 1);
+      if (level === "debug") verbosity = Math.max(verbosity, 2);
+      if (level === "trace") verbosity = Math.max(verbosity, 3);
+    }
     if ((token === "--env" || token === "-e") && i + 1 < normalized.length) {
       envOverride = validateEnvironment(normalized[i + 1]);
       stripIndices.add(i);
       stripIndices.add(i + 1);
-      i++; // skip value
+      i++;
     }
     if (token === "-p") {
       outputFormat = "plaintext";
@@ -430,7 +501,7 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
       }
       stripIndices.add(i);
       stripIndices.add(i + 1);
-      i++; // skip value
+      i++;
     }
     if (token.startsWith("--output=")) {
       const val = token.slice("--output=".length);
@@ -444,12 +515,17 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
   const frameworkArgs = normalized.filter((_, i) => !stripIndices.has(i));
   const rewrittenFrameworkArgs = rewriteLegacyApiEndpointArgs(frameworkArgs);
 
-  // Side-effects for compatibility with existing core/ code that reads globals
+  // Replace trailing positional 'help' with '--help' so Effect's built-in
+  // help handler fires. Only replaces the last token to avoid false positives
+  // on flag values (e.g. --label help).
+  const finalArgs = rewrittenFrameworkArgs.map((arg, i, arr) =>
+    arg === "help" && i === arr.length - 1 ? "--help" : arg,
+  );
+
   if (verbosity > 0) {
     setVerbosityLevel(verbosity);
-    if (verbosity === 1) process.stderr.write("(verbose output enabled)\n");
-    else process.stderr.write("(verbose output enabled: full details)\n");
   }
+
   const cliConfigLayer = makeCliConfigLayer({
     prettyPrint,
     verbosity,
@@ -459,30 +535,21 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
 
   const envelopeWriterLayer = EnvelopeWriterLive;
 
-  // Full layer: platform (FileSystem, Path, Terminal) + custom services + CLI services
   const fullLayer = Layer.mergeAll(
     NodeContext.layer,
     NodeLiveLayer,
     cliConfigLayer,
-  ).pipe(
-    // EnvelopeWriter depends on CliConfig, so provide after merging
-    (base) =>
-      Layer.merge(base, Layer.provide(envelopeWriterLayer, cliConfigLayer)),
+    Console.setConsole(makeCleanConsole()),
+    Logger.replace(Logger.defaultLogger, makeEffectLogger(outputFormat)),
+  ).pipe((base) =>
+    Layer.merge(base, Layer.provide(envelopeWriterLayer, cliConfigLayer)),
   );
 
-  const program = cliRunner(
-    // Command.run expects the full process.argv (node + script + args)
-    // We pass a synthetic prefix so the framework strips the first two.
-    // Use frameworkArgs (global flags already stripped) so @effect/cli
-    // doesn't reject them as unknown options on subcommands.
-    ["node", "godaddy", ...rewrittenFrameworkArgs],
-  ).pipe(
-    // Centralized error boundary: catch ALL errors, emit JSON envelope
+  const program = cliRunner(["node", "godaddy", ...finalArgs]).pipe(
     Effect.catchAll((error) =>
       Effect.gen(function* () {
         const writer = yield* EnvelopeWriter;
 
-        // Check if it's an @effect/cli ValidationError (not a custom CliError)
         const CLI_VALIDATION_TAGS = new Set([
           "CommandMismatch",
           "CorrectedFlag",
@@ -517,7 +584,6 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
 
         const cmdStr = `godaddy ${normalized.join(" ")}`.trim();
 
-        // If this is a streaming command (--follow), emit stream error
         const isStreaming = normalized.includes("--follow");
         if (isStreaming) {
           yield* writer.emitStreamError(
@@ -548,7 +614,6 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
 
 const args = process.argv.slice(2);
 runCli(args).catch((error) => {
-  // Last-resort catch for truly unexpected failures
   process.stderr.write(`Fatal: ${error}\n`);
   process.exitCode = 1;
 });

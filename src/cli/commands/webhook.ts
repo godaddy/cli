@@ -4,7 +4,6 @@ import { webhookEventsEffect } from "../../core/webhooks";
 import { truncateList } from "../agent/truncation";
 import type { NextAction } from "../agent/types";
 import { EnvelopeWriter } from "../services/envelope-writer";
-
 // ---------------------------------------------------------------------------
 // Colocated next_actions
 // ---------------------------------------------------------------------------

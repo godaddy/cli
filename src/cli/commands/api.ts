@@ -26,7 +26,6 @@ import {
 } from "../schemas/api/index";
 import { CliConfig } from "../services/cli-config";
 import { EnvelopeWriter } from "../services/envelope-writer";
-
 const VALID_METHODS: readonly HttpMethod[] = [
   "GET",
   "POST",
