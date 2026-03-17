@@ -548,6 +548,9 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
 
   if (verbosity > 0) {
     setVerbosityLevel(verbosity);
+    const levelName =
+      verbosity >= 3 ? "trace" : verbosity === 2 ? "debug" : "info";
+    process.stderr.write(`Log level has been set to: ${levelName}\n`);
   }
 
   const cliConfigLayer = makeCliConfigLayer({
