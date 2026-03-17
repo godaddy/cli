@@ -286,8 +286,32 @@ function rewriteLegacyApiEndpointArgs(argv: readonly string[]): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Console override — collapses 3+ consecutive blank lines in help output
+// Console override — strips boilerplate lines from Effect's help renderer
+// and collapses orphaned blank lines that remain.
 // ---------------------------------------------------------------------------
+
+// Effect's CLI renderer injects per-option metadata lines that add no value
+// for users: type description ("A true or false value."), optionality status
+// ("This setting is optional."), and enum listing ("One of the following: …").
+// Strip those lines, then collapse any runs of 3+ blank lines that result.
+const HELP_NOISE_RE =
+  /^\s*(A true or false value\.|A user-defined piece of text\.|This setting is optional\.|This setting is required\.|One of the following:)/;
+
+function cleanHelpText(text: string): string {
+  return (
+    text
+      .split("\n")
+      .filter((line) => !HELP_NOISE_RE.test(line))
+      .join("\n")
+      // Collapse runs of 3+ blank lines that appear where noisy lines were removed.
+      .replace(/\n{3,}/g, "\n\n")
+      // Remove blank lines immediately before indented content (option descriptions,
+      // command table rows) so each entry is a tight two-line block. Blank lines
+      // between top-level entries (option names, section headers) are unaffected
+      // because they are not followed by whitespace.
+      .replace(/\n\n(?=\s)/g, "\n")
+  );
+}
 
 function makeCleanConsole(): Console.Console {
   const c = globalThis.console;
@@ -297,7 +321,7 @@ function makeCleanConsole(): Console.Console {
     log: (...args: ReadonlyArray<unknown>) =>
       s(() => {
         const text = args.map(String).join(" ");
-        process.stdout.write(`${text.replace(/\n{3,}/g, "\n\n")}\n`);
+        process.stdout.write(`${cleanHelpText(text)}\n`);
       }),
     error: (...args: ReadonlyArray<unknown>) =>
       s(() => c.error(...(args as unknown[]))),
