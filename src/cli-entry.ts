@@ -252,6 +252,7 @@ const ROOT_FLAG_WITH_VALUE = new Set([
 const ROOT_BOOLEAN_FLAGS = new Set([
   "--pretty",
   "-p",
+  "--plaintext",
   "-j",
   "--help",
   "-h",
@@ -334,7 +335,94 @@ function cleanHelpText(text: string): string {
   );
 }
 
-function makeCleanConsole(): Console.Console {
+// ESC character (0x1B) cannot appear as a literal in regex; build dynamically.
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+interface ParsedHelpOption {
+  flags: string;
+  description: string;
+}
+
+interface ParsedHelpCommand {
+  command: string;
+  description: string;
+}
+
+interface ParsedHelp {
+  version?: string;
+  usage?: string;
+  description?: string;
+  options: ParsedHelpOption[];
+  commands: ParsedHelpCommand[];
+}
+
+function parseHelpText(plain: string): ParsedHelp {
+  const result: ParsedHelp = { options: [], commands: [] };
+  const lines = plain.split("\n");
+
+  const firstLine = lines.find((l) => l.trim().length > 0) ?? "";
+  const versionMatch = firstLine.match(/^\S+\s+(\S+)/);
+  if (versionMatch) result.version = versionMatch[1];
+
+  const sections = new Map<string, string[]>();
+  let currentSection: string | null = null;
+  let sectionLines: string[] = [];
+
+  for (const line of lines) {
+    if (/^[A-Z][A-Z ]+$/.test(line.trim()) && line.trim().length > 1) {
+      if (currentSection !== null) sections.set(currentSection, sectionLines);
+      currentSection = line.trim();
+      sectionLines = [];
+    } else if (currentSection !== null) {
+      sectionLines.push(line);
+    }
+  }
+  if (currentSection !== null) sections.set(currentSection, sectionLines);
+
+  const usageLine = (sections.get("USAGE") ?? []).find((l) =>
+    l.trim().startsWith("$"),
+  );
+  if (usageLine) result.usage = usageLine.replace(/^\s*\$\s*/, "").trim();
+
+  const descLines = (sections.get("DESCRIPTION") ?? []).filter(
+    (l) => l.trim().length > 0,
+  );
+  if (descLines.length > 0) result.description = descLines.join(" ").trim();
+
+  const optLines = sections.get("OPTIONS") ?? [];
+  for (let i = 0; i < optLines.length; i++) {
+    const line = optLines[i];
+    if (line.trim().length > 0 && !/^\s/.test(line)) {
+      const flags = line.trim();
+      let description = "";
+      if (i + 1 < optLines.length && /^\s/.test(optLines[i + 1])) {
+        description = optLines[i + 1].trim();
+        i++;
+      }
+      result.options.push({ flags, description });
+    }
+  }
+
+  for (const line of sections.get("COMMANDS") ?? []) {
+    const match = line.match(/^\s+-\s+(\S(?:.*\S)?)\s{2,}(\S.*)$/);
+    if (match) {
+      result.commands.push({
+        command: match[1].trim(),
+        description: match[2].trim(),
+      });
+    }
+  }
+
+  return result;
+}
+
+function makeCleanConsole(
+  outputFormat: OutputFormat,
+  prettyPrint: boolean,
+  finalArgs: string[],
+): Console.Console {
+  const cmdStr =
+    finalArgs.length > 0 ? `godaddy ${finalArgs.join(" ")}` : "godaddy";
   const c = globalThis.console;
   const s = Effect.sync;
   return {
@@ -342,7 +430,22 @@ function makeCleanConsole(): Console.Console {
     log: (...args: ReadonlyArray<unknown>) =>
       s(() => {
         const text = args.map(String).join(" ");
-        process.stdout.write(`${cleanHelpText(text)}\n`);
+        const cleaned = cleanHelpText(text);
+        if (outputFormat === "json") {
+          const plain = cleaned.replace(ANSI_RE, "");
+          const envelope = {
+            ok: true,
+            command: cmdStr,
+            result: parseHelpText(plain),
+            next_actions: [],
+          };
+          const serialized = prettyPrint
+            ? JSON.stringify(envelope, null, 2)
+            : JSON.stringify(envelope);
+          process.stdout.write(`${serialized}\n`);
+        } else {
+          process.stdout.write(`${cleaned}\n`);
+        }
       }),
     error: (...args: ReadonlyArray<unknown>) =>
       s(() => c.error(...(args as unknown[]))),
@@ -408,14 +511,16 @@ const rootCommand = Command.make(
       ),
     ),
     output: Options.text("output").pipe(
-      Options.withDescription(
-        "Output format: json (default) or plaintext. Use -p for plaintext shorthand.",
-      ),
+      Options.withDescription("Output format: json (default) or plaintext"),
       Options.optional,
     ),
     json: Options.boolean("json").pipe(
       Options.withAlias("j"),
       Options.withDescription("Shorthand for --output=json"),
+    ),
+    plaintext: Options.boolean("plaintext").pipe(
+      Options.withAlias("p"),
+      Options.withDescription("Shorthand for --output=plaintext"),
     ),
     env: Options.text("env").pipe(
       Options.withAlias("e"),
@@ -531,7 +636,7 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
       stripIndices.add(i + 1);
       i++;
     }
-    if (token === "-p") {
+    if (token === "-p" || token === "--plaintext") {
       outputFormat = "plaintext";
       stripIndices.add(i);
     }
@@ -587,7 +692,7 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
     NodeContext.layer,
     NodeLiveLayer,
     cliConfigLayer,
-    Console.setConsole(makeCleanConsole()),
+    Console.setConsole(makeCleanConsole(outputFormat, prettyPrint, finalArgs)),
     Logger.replace(Logger.defaultLogger, makeEffectLogger(outputFormat)),
   ).pipe((base) =>
     Layer.merge(base, Layer.provide(envelopeWriterLayer, cliConfigLayer)),
