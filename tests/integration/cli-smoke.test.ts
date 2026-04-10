@@ -351,4 +351,78 @@ describe("CLI Smoke Tests", () => {
     expect(payload.command).toBe("godaddy --debug");
     expect(result.stderr).toContain("(verbose output enabled: full details)");
   });
+
+  it("--log-level error produces no verbose output", () => {
+    const result = runCli(["--log-level", "error", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    const payload = JSON.parse(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(result.stderr).not.toContain("verbose output enabled");
+  });
+
+  it("--log-level info enables basic verbose mode", () => {
+    const result = runCli(["--log-level", "info", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    const payload = JSON.parse(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(result.stderr).toContain("(verbose output enabled)");
+    expect(result.stderr).not.toContain("full details");
+  });
+
+  it("--log-level debug enables full verbose mode", () => {
+    const result = runCli(["--log-level", "debug", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    const payload = JSON.parse(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(result.stderr).toContain("(verbose output enabled: full details)");
+  });
+
+  it("--log-level is case-insensitive", () => {
+    const result = runCli(["--log-level", "DEBUG", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    expect(result.stderr).toContain("(verbose output enabled: full details)");
+  });
+
+  it("unknown --log-level emits a warning", () => {
+    const result = runCli(["--log-level", "bogus", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    expect(result.stderr).toContain('unknown --log-level "bogus"');
+    expect(result.stderr).toContain("error, info, debug");
+  });
+
+  it("--log-level combined with --verbose emits conflict warning", () => {
+    const result = runCli(["--log-level", "debug", "--verbose", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    expect(result.stderr).toContain(
+      "--log-level overrides --verbose/--debug/--info flags",
+    );
+    expect(result.stderr).toContain("(verbose output enabled: full details)");
+  });
+
+  it("--log-level combined with --debug emits conflict warning", () => {
+    const result = runCli(["--log-level", "info", "--debug", "env", "get"]);
+    expect(result.status).toBe(0);
+
+    expect(result.stderr).toContain(
+      "--log-level overrides --verbose/--debug/--info flags",
+    );
+    // --log-level info wins over --debug
+    expect(result.stderr).toContain("(verbose output enabled)");
+    expect(result.stderr).not.toContain("full details)");
+  });
+
+  it("--log-level is stripped from argv and does not break subcommands", () => {
+    const result = runCli(["--log-level", "error", "application"]);
+    expect(result.status).toBe(0);
+
+    const payload = JSON.parse(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(payload.result.command).toBe("godaddy application");
+  });
 });

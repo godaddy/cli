@@ -219,6 +219,12 @@ function normalizeVerbosityArgs(argv: readonly string[]): string[] {
 }
 
 const API_SUBCOMMANDS = new Set(["list", "describe", "search", "call"]);
+const LOG_LEVEL_MAP: Record<string, number> = {
+  error: 0,
+  info: 1,
+  debug: 2,
+};
+
 const ROOT_FLAG_WITH_VALUE = new Set([
   "--env",
   "-e",
@@ -310,6 +316,12 @@ const rootCommand = Command.make(
       ),
       Options.optional,
     ),
+    logLevel: Options.text("log-level").pipe(
+      Options.withDescription(
+        "Set log verbosity level (error, info, debug)",
+      ),
+      Options.optional,
+    ),
   },
   (_config) =>
     Effect.gen(function* () {
@@ -385,6 +397,8 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
   let prettyPrint = false;
   let verbosity = 0;
   let envOverride: Environment | null = null;
+  let logLevelSet = false;
+  let hasVerbosityFlag = false;
 
   const stripIndices = new Set<number>();
   for (let i = 0; i < normalized.length; i++) {
@@ -393,16 +407,44 @@ export function runCli(rawArgv: ReadonlyArray<string>): Promise<void> {
       prettyPrint = true;
       stripIndices.add(i);
     }
-    if (token === "--verbose" || token === "-v")
+    if (token === "--verbose" || token === "-v") {
       verbosity = Math.max(verbosity, 1);
-    if (token === "--debug") verbosity = 2;
-    if (token === "--info") verbosity = Math.max(verbosity, 1);
+      hasVerbosityFlag = true;
+    }
+    if (token === "--debug") {
+      verbosity = 2;
+      hasVerbosityFlag = true;
+    }
+    if (token === "--info") {
+      verbosity = Math.max(verbosity, 1);
+      hasVerbosityFlag = true;
+    }
+    if (token === "--log-level" && i + 1 < normalized.length) {
+      const level = normalized[i + 1].toLowerCase();
+      if (level in LOG_LEVEL_MAP) {
+        verbosity = LOG_LEVEL_MAP[level];
+        logLevelSet = true;
+      } else {
+        process.stderr.write(
+          `Warning: unknown --log-level "${normalized[i + 1]}", expected: error, info, debug\n`,
+        );
+      }
+      stripIndices.add(i);
+      stripIndices.add(i + 1);
+      i++; // skip value
+    }
     if ((token === "--env" || token === "-e") && i + 1 < normalized.length) {
       envOverride = validateEnvironment(normalized[i + 1]);
       stripIndices.add(i);
       stripIndices.add(i + 1);
       i++; // skip value
     }
+  }
+
+  if (logLevelSet && hasVerbosityFlag) {
+    process.stderr.write(
+      "Warning: --log-level overrides --verbose/--debug/--info flags\n",
+    );
   }
 
   const frameworkArgs = normalized.filter((_, i) => !stripIndices.has(i));
