@@ -34,7 +34,7 @@ import {
   addActionToConfigEffect,
   addExtensionToConfigEffect,
   addSubscriptionToConfigEffect,
-  getConfigFile,
+  getConfigFileEffect,
   getConfigFilePath,
 } from "../../services/config";
 import { protectPayload, truncateList } from "../agent/truncation";
@@ -45,7 +45,7 @@ import { EnvelopeWriter } from "../services/envelope-writer";
 // Helpers (pure, no global state)
 // ---------------------------------------------------------------------------
 
-type ConfigReadResult = ReturnType<typeof getConfigFile>;
+type ConfigReadResult = Config | ArkErrors | undefined;
 
 function resolveEnvironmentEffect(environment?: string) {
   return envGetEffect(environment);
@@ -650,20 +650,42 @@ const appInit = Command.make(
       const envStr = Option.getOrUndefined(opts.environment);
       let cfg: Config | undefined;
       if (cfgPath || envStr) {
-        const candidate = getConfigFile({
+        const result = yield* getConfigFileEffect({
           configPath: cfgPath,
           env: envStr as Environment | undefined,
-        });
-        if (isConfigValidationErrorResult(candidate)) {
-          const problems =
-            typeof candidate.summary === "string"
-              ? candidate.summary
-              : "Config file validation failed";
-          return yield* Effect.fail(
-            new ValidationError({ message: problems, userMessage: problems }),
-          );
+        }).pipe(
+          Effect.catchAll((error) => {
+            // Only propagate if --config was explicitly provided
+            if (cfgPath) {
+              return Effect.fail(
+                new ValidationError({
+                  message: error.message,
+                  userMessage: error.userMessage,
+                }),
+              );
+            }
+            // --environment only: config is optional, ignore if missing
+            return Effect.succeed(undefined as Config | ArkErrors | undefined);
+          }),
+        );
+        if (result !== undefined) {
+          if (isConfigValidationErrorResult(result)) {
+            if (cfgPath) {
+              const problems =
+                typeof result.summary === "string"
+                  ? result.summary
+                  : "Config file validation failed";
+              return yield* Effect.fail(
+                new ValidationError({
+                  message: problems,
+                  userMessage: problems,
+                }),
+              );
+            }
+          } else {
+            cfg = result;
+          }
         }
-        cfg = candidate;
       }
       const nameVal = Option.getOrUndefined(opts.name) ?? cfg?.name ?? "";
       const descVal =
