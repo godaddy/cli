@@ -24,6 +24,7 @@ import {
 } from "../../core/applications";
 import { type Environment, envGetEffect } from "../../core/environment";
 import { ValidationError } from "../../effect/errors";
+import { fileExists } from "../../effect/fs-utils";
 import {
   type ActionConfig,
   type BlocksExtensionConfig,
@@ -648,45 +649,53 @@ const appInit = Command.make(
       const writer = yield* EnvelopeWriter;
       const cfgPath = Option.getOrUndefined(opts.config);
       const envStr = Option.getOrUndefined(opts.environment);
+      // Resolve env first so config file path is determined by the same
+      // precedence rules the rest of the CLI uses.
+      const environment = yield* resolveEnvironmentEffect(envStr);
+
       let cfg: Config | undefined;
-      if (cfgPath || envStr) {
+      // Determine which config file to inspect (explicit --config wins, otherwise
+      // the env-matched profile).
+      const targetConfigPath = cfgPath
+        ? resolve(process.cwd(), cfgPath)
+        : getConfigFilePath(environment);
+      const configFileExists = yield* fileExists(targetConfigPath);
+
+      if (configFileExists) {
+        // File exists — read it and fail hard on any error (malformed TOML,
+        // schema invalid, unreadable). Only the missing-file case is tolerated.
         const result = yield* getConfigFileEffect({
           configPath: cfgPath,
-          env: envStr as Environment | undefined,
+          env: environment,
         }).pipe(
-          Effect.catchAll((error) => {
-            // Only propagate if --config was explicitly provided
-            if (cfgPath) {
-              return Effect.fail(
-                new ValidationError({
-                  message: error.message,
-                  userMessage: error.userMessage,
-                }),
-              );
-            }
-            // --environment only: config is optional, ignore if missing
-            return Effect.succeed(undefined as Config | ArkErrors | undefined);
+          Effect.mapError(
+            (error) =>
+              new ValidationError({
+                message: error.message,
+                userMessage: error.userMessage,
+              }),
+          ),
+        );
+        if (isConfigValidationErrorResult(result)) {
+          const problems =
+            typeof result.summary === "string"
+              ? result.summary
+              : "Config file validation failed";
+          return yield* Effect.fail(
+            new ValidationError({ message: problems, userMessage: problems }),
+          );
+        }
+        cfg = result;
+      } else if (cfgPath) {
+        // --config was explicitly provided but the file doesn't exist — hard fail.
+        return yield* Effect.fail(
+          new ValidationError({
+            message: `Config file not found at ${targetConfigPath}`,
+            userMessage: `Config file not found at ${targetConfigPath}`,
           }),
         );
-        if (result !== undefined) {
-          if (isConfigValidationErrorResult(result)) {
-            if (cfgPath) {
-              const problems =
-                typeof result.summary === "string"
-                  ? result.summary
-                  : "Config file validation failed";
-              return yield* Effect.fail(
-                new ValidationError({
-                  message: problems,
-                  userMessage: problems,
-                }),
-              );
-            }
-          } else {
-            cfg = result;
-          }
-        }
       }
+      // File absent and no explicit --config: proceed without defaults.
       const nameVal = Option.getOrUndefined(opts.name) ?? cfg?.name ?? "";
       const descVal =
         Option.getOrUndefined(opts.description) ?? cfg?.description ?? "";
@@ -741,7 +750,6 @@ const appInit = Command.make(
           }),
         );
 
-      const environment = yield* resolveEnvironmentEffect(envStr);
       const appData = yield* applicationInitEffect(input, environment);
       yield* writer.emitSuccess(
         "godaddy application init",
