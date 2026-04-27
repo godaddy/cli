@@ -229,7 +229,6 @@ const BOOTSTRAP_COMMERCE_REPOS = [
   "commerce.chargebacks-specification",
   "commerce.customer-profiles-specification",
   "commerce.fulfillments-specification",
-  "commerce.invoices-specification",
   "commerce.metafields-specification",
   "commerce.onboarding-specification",
   "commerce.orders-specification",

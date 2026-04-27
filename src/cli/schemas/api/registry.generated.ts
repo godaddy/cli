@@ -10,7 +10,6 @@ import channels_json from "./channels.json";
 import chargebacks_json from "./chargebacks.json";
 import customer_profiles_json from "./customer-profiles.json";
 import fulfillments_json from "./fulfillments.json";
-import invoices_json from "./invoices.json";
 import location_addresses_json from "./location-addresses.json";
 import metafields_json from "./metafields.json";
 import onboarding_json from "./onboarding.json";
@@ -32,7 +31,6 @@ export const DOMAIN_REGISTRY: Record<string, unknown> = {
   chargebacks: chargebacks_json,
   "customer-profiles": customer_profiles_json,
   fulfillments: fulfillments_json,
-  invoices: invoices_json,
   "location-addresses": location_addresses_json,
   metafields: metafields_json,
   onboarding: onboarding_json,
