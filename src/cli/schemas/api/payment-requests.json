@@ -1,0 +1,492 @@
+{
+  "name": "payment-requests",
+  "title": "Payment Requests API",
+  "description": "This API is capable of creating, updating and fetching payment requests across different stores.",
+  "version": "1.1.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "getPaymentRequests",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests",
+      "summary": "Get all payment requests",
+      "description": "Retrieve all the payment requests for a specific store using the store ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number (1-indexed)",
+          "schema": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Number of items per page",
+          "schema": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Token for retrieving the next page of results. This optimizes query execution on large datasets \nby continuing from a specific point rather than recalculating offsets. When provided, the 'page' parameter is ignored.\nObtained from the 'next' link in the previous response.\n",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "updatedAtAfter",
+          "in": "query",
+          "required": false,
+          "description": "Payment request filter updatedAt start date. Defaults to 1 day ago if not specified.",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "updatedAtBefore",
+          "in": "query",
+          "required": false,
+          "description": "Payment request filter updatedAt end date",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Filter by payment request status",
+          "schema": {
+            "$ref": "./models/PaymentRequestStatus.yaml"
+          }
+        },
+        {
+          "name": "deviceId",
+          "in": "query",
+          "required": false,
+          "description": "Filter by device identifier",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "description": "Filter by payment request type",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sortBy",
+          "in": "query",
+          "required": false,
+          "description": "Payment request sort field",
+          "schema": {
+            "type": "string",
+            "enum": ["updatedAt"],
+            "default": "updatedAt"
+          }
+        },
+        {
+          "name": "sortOrder",
+          "in": "query",
+          "required": false,
+          "description": "Payment request sort order",
+          "schema": {
+            "type": "string",
+            "enum": ["ASC", "DESC"],
+            "default": "ASC"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Payment Requests List",
+          "schema": {
+            "$ref": "#/components/schemas/paymentRequestList"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.payment-request:read"]
+    },
+    {
+      "operationId": "createPaymentRequest",
+      "method": "POST",
+      "path": "/stores/{storeId}/payment-requests",
+      "summary": "Create a new payment request (Async)",
+      "description": "Create a new payment request for the specified store. This is an **asynchronous operation**.\n\n**Async Processing:**\n- Returns `202 Accepted` with immediate `paymentRequestId` for tracking\n- Processing happens in the background with status updates via callbacks\n- Use callbacks (if configured) or polling GET endpoint for completion status\n- Initial status will be `RECEIVED` or `QUEUED`\n\n**Idempotency:**\n- The `X-Request-Id` header is used for idempotency\n- Duplicate requests with the same `X-Request-Id` within 24 hours will return the existing payment request\n- This prevents duplicate payment requests due to network issues or retries\n\n**Required Properties:**\n- `amount` - Payment request amount\n- `type` - Payment request type\n\n**Optional Properties:**\n- `deviceId` - Device identifier for this payment request\n- `paymentInstructions` - Payment instructions\n- `notes` - Additional notes about the payment request\n- `references` - External system references\n- `callbackConfig` - Configuration for async status notifications\n\n**Idempotency:** This endpoint supports idempotency via the X-Request-Id header to prevent duplicate payment requests.\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PaymentRequest.yaml"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Payment request accepted for async processing",
+          "schema": {
+            "$ref": "./models/PaymentRequest.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/400"
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.payment-request:write"]
+    },
+    {
+      "operationId": "getPaymentRequestById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}",
+      "summary": "Get payment request by ID",
+      "description": "Retrieve complete information for a single payment request including:\n- Payment request details and current status\n- Amount information\n- Associated transaction IDs\n- Device and store information\n- References and metadata\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Payment request retrieved successfully",
+          "schema": {
+            "$ref": "./models/PaymentRequest.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/400"
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.payment-request:read"]
+    },
+    {
+      "operationId": "addPaymentRequestActivity",
+      "method": "POST",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}/activities",
+      "summary": "Add activity to payment request",
+      "description": "Add a new activity entry to a payment request for tracking customer and device interactions.\n\n**Common Use Cases:**\n- Device events: \"PAYMENT_REQUEST_RECEIVED\", \"PAYMENT_POPUP_DISPLAYED\", \"CARD_READER_ACTIVATED\"\n- Customer interactions: \"CUSTOMER_ENTERED_TIP\", \"PIN_ENTRY_STARTED\", \"SIGNATURE_REQUESTED\"\n- Transaction flow: \"CUSTOMER_APPROVED_AMOUNT\", \"CUSTOMER_CANCELLED_TRANSACTION\", \"PAYMENT_METHOD_SELECTED\"\n- Processing events: \"SENT_TO_PROCESSOR\", \"AUTHORIZATION_RECEIVED\", \"RECEIPT_PRINTED\"\n\n**Required Properties:**\n- `type` - Activity type identifier (e.g., \"CUSTOMER_ENTERED_TIP\")\n- `timestamp` - When the activity occurred (ISO 8601 format)\n\n**Optional Properties:**\n- `data` - Additional context data (e.g., tip amount, card type, error details)\n\n**Notes:**\n- Activities are append-only and cannot be modified once created\n- Use the actual occurrence time, not when you're logging the activity\n- Maintain consistent activity type naming across your integration\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PaymentRequestActivity.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Payment request activity created successfully",
+          "schema": {
+            "$ref": "./models/PaymentRequestActivity.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/400"
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.payment-request:write"]
+    },
+    {
+      "operationId": "getPaymentRequestActivities",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}/activities",
+      "summary": "Get all activities for a payment request",
+      "description": "Retrieve all activities for a specific payment request in chronological order.\n\n**Use Cases:**\n- View complete payment flow history\n- Debug payment processing issues\n- Audit customer interactions and device events\n- Analyze payment request lifecycle and timing\n\n**Filtering Options:**\n- Filter by activity type(s) to focus on specific events\n- Filter by time range to analyze specific periods\n- Use pagination for large activity logs\n\n**Response Details:**\n- Activities are returned in chronological order (oldest first)\n- Each activity includes type, timestamp, and optional data\n- Pagination is supported for large result sets\n\n**Note:** Activities are immutable - this endpoint is read-only.\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number (1-indexed)",
+          "schema": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Number of items per page",
+          "schema": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "activityType",
+          "in": "query",
+          "required": false,
+          "description": "Filter by activity type",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "startTime",
+          "in": "query",
+          "required": false,
+          "description": "Filter activities after this time (ISO 8601 format)",
+          "schema": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        {
+          "name": "endTime",
+          "in": "query",
+          "required": false,
+          "description": "Filter activities before this time (ISO 8601 format)",
+          "schema": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Payment request activities retrieved successfully",
+          "schema": {
+            "title": "PaymentRequestActivities",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "./models/PaymentRequestActivity.yaml"
+                }
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/400"
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.payment-request:read"]
+    }
+  ]
+}

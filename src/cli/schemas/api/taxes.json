@@ -1,0 +1,871 @@
+{
+  "name": "taxes",
+  "title": "GoDaddy Tax API",
+  "description": "The Tax Service API is intended to provide a common service for various other services and applications to build a taxes system",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1",
+  "endpoints": [
+    {
+      "operationId": "getAllTaxes",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/taxes",
+      "summary": "Gets all Taxes and their corresponding Tax Rates",
+      "description": "Retrieves all Taxes and their corresponding Tax Rates for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./models/Tax.yaml"
+            }
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax:read"]
+    },
+    {
+      "operationId": "createTax",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/taxes",
+      "summary": "Creates a Tax",
+      "description": "Creates a Tax for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Tax.yaml",
+          "description": "The shape of a Tax on a POST request body"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/Tax.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax:create"]
+    },
+    {
+      "operationId": "getTax",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/taxes/{taxId}",
+      "summary": "Gets a single Tax and its corresponding Tax Rates",
+      "description": "Gets a single Tax and its corresponding Tax Rates for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "taxId",
+          "in": "path",
+          "required": true,
+          "description": "The Tax ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Tax",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/Tax.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax:read"]
+    },
+    {
+      "operationId": "updateTax",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/taxes/{taxId}",
+      "summary": "Updates a Tax",
+      "description": "Updates a Tax for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "taxId",
+          "in": "path",
+          "required": true,
+          "description": "The Tax ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Tax",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Tax.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/Tax.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax:write"]
+    },
+    {
+      "operationId": "deleteTax",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/taxes/{taxId}",
+      "summary": "Deletes a Tax",
+      "description": "Deletes a Tax for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "taxId",
+          "in": "path",
+          "required": true,
+          "description": "The Tax ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Tax",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Request was successful"
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax:delete"]
+    },
+    {
+      "operationId": "getAllTaxAssociations",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/tax-associations",
+      "summary": "Finds all Tax Associations",
+      "description": "Finds all Tax Associations for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./models/TaxAssociation.yaml"
+            }
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:read"]
+    },
+    {
+      "operationId": "createTaxAssociation",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/tax-associations",
+      "summary": "Creates a Tax Association",
+      "description": "Creates a Tax Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/TaxAssociation.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:create"]
+    },
+    {
+      "operationId": "getTaxAssociation",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/tax-associations/{associationId}",
+      "summary": "Finds A Single Tax Association",
+      "description": "Finds A Single Tax Association for a given storeId & associationId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:read"]
+    },
+    {
+      "operationId": "deleteTaxAssociation",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/tax-associations/{associationId}",
+      "summary": "Deletes a Tax Association",
+      "description": "Delete Tax Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Request was successful"
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:delete"]
+    },
+    {
+      "operationId": "updateTaxAssociation",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/tax-associations/{associationId}",
+      "summary": "Updates a Tax Association",
+      "description": "Updates a Tax Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/TaxAssociation.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:write"]
+    },
+    {
+      "operationId": "getAllTaxOverrideAssociations",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/tax-override-associations",
+      "summary": "Finds all Tax Override Associations",
+      "description": "Finds all Tax Override Associations for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./models/TaxOverrideAssociation.yaml"
+            }
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:read"]
+    },
+    {
+      "operationId": "createTaxOverrideAssociation",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/tax-override-associations",
+      "summary": "Creates a Tax Override Association",
+      "description": "Creates a Tax Override Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/TaxOverrideAssociation.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxOverrideAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:create"]
+    },
+    {
+      "operationId": "getTaxOverrideAssociation",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/tax-override-associations/{associationId}",
+      "summary": "Finds A Single Tax Override Association",
+      "description": "Finds a single Tax Override Association for a given storeId & associationId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxOverrideAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:read"]
+    },
+    {
+      "operationId": "updateTaxOverrideAssociation",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/tax-override-associations/{associationId}",
+      "summary": "Updates a Tax Override Association",
+      "description": "Updates a Tax Override Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/TaxOverrideAssociation.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "./models/TaxOverrideAssociation.yaml"
+          }
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:write"]
+    },
+    {
+      "operationId": "deleteTaxOverrideAssociation",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/tax-override-associations/{associationId}",
+      "summary": "Deletes a Tax Override Association",
+      "description": "Deletes a Tax Override Association for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "description": "The unique uuid identifier of a Store",
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "The Association ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Request was successful"
+        },
+        "400": {
+          "description": "See #/components/responses/BadRequestError"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "409": {
+          "description": "See #/components/responses/NotUniqueError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.tax-association:delete"]
+    }
+  ]
+}

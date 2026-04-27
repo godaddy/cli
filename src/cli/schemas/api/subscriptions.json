@@ -1,0 +1,534 @@
+{
+  "name": "subscriptions",
+  "title": "Commerce Subscription API",
+  "description": "This API is capable of recording and obtaining commerce subscription information",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "createPlan",
+      "method": "POST",
+      "path": "/plans",
+      "summary": "Create Subscription Plan",
+      "description": "Create Subscription Plan",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Plan.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Plan Created",
+          "schema": {
+            "$ref": "./models/Plan.yaml"
+          }
+        }
+      },
+      "scopes": ["commerce.subscription-plan:create"]
+    },
+    {
+      "operationId": "getPlans",
+      "method": "GET",
+      "path": "/plans",
+      "summary": "Get Subscription Plans",
+      "description": "Retrieve the subscription plans by params",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "businessId",
+          "in": "query",
+          "required": false,
+          "description": "Business ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "applicationId",
+          "in": "query",
+          "required": false,
+          "description": "Godaddy Platform Application ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": true,
+          "description": "Type of the subscription plan (mandatory)",
+          "schema": {
+            "type": "string",
+            "description": "The type of the subscription plan. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP."
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Status of the subscription plan",
+          "schema": {
+            "type": "string",
+            "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED."
+          }
+        },
+        {
+          "name": "name",
+          "in": "query",
+          "required": false,
+          "description": "Name of the subscription plan to search for",
+          "schema": {
+            "type": "string",
+            "description": "The reference key of the subscription plan to search for"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Plans Found",
+          "schema": {
+            "$ref": "./models/PlanList.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.subscription-plan:read"]
+    },
+    {
+      "operationId": "getPlanById",
+      "method": "GET",
+      "path": "/plans/{planId}",
+      "summary": "Get Subscription Plan",
+      "description": "Retrieve the information of the Subscription Plan by ID.",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "planId",
+          "in": "path",
+          "required": true,
+          "description": "The plan ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Plan Found",
+          "schema": {
+            "$ref": "./models/Plan.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.subscription-plan:read"]
+    },
+    {
+      "operationId": "updatePlan",
+      "method": "PATCH",
+      "path": "/plans/{planId}",
+      "summary": "Update Subscription Plan",
+      "description": "Update Subscription Plan",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "planId",
+          "in": "path",
+          "required": true,
+          "description": "The plan ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "items": {
+            "$ref": "./common-types/v1/schemas/yaml/patch-request.yaml"
+          },
+          "type": "array"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Plan updated",
+          "schema": {
+            "$ref": "./models/Plan.yaml"
+          }
+        },
+        "404": {
+          "description": "Plan Not Found"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.subscription-plan:update"]
+    },
+    {
+      "operationId": "createSubscription",
+      "method": "POST",
+      "path": "/subscriptions",
+      "summary": "Create Subscription",
+      "description": "Create Subscription",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Subscription.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Subscription Created",
+          "schema": {
+            "$ref": "./models/Subscription.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription:create",
+        "commerce.store:update",
+        "commerce.business:update"
+      ]
+    },
+    {
+      "operationId": "getSubscriptions",
+      "method": "GET",
+      "path": "/subscriptions",
+      "summary": "Get Subscriptions",
+      "description": "Retrieve the subscriptions by params",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "query",
+          "required": false,
+          "description": "Customer ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "businessId",
+          "in": "query",
+          "required": false,
+          "description": "Business ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "applicationId",
+          "in": "query",
+          "required": false,
+          "description": "Godaddy Platform Application ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Status of the subscription",
+          "schema": {
+            "type": "string",
+            "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+            "default": "ACTIVE",
+            "pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "description": "Type of the subscription. Possible values are GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP.",
+          "schema": {
+            "type": "string",
+            "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP. Default: GODADDY_ECOMM,POYNT_BUNDLE,CUSTOM",
+            "default": "GODADDY_ECOMM,POYNT_BUNDLE,CUSTOM"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Subscriptions Found",
+          "schema": {
+            "$ref": "./models/SubscriptionList.yaml"
+          }
+        },
+        "404": {
+          "description": "See #/components/responses/error"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "commerce.subscription:read",
+        "commerce.store:read",
+        "commerce.business:read"
+      ]
+    },
+    {
+      "operationId": "getSubscriptionById",
+      "method": "GET",
+      "path": "/subscriptions/{subscriptionId}",
+      "summary": "Get Subscription",
+      "description": "Retrieve the information of the Subscription by ID.",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "in": "path",
+          "required": true,
+          "description": "The subscription ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Subscription Found",
+          "schema": {
+            "$ref": "./models/Subscription.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "commerce.subscription:read",
+        "commerce.business:read",
+        "commerce.store:read"
+      ]
+    },
+    {
+      "operationId": "updateSubscription",
+      "method": "PATCH",
+      "path": "/subscriptions/{subscriptionId}",
+      "summary": "Update Subscription",
+      "description": "Update Subscription",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "in": "path",
+          "required": true,
+          "description": "The subscription ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "items": {
+            "$ref": "./common-types/v1/schemas/yaml/patch-request.yaml"
+          },
+          "type": "array"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Subscription updated",
+          "schema": {
+            "$ref": "./models/Subscription.yaml"
+          }
+        },
+        "404": {
+          "description": "Subscription Not Found"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "commerce.subscription:update",
+        "commerce.store:update",
+        "commerce.business:update"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,656 @@
+{
+  "name": "chargebacks",
+  "title": "Chargeback Management",
+  "description": "API capable of fetching, challenging and accepting chargebacks and managing related disputes",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "post_transaction_disputes__disputeId__submit",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/submit",
+      "summary": "Submit evidence",
+      "description": "Submit dispute documents with dispute notes",
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./types/dispute-notes.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Submit status",
+          "schema": {
+            "$ref": "./types/submit-response.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:update"]
+    },
+    {
+      "operationId": "post_transaction_disputes__disputeId__accept",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/accept",
+      "summary": "Accept a chargeback",
+      "description": "Accept a chargeback when you don't want to fight back",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Submit status",
+          "schema": {
+            "$ref": "./types/accept-response.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:update"]
+    },
+    {
+      "operationId": "patch_transaction_disputes__disputeId_",
+      "method": "PATCH",
+      "path": "/transaction-disputes/{disputeId}",
+      "summary": "Update Dispute",
+      "description": "Either transactionId related to the dispute can be updated, or isReviewed can be updated",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./common-types/v1/schemas/yaml/patch-request.yaml"
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "No Content"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:update"]
+    },
+    {
+      "operationId": "get_transaction_disputes__disputeId_",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}",
+      "summary": "Retrieve dispute details",
+      "description": "Retrieve the dispute information with disputeId",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "A dispute",
+          "schema": {
+            "$ref": "./types/simple-dispute.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:read"]
+    },
+    {
+      "operationId": "get_transaction_disputes",
+      "method": "GET",
+      "path": "/transaction-disputes",
+      "summary": "Retrieve a list of disputes",
+      "description": "Retrieve a list of disputes filtered by constraints. This endpoint won't provide refund related details. Please use /disputes/{disputeId} if you need this information",
+      "parameters": [
+        {
+          "name": "disputeIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of dispute unique identifiers",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "chargebackControlNumbers",
+          "in": "query",
+          "required": false,
+          "description": "A list of external unique identifiers for chargeback cases",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "transactionIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of unique identifiers for transactions",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "businessIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of unique identifiers for businesses",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "An unique identifier for storeId",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "disputePhase",
+          "in": "query",
+          "required": false,
+          "description": "The current phase of the dispute",
+          "schema": {
+            "$ref": "./types/dispute-phase.yaml"
+          }
+        },
+        {
+          "name": "phaseStatuses",
+          "in": "query",
+          "required": false,
+          "description": "A list of statuses of the dispute phase. Choose to filter by either phaseStatuses or disputeStatus",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./types/phase-status.yaml"
+            }
+          }
+        },
+        {
+          "name": "disputeStatus",
+          "in": "query",
+          "required": false,
+          "description": "The overall status of the dispute. Choose to filter by either phaseStatuses or disputeStatus",
+          "schema": {
+            "$ref": "./types/dispute-status.yaml"
+          }
+        },
+        {
+          "name": "isReviewed",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants have reviewed WIN/LOST status of a chargeback phase",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isAccepted",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants accepted the dispute",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isActionable",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants should take an action.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isRespondable",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants can upload a document.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reasonCodes",
+          "in": "query",
+          "required": false,
+          "description": "A list of reason Code of the chargeback",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "processor",
+          "in": "query",
+          "required": false,
+          "description": "The processor of the dispute",
+          "schema": {
+            "type": "string",
+            "enum": ["ELAVON", "ADYEN"]
+          }
+        },
+        {
+          "name": "currency",
+          "in": "query",
+          "required": false,
+          "description": "The currency in which the amount is specified",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/currency-code.yaml"
+          }
+        },
+        {
+          "name": "sortBy",
+          "in": "query",
+          "required": false,
+          "description": "The field by which to sort the results. 'disputeExpiredAt' and 'disputeProcessedBy' share the same enum 'EXPIRED_AT'. Default is 'UPDATED_AT'",
+          "schema": {
+            "type": "string",
+            "enum": ["RECEIVED_AT", "EXPIRED_AT", "UPDATED_AT"],
+            "default": "UPDATED_AT"
+          }
+        },
+        {
+          "name": "sortOrder",
+          "in": "query",
+          "required": false,
+          "description": "The order of sorting, either ascending ('ASC') or descending ('DESC'). Default is descending ('DESC')",
+          "schema": {
+            "type": "string",
+            "enum": ["ASC", "DESC"],
+            "default": "DESC"
+          }
+        },
+        {
+          "name": "processByAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes to be processed after a given date/time (RFC 3339)",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "processByBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes to be processed before a given date/time (RFC 3339)",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "expiresAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes expiring after a specified date/time (RFC 3339)",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "expiresBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes expiring before a specified date/time (RFC 3339)",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "receivedAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filters for disputes that were received after the specified date and time. The date and time should be RFC 3339 format",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "receivedBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filters for disputes that were received before the specified date and time. The date and time should be RFC 3339 format",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "The number of records per page. Default is 10",
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page number of the results to retrieve. Default is 1",
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "A boolean that indicates whether the total number of records is required. Default is false",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "A list of disputes including pagination",
+          "schema": {
+            "$ref": "./types/simple-dispute-list.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:read"]
+    },
+    {
+      "operationId": "post_transaction_disputes__disputeId__documents",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/documents",
+      "summary": "Upload evidence",
+      "description": "When disputing a chargeback, you can upload evidence",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$ref": "./types/document.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Document meta data",
+          "schema": {
+            "$ref": "./types/document-metadata.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:create"]
+    },
+    {
+      "operationId": "get_transaction_disputes__disputeId__documents",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}/documents",
+      "summary": "Retrieve a list of dispute documents",
+      "description": "Retrieve a list of dispute documents",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of dispute document unique identifiers",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "disputePhase",
+          "in": "query",
+          "required": false,
+          "description": "The current phase of the dispute",
+          "schema": {
+            "$ref": "./types/phase-status.yaml"
+          }
+        },
+        {
+          "name": "deleted",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether the document is deleted",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "startTime",
+          "in": "query",
+          "required": false,
+          "description": "Filters for dispute documents that were created after the specified date and time. The date and time should be in RFC 3339 format",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "endTime",
+          "in": "query",
+          "required": false,
+          "description": "Filters for dispute documents that were created before the specified date and time. The date and time should be in RFC 3339 format",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "The number of records per page. Default is 10",
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page number of the results to retrieve. Default is 1",
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "A boolean that indicates whether the total number of records is required. Default is false",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Dispute document list with pagination",
+          "schema": {
+            "$ref": "./types/dispute-document-list.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:read"]
+    },
+    {
+      "operationId": "delete_transaction_disputes__disputeId__documents__disputeDocumentId_",
+      "method": "DELETE",
+      "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
+      "summary": "Delete an uploaded document",
+      "description": "Delete an uploaded document. You cannot delete a submitted document.",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute Document unique identifier in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "No Content"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:delete"]
+    },
+    {
+      "operationId": "get_transaction_disputes__disputeId__documents__disputeDocumentId_",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
+      "summary": "Getting an uploaded/submitted dispute document",
+      "description": "This endpoint allows for retrieving of a document associated with a specific dispute. The document is returned as a file attachment in the response.",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute Document unique identifier in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successfully retrieved  the document.",
+          "schema": {
+            "type": "string",
+            "format": "binary"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:read"]
+    },
+    {
+      "operationId": "get_transaction_dispute_document_constraints",
+      "method": "GET",
+      "path": "/transaction-dispute-document-constraints",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "processor",
+          "in": "query",
+          "required": true,
+          "description": "The processor of the disputes",
+          "schema": {
+            "type": "string",
+            "enum": ["ADYEN", "ELAVON"]
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successfully retrieved the file constraints.",
+          "schema": {
+            "$ref": "./types/document-constraints.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["commerce.transaction-disputes:read"]
+    }
+  ]
+}

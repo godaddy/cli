@@ -1,0 +1,2520 @@
+{
+  "name": "payments",
+  "title": "Payments API",
+  "description": "",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "getAuthorizations",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations",
+      "summary": "Get Authorizations",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Authorization list",
+          "schema": {
+            "title": "Authorizations",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/transaction/Authorization.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidAuthorizationByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionRefNum}",
+      "summary": "Void Authorization",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getAuthorizationById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionId}",
+      "summary": "Get Authorization",
+      "description": "Retrieve the information of the authorization by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Authorization Found",
+          "schema": {
+            "$ref": "./models/transaction/Authorization.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "updateAuthorizationById",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionId}",
+      "summary": "Update authorization",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/merge-patch+json",
+        "schema": {
+          "$ref": "./models/transaction/PatchTransaction.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "voidAuthorizationById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionId}",
+      "summary": "Void Authorization",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "addAuthorizationSignatureByTransactionId",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionId}/signatures",
+      "summary": "Add Authorization Signature",
+      "description": "Add authorization signature by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$ref": "./models/transaction/Signature.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getAuthorizationSignaturesById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/authorizations/{transactionId}/signatures",
+      "summary": "Get Authorization Signatures",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Authorization Signature list",
+          "schema": {
+            "title": "Authorization Signatures",
+            "$ref": "#/components/schemas/signatureList"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "capturePayment",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/captures",
+      "summary": "Capture Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/transaction/Capture.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Capture payment completed successfully",
+          "schema": {
+            "$ref": "./models/transaction/Capture.yaml"
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "getCaptures",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/captures",
+      "summary": "Get Captures",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Capture list",
+          "schema": {
+            "title": "Captures",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/transaction/Capture.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidCaptureByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/captures/{transactionRefNum}",
+      "summary": "Void Capture",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getCaptureById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/captures/{transactionId}",
+      "summary": "Get Capture",
+      "description": "Retrieve the information of the capture by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Capture Found",
+          "schema": {
+            "$ref": "./models/transaction/Capture.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidCaptureById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/captures/{transactionId}",
+      "summary": "Void Capture",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getSales",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales",
+      "summary": "Get Sales",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Sale list",
+          "schema": {
+            "title": "Sales",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/transaction/Sale.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidSaleByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionRefNum}",
+      "summary": "Void Sale",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getSaleById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionId}",
+      "summary": "Get Sale",
+      "description": "Retrieve the information of the sale by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Sale Found",
+          "schema": {
+            "$ref": "./models/transaction/Sale.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "updateSaleById",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionId}",
+      "summary": "Update Sale",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/merge-patch+json",
+        "schema": {
+          "$ref": "./models/transaction/PatchTransaction.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "voidSaleById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionId}",
+      "summary": "Void Sale",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "addSaleSignatureByTransactionId",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionId}/signatures",
+      "summary": "Add Sale Signature",
+      "description": "Add sale signature by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$ref": "./models/transaction/Signature.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getSaleSignaturesById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/sales/{transactionId}/signatures",
+      "summary": "Get Sale Signatures",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Sale Signature list",
+          "schema": {
+            "title": "Sale Signatures",
+            "$ref": "#/components/schemas/signatureList"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "adjustPayment",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments",
+      "summary": "Adjust Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/transaction/Adjustment.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Adjust payment completed successfully",
+          "schema": {
+            "$ref": "./models/transaction/Adjustment.yaml"
+          }
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getAdjustments",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments",
+      "summary": "Get Adjustments",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Adjustment list",
+          "schema": {
+            "title": "Adjustments",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/transaction/Adjustment.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidAdjustmentByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionRefNum}",
+      "summary": "Void Adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getAdjustmentById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionId}",
+      "summary": "Get Adjustment",
+      "description": "Retrieve the information of the adjustment by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Adjustment Found",
+          "schema": {
+            "$ref": "./models/transaction/Adjustment.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "updateAdjustmentById",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionId}",
+      "summary": "Update Adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/merge-patch+json",
+        "schema": {
+          "$ref": "./models/transaction/PatchTransaction.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "voidAdjustmentById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionId}",
+      "summary": "Void Adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "addAdjustmentSignatureByTransactionId",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionId}/signatures",
+      "summary": "Add Adjustment Signature",
+      "description": "Add adjustment signature by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$ref": "./models/transaction/Signature.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getAdjustmentSignaturesById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/adjustments/{transactionId}/signatures",
+      "summary": "Get Adjustment Signatures",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Adjustment Signature list",
+          "schema": {
+            "title": "Adjustment Signatures",
+            "$ref": "#/components/schemas/signatureList"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "refundPayment",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds",
+      "summary": "Refund Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/transaction/Refund.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Refund payment completed successfully",
+          "schema": {
+            "$ref": "./models/transaction/Refund.yaml"
+          }
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getRefunds",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds",
+      "summary": "Get Refunds",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Refund list",
+          "schema": {
+            "title": "Refunds",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/transaction/Refund.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidRefundByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionRefNum}",
+      "summary": "Void Refund",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getRefundById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionId}",
+      "summary": "Get Refund",
+      "description": "Retrieve the information of the refund by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Refund Found",
+          "schema": {
+            "$ref": "./models/transaction/Refund.yaml"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "updateRefundById",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionId}",
+      "summary": "Update Refund",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/merge-patch+json",
+        "schema": {
+          "$ref": "./models/transaction/PatchTransaction.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "voidRefundById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionId}",
+      "summary": "Void Refund",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "addRefundSignatureByTransactionId",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionId}/signatures",
+      "summary": "Add Refund Signature",
+      "description": "Add refund signature by the transaction ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$ref": "./models/transaction/Signature.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getRefundSignaturesById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/refunds/{transactionId}/signatures",
+      "summary": "Get Refund Signatures",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "transactionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "Request Id",
+          "in": "header",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Refund Signature list",
+          "schema": {
+            "title": "Refund Signatures",
+            "$ref": "#/components/schemas/signatureList"
+          }
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "createPayment",
+      "method": "POST",
+      "path": "/stores/{storeId}/payments",
+      "summary": "Create Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Payment.yaml"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "New payment created successfully",
+          "schema": {
+            "$ref": "./models/Payment.yaml"
+          }
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getPayments",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments",
+      "summary": "Get Payments",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Payments list",
+          "schema": {
+            "title": "PaymentList",
+            "properties": {
+              "totalItems": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              },
+              "items": {
+                "items": {
+                  "$ref": "./models/Payment.yaml"
+                },
+                "type": "array"
+              },
+              "links": {
+                "$ref": "./types/Links.yaml"
+              }
+            }
+          }
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "getPaymentById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}",
+      "summary": "Get Payment",
+      "description": "Retrieve the information of the Payment by the payment ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Payment Found",
+          "schema": {
+            "$ref": "./models/Payment.yaml"
+          }
+        },
+        "404": {
+          "description": "Payment Not Found"
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "voidPaymentById",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}",
+      "summary": "Void Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "voidPaymentByRefNum",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentRefNum}",
+      "summary": "Void Payment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRefNum",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/RefNum.yaml"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "default": {
+          "description": "See #/components/responses/error"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "getPaymentReference",
+      "method": "GET",
+      "path": "/stores/{storeId}/payments/{paymentId}/references/{value}",
+      "summary": "Get reference",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "value",
+          "in": "path",
+          "required": true,
+          "description": "Reference value",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Get payment reference by value",
+          "schema": {
+            "$ref": "./models/PaymentReference.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "urn:godaddy:services:commerce:payments:read",
+        "urn:godaddy:services:commerce:payments:read-write"
+      ]
+    },
+    {
+      "operationId": "createPaymentReference",
+      "method": "PUT",
+      "path": "/stores/{storeId}/payments/{paymentId}/references/{value}",
+      "summary": "Create Reference",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "value",
+          "in": "path",
+          "required": true,
+          "description": "Reference value",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PaymentReference.yaml"
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "Resource created / updated successfully"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    },
+    {
+      "operationId": "deletePaymentReference",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/payments/{paymentId}/references/{value}",
+      "summary": "Delete reference",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "./types/Id.yaml"
+          }
+        },
+        {
+          "name": "value",
+          "in": "path",
+          "required": true,
+          "description": "Reference value",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "See #/components/responses/200"
+        },
+        "404": {
+          "description": "Reference Not Found"
+        }
+      },
+      "scopes": ["urn:godaddy:services:commerce:payments:read-write"]
+    }
+  ]
+}

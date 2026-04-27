@@ -1,0 +1,106 @@
+{
+  "name": "recommendations",
+  "title": "GoDaddy Recommendation API",
+  "description": "",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "get_recommendations",
+      "method": "GET",
+      "path": "/recommendations",
+      "summary": "Return product recommendations",
+      "description": "Returns a recommendation with customer, business and/or product insights.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "query",
+          "required": true,
+          "description": "The Customer ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f7f3b31-3140-4479-a1ad-117afc1514a7"
+          }
+        },
+        {
+          "name": "format",
+          "in": "query",
+          "required": false,
+          "description": "Format of the response",
+          "schema": {
+            "type": "string",
+            "enum": ["rad"]
+          }
+        },
+        {
+          "name": "domain",
+          "in": "query",
+          "required": false,
+          "description": "Customer's domain",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PlainFormat"
+              },
+              {
+                "$ref": "#/components/schemas/RadFormat"
+              }
+            ]
+          }
+        },
+        "400": {
+          "description": "Bad Request Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "$ref": "common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "common-types/v1/schemas/json/error.json"
+          }
+        },
+        "409": {
+          "description": "A request conflict with the current state of the target resource",
+          "schema": {
+            "$ref": "common-types/v1/schemas/json/error.json"
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "$ref": "common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": []
+    }
+  ]
+}

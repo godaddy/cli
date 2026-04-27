@@ -1,0 +1,723 @@
+{
+  "name": "customer-profiles",
+  "title": "Customers API",
+  "description": "This API can be used to retrieve, create, update and delete customers as well as customer information.",
+  "version": "1.1.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "CustomersList",
+      "method": "GET",
+      "path": "/stores/{storeId}/customers",
+      "summary": "Get customers",
+      "description": "This endpoint can be used to retrieve a list of customers for a specific store. Deleted customers are excluded by default.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page of results to return for pagination. Only supported up to the first 10 000 records of a result set. Use pageToken rather than page where possible. PageToken and page can not be used in combination, doing so will result in a 422 response.",
+          "schema": {
+            "type": "integer",
+            "format": "integer-positive",
+            "default": 1
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Maximum number of items to return. If used with page will return results with an offset of page * pageSize",
+          "schema": {
+            "type": "integer",
+            "format": "integer-positive",
+            "default": 25,
+            "maximum": 500
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Use the `pageToken` returned from a previous search in order to obtain the next set of results. Use pageToken rather than page where possible. PageToken and page can not be used in combination, doing so will result in a 422 response.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "Indicates whether the response should include the total number of items and pages through response properties totalItems and totalPages respectively.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "queryString",
+          "in": "query",
+          "required": false,
+          "description": "Search term - this string will be matched as a starts with for all text fields",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "nonEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by presence of at least one of these fields",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["EMAIL", "FIRST_NAME", "LAST_NAME", "PHONE"]
+            }
+          }
+        },
+        {
+          "name": "emptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by absence of at least one of these fields",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["EMAIL", "FIRST_NAME", "LAST_NAME", "PHONE"]
+            }
+          }
+        },
+        {
+          "name": "allNonEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by presence of all of these fields",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["EMAIL", "FIRST_NAME", "LAST_NAME", "PHONE"]
+            }
+          }
+        },
+        {
+          "name": "allEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by absence of all of these fields",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["EMAIL", "FIRST_NAME", "LAST_NAME", "PHONE"]
+            }
+          }
+        },
+        {
+          "name": "externalIdentifiers",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by external identifier; provide as comma separated values in the form `type:value` (eg: `poynt:123,asin:B0B9F7WNQH`)",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "External identifier type and value separated by a colon, eg `poynt:123`"
+            }
+          }
+        },
+        {
+          "name": "updatedAtStart",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers whose updatedAt is >= the specified date",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        },
+        {
+          "name": "updatedAtEnd",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers whose updatedAt is <= the specified date",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/date-time.yaml"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedResponse"
+              },
+              {
+                "type": "object",
+                "required": ["customers"],
+                "properties": {
+                  "customers": {
+                    "type": "array",
+                    "description": "Array of customers",
+                    "items": {
+                      "$ref": "#/components/schemas/Customer"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:show"]
+    },
+    {
+      "operationId": "CommerceCustomersCreate",
+      "method": "POST",
+      "path": "/stores/{storeId}/customers",
+      "summary": "Create a new customer",
+      "description": "This endpoint can be used to create or de-duplicate - using channel data - and merge into existing customer. If the provided channels differ from existing customer data, a new customer will be created. This endpoint will not remove any existing data and is additive in cases where merges occur.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer data to import",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/CustomerCreate"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "A CUSTOMER_CREATE action was successfully created",
+          "schema": {
+            "$ref": "#/components/schemas/CustomerActionResponse"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:create"]
+    },
+    {
+      "operationId": "CommerceCustomersUpdate",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Update customer",
+      "description": "This endpoint can be used to update the information of a specific customer using the store and customer ID.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer data to import",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/CustomerUpdate"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "A CUSTOMER_UPDATE action was successfully created",
+          "schema": {
+            "$ref": "#/components/schemas/CustomerActionResponse"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:update"]
+    },
+    {
+      "operationId": "FetchCustomer",
+      "method": "GET",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Get customer by ID",
+      "description": "Retrieve the information of a single customer using the store and customer IDs.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "$ref": "#/components/schemas/Customer"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:read"]
+    },
+    {
+      "operationId": "DeleteCustomer",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Delete customer by ID",
+      "description": "Delete the information a single customer using the store and customer IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "202": {
+          "description": "A Delete action was successfully created",
+          "schema": {
+            "$ref": "#/components/schemas/CustomerActionResponse"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:update"]
+    },
+    {
+      "operationId": "CommerceCustomerJoin",
+      "method": "POST",
+      "path": "/stores/{storeId}/customer-join",
+      "summary": "Join customers",
+      "description": "This endpoint can be used to combine two or more customers together to create a single customer. The customer with the most complete basic attributes such as name, organization, and job title will be selected as the primary customer, and any attributes from the other customers will be reverse merged into the primary customer.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer IDs",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["customerIds"],
+          "properties": {
+            "customerIds": {
+              "description": "Array of Customer IDs to join",
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 50,
+              "items": {
+                "$ref": "#/components/schemas/CustomerId/properties/customerId"
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "A Join Customers action was successfully created",
+          "schema": {
+            "$ref": "#/components/schemas/CustomerActionResponse"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:update"]
+    },
+    {
+      "operationId": "CommerceCustomerUnjoin",
+      "method": "POST",
+      "path": "/stores/{storeId}/customers/{customerId}/customer-unjoin",
+      "summary": "Separate joined customers",
+      "description": "This endpoint can be used to undo all previous customer joins for a specific customer. Previously joined customers will now be available as individual customers.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "202": {
+          "description": "An Unjoin Customers action was successfully created",
+          "schema": {
+            "$ref": "#/components/schemas/CustomerActionResponse"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:update"]
+    },
+    {
+      "operationId": "GetRequest",
+      "method": "GET",
+      "path": "/stores/{storeId}/customer-requests/{requestId}",
+      "summary": "Get customer request by ID",
+      "description": "This endpoint can be used to retrieve a customer request using the store and request ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "requestId",
+          "in": "path",
+          "required": true,
+          "description": "Request identifier",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "success",
+          "schema": {
+            "$ref": "#/components/schemas/Request"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "429": {
+          "description": "See #/components/responses/429"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:create", "commerce.customer:update"]
+    },
+    {
+      "operationId": "commerceCustomerCreateActivity",
+      "method": "POST",
+      "path": "/stores/{storeId}/customer-activities",
+      "summary": "Create customer activity",
+      "description": "This endpoint can be used to create an actvity for a specific customer using the store ID. Customer activities are the series of actions a customer can perform such as orders, bookings, and payments, which can be tracked for further analysis. Customer data will only be added when the customer does not yet exist.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Activity and contact data",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["activity", "customer"],
+          "properties": {
+            "activity": {
+              "description": "Data about the activity",
+              "type": "object",
+              "required": ["source", "type"],
+              "properties": {
+                "source": {
+                  "$ref": "#/components/schemas/Source"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "The type of activity to associate with the customer",
+                  "enum": [
+                    "BOOKING_CLAIMED",
+                    "BOOKING_CREATED",
+                    "BOOKING_RESCHEDULED",
+                    "ORDER_CREATED",
+                    "PAYMENT_COMPLETED",
+                    "PAYMENT_REFUNDED",
+                    "PAYMENT_VOIDED"
+                  ]
+                }
+              }
+            },
+            "customer": {
+              "description": "Customer data regarding the customer who performed the activity. Customer data will only be added when the customer does not yet exist.",
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CustomerBase"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerExternalIdentifier"
+                },
+                {
+                  "$ref": "#/components/schemas/ListKeys"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "An activity for the given contact has been created"
+        },
+        "401": {
+          "description": "See #/components/responses/401"
+        },
+        "403": {
+          "description": "See #/components/responses/403"
+        },
+        "404": {
+          "description": "See #/components/responses/404"
+        },
+        "409": {
+          "description": "See #/components/responses/409"
+        },
+        "422": {
+          "description": "See #/components/responses/422"
+        },
+        "500": {
+          "description": "See #/components/responses/500"
+        }
+      },
+      "scopes": ["commerce.customer:create"]
+    }
+  ]
+}

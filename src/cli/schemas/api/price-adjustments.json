@@ -1,0 +1,559 @@
+{
+  "name": "price-adjustments",
+  "title": "GoDaddy Price Adjustment API",
+  "description": "The Price Adjustment Service API is intended to provide a common service for other services and applications to build a price adjustment system for discounts and fees.\n\nThe API is composed of two main entities: Price Adjustments and Price Adjustment Associations.\n\nA Price Adjustment is a discount or fee; as well as the amount. Alone, it does nothing since it is not associated to any items.\n  - This entity contains the type of adjustment, the amount of the adjustment, and other information that will be shared by all the Price Adjustment Associations that refer to it.\n  - Newly created Price Adjustments will have no Price Adjustment Associations associated with them by default.\n  - Updating a Price Adjustment will also soft-update Price Adjustment Associations that refer to it, since the information they refer to will have been updated.\n  - Deleting a Price Adjustment will delete all the Price Adjustment Associations that refer to it, since they should not apply a non-existant Price Adjustment to anything.\n\nA Price Adjustment Association is the link between a Price Adjustment and the items the Price Adjustment applies to. Together, they make up the actual discount or fee that would be applied.\n - This entity contains the type of association, the items that the association applies to, and other information about the association itself.\n\nTo ground this in a complete example:\n\n```\n  POST /commerce/stores/{storeId}/price-adjustments\n  // -> creates a new Price Adjustment\n  // -> but, we have nothing associated with it yet!\n  // -> so it will never apply to an item/category\n  // -> to do that, we need to create an association\n\n  POST /commerce/stores/{storeId}/price-adjustment-associations\n  // -> creates a new Price Adjustment Association\n  // -> now we are associated, and it will apply!\n```\n",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1",
+  "endpoints": [
+    {
+      "operationId": "findAllPriceAdjustments",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustments",
+      "summary": "Get all price adjustments for a store",
+      "description": "Gets all applicable price adjustments for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./models/PriceAdjustment.yaml"
+            }
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment:read"]
+    },
+    {
+      "operationId": "createPriceAdjustment",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/price-adjustments",
+      "summary": "Create a new price adjustment",
+      "description": "Creates a new price adjustment for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PriceAdjustment.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustment.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment:create"]
+    },
+    {
+      "operationId": "findPriceAdjustment",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Get a price adjustment",
+      "description": "Get a single price adjustment by storeId and adjustmentId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustment.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment:read"]
+    },
+    {
+      "operationId": "updatePriceAdjustment",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Update a price adjustment",
+      "description": "Update a price adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PriceAdjustment.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustment.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment:write"]
+    },
+    {
+      "operationId": "deletePriceAdjustment",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Delete a price adjustment",
+      "description": "Delete a price adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Successful response"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment:delete"]
+    },
+    {
+      "operationId": "findAllPriceAdjustmentAssociations",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations",
+      "summary": "Get all price adjustment associations",
+      "description": "Get all price adjustment associations",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "./models/PriceAdjustmentAssociation.yaml"
+            }
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment-association:read"]
+    },
+    {
+      "operationId": "createPriceAdjustmentAssociation",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations",
+      "summary": "Create a price adjustment association",
+      "description": "Create a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PriceAdjustmentAssociation.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustmentAssociation.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment-association:create"]
+    },
+    {
+      "operationId": "findPriceAdjustmentAssociation",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Get a price adjustment association",
+      "description": "Get a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustmentAssociation.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment-association:read"]
+    },
+    {
+      "operationId": "updatePriceAdjustmentAssociation",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Update a price adjustment association",
+      "description": "Update a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/PriceAdjustmentAssociation.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$ref": "./models/PriceAdjustmentAssociation.yaml"
+          }
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment-association:write"]
+    },
+    {
+      "operationId": "deletePriceAdjustmentAssociation",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Delete a price adjustment association",
+      "description": "Delete a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Successful response"
+        },
+        "401": {
+          "description": "See #/components/responses/UnauthorizedError"
+        },
+        "403": {
+          "description": "See #/components/responses/AuthenticationError"
+        },
+        "404": {
+          "description": "See #/components/responses/NotFoundError"
+        },
+        "422": {
+          "description": "See #/components/responses/BusinessError"
+        },
+        "500": {
+          "description": "See #/components/responses/DataSourceError"
+        }
+      },
+      "scopes": ["commerce.price-adjustment-association:delete"]
+    }
+  ]
+}

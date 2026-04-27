@@ -38,7 +38,12 @@ import {
   parse as parseGraphql,
   print as printGraphql,
 } from "graphql";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYamlStrict } from "yaml";
+
+/** Parse YAML with lenient settings (duplicate keys: last wins). */
+function parseYaml(src: string): unknown {
+  return parseYamlStrict(src, { uniqueKeys: false });
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,16 +222,27 @@ const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
 const COMMERCE_SPEC_REPO_PATTERN = /^commerce\.[a-z0-9-]+-specification$/;
 const BOOTSTRAP_COMMERCE_REPOS = [
-  "commerce.catalog-products-specification",
-  "commerce.orders-specification",
-  "commerce.stores-specification",
-  "commerce.fulfillments-specification",
-  "commerce.metafields-specification",
-  "commerce.transactions-specification",
-  "commerce.businesses-specification",
   "commerce.bulk-operations-specification",
+  "commerce.businesses-specification",
+  "commerce.catalog-products-specification",
   "commerce.channels-specification",
+  "commerce.chargebacks-specification",
+  "commerce.customer-profiles-specification",
+  "commerce.fulfillments-specification",
+  "commerce.inventory-specification",
+  "commerce.invoices-specification",
+  "commerce.metafields-specification",
   "commerce.onboarding-specification",
+  "commerce.orders-specification",
+  "commerce.payment-requests-specification",
+  "commerce.payments-specification",
+  "commerce.price-adjustments-specification",
+  "commerce.recommendations-specification",
+  "commerce.shipping-specification",
+  "commerce.stores-specification",
+  "commerce.subscriptions-specification",
+  "commerce.taxes-specification",
+  "commerce.transactions-specification",
 ];
 const LEGACY_ALWAYS_INCLUDE_REPOS = ["location.addresses-specification"];
 
@@ -1090,7 +1106,37 @@ function loadGraphqlSchemaMetadata(
   }
 
   const schemaSource = fs.readFileSync(resolvedSchemaPath, "utf-8");
-  const operations = parseGraphqlOperations(schemaSource);
+
+  let operations: CatalogGraphqlOperation[];
+  try {
+    operations = parseGraphqlOperations(schemaSource);
+  } catch (parseError) {
+    // GraphQL schemas in the wild sometimes contain syntax issues
+    // (e.g. consecutive block-string descriptions without a field).
+    // Try a best-effort repair: strip orphaned doc-comment blocks.
+    const repaired = schemaSource.replace(
+      /"""[^"]*"""\s*\n\s*"""/g,
+      (match) => {
+        // Keep only the last doc-comment block
+        const lastIdx = match.lastIndexOf('"""', match.length - 4);
+        const secondLastIdx = match.lastIndexOf('"""', lastIdx - 1);
+        return match.slice(secondLastIdx);
+      },
+    );
+    try {
+      operations = parseGraphqlOperations(repaired);
+      console.error(
+        `WARNING: repaired malformed GraphQL schema at ${resolvedSchemaPath}`,
+      );
+    } catch {
+      console.error(
+        `WARNING: could not parse GraphQL schema at ${resolvedSchemaPath}: ${
+          parseError instanceof Error ? parseError.message : String(parseError)
+        }`,
+      );
+      operations = [];
+    }
+  }
 
   const metadata: CatalogGraphqlSchema = {
     schemaRef,
@@ -1303,10 +1349,35 @@ function repairMissingJsonCommas(raw: string): string {
   return lines.join("\n");
 }
 
+/**
+ * Repair YAML lines where a colon is missing the required trailing space,
+ * e.g. `operationId:disableWebScannerAlert` → `operationId: disableWebScannerAlert`.
+ */
+function repairMissingYamlColonSpace(raw: string): string {
+  // Only match horizontal whitespace (spaces/tabs) so we don't span lines
+  return raw.replace(
+    /^([ \t]+\w+):([^\s#])/gm,
+    (_, key: string, val: string) => `${key}: ${val}`,
+  );
+}
+
 function parseOpenApiSpec(raw: string, specFile: string): OpenApiSpec {
   try {
     return parseYaml(raw) as OpenApiSpec;
   } catch (error) {
+    // Try YAML colon-space repair first (works for both .yaml and .json)
+    const yamlRepaired = repairMissingYamlColonSpace(raw);
+    if (yamlRepaired !== raw) {
+      try {
+        console.error(
+          `WARNING: repaired missing colon-space in ${specFile}`,
+        );
+        return parseYaml(yamlRepaired) as OpenApiSpec;
+      } catch {
+        // fall through to JSON repair
+      }
+    }
+
     const lowerPath = specFile.toLowerCase();
     if (!lowerPath.endsWith(".json")) {
       throw error;
@@ -1428,7 +1499,7 @@ async function main() {
 
         fs.writeFileSync(
           path.join(OUTPUT_DIR, filename),
-          JSON.stringify(resolved, null, "\t"),
+          JSON.stringify(resolved, null, 2),
           "utf-8",
         );
 
@@ -1459,7 +1530,7 @@ async function main() {
 
   fs.writeFileSync(
     path.join(OUTPUT_DIR, "manifest.json"),
-    JSON.stringify(manifest, null, "\t"),
+    JSON.stringify(manifest, null, 2),
     "utf-8",
   );
 
