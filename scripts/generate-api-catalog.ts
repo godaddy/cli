@@ -240,7 +240,6 @@ const BOOTSTRAP_COMMERCE_REPOS = [
   "commerce.shipping-specification",
   "commerce.stores-specification",
   "commerce.subscriptions-specification",
-  "commerce.taxes-specification",
   "commerce.transactions-specification",
 ];
 const LEGACY_ALWAYS_INCLUDE_REPOS = ["location.addresses-specification"];

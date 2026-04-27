@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-27T20:54:20.855Z",
+  "generated": "2026-04-27T21:04:26.033Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -90,11 +90,6 @@
       "file": "subscriptions.json",
       "title": "Commerce Subscription API",
       "endpointCount": 8
-    },
-    "taxes": {
-      "file": "taxes.json",
-      "title": "GoDaddy Tax API",
-      "endpointCount": 15
     },
     "transactions": {
       "file": "transactions.json",

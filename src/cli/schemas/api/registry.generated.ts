@@ -22,7 +22,6 @@ import recommendations_json from "./recommendations.json";
 import shipping_json from "./shipping.json";
 import stores_json from "./stores.json";
 import subscriptions_json from "./subscriptions.json";
-import taxes_json from "./taxes.json";
 import transactions_json from "./transactions.json";
 
 export const DOMAIN_REGISTRY: Record<string, unknown> = {
@@ -45,6 +44,5 @@ export const DOMAIN_REGISTRY: Record<string, unknown> = {
   shipping: shipping_json,
   stores: stores_json,
   subscriptions: subscriptions_json,
-  taxes: taxes_json,
   transactions: transactions_json,
 };
