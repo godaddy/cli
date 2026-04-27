@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-27T20:10:30.000Z",
+  "generated": "2026-04-27T20:54:20.855Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -35,11 +35,6 @@
       "file": "fulfillments.json",
       "title": "Fulfillment Service",
       "endpointCount": 3
-    },
-    "inventory": {
-      "file": "inventory.json",
-      "title": "Inventory API",
-      "endpointCount": 18
     },
     "invoices": {
       "file": "invoices.json",
