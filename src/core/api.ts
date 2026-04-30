@@ -10,7 +10,7 @@ import {
 } from "../effect/errors";
 import { fileExists } from "../effect/fs-utils";
 import type { Keychain } from "../effect/services/keychain";
-import { CLI_USER_AGENT } from "../services/http-helpers";
+import { CLI_USER_AGENT } from "../shared/cli-trace";
 import { getTokenInfoEffect } from "./auth";
 import { type Environment, envGetEffect, getApiUrl } from "./environment";
 

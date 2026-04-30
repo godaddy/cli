@@ -7,12 +7,12 @@ import { AuthenticationError, ConfigurationError } from "../effect/errors";
 import { Browser } from "../effect/services/browser";
 
 import type { Keychain } from "../effect/services/keychain";
-import { cliTraceHeaders } from "../services/http-helpers";
 // loggedFetch calls globalThis.fetch directly — not through the Fetch service tag.
 // This is acceptable here because the OAuth callback runs inside a raw http.Server
 // handler (Promise context), outside the Effect runtime. The Fetch tag is for
 // code within Effect.gen contexts.
 import { loggedFetch } from "../services/logger";
+import { cliTraceHeaders } from "../shared/cli-trace";
 import {
   type Environment,
   envGetEffect,

@@ -6,24 +6,9 @@ import { Fetch } from "@effect/platform/FetchHttpClient";
 import type { FileSystem } from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import { GraphQLClient } from "graphql-request";
-import { v7 as uuid } from "uuid";
-import packageJson from "../../package.json";
 import { type Environment, envGetEffect, getApiUrl } from "../core/environment";
 import { ConfigurationError } from "../effect/errors";
-
-/** Shared User-Agent for outbound CLI HTTP requests (server-side tracing). */
-export const CLI_USER_AGENT = `godaddy-cli/${packageJson.version}`;
-
-/**
- * Headers attached to outbound requests so upstream logs can correlate calls.
- * Each invocation generates a fresh request ID.
- */
-export function cliTraceHeaders(): Record<string, string> {
-  return {
-    "User-Agent": CLI_USER_AGENT,
-    "X-Request-ID": uuid(),
-  };
-}
+import { cliTraceHeaders } from "../shared/cli-trace";
 
 /**
  * Resolve the API base URL from environment variables or the active environment.

@@ -8,7 +8,7 @@ import {
   NetworkError,
   type ValidationError,
 } from "../effect/errors";
-import { cliTraceHeaders } from "./http-helpers";
+import { cliTraceHeaders } from "../shared/cli-trace";
 import { logHttpRequest, logHttpResponse } from "./logger";
 
 export type WebhookEventType = {
