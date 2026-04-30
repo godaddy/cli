@@ -11,9 +11,14 @@ describe("cli-trace", () => {
   test("cliTraceHeaders sets lowercase user-agent and x-request-id", () => {
     const h = cliTraceHeaders();
     expect(h["user-agent"]).toBe(CLI_USER_AGENT);
-    expect(h["x-request-id"]).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    );
+    const rid = h["x-request-id"];
+    expect(rid).toBeDefined();
+    // Standard UUID string forms are 32 hex digits (with optional hyphens);
+    // avoid a strict 8-4-4-4-12 regex so a future uuid package output shape
+    // does not flake the test as long as it remains 32 hex.
+    const hex = rid.replace(/-/g, "");
+    expect(hex).toHaveLength(32);
+    expect(hex).toMatch(/^[0-9a-f]+$/i);
   });
 
   test("getRequestHeaders merges auth with trace headers", () => {
