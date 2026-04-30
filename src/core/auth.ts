@@ -7,6 +7,7 @@ import { AuthenticationError, ConfigurationError } from "../effect/errors";
 import { Browser } from "../effect/services/browser";
 
 import type { Keychain } from "../effect/services/keychain";
+import { cliTraceHeaders } from "../services/http-helpers";
 // loggedFetch calls globalThis.fetch directly — not through the Fetch service tag.
 // This is acceptable here because the OAuth callback runs inside a raw http.Server
 // handler (Promise context), outside the Effect runtime. The Fetch tag is for
@@ -183,6 +184,7 @@ export function authLoginEffect(options?: {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/x-www-form-urlencoded",
+                      ...cliTraceHeaders(),
                     },
                     body: new URLSearchParams({
                       client_id: clientId,
