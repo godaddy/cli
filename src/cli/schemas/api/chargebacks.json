@@ -6,7 +6,7 @@
   "baseUrl": "https://api.godaddy.com/v1/commerce",
   "endpoints": [
     {
-      "operationId": "post_transaction_disputes__disputeId__submit",
+      "operationId": "post_transaction_disputes_disputeId_submit",
       "method": "POST",
       "path": "/transaction-disputes/{disputeId}/submit",
       "summary": "Submit evidence",
@@ -32,7 +32,7 @@
       "scopes": ["commerce.transaction-disputes:update"]
     },
     {
-      "operationId": "post_transaction_disputes__disputeId__accept",
+      "operationId": "post_transaction_disputes_disputeId_accept",
       "method": "POST",
       "path": "/transaction-disputes/{disputeId}/accept",
       "summary": "Accept a chargeback",
@@ -63,7 +63,7 @@
       "scopes": ["commerce.transaction-disputes:update"]
     },
     {
-      "operationId": "patch_transaction_disputes__disputeId_",
+      "operationId": "patch_transaction_disputes_disputeId",
       "method": "PATCH",
       "path": "/transaction-disputes/{disputeId}",
       "summary": "Update Dispute",
@@ -98,7 +98,7 @@
       "scopes": ["commerce.transaction-disputes:update"]
     },
     {
-      "operationId": "get_transaction_disputes__disputeId_",
+      "operationId": "get_transaction_disputes_disputeId",
       "method": "GET",
       "path": "/transaction-disputes/{disputeId}",
       "summary": "Retrieve dispute details",
@@ -399,7 +399,7 @@
       "scopes": ["commerce.transaction-disputes:read"]
     },
     {
-      "operationId": "post_transaction_disputes__disputeId__documents",
+      "operationId": "post_transaction_disputes_disputeId_documents",
       "method": "POST",
       "path": "/transaction-disputes/{disputeId}/documents",
       "summary": "Upload evidence",
@@ -437,7 +437,7 @@
       "scopes": ["commerce.transaction-disputes:create"]
     },
     {
-      "operationId": "get_transaction_disputes__disputeId__documents",
+      "operationId": "get_transaction_disputes_disputeId_documents",
       "method": "GET",
       "path": "/transaction-disputes/{disputeId}/documents",
       "summary": "Retrieve a list of dispute documents",
@@ -543,7 +543,7 @@
       "scopes": ["commerce.transaction-disputes:read"]
     },
     {
-      "operationId": "delete_transaction_disputes__disputeId__documents__disputeDocumentId_",
+      "operationId": "delete_transaction_disputes_disputeId_documents_disputeDocumentId",
       "method": "DELETE",
       "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
       "summary": "Delete an uploaded document",
@@ -581,7 +581,7 @@
       "scopes": ["commerce.transaction-disputes:delete"]
     },
     {
-      "operationId": "get_transaction_disputes__disputeId__documents__disputeDocumentId_",
+      "operationId": "get_transaction_disputes_disputeId_documents_disputeDocumentId",
       "method": "GET",
       "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
       "summary": "Getting an uploaded/submitted dispute document",

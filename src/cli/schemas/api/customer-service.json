@@ -27,7 +27,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId_",
+      "operationId": "get_v1_customers_customerId",
       "method": "GET",
       "path": "/v1/customers/{customerId}",
       "summary": "",
@@ -163,7 +163,7 @@
       "scopes": []
     },
     {
-      "operationId": "patch_v1_customers__customerId_",
+      "operationId": "patch_v1_customers_customerId",
       "method": "PATCH",
       "path": "/v1/customers/{customerId}",
       "summary": "",
@@ -377,7 +377,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId_",
+      "operationId": "delete_v1_customers_customerId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}",
       "summary": "",
@@ -429,7 +429,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers_by_email__email_",
+      "operationId": "get_v1_customers_by_email_email",
       "method": "GET",
       "path": "/v1/customers/by-email/{email}",
       "summary": "",
@@ -564,7 +564,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers_by_phone__phone_",
+      "operationId": "get_v1_customers_by_phone_phone",
       "method": "GET",
       "path": "/v1/customers/by-phone/{phone}",
       "summary": "",
@@ -1258,7 +1258,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_merchants__merchantId__customers",
+      "operationId": "get_v1_merchants_merchantId_customers",
       "method": "GET",
       "path": "/v1/merchants/{merchantId}/customers",
       "summary": "",
@@ -1431,7 +1431,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_merchants__merchantId__customers_search",
+      "operationId": "get_v1_merchants_merchantId_customers_search",
       "method": "GET",
       "path": "/v1/merchants/{merchantId}/customers/search",
       "summary": "",
@@ -1602,7 +1602,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__merchants__merchantId__context",
+      "operationId": "get_v1_customers_customerId_merchants_merchantId_context",
       "method": "GET",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
       "summary": "",
@@ -1694,7 +1694,7 @@
       "scopes": []
     },
     {
-      "operationId": "patch_v1_customers__customerId__merchants__merchantId__context",
+      "operationId": "patch_v1_customers_customerId_merchants_merchantId_context",
       "method": "PATCH",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
       "summary": "",
@@ -1806,7 +1806,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__merchants__merchantId__context",
+      "operationId": "delete_v1_customers_customerId_merchants_merchantId_context",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
       "summary": "",
@@ -1858,7 +1858,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__merchants__merchantId__notes",
+      "operationId": "get_v1_customers_customerId_merchants_merchantId_notes",
       "method": "GET",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes",
       "summary": "",
@@ -1928,7 +1928,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_customers__customerId__merchants__merchantId__notes",
+      "operationId": "post_v1_customers_customerId_merchants_merchantId_notes",
       "method": "POST",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes",
       "summary": "",
@@ -2027,7 +2027,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__merchants__merchantId__notes__noteId_",
+      "operationId": "delete_v1_customers_customerId_merchants_merchantId_notes_noteId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes/{noteId}",
       "summary": "",
@@ -2088,7 +2088,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__identities",
+      "operationId": "get_v1_customers_customerId_identities",
       "method": "GET",
       "path": "/v1/customers/{customerId}/identities",
       "summary": "",
@@ -2169,7 +2169,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_customers__customerId__identities",
+      "operationId": "post_v1_customers_customerId_identities",
       "method": "POST",
       "path": "/v1/customers/{customerId}/identities",
       "summary": "",
@@ -2307,7 +2307,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__identities__identityId_",
+      "operationId": "delete_v1_customers_customerId_identities_identityId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/identities/{identityId}",
       "summary": "",
@@ -2360,7 +2360,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__addresses",
+      "operationId": "get_v1_customers_customerId_addresses",
       "method": "GET",
       "path": "/v1/customers/{customerId}/addresses",
       "summary": "",
@@ -2507,7 +2507,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_customers__customerId__addresses",
+      "operationId": "post_v1_customers_customerId_addresses",
       "method": "POST",
       "path": "/v1/customers/{customerId}/addresses",
       "summary": "",
@@ -2758,7 +2758,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__addresses__addressId_",
+      "operationId": "delete_v1_customers_customerId_addresses_addressId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/addresses/{addressId}",
       "summary": "",
@@ -2811,7 +2811,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__cards",
+      "operationId": "get_v1_customers_customerId_cards",
       "method": "GET",
       "path": "/v1/customers/{customerId}/cards",
       "summary": "",
@@ -2873,7 +2873,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_customers__customerId__cards",
+      "operationId": "post_v1_customers_customerId_cards",
       "method": "POST",
       "path": "/v1/customers/{customerId}/cards",
       "summary": "",
@@ -2976,7 +2976,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__cards__cardReferenceId_",
+      "operationId": "delete_v1_customers_customerId_cards_cardReferenceId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/cards/{cardReferenceId}",
       "summary": "",
@@ -3029,7 +3029,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_customers__customerId__references",
+      "operationId": "get_v1_customers_customerId_references",
       "method": "GET",
       "path": "/v1/customers/{customerId}/references",
       "summary": "",
@@ -3092,7 +3092,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_customers__customerId__references",
+      "operationId": "post_v1_customers_customerId_references",
       "method": "POST",
       "path": "/v1/customers/{customerId}/references",
       "summary": "",
@@ -3197,7 +3197,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_customers__customerId__references__referenceId_",
+      "operationId": "delete_v1_customers_customerId_references_referenceId",
       "method": "DELETE",
       "path": "/v1/customers/{customerId}/references/{referenceId}",
       "summary": "",

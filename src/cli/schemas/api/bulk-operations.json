@@ -6,7 +6,7 @@
   "baseUrl": "https://api.godaddy.com/v1/commerce",
   "endpoints": [
     {
-      "operationId": "get_stores__storeId__bulk_ingestions",
+      "operationId": "get_stores_storeId_bulk_ingestions",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions",
       "summary": "Get bulk ingestions",
@@ -86,7 +86,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions",
+      "operationId": "post_stores_storeId_bulk_ingestions",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions",
       "summary": "Create bulk ingestion",
@@ -148,7 +148,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_stores__storeId__bulk_ingestions__bulkIngestionId_",
+      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}",
       "summary": "Get bulk ingestion",
@@ -189,7 +189,7 @@
       "scopes": []
     },
     {
-      "operationId": "patch_stores__storeId__bulk_ingestions__bulkIngestionId_",
+      "operationId": "patch_stores_storeId_bulk_ingestions_bulkIngestionId",
       "method": "PATCH",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}",
       "summary": "Update bulk ingestion",
@@ -265,7 +265,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_stores__storeId__bulk_ingestions__bulkIngestionId_",
+      "operationId": "delete_stores_storeId_bulk_ingestions_bulkIngestionId",
       "method": "DELETE",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}",
       "summary": "Delete bulk ingestion",
@@ -303,7 +303,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions__bulkIngestionId__validations",
+      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_validations",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/validations",
       "summary": "Validate bulk ingestion",
@@ -347,7 +347,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions__bulkIngestionId__items__index__validations",
+      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_items_index_validations",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/items/{index}/validations",
       "summary": "Validate bulk ingestion by index",
@@ -399,7 +399,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions__bulkIngestionId__executions",
+      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_executions",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/executions",
       "summary": "Execute bulk ingestion",
@@ -443,7 +443,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions__bulkIngestionId__cancelations",
+      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_cancelations",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/cancelations",
       "summary": "Cancel bulk ingestion",
@@ -487,7 +487,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_stores__storeId__bulk_ingestions__bulkIngestionId__items",
+      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_items",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/items",
       "summary": "Get bulk ingestion items",
@@ -547,7 +547,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_stores__storeId__bulk_ingestions__bulkIngestionId__errors",
+      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_errors",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/errors",
       "summary": "Get bulk ingestion errors",
@@ -607,7 +607,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_stores__storeId__bulk_ingestions__bulkIngestionId__overrides",
+      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_overrides",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/overrides",
       "summary": "Get bulk ingestion overrides",
@@ -667,7 +667,7 @@
       "scopes": []
     },
     {
-      "operationId": "put_stores__storeId__bulk_ingestions__bulkIngestionId__overrides",
+      "operationId": "put_stores_storeId_bulk_ingestions_bulkIngestionId_overrides",
       "method": "PUT",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/overrides",
       "summary": "Upsert an override",
@@ -720,7 +720,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_stores__storeId__bulk_ingestions__bulkIngestionId__overrides__index_",
+      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_overrides_index",
       "method": "GET",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/overrides/{index}",
       "summary": "Get overrides by index",
@@ -788,7 +788,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_stores__storeId__bulk_ingestions__bulkIngestionId__overrides__index_",
+      "operationId": "delete_stores_storeId_bulk_ingestions_bulkIngestionId_overrides_index",
       "method": "DELETE",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/overrides/{index}",
       "summary": "Delete overrides by index",
@@ -838,7 +838,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_stores__storeId__bulk_ingestions__bulkIngestionId__override_batches",
+      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_override_batches",
       "method": "POST",
       "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/override-batches",
       "summary": "Create, update, or delete a batch of overrides",
@@ -927,7 +927,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_operations",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_operations",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-operations",
       "summary": "Get bulk operations",
@@ -969,7 +969,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_commerce_stores__storeId__bulk_operations",
+      "operationId": "post_v1_commerce_stores_storeId_bulk_operations",
       "method": "POST",
       "path": "/v1/commerce/stores/{storeId}/bulk-operations",
       "summary": "Create a bulk operation",
@@ -1043,7 +1043,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_operations__bulkOperationId_",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_operations_bulkOperationId",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}",
       "summary": "Get a bulk operation",
@@ -1090,7 +1090,7 @@
       "scopes": []
     },
     {
-      "operationId": "delete_v1_commerce_stores__storeId__bulk_operations__bulkOperationId_",
+      "operationId": "delete_v1_commerce_stores_storeId_bulk_operations_bulkOperationId",
       "method": "DELETE",
       "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}",
       "summary": "Cancel a bulk operation",
@@ -1137,7 +1137,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_operations__bulkOperationId__errors",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_operations_bulkOperationId_errors",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}/errors",
       "summary": "Get bulk operation errors",
@@ -1216,7 +1216,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_exports",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_exports",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-exports",
       "summary": "Get bulk exports",
@@ -1296,7 +1296,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_commerce_stores__storeId__bulk_exports",
+      "operationId": "post_v1_commerce_stores_storeId_bulk_exports",
       "method": "POST",
       "path": "/v1/commerce/stores/{storeId}/bulk-exports",
       "summary": "Create bulk export",
@@ -1349,7 +1349,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_exports__bulkExportId_",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_exports_bulkExportId",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}",
       "summary": "Get bulk export",
@@ -1399,7 +1399,7 @@
       "scopes": []
     },
     {
-      "operationId": "post_v1_commerce_stores__storeId__bulk_exports__bulkExportId__cancelations",
+      "operationId": "post_v1_commerce_stores_storeId_bulk_exports_bulkExportId_cancelations",
       "method": "POST",
       "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}/cancelations",
       "summary": "Cancel bulk export",
@@ -1452,7 +1452,7 @@
       "scopes": []
     },
     {
-      "operationId": "get_v1_commerce_stores__storeId__bulk_exports__bulkExportId__downloads",
+      "operationId": "get_v1_commerce_stores_storeId_bulk_exports_bulkExportId_downloads",
       "method": "GET",
       "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}/downloads",
       "summary": "Get bulk export downloads",

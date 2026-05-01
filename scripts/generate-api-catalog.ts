@@ -993,7 +993,12 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
           Accept: "application/json, application/yaml, text/plain",
         };
         const ghToken = process.env.GITHUB_TOKEN?.trim();
-        if (ghToken && ext.url.includes("githubusercontent.com")) {
+        const parsedExtUrl = new URL(ext.url);
+        if (
+          ghToken &&
+          (parsedExtUrl.hostname === "raw.githubusercontent.com" ||
+            parsedExtUrl.hostname === "github.com")
+        ) {
           fetchHeaders.Authorization = `Bearer ${ghToken}`;
         }
 
@@ -1388,7 +1393,10 @@ function processOperation(
 
   const operationId =
     operation.operationId ||
-    `${httpMethod}${pathStr.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    `${httpMethod}_${pathStr
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")}`;
 
   let graphql: CatalogGraphqlSchema | undefined;
   const graphqlSchemaRef = operation["x-godaddy-graphql-schema"];
