@@ -18,6 +18,10 @@
  *                               (e.g. "commerce.catalog-products-specification=pull/81/head")
  *   API_CATALOG_INCLUDE_LEGACY_LOCATION
  *                               "false" to exclude location.addresses-specification
+ *   EXTERNAL_SPECS              Comma-separated domain=url pairs for specs outside
+ *                               the gdcorp-platform org (e.g.
+ *                               "customer-service=https://github.com/gdcorp-commerce/customer-service/blob/main/docs/openapi.json")
+ *                               GitHub blob URLs are automatically converted to raw URLs.
  *
  * Output:
  *   src/cli/schemas/api/manifest.json          – domain index
@@ -597,6 +601,55 @@ function includeLegacyLocationRepo(): boolean {
   return raw.toLowerCase() !== "false";
 }
 
+/**
+ * Convert GitHub blob URLs to raw.githubusercontent.com URLs so the
+ * content can be fetched as plain text.
+ */
+function normalizeGitHubUrl(url: string): string {
+  const blobMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/,
+  );
+  if (blobMatch) {
+    return `https://raw.githubusercontent.com/${blobMatch[1]}/${blobMatch[2]}/${blobMatch[3]}`;
+  }
+  return url;
+}
+
+function parseExternalSpecs(): Array<{ domain: string; url: string }> {
+  const raw = process.env.EXTERNAL_SPECS?.trim();
+  if (!raw) return [];
+
+  const entries: Array<{ domain: string; url: string }> = [];
+
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0 || separatorIndex === trimmed.length - 1) {
+      console.error(
+        `WARNING: invalid EXTERNAL_SPECS entry '${trimmed}' (expected domain=url)`,
+      );
+      continue;
+    }
+
+    const domain = trimmed.slice(0, separatorIndex).trim();
+    const url = trimmed.slice(separatorIndex + 1).trim();
+    if (!domain || !url) continue;
+
+    if (!url.startsWith("https://")) {
+      console.error(
+        `WARNING: skipping EXTERNAL_SPECS entry '${domain}': only https URLs are allowed`,
+      );
+      continue;
+    }
+
+    entries.push({ domain, url: normalizeGitHubUrl(url) });
+  }
+
+  return entries;
+}
+
 function githubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -858,7 +911,9 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
     );
   }
 
-  if (selectedRepos.length === 0) {
+  const externalSpecs = parseExternalSpecs();
+
+  if (selectedRepos.length === 0 && externalSpecs.length === 0) {
     return { sources: [], cloneRoot: null };
   }
 
@@ -916,6 +971,74 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
       specFile: latestSpec.specFile,
       specVersion: latestSpec.version,
     });
+  }
+
+  for (const ext of externalSpecs) {
+    if (usedDomains.has(ext.domain)) {
+      console.error(
+        `WARNING: EXTERNAL_SPECS domain '${ext.domain}' conflicts with a discovered domain — skipping`,
+      );
+      continue;
+    }
+
+    try {
+      console.log(`  Fetching external spec: ${ext.domain} from ${ext.url}`);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+      let response: Response;
+
+      try {
+        const fetchHeaders: Record<string, string> = {
+          Accept: "application/json, application/yaml, text/plain",
+        };
+        const ghToken = process.env.GITHUB_TOKEN?.trim();
+        if (ghToken && ext.url.includes("githubusercontent.com")) {
+          fetchHeaders.Authorization = `Bearer ${ghToken}`;
+        }
+
+        response = await fetch(ext.url, {
+          headers: fetchHeaders,
+          signal: controller.signal,
+        });
+      } catch (fetchError) {
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          throw new Error("request timed out after 30 s");
+        }
+        throw fetchError;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const text = await response.text();
+      const extDir = path.join(cloneRoot, `__external_${ext.domain}`);
+      fs.mkdirSync(extDir, { recursive: true });
+
+      const lowerUrl = ext.url.toLowerCase();
+      const filename =
+        lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml")
+          ? "openapi.yaml"
+          : "openapi.json";
+      const specFile = path.join(extDir, filename);
+      fs.writeFileSync(specFile, text, "utf-8");
+
+      usedDomains.add(ext.domain);
+      sources.push({
+        domain: ext.domain,
+        repoName: `external:${ext.domain}`,
+        specFile,
+        specVersion: "external",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `WARNING: failed to fetch external spec for '${ext.domain}': ${message}`,
+      );
+    }
   }
 
   return { sources, cloneRoot };
@@ -1366,9 +1489,7 @@ function parseOpenApiSpec(raw: string, specFile: string): OpenApiSpec {
     const yamlRepaired = repairMissingYamlColonSpace(raw);
     if (yamlRepaired !== raw) {
       try {
-        console.error(
-          `WARNING: repaired missing colon-space in ${specFile}`,
-        );
+        console.error(`WARNING: repaired missing colon-space in ${specFile}`);
         return parseYaml(yamlRepaired) as OpenApiSpec;
       } catch {
         // fall through to JSON repair

@@ -1,0 +1,3253 @@
+{
+  "name": "customer-service",
+  "title": "Customer Service V2 API",
+  "description": "Central customer management service for commerce platform. Consolidates customer data from Raven (CRM) and Poynt (POS) into a unified platform with REST and GraphQL APIs.",
+  "version": "1.0.0",
+  "baseUrl": "https://customer-service.commerce.api.dev-godaddy.com",
+  "endpoints": [
+    {
+      "operationId": "get_health",
+      "method": "GET",
+      "path": "/health",
+      "summary": "",
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId_",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "patch_v1_customers__customerId_",
+      "method": "PATCH",
+      "path": "/v1/customers/{customerId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "firstName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "lastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "locale": {
+              "type": "string",
+              "maxLength": 10
+            },
+            "displayName": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "preferences": {
+              "type": "object",
+              "properties": {
+                "receiptDelivery": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "sms": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "print": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "marketingOptIn": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                }
+              }
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "INACTIVE",
+                "SUSPENDED",
+                "ANONYMIZED",
+                "DELETED"
+              ]
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "reason",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers_by_email__email_",
+      "method": "GET",
+      "path": "/v1/customers/by-email/{email}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "email",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers_by_phone__phone_",
+      "method": "GET",
+      "path": "/v1/customers/by-phone/{phone}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "phone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers_by_reference",
+      "method": "GET",
+      "path": "/v1/customers/by-reference",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "source",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers_search",
+      "method": "GET",
+      "path": "/v1/customers/search",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "q",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "ANONYMIZED", "DELETED"]
+          }
+        },
+        {
+          "name": "tags",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "godaddyCustomerId": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "firstName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "lastName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 10,
+                  "nullable": true
+                },
+                "displayName": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "nullable": true
+                },
+                "preferences": {
+                  "default": {},
+                  "type": "object",
+                  "properties": {
+                    "receiptDelivery": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "default": true,
+                          "type": "boolean"
+                        },
+                        "sms": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "print": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "marketingOptIn": {
+                      "type": "boolean"
+                    },
+                    "language": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "updatedBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ACTIVE",
+                    "INACTIVE",
+                    "SUSPENDED",
+                    "ANONYMIZED",
+                    "DELETED"
+                  ]
+                },
+                "searchVector": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "id",
+                "godaddyCustomerId",
+                "firstName",
+                "lastName",
+                "createdAt",
+                "updatedAt",
+                "createdBy",
+                "updatedBy",
+                "status"
+              ]
+            }
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers",
+      "method": "POST",
+      "path": "/v1/customers",
+      "summary": "",
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "godaddyCustomerId": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "firstName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "lastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "locale": {
+              "type": "string",
+              "maxLength": 10
+            },
+            "displayName": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "preferences": {
+              "type": "object",
+              "properties": {
+                "receiptDelivery": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "sms": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "print": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "marketingOptIn": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                }
+              }
+            },
+            "identities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["email", "phone", "card_fingerprint"]
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "verified": {
+                    "type": "boolean"
+                  },
+                  "isPrimary": {
+                    "type": "boolean"
+                  },
+                  "lastFour": {
+                    "type": "string",
+                    "maxLength": 4
+                  },
+                  "brand": {
+                    "type": "string",
+                    "maxLength": 50
+                  }
+                },
+                "required": ["type", "value"]
+              }
+            },
+            "merchantId": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          "required": ["godaddyCustomerId", "firstName", "lastName"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "godaddyCustomerId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "firstName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "lastName": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "locale": {
+                "type": "string",
+                "maxLength": 10,
+                "nullable": true
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "preferences": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "receiptDelivery": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "sms": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "print": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "marketingOptIn": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "updatedBy": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INACTIVE",
+                  "SUSPENDED",
+                  "ANONYMIZED",
+                  "DELETED"
+                ]
+              },
+              "searchVector": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "godaddyCustomerId",
+              "firstName",
+              "lastName",
+              "createdAt",
+              "updatedAt",
+              "createdBy",
+              "updatedBy",
+              "status"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "409": {
+          "description": "409",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_merchants__merchantId__customers",
+      "method": "GET",
+      "path": "/v1/merchants/{merchantId}/customers",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        {
+          "name": "sortBy",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["createdAt", "updatedAt", "firstName", "lastName"]
+          }
+        },
+        {
+          "name": "order",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["ASC", "DESC"]
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "ANONYMIZED", "DELETED"]
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "godaddyCustomerId": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "firstName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "lastName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 10,
+                  "nullable": true
+                },
+                "displayName": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "nullable": true
+                },
+                "preferences": {
+                  "default": {},
+                  "type": "object",
+                  "properties": {
+                    "receiptDelivery": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "default": true,
+                          "type": "boolean"
+                        },
+                        "sms": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "print": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "marketingOptIn": {
+                      "type": "boolean"
+                    },
+                    "language": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "updatedBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ACTIVE",
+                    "INACTIVE",
+                    "SUSPENDED",
+                    "ANONYMIZED",
+                    "DELETED"
+                  ]
+                },
+                "searchVector": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "id",
+                "godaddyCustomerId",
+                "firstName",
+                "lastName",
+                "createdAt",
+                "updatedAt",
+                "createdBy",
+                "updatedBy",
+                "status"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_merchants__merchantId__customers_search",
+      "method": "GET",
+      "path": "/v1/merchants/{merchantId}/customers/search",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "ANONYMIZED", "DELETED"]
+          }
+        },
+        {
+          "name": "tags",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "godaddyCustomerId": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "firstName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "lastName": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 10,
+                  "nullable": true
+                },
+                "displayName": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "nullable": true
+                },
+                "preferences": {
+                  "default": {},
+                  "type": "object",
+                  "properties": {
+                    "receiptDelivery": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "default": true,
+                          "type": "boolean"
+                        },
+                        "sms": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "print": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "marketingOptIn": {
+                      "type": "boolean"
+                    },
+                    "language": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "updatedBy": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ACTIVE",
+                    "INACTIVE",
+                    "SUSPENDED",
+                    "ANONYMIZED",
+                    "DELETED"
+                  ]
+                },
+                "searchVector": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "id",
+                "godaddyCustomerId",
+                "firstName",
+                "lastName",
+                "createdAt",
+                "updatedAt",
+                "createdBy",
+                "updatedBy",
+                "status"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__merchants__merchantId__context",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "merchantId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "customerTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastActivityAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "merchantId",
+              "customerTags",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "patch_v1_customers__customerId__merchants__merchantId__context",
+      "method": "PATCH",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "customerTags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "merchantId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "customerTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastActivityAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "merchantId",
+              "customerTags",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__merchants__merchantId__context",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/context",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__merchants__merchantId__notes",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "merchantContextId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "visibility": {
+                  "type": "string",
+                  "enum": ["internal", "public"]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "maxLength": 255
+                }
+              },
+              "required": [
+                "id",
+                "merchantContextId",
+                "text",
+                "visibility",
+                "createdAt",
+                "createdBy"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers__customerId__merchants__merchantId__notes",
+      "method": "POST",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "visibility": {
+              "default": "internal",
+              "type": "string",
+              "enum": ["internal", "public"]
+            }
+          },
+          "required": ["text"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "merchantContextId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "text": {
+                "type": "string"
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["internal", "public"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "createdBy": {
+                "type": "string",
+                "maxLength": 255
+              }
+            },
+            "required": [
+              "id",
+              "merchantContextId",
+              "text",
+              "visibility",
+              "createdAt",
+              "createdBy"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__merchants__merchantId__notes__noteId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/merchants/{merchantId}/notes/{noteId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "merchantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "noteId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__identities",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/identities",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "customerId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["email", "phone", "card_fingerprint"]
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "verified": {
+                  "type": "boolean"
+                },
+                "isPrimary": {
+                  "type": "boolean"
+                },
+                "lastFour": {
+                  "type": "string",
+                  "maxLength": 4,
+                  "nullable": true
+                },
+                "brand": {
+                  "type": "string",
+                  "maxLength": 50,
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "customerId",
+                "type",
+                "value",
+                "verified",
+                "isPrimary",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers__customerId__identities",
+      "method": "POST",
+      "path": "/v1/customers/{customerId}/identities",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["email", "phone", "card_fingerprint"]
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "verified": {
+              "default": false,
+              "type": "boolean"
+            },
+            "isPrimary": {
+              "default": false,
+              "type": "boolean"
+            },
+            "lastFour": {
+              "type": "string",
+              "maxLength": 4
+            },
+            "brand": {
+              "type": "string",
+              "maxLength": 50
+            }
+          },
+          "required": ["type", "value"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["email", "phone", "card_fingerprint"]
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "verified": {
+                "type": "boolean"
+              },
+              "isPrimary": {
+                "type": "boolean"
+              },
+              "lastFour": {
+                "type": "string",
+                "maxLength": 4,
+                "nullable": true
+              },
+              "brand": {
+                "type": "string",
+                "maxLength": 50,
+                "nullable": true
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "type",
+              "value",
+              "verified",
+              "isPrimary",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "409": {
+          "description": "409",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__identities__identityId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/identities/{identityId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "identityId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__addresses",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/addresses",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "customerId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["BILLING", "SHIPPING", "BOTH"]
+                },
+                "isDefault": {
+                  "type": "boolean"
+                },
+                "addressLine1": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "addressLine2": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "nullable": true
+                },
+                "addressLine3": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "nullable": true
+                },
+                "adminArea1": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "nullable": true
+                },
+                "adminArea2": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "nullable": true
+                },
+                "adminArea3": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "nullable": true
+                },
+                "adminArea4": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "nullable": true
+                },
+                "countryCode": {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 2
+                },
+                "postalCode": {
+                  "type": "string",
+                  "maxLength": 20,
+                  "nullable": true
+                },
+                "addressDetails": {
+                  "type": "object",
+                  "properties": {
+                    "addressType": {
+                      "type": "string"
+                    },
+                    "buildingName": {
+                      "type": "string"
+                    },
+                    "streetName": {
+                      "type": "string"
+                    },
+                    "streetNumber": {
+                      "type": "string"
+                    },
+                    "streetType": {
+                      "type": "string"
+                    },
+                    "subBuilding": {
+                      "type": "string"
+                    },
+                    "geoCoordinates": {
+                      "type": "object",
+                      "properties": {
+                        "latitude": {
+                          "type": "number"
+                        },
+                        "longitude": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["latitude", "longitude"]
+                    },
+                    "deliveryService": {
+                      "type": "string"
+                    }
+                  },
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "customerId",
+                "type",
+                "isDefault",
+                "addressLine1",
+                "countryCode",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers__customerId__addresses",
+      "method": "POST",
+      "path": "/v1/customers/{customerId}/addresses",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["BILLING", "SHIPPING", "BOTH"]
+            },
+            "isDefault": {
+              "default": false,
+              "type": "boolean"
+            },
+            "addressLine1": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "addressLine2": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "addressLine3": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "adminArea1": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "adminArea2": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "adminArea3": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "adminArea4": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "countryCode": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 2
+            },
+            "postalCode": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "addressDetails": {
+              "type": "object",
+              "properties": {
+                "addressType": {
+                  "type": "string"
+                },
+                "buildingName": {
+                  "type": "string"
+                },
+                "streetName": {
+                  "type": "string"
+                },
+                "streetNumber": {
+                  "type": "string"
+                },
+                "streetType": {
+                  "type": "string"
+                },
+                "subBuilding": {
+                  "type": "string"
+                },
+                "geoCoordinates": {
+                  "type": "object",
+                  "properties": {
+                    "latitude": {
+                      "type": "number"
+                    },
+                    "longitude": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["latitude", "longitude"]
+                },
+                "deliveryService": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": ["type", "addressLine1", "countryCode"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["BILLING", "SHIPPING", "BOTH"]
+              },
+              "isDefault": {
+                "type": "boolean"
+              },
+              "addressLine1": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "addressLine2": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "addressLine3": {
+                "type": "string",
+                "maxLength": 255,
+                "nullable": true
+              },
+              "adminArea1": {
+                "type": "string",
+                "maxLength": 100,
+                "nullable": true
+              },
+              "adminArea2": {
+                "type": "string",
+                "maxLength": 100,
+                "nullable": true
+              },
+              "adminArea3": {
+                "type": "string",
+                "maxLength": 100,
+                "nullable": true
+              },
+              "adminArea4": {
+                "type": "string",
+                "maxLength": 100,
+                "nullable": true
+              },
+              "countryCode": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "postalCode": {
+                "type": "string",
+                "maxLength": 20,
+                "nullable": true
+              },
+              "addressDetails": {
+                "type": "object",
+                "properties": {
+                  "addressType": {
+                    "type": "string"
+                  },
+                  "buildingName": {
+                    "type": "string"
+                  },
+                  "streetName": {
+                    "type": "string"
+                  },
+                  "streetNumber": {
+                    "type": "string"
+                  },
+                  "streetType": {
+                    "type": "string"
+                  },
+                  "subBuilding": {
+                    "type": "string"
+                  },
+                  "geoCoordinates": {
+                    "type": "object",
+                    "properties": {
+                      "latitude": {
+                        "type": "number"
+                      },
+                      "longitude": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["latitude", "longitude"]
+                  },
+                  "deliveryService": {
+                    "type": "string"
+                  }
+                },
+                "nullable": true
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "type",
+              "isDefault",
+              "addressLine1",
+              "countryCode",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__addresses__addressId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/addresses/{addressId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "addressId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__cards",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/cards",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "customerId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "cardId": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "isDefault": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "customerId",
+                "cardId",
+                "isDefault",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers__customerId__cards",
+      "method": "POST",
+      "path": "/v1/customers/{customerId}/cards",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cardId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "isDefault": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": ["cardId"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "cardId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "isDefault": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "cardId",
+              "isDefault",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "409": {
+          "description": "409",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__cards__cardReferenceId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/cards/{cardReferenceId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "cardReferenceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "get_v1_customers__customerId__references",
+      "method": "GET",
+      "path": "/v1/customers/{customerId}/references",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "200",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "customerId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "source": {
+                  "type": "string",
+                  "maxLength": 50
+                },
+                "externalId": {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "customerId",
+                "source",
+                "externalId",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "post_v1_customers__customerId__references",
+      "method": "POST",
+      "path": "/v1/customers/{customerId}/references",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "externalId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          "required": ["source", "externalId"]
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "201",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "source": {
+                "type": "string",
+                "maxLength": 50
+              },
+              "externalId": {
+                "type": "string",
+                "maxLength": 255
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "customerId",
+              "source",
+              "externalId",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "400": {
+          "description": "400",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "409": {
+          "description": "409",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "delete_v1_customers__customerId__references__referenceId_",
+      "method": "DELETE",
+      "path": "/v1/customers/{customerId}/references/{referenceId}",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "referenceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "description": "Body",
+        "contentType": "application/json",
+        "schema": {
+          "nullable": true
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "204",
+          "schema": {}
+        },
+        "404": {
+          "description": "404",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        }
+      },
+      "scopes": []
+    }
+  ]
+}

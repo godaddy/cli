@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-27T23:39:34.608Z",
+  "generated": "2026-05-01T15:47:27.934Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -95,6 +95,11 @@
       "file": "location-addresses.json",
       "title": "Addresses API",
       "endpointCount": 2
+    },
+    "customer-service": {
+      "file": "customer-service.json",
+      "title": "Customer Service V2 API",
+      "endpointCount": 29
     }
   }
 }

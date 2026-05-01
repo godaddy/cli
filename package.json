@@ -2,19 +2,13 @@
   "name": "@godaddy/cli",
   "version": "0.3.0",
   "description": "GoDaddy CLI for managing applications and webhooks",
-  "keywords": [
-    "godaddy",
-    "cli",
-    "developer-tools"
-  ],
+  "keywords": ["godaddy", "cli", "developer-tools"],
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
     "godaddy": "./dist/cli.js"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "format": "pnpm biome format --write .",
     "lint": "pnpm biome lint  --write",
