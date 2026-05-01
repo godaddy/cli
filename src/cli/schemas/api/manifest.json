@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-01T16:37:24.039Z",
+  "generated": "2026-05-01T17:15:38.098Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -99,7 +99,7 @@
     "customer-service": {
       "file": "customer-service.json",
       "title": "Customer Service V2 API",
-      "endpointCount": 29
+      "endpointCount": 38
     }
   }
 }

@@ -19,8 +19,11 @@
  *   API_CATALOG_INCLUDE_LEGACY_LOCATION
  *                               "false" to exclude location.addresses-specification
  *   EXTERNAL_SPECS              Comma-separated domain=url pairs for specs outside
- *                               the gdcorp-platform org (e.g.
- *                               "customer-service=https://github.com/gdcorp-commerce/customer-service/blob/main/docs/openapi.json")
+ *                               the gdcorp-platform org. Optionally append a GraphQL
+ *                               schema URL with |graphql=<url>.
+ *                               Examples:
+ *                                 "svc=https://github.com/org/repo/blob/main/docs/openapi.json"
+ *                                 "svc=https://…/openapi.json|graphql=https://…/schema.graphql"
  *                               GitHub blob URLs are automatically converted to raw URLs.
  *
  * Output:
@@ -205,6 +208,8 @@ interface SpecSource {
   repoName: string;
   specFile: string;
   specVersion: string;
+  graphqlOnly?: boolean;
+  graphqlSchemaFile?: string;
 }
 
 interface DiscoveredSpecSources {
@@ -615,11 +620,18 @@ function normalizeGitHubUrl(url: string): string {
   return url;
 }
 
-function parseExternalSpecs(): Array<{ domain: string; url: string }> {
+interface ExternalSpecEntry {
+  domain: string;
+  url: string;
+  graphqlUrl?: string;
+  graphqlOnly?: boolean;
+}
+
+function parseExternalSpecs(): ExternalSpecEntry[] {
   const raw = process.env.EXTERNAL_SPECS?.trim();
   if (!raw) return [];
 
-  const entries: Array<{ domain: string; url: string }> = [];
+  const entries: ExternalSpecEntry[] = [];
 
   for (const entry of raw.split(",")) {
     const trimmed = entry.trim();
@@ -634,9 +646,24 @@ function parseExternalSpecs(): Array<{ domain: string; url: string }> {
     }
 
     const domain = trimmed.slice(0, separatorIndex).trim();
-    const url = trimmed.slice(separatorIndex + 1).trim();
-    if (!domain || !url) continue;
+    let rest = trimmed.slice(separatorIndex + 1).trim();
+    if (!domain || !rest) continue;
 
+    let graphqlUrl: string | undefined;
+    const graphqlSep = rest.indexOf("|graphql=");
+    if (graphqlSep !== -1) {
+      const gqlRaw = rest.slice(graphqlSep + "|graphql=".length).trim();
+      rest = rest.slice(0, graphqlSep).trim();
+      if (gqlRaw.startsWith("https://")) {
+        graphqlUrl = normalizeGitHubUrl(gqlRaw);
+      } else {
+        console.error(
+          `WARNING: skipping EXTERNAL_SPECS graphql URL for '${domain}': only https URLs are allowed`,
+        );
+      }
+    }
+
+    const url = rest;
     if (!url.startsWith("https://")) {
       console.error(
         `WARNING: skipping EXTERNAL_SPECS entry '${domain}': only https URLs are allowed`,
@@ -644,10 +671,61 @@ function parseExternalSpecs(): Array<{ domain: string; url: string }> {
       continue;
     }
 
-    entries.push({ domain, url: normalizeGitHubUrl(url) });
+    const normalizedUrl = normalizeGitHubUrl(url);
+    const isGraphqlOnly =
+      !graphqlUrl && normalizedUrl.toLowerCase().endsWith(".graphql");
+
+    entries.push({
+      domain,
+      url: normalizedUrl,
+      graphqlUrl: isGraphqlOnly ? normalizedUrl : graphqlUrl,
+      graphqlOnly: isGraphqlOnly,
+    });
   }
 
   return entries;
+}
+
+/**
+ * Fetch a URL with GitHub token authentication when the host is
+ * raw.githubusercontent.com or github.com.
+ */
+async function fetchAuthenticatedUrl(url: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    const headers: Record<string, string> = {
+      Accept: "application/json, application/yaml, text/plain",
+    };
+    const ghToken = process.env.GITHUB_TOKEN?.trim();
+    const parsed = new URL(url);
+    if (
+      ghToken &&
+      (parsed.hostname === "raw.githubusercontent.com" ||
+        parsed.hostname === "github.com")
+    ) {
+      headers.Authorization = `Bearer ${ghToken}`;
+    }
+
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+
+    return await response.text();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`request timed out after 30 s: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function githubHeaders(): Record<string, string> {
@@ -982,61 +1060,42 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
     }
 
     try {
-      console.log(`  Fetching external spec: ${ext.domain} from ${ext.url}`);
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
-      let response: Response;
-
-      try {
-        const fetchHeaders: Record<string, string> = {
-          Accept: "application/json, application/yaml, text/plain",
-        };
-        const ghToken = process.env.GITHUB_TOKEN?.trim();
-        const parsedExtUrl = new URL(ext.url);
-        if (
-          ghToken &&
-          (parsedExtUrl.hostname === "raw.githubusercontent.com" ||
-            parsedExtUrl.hostname === "github.com")
-        ) {
-          fetchHeaders.Authorization = `Bearer ${ghToken}`;
-        }
-
-        response = await fetch(ext.url, {
-          headers: fetchHeaders,
-          signal: controller.signal,
-        });
-      } catch (fetchError) {
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          throw new Error("request timed out after 30 s");
-        }
-        throw fetchError;
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      }
-
-      const text = await response.text();
       const extDir = path.join(cloneRoot, `__external_${ext.domain}`);
       fs.mkdirSync(extDir, { recursive: true });
 
-      const lowerUrl = ext.url.toLowerCase();
-      const filename =
-        lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml")
-          ? "openapi.yaml"
-          : "openapi.json";
-      const specFile = path.join(extDir, filename);
-      fs.writeFileSync(specFile, text, "utf-8");
+      let specFile: string | undefined;
+      const gqlFile = path.join(extDir, "schema.graphql");
+
+      if (!ext.graphqlOnly) {
+        console.log(`  Fetching external spec: ${ext.domain} from ${ext.url}`);
+        const specText = await fetchAuthenticatedUrl(ext.url);
+
+        const lowerUrl = ext.url.toLowerCase();
+        const filename =
+          lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml")
+            ? "openapi.yaml"
+            : "openapi.json";
+        specFile = path.join(extDir, filename);
+        fs.writeFileSync(specFile, specText, "utf-8");
+      }
+
+      // Fetch GraphQL schema if provided (standalone or companion)
+      if (ext.graphqlUrl) {
+        console.log(
+          `  Fetching external GraphQL schema: ${ext.domain} from ${ext.graphqlUrl}`,
+        );
+        const gqlText = await fetchAuthenticatedUrl(ext.graphqlUrl);
+        fs.writeFileSync(gqlFile, gqlText, "utf-8");
+      }
 
       usedDomains.add(ext.domain);
       sources.push({
         domain: ext.domain,
         repoName: `external:${ext.domain}`,
-        specFile,
+        specFile: specFile ?? "",
         specVersion: "external",
+        graphqlOnly: ext.graphqlOnly,
+        graphqlSchemaFile: ext.graphqlUrl ? gqlFile : undefined,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1604,20 +1663,98 @@ async function main() {
     }
 
     for (const source of specSources) {
-      if (!fs.existsSync(source.specFile)) {
-        throw new Error(
-          `spec file not found for ${source.repoName}: ${source.specFile}`,
-        );
-      }
-
       try {
-        const raw = fs.readFileSync(source.specFile, "utf-8");
-        const spec = parseOpenApiSpec(raw, source.specFile);
-        const catalog = processSpec(spec, source.domain, source.specFile);
+        let catalog: CatalogDomain;
+        let specTitle: string;
+        let specVersion: string;
 
-        console.log(
-          `  Resolving external $refs for ${source.domain} (${source.repoName}/${source.specVersion})...`,
-        );
+        if (source.graphqlOnly && source.graphqlSchemaFile) {
+          // GraphQL-only source — synthesize a catalog from the schema
+          const gqlMeta = loadGraphqlSchemaMetadata(
+            source.graphqlSchemaFile,
+            source.graphqlSchemaFile,
+          );
+          catalog = {
+            name: source.domain,
+            title: `${source.domain} GraphQL API`,
+            description: `GraphQL API with ${gqlMeta.operationCount} operations`,
+            version: "1.0.0",
+            baseUrl: "",
+            endpoints: [
+              {
+                operationId: "graphql",
+                method: "POST",
+                path: "/graphql",
+                summary: "GraphQL API",
+                description: `GraphQL endpoint with ${gqlMeta.operationCount} operations`,
+                responses: {
+                  "200": { description: "GraphQL response" },
+                },
+                scopes: [],
+                graphql: gqlMeta,
+              },
+            ],
+          };
+          specTitle = catalog.title;
+          specVersion = catalog.version;
+          console.log(
+            `  ${source.domain}: GraphQL schema with ${gqlMeta.operationCount} operations`,
+          );
+        } else {
+          // OpenAPI source (optionally with a companion GraphQL schema)
+          if (!fs.existsSync(source.specFile)) {
+            throw new Error(
+              `spec file not found for ${source.repoName}: ${source.specFile}`,
+            );
+          }
+
+          const raw = fs.readFileSync(source.specFile, "utf-8");
+          const spec = parseOpenApiSpec(raw, source.specFile);
+          catalog = processSpec(spec, source.domain, source.specFile);
+          specTitle = spec.info.title;
+          specVersion = spec.info.version;
+
+          console.log(
+            `  Resolving external $refs for ${source.domain} (${source.repoName}/${source.specVersion})...`,
+          );
+
+          // Attach companion GraphQL schema if provided via EXTERNAL_SPECS
+          if (
+            source.graphqlSchemaFile &&
+            fs.existsSync(source.graphqlSchemaFile)
+          ) {
+            const gqlMeta = loadGraphqlSchemaMetadata(
+              source.specFile,
+              path.relative(
+                path.dirname(source.specFile),
+                source.graphqlSchemaFile,
+              ),
+            );
+            const graphqlEndpoint = catalog.endpoints.find(
+              (ep) => ep.method === "POST" && /\/graphql$/i.test(ep.path),
+            );
+            if (graphqlEndpoint) {
+              graphqlEndpoint.graphql = gqlMeta;
+            } else {
+              catalog.endpoints.push({
+                operationId: "graphql",
+                method: "POST",
+                path: "/graphql",
+                summary: "GraphQL API",
+                description: `GraphQL endpoint with ${gqlMeta.operationCount} operations`,
+                responses: {
+                  "200": { description: "GraphQL response" },
+                },
+                scopes: [],
+                graphql: gqlMeta,
+              });
+            }
+            console.log(
+              `    Attached GraphQL schema: ${gqlMeta.operationCount} operations`,
+            );
+          }
+        }
+
         const resolved = (await resolveRefs(catalog)) as CatalogDomain;
 
         const filename = `${source.domain}.json`;
@@ -1637,7 +1774,7 @@ async function main() {
 
         totalEndpoints += resolved.endpoints.length;
         console.log(
-          `  ${source.domain}: ${resolved.endpoints.length} endpoints from ${spec.info.title} v${spec.info.version}`,
+          `  ${source.domain}: ${resolved.endpoints.length} endpoints from ${specTitle} v${specVersion}`,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
