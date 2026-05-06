@@ -1,5 +1,11 @@
 # @godaddy/cli
 
+## 0.5.1
+
+### Patch Changes
+
+- 7b612a9: Fix application config updates so action, subscription, and extension additions write back to the resolved config file instead of re-resolving the environment path.
+
 ## 0.5.0
 
 ### Minor Changes
