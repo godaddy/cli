@@ -28,7 +28,7 @@
     "test:coverage": "vitest --coverage",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && pnpm publish -r --filter @godaddy/cli"
+    "release": "pnpm build && pnpm publish --filter @godaddy/cli"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
