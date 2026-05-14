@@ -317,6 +317,9 @@ async function dereferenceSpec(specFilePath: string): Promise<OpenApiSpec> {
       circular: "ignore",
     },
     resolve: {
+      // Disable built-in HTTP resolver to prevent outbound fetches.
+      // All refs must resolve locally or via our custom resolvers below.
+      http: false as unknown as ParserOptions["resolve"],
       // Custom resolver: map schemas.api.godaddy.com URLs to local files
       godaddySchemas: {
         order: 1,

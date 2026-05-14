@@ -2,7 +2,7 @@
   "name": "subscriptions",
   "title": "Commerce Subscription API",
   "description": "This API is capable of recording and obtaining commerce subscription information",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "baseUrl": "https://api.godaddy.com/v1/commerce",
   "endpoints": [
     {
@@ -81,7 +81,7 @@
             },
             "pricing": {
               "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n",
-              "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/pricing-model.v1",
+              "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
               "$schema": "https://json-schema.org/draft/2020-12/schema",
               "title": "Pricing Model",
               "discriminator": {
@@ -93,7 +93,7 @@
               },
               "oneOf": [
                 {
-                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/free-pricing.v1",
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
                   "title": "Free Pricing",
                   "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
@@ -110,7 +110,7 @@
                   "additionalProperties": false
                 },
                 {
-                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/fixed-recurring-pricing.v1",
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
                   "title": "Fixed Recurring Pricing",
                   "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
@@ -285,7 +285,7 @@
               },
               "pricing": {
                 "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n",
-                "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/pricing-model.v1",
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "title": "Pricing Model",
                 "discriminator": {
@@ -297,7 +297,7 @@
                 },
                 "oneOf": [
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/free-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Free Pricing",
                     "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
@@ -314,7 +314,7 @@
                     "additionalProperties": false
                   },
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/fixed-recurring-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Fixed Recurring Pricing",
                     "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
@@ -712,7 +712,7 @@
         "200": {
           "description": "Plans Found",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/subscription-plan-list.v1",
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan-list.v1",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Subscription Plan List",
             "type": "object",
@@ -775,7 +775,7 @@
                     },
                     "pricing": {
                       "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n",
-                      "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/pricing-model.v1",
+                      "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
                       "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "title": "Pricing Model",
                       "discriminator": {
@@ -787,7 +787,7 @@
                       },
                       "oneOf": [
                         {
-                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/free-pricing.v1",
+                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
                           "$schema": "https://json-schema.org/draft/2020-12/schema",
                           "title": "Free Pricing",
                           "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
@@ -804,7 +804,7 @@
                           "additionalProperties": false
                         },
                         {
-                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/fixed-recurring-pricing.v1",
+                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
                           "$schema": "https://json-schema.org/draft/2020-12/schema",
                           "title": "Fixed Recurring Pricing",
                           "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
@@ -1274,7 +1274,7 @@
               },
               "pricing": {
                 "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n",
-                "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/pricing-model.v1",
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "title": "Pricing Model",
                 "discriminator": {
@@ -1286,7 +1286,7 @@
                 },
                 "oneOf": [
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/free-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Free Pricing",
                     "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
@@ -1303,7 +1303,7 @@
                     "additionalProperties": false
                   },
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/fixed-recurring-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Fixed Recurring Pricing",
                     "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
@@ -1985,7 +1985,7 @@
               },
               "pricing": {
                 "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n",
-                "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/pricing-model.v1",
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "title": "Pricing Model",
                 "discriminator": {
@@ -1997,7 +1997,7 @@
                 },
                 "oneOf": [
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/free-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Free Pricing",
                     "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
@@ -2014,7 +2014,7 @@
                     "additionalProperties": false
                   },
                   {
-                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan/fixed-recurring-pricing.v1",
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "title": "Fixed Recurring Pricing",
                     "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
@@ -2562,7 +2562,7 @@
         "required": false,
         "contentType": "application/json",
         "schema": {
-          "$id": "https://godaddy.com/schemas/commerce/subscription.v1",
+          "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "title": "Subscription",
           "description": "Resource representing a Subscription that can be applied at Business or Store level",
@@ -2669,7 +2669,7 @@
         "201": {
           "description": "Subscription Created",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/subscription.v1",
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Subscription",
             "description": "Resource representing a Subscription that can be applied at Business or Store level",
@@ -3118,7 +3118,7 @@
         "200": {
           "description": "Subscriptions Found",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/subscription-list.v1",
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-list.v1",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Subscription List",
             "type": "object",
@@ -3127,7 +3127,7 @@
               "items": {
                 "description": "Array containing the current page of subscriptions",
                 "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/subscription.v1",
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
                   "title": "Subscription",
                   "description": "Resource representing a Subscription that can be applied at Business or Store level",
@@ -3544,7 +3544,7 @@
         "200": {
           "description": "Subscription Found",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/subscription.v1",
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Subscription",
             "description": "Resource representing a Subscription that can be applied at Business or Store level",
@@ -4173,7 +4173,7 @@
         "200": {
           "description": "Subscription updated",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/subscription.v1",
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Subscription",
             "description": "Resource representing a Subscription that can be applied at Business or Store level",
