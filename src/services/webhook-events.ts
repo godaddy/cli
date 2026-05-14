@@ -8,6 +8,7 @@ import {
   NetworkError,
   type ValidationError,
 } from "../effect/errors";
+import { cliTraceHeaders } from "../shared/cli-trace";
 import { logHttpRequest, logHttpResponse } from "./logger";
 
 export type WebhookEventType = {
@@ -47,7 +48,7 @@ export function getWebhookEventsTypesEffect({
     const url = `${baseUrl}/v1/apis/webhook-event-types`;
     const headers = {
       Authorization: `Bearer ${accessToken}`,
-      UserAgent: "@godaddy/cli",
+      ...cliTraceHeaders(),
     };
 
     const startTime = Date.now();

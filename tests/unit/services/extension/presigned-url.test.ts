@@ -27,7 +27,8 @@ vi.mock("@/services/http-helpers", () => {
   return {
     getRequestHeaders: (token: string) => ({
       Authorization: `Bearer ${token}`,
-      "X-Request-ID": "test-uuid",
+      "user-agent": "godaddy-cli/0.0.0-test",
+      "x-request-id": "test-uuid",
     }),
     makeGraphQLClientEffect: () =>
       Effect.succeed({

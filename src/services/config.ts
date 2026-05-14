@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as TOML from "@iarna/toml";
 import { type ArkErrors, type } from "arktype";
@@ -207,7 +207,9 @@ export function getConfigFilePath(
   configPath?: string,
 ): string {
   if (configPath) {
-    return join(process.cwd(), configPath);
+    return isAbsolute(configPath)
+      ? configPath
+      : join(process.cwd(), configPath);
   }
 
   const resolvedEnv = resolveConfigEnvironment(env);
@@ -235,7 +237,7 @@ export function getConfigFileEffect({
 
     // If a specific config path is provided, use that
     if (configPath) {
-      const absolutePath = join(process.cwd(), configPath);
+      const absolutePath = getConfigFilePath(undefined, configPath);
       const exists = yield* fileExists(absolutePath);
       if (exists) {
         const content = yield* fs.readFileString(absolutePath);
@@ -298,7 +300,7 @@ export function getConfigFile({
   const resolvedEnv = resolveConfigEnvironment(env);
 
   if (configPath) {
-    const absolutePath = join(process.cwd(), configPath);
+    const absolutePath = getConfigFilePath(undefined, configPath);
     if (nodeFs.existsSync(absolutePath)) {
       const content = nodeFs.readFileSync(absolutePath, "utf-8");
       return Config(TOML.parse(content));
@@ -429,7 +431,7 @@ function getConfigFilePathForUpdateEffect(
     const resolvedEnv = resolveConfigEnvironment(env);
 
     if (configPath) {
-      const absolutePath = join(process.cwd(), configPath);
+      const absolutePath = getConfigFilePath(undefined, configPath);
       const exists = yield* fileExists(absolutePath);
       if (exists) {
         return { path: absolutePath };
@@ -467,13 +469,12 @@ function getConfigFilePathForUpdateEffect(
 /**
  * Write a full Config object to the TOML file.
  */
-function writeConfigToFileEffect(
+function writeConfigToResolvedPathEffect(
   data: Config,
-  env?: ConfigEnvironment,
+  filePath: string,
 ): Effect.Effect<void, ConfigurationError, FileSystem> {
   return Effect.gen(function* () {
     const fs = yield* FileSystem;
-    const filePath = getConfigFilePath(env);
 
     // Try to read the existing file to preserve structure
     let existingConfig = {};
@@ -558,6 +559,13 @@ function writeConfigToFileEffect(
   );
 }
 
+function writeConfigToFileEffect(
+  data: Config,
+  env?: ConfigEnvironment,
+): Effect.Effect<void, ConfigurationError, FileSystem> {
+  return writeConfigToResolvedPathEffect(data, getConfigFilePath(env));
+}
+
 /**
  * Write the config data to the appropriate TOML file.
  */
@@ -614,11 +622,11 @@ export function addActionToConfigEffect(
       actions: [...(configResult.actions || []), action],
     };
 
-    const { env } = yield* getConfigFilePathForUpdateEffect(
+    const { path } = yield* getConfigFilePathForUpdateEffect(
       options.configPath,
       options.env,
     );
-    yield* writeConfigToFileEffect(updatedConfig, env);
+    yield* writeConfigToResolvedPathEffect(updatedConfig, path);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.fail(toConfigError(error, "Unable to update actions in config")),
@@ -651,11 +659,11 @@ export function addSubscriptionToConfigEffect(
       },
     };
 
-    const { env } = yield* getConfigFilePathForUpdateEffect(
+    const { path } = yield* getConfigFilePathForUpdateEffect(
       options.configPath,
       options.env,
     );
-    yield* writeConfigToFileEffect(updatedConfig, env);
+    yield* writeConfigToResolvedPathEffect(updatedConfig, path);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.fail(
@@ -783,11 +791,11 @@ export function addExtensionToConfigEffect(
       extensions: updatedExtensions,
     } satisfies Config;
 
-    const { env } = yield* getConfigFilePathForUpdateEffect(
+    const { path } = yield* getConfigFilePathForUpdateEffect(
       options.configPath,
       options.env,
     );
-    yield* writeConfigToFileEffect(updatedConfig, env);
+    yield* writeConfigToResolvedPathEffect(updatedConfig, path);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.fail(

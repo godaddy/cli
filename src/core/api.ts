@@ -10,6 +10,7 @@ import {
 } from "../effect/errors";
 import { fileExists } from "../effect/fs-utils";
 import type { Keychain } from "../effect/services/keychain";
+import { CLI_USER_AGENT } from "../shared/cli-trace";
 import { getTokenInfoEffect } from "./auth";
 import { type Environment, envGetEffect, getApiUrl } from "./environment";
 
@@ -76,7 +77,6 @@ const MAX_ERROR_SUMMARY_CHARS = 240;
 const MAX_ERROR_DEPTH = 6;
 const MAX_ERROR_ARRAY_ITEMS = 40;
 const MAX_ERROR_OBJECT_KEYS = 80;
-const DEFAULT_USER_AGENT = "godaddy-cli";
 
 function findHeaderKey(
   headers: Record<string, string>,
@@ -108,7 +108,7 @@ function ensureRequiredRequestHeaders(headers: Record<string, string>): void {
   }
 
   if (!hasNonEmptyHeader(headers, "user-agent")) {
-    headers["user-agent"] = DEFAULT_USER_AGENT;
+    headers["user-agent"] = CLI_USER_AGENT;
   }
 }
 
