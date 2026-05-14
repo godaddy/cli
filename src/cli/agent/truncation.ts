@@ -39,7 +39,7 @@ function slugify(commandId: string): string {
   return commandId.replace(/[^a-zA-Z0-9-_.]+/g, "-");
 }
 
-function writeFullOutput(commandId: string, payload: unknown): string {
+export function writeFullOutput(commandId: string, payload: unknown): string {
   const dir = join(tmpdir(), "godaddy-cli");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {

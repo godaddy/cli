@@ -1,0 +1,1039 @@
+{
+  "name": "taxes",
+  "title": "Tax GraphQL API",
+  "description": "",
+  "version": "2.0.0",
+  "baseUrl": "https://api.godaddy.com/v2/commerce",
+  "endpoints": [
+    {
+      "operationId": "postTaxGraphql",
+      "method": "POST",
+      "path": "/stores/{storeId}/tax-subgraph",
+      "summary": "Tax GraphQL endpoint",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "x-store-id",
+          "in": "header",
+          "required": true,
+          "description": "Store ID header required by tax subgraph",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "variables": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "operationName": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "GraphQL response",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "nullable": true,
+                "additionalProperties": true
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Invalid request"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "403": {
+          "description": "Forbidden"
+        },
+        "404": {
+          "description": "Store not found"
+        },
+        "500": {
+          "description": "Internal server error"
+        }
+      },
+      "scopes": [
+        "commerce.tax:read",
+        "commerce.tax:create",
+        "commerce.tax:write",
+        "commerce.tax:delete"
+      ],
+      "graphql": {
+        "schemaRef": "./graphql/schema.graphql",
+        "operationCount": 47,
+        "operations": [
+          {
+            "name": "classification",
+            "kind": "query",
+            "returnType": "Classification",
+            "description": "Get a single classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The classification ID."
+              }
+            ]
+          },
+          {
+            "name": "classifications",
+            "kind": "query",
+            "returnType": "QueryClassificationsConnection",
+            "description": "Get a collection of classifications.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "ClassificationIdFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "ClassificationOrderBy",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "jurisdiction",
+            "kind": "query",
+            "returnType": "Jurisdiction",
+            "description": "Get a single jurisdiction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The jurisdiction ID."
+              }
+            ]
+          },
+          {
+            "name": "jurisdictions",
+            "kind": "query",
+            "returnType": "QueryJurisdictionsConnection",
+            "description": "Get a collection of jurisdictions.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "JurisdictionIdFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "JurisdictionOrderBy",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "override",
+            "kind": "query",
+            "returnType": "Override",
+            "description": "Get a single override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The override ID."
+              }
+            ]
+          },
+          {
+            "name": "overrides",
+            "kind": "query",
+            "returnType": "QueryOverridesConnection",
+            "description": "Get a collection of overrides.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "OverrideIdFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "OverrideOrderBy",
+                "required": false
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "rate",
+            "kind": "query",
+            "returnType": "Rate",
+            "description": "Get a single rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The rate ID."
+              }
+            ]
+          },
+          {
+            "name": "rates",
+            "kind": "query",
+            "returnType": "QueryRatesConnection",
+            "description": "Get a collection of rates.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "RateIdFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "RateOrderBy",
+                "required": false
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "RateStatusFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "activateOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Activate an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "activateRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Activate an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addListsToClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Add existing lists to an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the lists should be added."
+              },
+              {
+                "name": "input",
+                "type": "MutationAddListsToClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addListsToOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Add existing lists to an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationAddListsToOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addRatesToClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Add existing rates to an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the rates should be added."
+              },
+              {
+                "name": "input",
+                "type": "MutationAddRatesToClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addRatesToOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Add existing rates to an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationAddRatesToOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkuGroupsToOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Add existing SKU groups to an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationAddSkuGroupsToOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkusGroupsToClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Add existing SKU groups to an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the SKU groups should be added."
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkusGroupsToClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkusToClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Add existing SKUs to an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the SKUs should be added."
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkusToClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkusToOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Add existing SKUs to an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationAddSkusToOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "calculateTaxes",
+            "kind": "mutation",
+            "returnType": "CalculationResult",
+            "description": "Calculate taxes.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "channelId",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationCalculateTaxesInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Create a new classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createJurisdiction",
+            "kind": "mutation",
+            "returnType": "Jurisdiction",
+            "description": "Create a new jurisdiction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateJurisdictionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Create a new override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateOverrideInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Create a new rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateRateInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createReferencesForClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Create references for an existing classifiction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification for which the references should be created."
+              },
+              {
+                "name": "input",
+                "type": "MutationCreateReferencesForClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createReferencesForOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Create references for an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationCreateReferencesForOverrideInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createReferencesForRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Create references for an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationCreateReferencesForRateInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deactivateOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Deactivate an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deactivateRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Deactivate an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Delete an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to be deleted."
+              }
+            ]
+          },
+          {
+            "name": "deleteJurisdiction",
+            "kind": "mutation",
+            "returnType": "Jurisdiction",
+            "description": "Delete an existing jurisdiction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the jurisdiction to be deleted."
+              }
+            ]
+          },
+          {
+            "name": "deleteOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Delete an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Delete an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteReferencesFromClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Delete references from an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification for which the references should be deleted."
+              },
+              {
+                "name": "input",
+                "type": "MutationDeleteReferencesFromClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteReferencesFromOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Delete references from an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationDeleteReferencesFromOverrideInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteReferencesFromRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Delete references from an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationDeleteReferencesFromRateInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeListsFromClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Remove existing lists from an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the lists should be removed."
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveListsFromClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeListsFromOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Remove existing lists from an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationRemoveListsFromOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeRatesFromClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Remove existing rates from an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the rates should be removed."
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveRatesFromClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeRatesFromOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Remove existing rates from an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationRemoveRatesFromOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusFromClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Remove existing SKUs from an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the SKUs should be removed."
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusFromClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusFromOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Remove existing SKUs from an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusFromOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusGroupsFromClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Remove existing SKU groups from an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "classificationId",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to which the SKU groups should be added."
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusGroupsFromClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusGroupsFromOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Remove existing SKU groups from an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusGroupsFromOverrideInput!",
+                "required": true
+              },
+              {
+                "name": "overrideId",
+                "type": "ID!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateClassification",
+            "kind": "mutation",
+            "returnType": "Classification",
+            "description": "Update an existing classification.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the classification to be updated."
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateClassificationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateJurisdiction",
+            "kind": "mutation",
+            "returnType": "Jurisdiction",
+            "description": "Update an existing jurisdiction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true,
+                "description": "The ID of the jurisdiction to be updated."
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateJurisdictionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateOverride",
+            "kind": "mutation",
+            "returnType": "Override",
+            "description": "Update an existing override.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateOverrideInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateRate",
+            "kind": "mutation",
+            "returnType": "Rate",
+            "description": "Update an existing rate.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "ID!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateRateInput!",
+                "required": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

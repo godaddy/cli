@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-01T17:15:38.098Z",
+  "generated": "2026-05-14T15:16:30.938Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -49,7 +49,7 @@
     "orders": {
       "file": "orders.json",
       "title": "Order Service",
-      "endpointCount": 14
+      "endpointCount": 15
     },
     "payment-requests": {
       "file": "payment-requests.json",
@@ -86,6 +86,11 @@
       "title": "Commerce Subscription API",
       "endpointCount": 8
     },
+    "taxes": {
+      "file": "taxes.json",
+      "title": "Tax GraphQL API",
+      "endpointCount": 1
+    },
     "transactions": {
       "file": "transactions.json",
       "title": "Transactions API",
@@ -95,11 +100,6 @@
       "file": "location-addresses.json",
       "title": "Addresses API",
       "endpointCount": 2
-    },
-    "customer-service": {
-      "file": "customer-service.json",
-      "title": "Customer Service V2 API",
-      "endpointCount": 38
     }
   }
 }

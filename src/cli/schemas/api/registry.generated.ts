@@ -9,7 +9,6 @@ import catalog_products_json from "./catalog-products.json";
 import channels_json from "./channels.json";
 import chargebacks_json from "./chargebacks.json";
 import customer_profiles_json from "./customer-profiles.json";
-import customer_service_json from "./customer-service.json";
 import fulfillments_json from "./fulfillments.json";
 import location_addresses_json from "./location-addresses.json";
 import metafields_json from "./metafields.json";
@@ -22,27 +21,28 @@ import recommendations_json from "./recommendations.json";
 import shipping_json from "./shipping.json";
 import stores_json from "./stores.json";
 import subscriptions_json from "./subscriptions.json";
+import taxes_json from "./taxes.json";
 import transactions_json from "./transactions.json";
 
 export const DOMAIN_REGISTRY: Record<string, unknown> = {
   "bulk-operations": bulk_operations_json,
-  businesses: businesses_json,
+  "businesses": businesses_json,
   "catalog-products": catalog_products_json,
-  channels: channels_json,
-  chargebacks: chargebacks_json,
+  "channels": channels_json,
+  "chargebacks": chargebacks_json,
   "customer-profiles": customer_profiles_json,
-  "customer-service": customer_service_json,
-  fulfillments: fulfillments_json,
+  "fulfillments": fulfillments_json,
   "location-addresses": location_addresses_json,
-  metafields: metafields_json,
-  onboarding: onboarding_json,
-  orders: orders_json,
+  "metafields": metafields_json,
+  "onboarding": onboarding_json,
+  "orders": orders_json,
   "payment-requests": payment_requests_json,
-  payments: payments_json,
+  "payments": payments_json,
   "price-adjustments": price_adjustments_json,
-  recommendations: recommendations_json,
-  shipping: shipping_json,
-  stores: stores_json,
-  subscriptions: subscriptions_json,
-  transactions: transactions_json,
+  "recommendations": recommendations_json,
+  "shipping": shipping_json,
+  "stores": stores_json,
+  "subscriptions": subscriptions_json,
+  "taxes": taxes_json,
+  "transactions": transactions_json,
 };

@@ -16,6 +16,8 @@
           "in": "path",
           "required": true,
           "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
             "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
             "type": "string",
             "format": "uuid"
@@ -27,6 +29,8 @@
           "required": true,
           "description": "Store ID header required by catalog subgraph",
           "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
             "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
             "type": "string",
             "format": "uuid"
@@ -38,7 +42,9 @@
         "contentType": "application/json",
         "schema": {
           "type": "object",
-          "required": ["query"],
+          "required": [
+            "query"
+          ],
           "properties": {
             "query": {
               "type": "string"
@@ -90,7 +96,10 @@
           "description": "Internal server error"
         }
       },
-      "scopes": ["commerce.product:read", "commerce.product:write"],
+      "scopes": [
+        "commerce.product:read",
+        "commerce.product:write"
+      ],
       "graphql": {
         "schemaRef": "./graphql/schema.graphql",
         "operationCount": 149,
