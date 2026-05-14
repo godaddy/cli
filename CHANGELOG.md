@@ -1,5 +1,11 @@
 # @godaddy/cli
 
+## 0.5.2
+
+### Patch Changes
+
+- 02812ee: Add additional commerce API schemas
+
 ## 0.5.1
 
 ### Patch Changes

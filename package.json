@@ -1,6 +1,6 @@
 {
   "name": "@godaddy/cli",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "GoDaddy CLI for managing applications and webhooks",
   "keywords": [
     "godaddy",
