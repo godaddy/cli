@@ -321,7 +321,12 @@ async function dereferenceSpec(specFilePath: string): Promise<OpenApiSpec> {
       godaddySchemas: {
         order: 1,
         canRead: (file: { url: string }) => {
-          return file.url.includes("schemas.api.godaddy.com");
+          try {
+            const hostname = new URL(file.url).hostname;
+            return hostname === "schemas.api.godaddy.com";
+          } catch {
+            return false;
+          }
         },
         read: (file: { url: string }) => {
           if (!commonTypesLocalDir) {
