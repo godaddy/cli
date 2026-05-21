@@ -24,6 +24,7 @@ import { NodeLiveLayer } from "./effect/runtime";
 import { setVerbosityLevel } from "./services/logger";
 
 import { actionsCommand } from "./cli/commands/actions";
+import { ansCommand } from "./cli/commands/ans";
 import { apiCommand } from "./cli/commands/api";
 import { applicationCommand } from "./cli/commands/application";
 import { authCommand } from "./cli/commands/auth";
@@ -42,6 +43,10 @@ const rootNextActions: NextAction[] = [
   },
   { command: "godaddy env get", description: "Get current active environment" },
   { command: "godaddy application list", description: "List all applications" },
+  {
+    command: "godaddy ans register",
+    description: "Register an agent with the ANS",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -111,6 +116,86 @@ const COMMAND_TREE: CommandNode = {
       id: "webhook.group",
       command: "godaddy webhook",
       description: "Manage webhook integrations",
+    },
+    {
+      id: "ans.group",
+      command: "godaddy ans",
+      description:
+        "Manage agent registrations with the GoDaddy Agent Name Service",
+      children: [
+        {
+          id: "ans.register",
+          command: "godaddy ans register",
+          description:
+            "Register an agent (requires pre-generated RSA-2048 CSR files)",
+        },
+        {
+          id: "ans.status",
+          command: "godaddy ans status <agent-id>",
+          description: "Get current registration status",
+        },
+        {
+          id: "ans.verify-acme",
+          command: "godaddy ans verify-acme <agent-id>",
+          description: "Trigger ACME domain validation",
+        },
+        {
+          id: "ans.verify-dns",
+          command: "godaddy ans verify-dns <agent-id>",
+          description: "Trigger DNS record verification",
+        },
+        {
+          id: "ans.submit-server-csr",
+          command: "godaddy ans submit-server-csr <agent-id> --csr-file <path>",
+          description: "Submit a server CSR",
+        },
+        {
+          id: "ans.submit-identity-csr",
+          command:
+            "godaddy ans submit-identity-csr <agent-id> --csr-file <path>",
+          description: "Submit an identity CSR",
+        },
+        {
+          id: "ans.csr-status",
+          command: "godaddy ans csr-status <agent-id> --csr-id <id>",
+          description: "Get CSR submission status",
+        },
+        {
+          id: "ans.revoke",
+          command: "godaddy ans revoke <agent-id> --reason <reason>",
+          description: "Revoke an agent registration",
+        },
+        {
+          id: "ans.search",
+          command: "godaddy ans search",
+          description: "Search for registered agents",
+        },
+        {
+          id: "ans.resolve",
+          command: "godaddy ans resolve --host <host>",
+          description: "Resolve agents by hostname",
+        },
+        {
+          id: "ans.events",
+          command: "godaddy ans events",
+          description: "List ANS audit events",
+        },
+        {
+          id: "ans.get-server-certs",
+          command: "godaddy ans get-server-certs <agent-id>",
+          description: "Retrieve issued server certificates",
+        },
+        {
+          id: "ans.get-identity-certs",
+          command: "godaddy ans get-identity-certs <agent-id>",
+          description: "Retrieve issued identity certificates",
+        },
+        {
+          id: "ans.badge",
+          command: "godaddy ans badge <agent-id>",
+          description: "Get transparency log entry and Merkle proof",
+        },
+      ],
     },
     {
       id: "application.group",
@@ -358,6 +443,7 @@ const rootCommand = Command.make(
     authCommand,
     apiCommand,
     actionsCommand,
+    ansCommand,
     webhookCommand,
     applicationCommand,
   ]),
