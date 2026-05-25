@@ -6,9 +6,9 @@ import { Fetch } from "@effect/platform/FetchHttpClient";
 import type { FileSystem } from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import { GraphQLClient } from "graphql-request";
-import { v7 as uuid } from "uuid";
 import { type Environment, envGetEffect, getApiUrl } from "../core/environment";
 import { ConfigurationError } from "../effect/errors";
+import { cliTraceHeaders } from "../shared/cli-trace";
 
 /**
  * Resolve the API base URL from environment variables or the active environment.
@@ -63,6 +63,6 @@ export function makeGraphQLClientEffect(): Effect.Effect<
 export function getRequestHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
-    "X-Request-ID": uuid(),
+    ...cliTraceHeaders(),
   };
 }

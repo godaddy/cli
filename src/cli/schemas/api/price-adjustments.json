@@ -1,0 +1,3355 @@
+{
+  "name": "price-adjustments",
+  "title": "GoDaddy Price Adjustment API",
+  "description": "The Price Adjustment Service API is intended to provide a common service for other services and applications to build a price adjustment system for discounts and fees.\n\nThe API is composed of two main entities: Price Adjustments and Price Adjustment Associations.\n\nA Price Adjustment is a discount or fee; as well as the amount. Alone, it does nothing since it is not associated to any items.\n  - This entity contains the type of adjustment, the amount of the adjustment, and other information that will be shared by all the Price Adjustment Associations that refer to it.\n  - Newly created Price Adjustments will have no Price Adjustment Associations associated with them by default.\n  - Updating a Price Adjustment will also soft-update Price Adjustment Associations that refer to it, since the information they refer to will have been updated.\n  - Deleting a Price Adjustment will delete all the Price Adjustment Associations that refer to it, since they should not apply a non-existant Price Adjustment to anything.\n\nA Price Adjustment Association is the link between a Price Adjustment and the items the Price Adjustment applies to. Together, they make up the actual discount or fee that would be applied.\n - This entity contains the type of association, the items that the association applies to, and other information about the association itself.\n\nTo ground this in a complete example:\n\n```\n  POST /commerce/stores/{storeId}/price-adjustments\n  // -> creates a new Price Adjustment\n  // -> but, we have nothing associated with it yet!\n  // -> so it will never apply to an item/category\n  // -> to do that, we need to create an association\n\n  POST /commerce/stores/{storeId}/price-adjustment-associations\n  // -> creates a new Price Adjustment Association\n  // -> now we are associated, and it will apply!\n```\n",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1",
+  "endpoints": [
+    {
+      "operationId": "findAllPriceAdjustments",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustments",
+      "summary": "Get all price adjustments for a store",
+      "description": "Gets all applicable price adjustments for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustment",
+              "type": "object",
+              "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+              "properties": {
+                "storeId": {
+                  "type": "string",
+                  "description": "The storeId that this price adjustment belongs to",
+                  "readOnly": true,
+                  "format": "uuid"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+                  "readOnly": true,
+                  "format": "uuid"
+                },
+                "createdAt": {
+                  "readOnly": true,
+                  "description": "The datetime when the entity was created",
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "minLength": 20,
+                  "maxLength": 64,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                },
+                "updatedAt": {
+                  "readOnly": true,
+                  "description": "The datetime when the entity was last updated",
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "minLength": 20,
+                  "maxLength": 64,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The user friendly name of the price adjustment",
+                  "example": "happy hour discount"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The user friendly description of the price adjustment",
+                  "example": "15% off of drinks, 10% off of food"
+                },
+                "type": {
+                  "description": "The type of the price adjustment",
+                  "example": "DISCOUNT",
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "PriceAdjustmentType",
+                  "type": "string",
+                  "enum": [
+                    "DISCOUNT",
+                    "FEE"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "flag for status of the price adjustment",
+                  "example": true
+                },
+                "appliedBeforeTax": {
+                  "type": "boolean",
+                  "description": "flag for if the price adjustment should be applied pre- or post- tax",
+                  "example": true
+                },
+                "code": {
+                  "type": "string",
+                  "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+                  "example": "holidays2023"
+                },
+                "externalIds": {
+                  "type": "array",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "ExternalId",
+                    "type": "object",
+                    "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "the type of the external id",
+                        "example": "AvalaraId"
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "the value of the external id",
+                        "example": "123456789"
+                      }
+                    }
+                  },
+                  "description": "external ids for this price adjustment"
+                },
+                "metadata": {
+                  "type": "array",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "Metafield",
+                    "type": "object",
+                    "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                    "required": [
+                      "key",
+                      "type",
+                      "value"
+                    ],
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "description": "The unique identifier for the metafield in its namespace",
+                        "example": "shippingPolicy"
+                      },
+                      "type": {
+                        "type": "string",
+                        "description": "The type of data that the metafield stores in the `value` field",
+                        "enum": [
+                          "JSON"
+                        ],
+                        "default": "JSON"
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                        "example": "{ \"signatureRequired\" : \"true\" }",
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                },
+                "amountType": {
+                  "type": "string",
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "AmountType",
+                  "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+                  "enum": [
+                    "AMOUNT",
+                    "PERCENTAGE"
+                  ]
+                },
+                "amount": {
+                  "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+                  "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                  "$schema": "http://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "title": "Simple Money",
+                  "properties": {
+                    "currencyCode": {
+                      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Currency Code",
+                      "description": "A three-character ISO-4217 currency code.",
+                      "minLength": 3,
+                      "maxLength": 3
+                    },
+                    "value": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                    }
+                  },
+                  "required": [
+                    "currencyCode",
+                    "value"
+                  ]
+                },
+                "ratePercentage": {
+                  "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+                  "$id": "https://godaddy.com/schemas/common/percentage.json",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment:read"
+      ]
+    },
+    {
+      "operationId": "createPriceAdjustment",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/price-adjustments",
+      "summary": "Create a new price adjustment",
+      "description": "Creates a new price adjustment for a given storeId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "PriceAdjustment",
+          "type": "object",
+          "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+          "properties": {
+            "storeId": {
+              "type": "string",
+              "description": "The storeId that this price adjustment belongs to",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "id": {
+              "type": "string",
+              "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "createdAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was created",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "updatedAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was last updated",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "name": {
+              "type": "string",
+              "description": "The user friendly name of the price adjustment",
+              "example": "happy hour discount"
+            },
+            "description": {
+              "type": "string",
+              "description": "The user friendly description of the price adjustment",
+              "example": "15% off of drinks, 10% off of food"
+            },
+            "type": {
+              "description": "The type of the price adjustment",
+              "example": "DISCOUNT",
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustmentType",
+              "type": "string",
+              "enum": [
+                "DISCOUNT",
+                "FEE"
+              ]
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "flag for status of the price adjustment",
+              "example": true
+            },
+            "appliedBeforeTax": {
+              "type": "boolean",
+              "description": "flag for if the price adjustment should be applied pre- or post- tax",
+              "example": true
+            },
+            "code": {
+              "type": "string",
+              "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+              "example": "holidays2023"
+            },
+            "externalIds": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ExternalId",
+                "type": "object",
+                "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "the type of the external id",
+                    "example": "AvalaraId"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "the value of the external id",
+                    "example": "123456789"
+                  }
+                }
+              },
+              "description": "external ids for this price adjustment"
+            },
+            "metadata": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Metafield",
+                "type": "object",
+                "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                "required": [
+                  "key",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The unique identifier for the metafield in its namespace",
+                    "example": "shippingPolicy"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "The type of data that the metafield stores in the `value` field",
+                    "enum": [
+                      "JSON"
+                    ],
+                    "default": "JSON"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                    "example": "{ \"signatureRequired\" : \"true\" }",
+                    "maxLength": 1024
+                  }
+                }
+              }
+            },
+            "amountType": {
+              "type": "string",
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "AmountType",
+              "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+              "enum": [
+                "AMOUNT",
+                "PERCENTAGE"
+              ]
+            },
+            "amount": {
+              "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+              "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+              "$schema": "http://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "title": "Simple Money",
+              "properties": {
+                "currencyCode": {
+                  "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "title": "Currency Code",
+                  "description": "A three-character ISO-4217 currency code.",
+                  "minLength": 3,
+                  "maxLength": 3
+                },
+                "value": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                }
+              },
+              "required": [
+                "currencyCode",
+                "value"
+              ]
+            },
+            "ratePercentage": {
+              "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+              "$id": "https://godaddy.com/schemas/common/percentage.json",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustment",
+            "type": "object",
+            "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "name": {
+                "type": "string",
+                "description": "The user friendly name of the price adjustment",
+                "example": "happy hour discount"
+              },
+              "description": {
+                "type": "string",
+                "description": "The user friendly description of the price adjustment",
+                "example": "15% off of drinks, 10% off of food"
+              },
+              "type": {
+                "description": "The type of the price adjustment",
+                "example": "DISCOUNT",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentType",
+                "type": "string",
+                "enum": [
+                  "DISCOUNT",
+                  "FEE"
+                ]
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "flag for status of the price adjustment",
+                "example": true
+              },
+              "appliedBeforeTax": {
+                "type": "boolean",
+                "description": "flag for if the price adjustment should be applied pre- or post- tax",
+                "example": true
+              },
+              "code": {
+                "type": "string",
+                "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+                "example": "holidays2023"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                },
+                "description": "external ids for this price adjustment"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "amountType": {
+                "type": "string",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "AmountType",
+                "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+                "enum": [
+                  "AMOUNT",
+                  "PERCENTAGE"
+                ]
+              },
+              "amount": {
+                "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+                "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "title": "Simple Money",
+                "properties": {
+                  "currencyCode": {
+                    "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "string",
+                    "title": "Currency Code",
+                    "description": "A three-character ISO-4217 currency code.",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "value": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                  }
+                },
+                "required": [
+                  "currencyCode",
+                  "value"
+                ]
+              },
+              "ratePercentage": {
+                "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+                "$id": "https://godaddy.com/schemas/common/percentage.json",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment:create"
+      ]
+    },
+    {
+      "operationId": "findPriceAdjustment",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Get a price adjustment",
+      "description": "Get a single price adjustment by storeId and adjustmentId",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustment",
+            "type": "object",
+            "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "name": {
+                "type": "string",
+                "description": "The user friendly name of the price adjustment",
+                "example": "happy hour discount"
+              },
+              "description": {
+                "type": "string",
+                "description": "The user friendly description of the price adjustment",
+                "example": "15% off of drinks, 10% off of food"
+              },
+              "type": {
+                "description": "The type of the price adjustment",
+                "example": "DISCOUNT",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentType",
+                "type": "string",
+                "enum": [
+                  "DISCOUNT",
+                  "FEE"
+                ]
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "flag for status of the price adjustment",
+                "example": true
+              },
+              "appliedBeforeTax": {
+                "type": "boolean",
+                "description": "flag for if the price adjustment should be applied pre- or post- tax",
+                "example": true
+              },
+              "code": {
+                "type": "string",
+                "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+                "example": "holidays2023"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                },
+                "description": "external ids for this price adjustment"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "amountType": {
+                "type": "string",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "AmountType",
+                "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+                "enum": [
+                  "AMOUNT",
+                  "PERCENTAGE"
+                ]
+              },
+              "amount": {
+                "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+                "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "title": "Simple Money",
+                "properties": {
+                  "currencyCode": {
+                    "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "string",
+                    "title": "Currency Code",
+                    "description": "A three-character ISO-4217 currency code.",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "value": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                  }
+                },
+                "required": [
+                  "currencyCode",
+                  "value"
+                ]
+              },
+              "ratePercentage": {
+                "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+                "$id": "https://godaddy.com/schemas/common/percentage.json",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment:read"
+      ]
+    },
+    {
+      "operationId": "updatePriceAdjustment",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Update a price adjustment",
+      "description": "Update a price adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "PriceAdjustment",
+          "type": "object",
+          "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+          "properties": {
+            "storeId": {
+              "type": "string",
+              "description": "The storeId that this price adjustment belongs to",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "id": {
+              "type": "string",
+              "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "createdAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was created",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "updatedAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was last updated",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "name": {
+              "type": "string",
+              "description": "The user friendly name of the price adjustment",
+              "example": "happy hour discount"
+            },
+            "description": {
+              "type": "string",
+              "description": "The user friendly description of the price adjustment",
+              "example": "15% off of drinks, 10% off of food"
+            },
+            "type": {
+              "description": "The type of the price adjustment",
+              "example": "DISCOUNT",
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustmentType",
+              "type": "string",
+              "enum": [
+                "DISCOUNT",
+                "FEE"
+              ]
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "flag for status of the price adjustment",
+              "example": true
+            },
+            "appliedBeforeTax": {
+              "type": "boolean",
+              "description": "flag for if the price adjustment should be applied pre- or post- tax",
+              "example": true
+            },
+            "code": {
+              "type": "string",
+              "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+              "example": "holidays2023"
+            },
+            "externalIds": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ExternalId",
+                "type": "object",
+                "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "the type of the external id",
+                    "example": "AvalaraId"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "the value of the external id",
+                    "example": "123456789"
+                  }
+                }
+              },
+              "description": "external ids for this price adjustment"
+            },
+            "metadata": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Metafield",
+                "type": "object",
+                "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                "required": [
+                  "key",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The unique identifier for the metafield in its namespace",
+                    "example": "shippingPolicy"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "The type of data that the metafield stores in the `value` field",
+                    "enum": [
+                      "JSON"
+                    ],
+                    "default": "JSON"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                    "example": "{ \"signatureRequired\" : \"true\" }",
+                    "maxLength": 1024
+                  }
+                }
+              }
+            },
+            "amountType": {
+              "type": "string",
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "AmountType",
+              "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+              "enum": [
+                "AMOUNT",
+                "PERCENTAGE"
+              ]
+            },
+            "amount": {
+              "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+              "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+              "$schema": "http://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "title": "Simple Money",
+              "properties": {
+                "currencyCode": {
+                  "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "title": "Currency Code",
+                  "description": "A three-character ISO-4217 currency code.",
+                  "minLength": 3,
+                  "maxLength": 3
+                },
+                "value": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                }
+              },
+              "required": [
+                "currencyCode",
+                "value"
+              ]
+            },
+            "ratePercentage": {
+              "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+              "$id": "https://godaddy.com/schemas/common/percentage.json",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustment",
+            "type": "object",
+            "description": "Price Adjustment Entity; contains all the information about a price adjustment",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "name": {
+                "type": "string",
+                "description": "The user friendly name of the price adjustment",
+                "example": "happy hour discount"
+              },
+              "description": {
+                "type": "string",
+                "description": "The user friendly description of the price adjustment",
+                "example": "15% off of drinks, 10% off of food"
+              },
+              "type": {
+                "description": "The type of the price adjustment",
+                "example": "DISCOUNT",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentType",
+                "type": "string",
+                "enum": [
+                  "DISCOUNT",
+                  "FEE"
+                ]
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "flag for status of the price adjustment",
+                "example": true
+              },
+              "appliedBeforeTax": {
+                "type": "boolean",
+                "description": "flag for if the price adjustment should be applied pre- or post- tax",
+                "example": true
+              },
+              "code": {
+                "type": "string",
+                "description": "Fee or discount code. Must be a unique code per store \n- two different stores are allowed to have the same code\n- the same store is not allowed to have two of the same code\n",
+                "example": "holidays2023"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                },
+                "description": "external ids for this price adjustment"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "amountType": {
+                "type": "string",
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/amount-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "AmountType",
+                "description": "Possible ways to calculate the price adjustment amount; currently either a `PERCENTAGE` or `AMOUNT` is supported.\n- If the type is `AMOUNT`, the property `amount` in the request body is required.\n- If the type is `PERCENTAGE`, the property `ratePercentage` in the request body is required.\n",
+                "enum": [
+                  "AMOUNT",
+                  "PERCENTAGE"
+                ]
+              },
+              "amount": {
+                "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present",
+                "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "title": "Simple Money",
+                "properties": {
+                  "currencyCode": {
+                    "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "string",
+                    "title": "Currency Code",
+                    "description": "A three-character ISO-4217 currency code.",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "value": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217)."
+                  }
+                },
+                "required": [
+                  "currencyCode",
+                  "value"
+                ]
+              },
+              "ratePercentage": {
+                "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present",
+                "$id": "https://godaddy.com/schemas/common/percentage.json",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment:write"
+      ]
+    },
+    {
+      "operationId": "deletePriceAdjustment",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/price-adjustments/{adjustmentId}",
+      "summary": "Delete a price adjustment",
+      "description": "Delete a price adjustment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "adjustmentId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Successful response"
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment:delete"
+      ]
+    },
+    {
+      "operationId": "findAllPriceAdjustmentAssociations",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations",
+      "summary": "Get all price adjustment associations",
+      "description": "Get all price adjustment associations",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustmentAssociation",
+              "type": "object",
+              "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+              "properties": {
+                "storeId": {
+                  "type": "string",
+                  "description": "The storeId that this price adjustment belongs to",
+                  "readOnly": true,
+                  "format": "uuid"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+                  "readOnly": true,
+                  "format": "uuid"
+                },
+                "createdAt": {
+                  "readOnly": true,
+                  "description": "The datetime when the entity was created",
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "minLength": 20,
+                  "maxLength": 64,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                },
+                "updatedAt": {
+                  "readOnly": true,
+                  "description": "The datetime when the entity was last updated",
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "minLength": 20,
+                  "maxLength": 64,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                },
+                "priceAdjustmentId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "the id of the price adjustment that this price adjustment association refers to"
+                },
+                "externalIds": {
+                  "type": "array",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "ExternalId",
+                    "type": "object",
+                    "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "the type of the external id",
+                        "example": "AvalaraId"
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "the value of the external id",
+                        "example": "123456789"
+                      }
+                    }
+                  }
+                },
+                "type": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "PriceAdjustmentAssociationType",
+                  "type": "string",
+                  "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+                  "enum": [
+                    "ADJUSTMENT"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "description": "the name for this price adjustment association"
+                },
+                "metadata": {
+                  "type": "array",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "Metafield",
+                    "type": "object",
+                    "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                    "required": [
+                      "key",
+                      "type",
+                      "value"
+                    ],
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "description": "The unique identifier for the metafield in its namespace",
+                        "example": "shippingPolicy"
+                      },
+                      "type": {
+                        "type": "string",
+                        "description": "The type of data that the metafield stores in the `value` field",
+                        "enum": [
+                          "JSON"
+                        ],
+                        "default": "JSON"
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                        "example": "{ \"signatureRequired\" : \"true\" }",
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                },
+                "items": {
+                  "type": "array",
+                  "description": "items this price adjustment association apply to",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment-association:read"
+      ]
+    },
+    {
+      "operationId": "createPriceAdjustmentAssociation",
+      "method": "POST",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations",
+      "summary": "Create a price adjustment association",
+      "description": "Create a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "PriceAdjustmentAssociation",
+          "type": "object",
+          "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+          "properties": {
+            "storeId": {
+              "type": "string",
+              "description": "The storeId that this price adjustment belongs to",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "id": {
+              "type": "string",
+              "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "createdAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was created",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "updatedAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was last updated",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "priceAdjustmentId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "the id of the price adjustment that this price adjustment association refers to"
+            },
+            "externalIds": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ExternalId",
+                "type": "object",
+                "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "the type of the external id",
+                    "example": "AvalaraId"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "the value of the external id",
+                    "example": "123456789"
+                  }
+                }
+              }
+            },
+            "type": {
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustmentAssociationType",
+              "type": "string",
+              "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+              "enum": [
+                "ADJUSTMENT"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "description": "the name for this price adjustment association"
+            },
+            "metadata": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Metafield",
+                "type": "object",
+                "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                "required": [
+                  "key",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The unique identifier for the metafield in its namespace",
+                    "example": "shippingPolicy"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "The type of data that the metafield stores in the `value` field",
+                    "enum": [
+                      "JSON"
+                    ],
+                    "default": "JSON"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                    "example": "{ \"signatureRequired\" : \"true\" }",
+                    "maxLength": 1024
+                  }
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "description": "items this price adjustment association apply to",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "id"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustmentAssociation",
+            "type": "object",
+            "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "priceAdjustmentId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "the id of the price adjustment that this price adjustment association refers to"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                }
+              },
+              "type": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentAssociationType",
+                "type": "string",
+                "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+                "enum": [
+                  "ADJUSTMENT"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "the name for this price adjustment association"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "description": "items this price adjustment association apply to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment-association:create"
+      ]
+    },
+    {
+      "operationId": "findPriceAdjustmentAssociation",
+      "method": "GET",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Get a price adjustment association",
+      "description": "Get a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustmentAssociation",
+            "type": "object",
+            "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "priceAdjustmentId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "the id of the price adjustment that this price adjustment association refers to"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                }
+              },
+              "type": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentAssociationType",
+                "type": "string",
+                "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+                "enum": [
+                  "ADJUSTMENT"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "the name for this price adjustment association"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "description": "items this price adjustment association apply to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment-association:read"
+      ]
+    },
+    {
+      "operationId": "updatePriceAdjustmentAssociation",
+      "method": "PATCH",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Update a price adjustment association",
+      "description": "Update a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "PriceAdjustmentAssociation",
+          "type": "object",
+          "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+          "properties": {
+            "storeId": {
+              "type": "string",
+              "description": "The storeId that this price adjustment belongs to",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "id": {
+              "type": "string",
+              "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+              "readOnly": true,
+              "format": "uuid"
+            },
+            "createdAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was created",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "updatedAt": {
+              "readOnly": true,
+              "description": "The datetime when the entity was last updated",
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 64,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "priceAdjustmentId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "the id of the price adjustment that this price adjustment association refers to"
+            },
+            "externalIds": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ExternalId",
+                "type": "object",
+                "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "the type of the external id",
+                    "example": "AvalaraId"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "the value of the external id",
+                    "example": "123456789"
+                  }
+                }
+              }
+            },
+            "type": {
+              "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "PriceAdjustmentAssociationType",
+              "type": "string",
+              "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+              "enum": [
+                "ADJUSTMENT"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "description": "the name for this price adjustment association"
+            },
+            "metadata": {
+              "type": "array",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Metafield",
+                "type": "object",
+                "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                "required": [
+                  "key",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The unique identifier for the metafield in its namespace",
+                    "example": "shippingPolicy"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "The type of data that the metafield stores in the `value` field",
+                    "enum": [
+                      "JSON"
+                    ],
+                    "default": "JSON"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                    "example": "{ \"signatureRequired\" : \"true\" }",
+                    "maxLength": 1024
+                  }
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "description": "items this price adjustment association apply to",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "id"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successful response",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/price-adjustments/price-adjustment-association.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "PriceAdjustmentAssociation",
+            "type": "object",
+            "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
+            "properties": {
+              "storeId": {
+                "type": "string",
+                "description": "The storeId that this price adjustment belongs to",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "id": {
+                "type": "string",
+                "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+                "readOnly": true,
+                "format": "uuid"
+              },
+              "createdAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was created",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "readOnly": true,
+                "description": "The datetime when the entity was last updated",
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "priceAdjustmentId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "the id of the price adjustment that this price adjustment association refers to"
+              },
+              "externalIds": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/price-adjustments/external-id.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "ExternalId",
+                  "type": "object",
+                  "description": "ExternalId is a unique identifier for a resource that is not managed by the PriceAdjustments service.\nFor example, an AvalaraId is an external id that is used to identify a tax code in Avalara.\n\nNOTE: this field has no current use in the PriceAdjustments service, but is included for use in future integrations.\n",
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "the type of the external id",
+                      "example": "AvalaraId"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "the value of the external id",
+                      "example": "123456789"
+                    }
+                  }
+                }
+              },
+              "type": {
+                "$id": "https://godaddy.com/schemas/commerce/price-adjustments/enums/price-adjustment-association-type.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "PriceAdjustmentAssociationType",
+                "type": "string",
+                "description": "Possible types of price adjustment association; Currently only `ADJUSTMENT` is supported.",
+                "enum": [
+                  "ADJUSTMENT"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "the name for this price adjustment association"
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/orders/metafield.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Metafield",
+                  "type": "object",
+                  "description": "Metafield to enable attachng additional contextual meta-information to a resource.",
+                  "required": [
+                    "key",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "The unique identifier for the metafield in its namespace",
+                      "example": "shippingPolicy"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of data that the metafield stores in the `value` field",
+                      "enum": [
+                        "JSON"
+                      ],
+                      "default": "JSON"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The data to store in the metafield. The data is always stored as a string, regardless of the metafield's type",
+                      "example": "{ \"signatureRequired\" : \"true\" }",
+                      "maxLength": 1024
+                    }
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "description": "items this price adjustment association apply to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment-association:write"
+      ]
+    },
+    {
+      "operationId": "deletePriceAdjustmentAssociation",
+      "method": "DELETE",
+      "path": "/commerce/stores/{storeId}/price-adjustment-associations/{associationId}",
+      "summary": "Delete a price adjustment association",
+      "description": "Delete a price adjustment association",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "type": "string",
+            "description": "The storeId that this price adjustment belongs to",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "associationId",
+          "in": "path",
+          "required": true,
+          "description": "Price Adjustment Association ID",
+          "schema": {
+            "type": "string",
+            "description": "A unique identifier for the price adjustment association. Auto-generated on creation",
+            "readOnly": true,
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "Successful response"
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.price-adjustment-association:delete"
+      ]
+    }
+  ]
+}

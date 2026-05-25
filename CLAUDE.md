@@ -15,9 +15,9 @@ This is a command-line application that does not run on a network port.
 - **Format**: `pnpm run format`
 - **Lint**: `pnpm run lint`
 - **Type Check**: `pnpm run check`
-- **Run CLI**: `node ./dist/index.mjs` or `./dist/index.mjs` (after building)
-- **Development Mode**: `pnpm tsx --watch index.ts`
-- **Quick CLI Command**: `pnpm tsx src/index.tsx application <command>`
+- **Run CLI**: `node ./dist/cli.js` or `./dist/cli.js` (after building)
+- **Development Mode**: `pnpm tsx --watch src/index.ts`
+- **Quick CLI Command**: `pnpm tsx src/index.ts application <command>`
 
 ## Architecture
 
@@ -30,7 +30,7 @@ GoDaddy CLI is a terminal-based application built using:
 
 ### Core Architecture Components:
 
-1. **Entry Point** (`src/index.tsx`): Defines the CLI command structure using Commander.js and renders commands with Ink
+1. **Entry Point** (`src/index.ts`): Defines the CLI command structure using Commander.js and renders commands with Ink
 
 2. **Command Structure**:
    - Root commands (application, webhook, auth, env)

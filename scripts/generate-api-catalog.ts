@@ -26,19 +26,24 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { lookup } from "node:dns/promises";
 import * as fs from "node:fs";
-import { isIP } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import $RefParser from "@apidevtools/json-schema-ref-parser";
+import type { ParserOptions } from "@apidevtools/json-schema-ref-parser";
 import {
   Kind,
   type TypeNode,
   parse as parseGraphql,
   print as printGraphql,
 } from "graphql";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYamlStrict } from "yaml";
+
+/** Parse YAML with lenient settings (duplicate keys: last wins). */
+function parseYaml(src: string): unknown {
+  return parseYamlStrict(src, { uniqueKeys: false });
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -196,6 +201,7 @@ interface SpecSource {
   repoName: string;
   specFile: string;
   specVersion: string;
+  graphqlOnly?: boolean;
 }
 
 interface DiscoveredSpecSources {
@@ -217,321 +223,185 @@ const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
 const COMMERCE_SPEC_REPO_PATTERN = /^commerce\.[a-z0-9-]+-specification$/;
 const BOOTSTRAP_COMMERCE_REPOS = [
+  "commerce.bulk-operations-specification",
+  "commerce.businesses-specification",
   "commerce.catalog-products-specification",
-  "commerce.orders-specification",
-  "commerce.stores-specification",
+  "commerce.channels-specification",
+  "commerce.chargebacks-specification",
+  "commerce.customer-profiles-specification",
   "commerce.fulfillments-specification",
   "commerce.metafields-specification",
-  "commerce.transactions-specification",
-  "commerce.businesses-specification",
-  "commerce.bulk-operations-specification",
-  "commerce.channels-specification",
   "commerce.onboarding-specification",
+  "commerce.orders-specification",
+  "commerce.payment-requests-specification",
+  "commerce.payments-specification",
+  "commerce.price-adjustments-specification",
+  "commerce.recommendations-specification",
+  "commerce.shipping-specification",
+  "commerce.stores-specification",
+  "commerce.subscriptions-specification",
+  "commerce.taxes-specification",
+  "commerce.transactions-specification",
 ];
 const LEGACY_ALWAYS_INCLUDE_REPOS = ["location.addresses-specification"];
 
 // ---------------------------------------------------------------------------
-// External $ref resolution security controls
+// $ref resolution via json-schema-ref-parser
 // ---------------------------------------------------------------------------
 
-const ALLOWED_REF_HOSTS = new Set(["schemas.api.godaddy.com"]);
-const MAX_REF_REDIRECTS = 5;
-const MAX_REF_BYTES = 1_000_000; // 1 MB
-const REF_FETCH_TIMEOUT_MS = 10_000;
+/**
+ * Path to the cloned common-types-specification repo, set during discovery.
+ * Used by the custom resolver to map https://schemas.api.godaddy.com URLs
+ * to local files.
+ */
+let commonTypesLocalDir: string | null = null;
 
-// ---------------------------------------------------------------------------
-// External $ref resolution
-// ---------------------------------------------------------------------------
+/**
+ * Dereference an OpenAPI spec file, resolving all $ref pointers in-place.
+ * Uses json-schema-ref-parser with a custom resolver that maps
+ * https://schemas.api.godaddy.com/common-types/... to local files.
+ */
+/**
+ * Given a file path containing "common-types", try to find the actual file
+ * in the local common-types clone. Handles multiple path patterns used across
+ * repos:
+ *   - ./common-types/v1/schemas/yaml/foo.yaml  (full nested path)
+ *   - ./common-types/foo.json                   (flat shortcut)
+ */
+function resolveCommonTypesFile(filePath: string): string | null {
+  if (!commonTypesLocalDir) return null;
 
-const refCache = new Map<string, Record<string, unknown>>();
-const hostValidationCache = new Set<string>();
+  const basename = path.basename(filePath);
+  const ext = path.extname(basename).toLowerCase();
 
-function isPrivateOrReservedIp(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) {
-    const parts = address.split(".").map((part) => Number.parseInt(part, 10));
-    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part)))
-      return true;
-    const [a, b] = parts;
-
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true; // RFC 6598
-    if (a === 169 && b === 254) return true; // link-local
-    if (a === 172 && b >= 16 && b <= 31) return true; // private
-    if (a === 192 && b === 0) return true;
-    if (a === 192 && b === 168) return true; // private
-    if (a === 192 && b === 2) return true; // TEST-NET-1
-    if (a === 198 && (b === 18 || b === 19)) return true; // benchmark
-    if (a === 198 && b === 51) return true; // TEST-NET-2
-    if (a === 203 && b === 0) return true; // TEST-NET-3
-    if (a >= 224) return true; // multicast + reserved
-    return false;
+  // Try the path as-is relative to common-types root
+  // e.g. common-types/v1/schemas/yaml/foo.yaml
+  const idx = filePath.indexOf("common-types");
+  if (idx >= 0) {
+    const relPath = filePath.slice(idx + "common-types/".length);
+    const direct = path.join(commonTypesLocalDir, relPath);
+    if (fs.existsSync(direct)) return direct;
   }
 
-  if (version === 6) {
-    const lower = address.toLowerCase();
-    if (lower === "::" || lower === "::1") return true;
-    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA
-    if (
-      lower.startsWith("fe8") ||
-      lower.startsWith("fe9") ||
-      lower.startsWith("fea") ||
-      lower.startsWith("feb")
-    ) {
-      return true; // link-local
-    }
-    if (lower.startsWith("2001:db8")) return true; // documentation range
-    if (lower.startsWith("::ffff:")) {
-      const mapped = lower.slice("::ffff:".length);
-      if (isIP(mapped) === 4) {
-        return isPrivateOrReservedIp(mapped);
-      }
-    }
-    return false;
-  }
-
-  return true;
-}
-
-function validateRefUrl(urlString: string): URL {
-  const parsed = new URL(urlString);
-
-  if (parsed.protocol !== "https:") {
-    throw new Error(
-      `Blocked external $ref '${urlString}': only https URLs are allowed`,
-    );
-  }
-
-  if (parsed.username || parsed.password) {
-    throw new Error(
-      `Blocked external $ref '${urlString}': credentialed URLs are not allowed`,
-    );
-  }
-
-  if (parsed.port && parsed.port !== "443") {
-    throw new Error(
-      `Blocked external $ref '${urlString}': non-default HTTPS ports are not allowed`,
-    );
-  }
-
-  if (!ALLOWED_REF_HOSTS.has(parsed.hostname)) {
-    throw new Error(
-      `Blocked external $ref '${urlString}': host '${parsed.hostname}' is not allowlisted`,
-    );
-  }
-
-  return parsed;
-}
-
-async function validateResolvedHost(url: URL): Promise<void> {
-  const host = url.hostname.toLowerCase();
-  if (hostValidationCache.has(host)) return;
-
-  const addresses = await lookup(host, { all: true, verbatim: true });
-  if (addresses.length === 0) {
-    throw new Error(
-      `Blocked external $ref '${url}': DNS lookup returned no IPs`,
-    );
-  }
-
-  for (const record of addresses) {
-    if (isPrivateOrReservedIp(record.address)) {
-      throw new Error(
-        `Blocked external $ref '${url}': host resolves to private/reserved IP ${record.address}`,
-      );
-    }
-  }
-
-  hostValidationCache.add(host);
-}
-
-async function readResponseTextWithLimit(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  if (!response.body) {
-    const text = await response.text();
-    const size = Buffer.byteLength(text, "utf8");
-    if (size > maxBytes) {
-      throw new Error(
-        `External $ref response exceeded ${maxBytes} bytes (${size} bytes)`,
-      );
-    }
-    return text;
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(
-        `External $ref response exceeded ${maxBytes} bytes while streaming`,
-      );
-    }
-
-    chunks.push(value);
-  }
-
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return new TextDecoder().decode(merged);
-}
-
-async function fetchWithValidation(
-  initialUrl: string,
-): Promise<{ response: Response; finalUrl: string }> {
-  let currentUrl = initialUrl;
-
-  for (let redirects = 0; redirects <= MAX_REF_REDIRECTS; redirects++) {
-    const parsed = validateRefUrl(currentUrl);
-    await validateResolvedHost(parsed);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REF_FETCH_TIMEOUT_MS);
-    let response: Response;
-
-    try {
-      response = await fetch(currentUrl, {
-        redirect: "manual",
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(
-          `Timed out fetching external $ref '${currentUrl}' after ${REF_FETCH_TIMEOUT_MS}ms`,
-        );
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) {
-        throw new Error(
-          `External $ref redirect from '${currentUrl}' missing Location header`,
-        );
-      }
-      if (redirects === MAX_REF_REDIRECTS) {
-        throw new Error(
-          `Too many redirects while fetching external $ref '${initialUrl}'`,
-        );
-      }
-      currentUrl = new URL(location, currentUrl).toString();
-      continue;
-    }
-
-    const finalUrl = response.url || currentUrl;
-    const finalParsed = validateRefUrl(finalUrl);
-    await validateResolvedHost(finalParsed);
-
-    return { response, finalUrl };
-  }
-
-  throw new Error(
-    `Unexpected redirect handling failure for external $ref '${initialUrl}'`,
+  // Flat ref pattern: ./common-types/foo.json → search in v1/schemas/{json,yaml}/
+  const subdir = ext === ".json" ? "json" : "yaml";
+  const nested = path.join(
+    commonTypesLocalDir,
+    "v1",
+    "schemas",
+    subdir,
+    basename,
   );
+  if (fs.existsSync(nested)) return nested;
+
+  // Try opposite format
+  const altSubdir = subdir === "json" ? "yaml" : "json";
+  const altExt = altSubdir === "json" ? ".json" : ".yaml";
+  const altBasename = basename.replace(ext, altExt);
+  const alt = path.join(
+    commonTypesLocalDir,
+    "v1",
+    "schemas",
+    altSubdir,
+    altBasename,
+  );
+  if (fs.existsSync(alt)) return alt;
+
+  return null;
 }
 
-async function fetchExternalRef(url: string): Promise<Record<string, unknown>> {
-  const cached = refCache.get(url);
-  if (cached) return cached;
+async function dereferenceSpec(specFilePath: string): Promise<OpenApiSpec> {
+  const options: ParserOptions = {
+    continueOnError: true,
+    dereference: {
+      circular: "ignore",
+    },
+    resolve: {
+      // Disable built-in HTTP resolver to prevent outbound fetches.
+      // All refs must resolve locally or via our custom resolvers below.
+      http: false as unknown as ParserOptions["resolve"],
+      // Custom resolver: map schemas.api.godaddy.com URLs to local files
+      godaddySchemas: {
+        order: 1,
+        canRead: (file: { url: string }) => {
+          try {
+            const hostname = new URL(file.url).hostname;
+            return hostname === "schemas.api.godaddy.com";
+          } catch {
+            return false;
+          }
+        },
+        read: (file: { url: string }) => {
+          if (!commonTypesLocalDir) {
+            throw new Error(
+              `Cannot resolve ${file.url}: common-types not cloned`,
+            );
+          }
+          const urlPath = new URL(file.url).pathname;
+          const localPath = path.join(
+            commonTypesLocalDir,
+            urlPath.replace(/^\/common-types\//, "/"),
+          );
+          if (!fs.existsSync(localPath)) {
+            throw new Error(
+              `Cannot resolve ${file.url}: not found at ${localPath}`,
+            );
+          }
+          return fs.readFileSync(localPath, "utf-8");
+        },
+      },
+      // Custom file resolver: intercept missing common-types paths
+      commonTypesFile: {
+        order: 200, // run after built-in file resolver (order 100)
+        canRead: (file: { url: string }) => {
+          return file.url.includes("common-types");
+        },
+        read: (file: { url: string }) => {
+          // Convert file:// URL to path
+          let filePath: string;
+          try {
+            filePath = fileURLToPath(file.url);
+          } catch {
+            filePath = file.url.replace(/^file:\/\//, "");
+          }
+          // If the file exists on disk, read it normally
+          if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, "utf-8");
+          }
+          // Otherwise try to resolve via common-types clone
+          const resolved = resolveCommonTypesFile(filePath);
+          if (resolved) {
+            return fs.readFileSync(resolved, "utf-8");
+          }
+          throw new Error(
+            `Cannot resolve common-types ref: ${path.basename(filePath)}`,
+          );
+        },
+      },
+    },
+  };
 
-  console.log(`    Fetching external $ref: ${url}`);
-  const { response, finalUrl } = await fetchWithValidation(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch external $ref '${finalUrl}': ${response.status}`,
+  // Use an instance so we can access the partially-resolved schema
+  // even when continueOnError throws after accumulating errors.
+  const parser = new $RefParser();
+  try {
+    await parser.dereference(specFilePath, options);
+  } catch (error) {
+    // continueOnError accumulates errors then throws; the schema is still
+    // partially resolved on the instance.
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `    WARNING: $ref resolution had errors: ${message.slice(0, 200)}`,
     );
   }
 
-  const contentLength = response.headers.get("content-length");
-  if (contentLength) {
-    const size = Number.parseInt(contentLength, 10);
-    if (Number.isFinite(size) && size > MAX_REF_BYTES) {
-      throw new Error(
-        `External $ref '${finalUrl}' is too large (${size} bytes > ${MAX_REF_BYTES})`,
-      );
-    }
+  if (parser.schema) {
+    return parser.schema as unknown as OpenApiSpec;
   }
 
-  const text = await readResponseTextWithLimit(response, MAX_REF_BYTES);
-  let parsed: Record<string, unknown>;
-  const finalPath = new URL(finalUrl).pathname.toLowerCase();
-  try {
-    if (finalPath.endsWith(".yaml") || finalPath.endsWith(".yml")) {
-      parsed = parseYaml(text) as Record<string, unknown>;
-    } else {
-      parsed = JSON.parse(text) as Record<string, unknown>;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse external $ref '${finalUrl}': ${message}`);
-  }
-
-  // Strip JSON Schema meta-fields that add noise for agents
-  const { $id, $schema, ...rest } = parsed;
-  const cleaned = rest as Record<string, unknown>;
-
-  refCache.set(finalUrl, cleaned);
-  refCache.set(url, cleaned);
-  return cleaned;
-}
-
-/**
- * Resolve a potentially relative $ref URL against a base URL.
- */
-function resolveRefUrl(ref: string, baseUrl?: string): string | null {
-  if (ref.startsWith("https://") || ref.startsWith("http://")) return ref;
-  if (ref.startsWith("#")) return null; // local JSON pointer — skip
-  if (!baseUrl) return null;
-  const base = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
-  return new URL(ref, base).toString();
-}
-
-/**
- * Walk an object tree and resolve any { $ref: "..." } nodes by
- * fetching the URL and inlining the result.
- */
-async function resolveRefs(obj: unknown, parentUrl?: string): Promise<unknown> {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj !== "object") return obj;
-
-  if (Array.isArray(obj)) {
-    return Promise.all(obj.map((item) => resolveRefs(item, parentUrl)));
-  }
-
-  const record = obj as Record<string, unknown>;
-
-  if (typeof record.$ref === "string") {
-    const resolvedUrl = resolveRefUrl(record.$ref, parentUrl);
-    if (resolvedUrl) {
-      const resolved = await fetchExternalRef(resolvedUrl);
-      const { $ref, ...siblings } = record;
-      const merged = { ...resolved, ...siblings };
-      return resolveRefs(merged, resolvedUrl);
-    }
-  }
-
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    result[key] = await resolveRefs(value, parentUrl);
-  }
-  return result;
+  // Total failure — fall back to raw parse
+  const raw = fs.readFileSync(specFilePath, "utf-8");
+  return parseOpenApiSpec(raw, specFilePath);
 }
 
 // ---------------------------------------------------------------------------
@@ -718,7 +588,7 @@ function compareVersionArrays(a: number[], b: number[]): number {
 
 function findLatestSpecFile(
   repoDir: string,
-): { version: string; specFile: string } | null {
+): { version: string; specFile: string; graphqlOnly?: boolean } | null {
   const versionCandidates = fs
     .readdirSync(repoDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -733,15 +603,28 @@ function findLatestSpecFile(
   for (let index = versionCandidates.length - 1; index >= 0; index -= 1) {
     const version = versionCandidates[index].name;
 
-    const candidates = [
+    // Prefer OpenAPI specs
+    const openApiCandidates = [
       path.join(repoDir, version, "schemas", "openapi.yaml"),
       path.join(repoDir, version, "schemas", "openapi.yml"),
       path.join(repoDir, version, "schemas", "openapi.json"),
     ];
 
-    for (const candidate of candidates) {
+    for (const candidate of openApiCandidates) {
       if (fs.existsSync(candidate)) {
         return { version, specFile: candidate };
+      }
+    }
+
+    // Fall back to standalone GraphQL schema
+    const graphqlCandidates = [
+      path.join(repoDir, version, "schemas", "graphql", "schema.graphql"),
+      path.join(repoDir, version, "schemas", "schema.graphql"),
+    ];
+
+    for (const candidate of graphqlCandidates) {
+      if (fs.existsSync(candidate)) {
+        return { version, specFile: candidate, graphqlOnly: true };
       }
     }
   }
@@ -855,6 +738,22 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
   const sources: SpecSource[] = [];
   const usedDomains = new Set<string>();
 
+  // Clone common-types-specification once; it is referenced as a submodule
+  // by most commerce spec repos at v*/schemas/common-types.
+  const commonTypesDir = path.join(cloneRoot, "__common-types");
+  try {
+    cloneRepository(
+      `https://github.com/${GITHUB_ORG}/common-types-specification.git`,
+      commonTypesDir,
+    );
+    commonTypesLocalDir = commonTypesDir;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `WARNING: failed to clone common-types-specification: ${message}`,
+    );
+  }
+
   for (const repo of selectedRepos) {
     const repoDir = path.join(cloneRoot, repo.name);
     const repoRef = repoRefOverrides.get(repo.name);
@@ -902,6 +801,7 @@ async function discoverSpecSources(): Promise<DiscoveredSpecSources> {
       repoName: repo.name,
       specFile: latestSpec.specFile,
       specVersion: latestSpec.version,
+      graphqlOnly: latestSpec.graphqlOnly,
     });
   }
 
@@ -1090,7 +990,37 @@ function loadGraphqlSchemaMetadata(
   }
 
   const schemaSource = fs.readFileSync(resolvedSchemaPath, "utf-8");
-  const operations = parseGraphqlOperations(schemaSource);
+
+  let operations: CatalogGraphqlOperation[];
+  try {
+    operations = parseGraphqlOperations(schemaSource);
+  } catch (parseError) {
+    // GraphQL schemas in the wild sometimes contain syntax issues
+    // (e.g. consecutive block-string descriptions without a field).
+    // Try a best-effort repair: strip orphaned doc-comment blocks.
+    const repaired = schemaSource.replace(
+      /"""[^"]*"""\s*\n\s*"""/g,
+      (match) => {
+        // Keep only the last doc-comment block
+        const lastIdx = match.lastIndexOf('"""', match.length - 4);
+        const secondLastIdx = match.lastIndexOf('"""', lastIdx - 1);
+        return match.slice(secondLastIdx);
+      },
+    );
+    try {
+      operations = parseGraphqlOperations(repaired);
+      console.error(
+        `WARNING: repaired malformed GraphQL schema at ${resolvedSchemaPath}`,
+      );
+    } catch {
+      console.error(
+        `WARNING: could not parse GraphQL schema at ${resolvedSchemaPath}: ${
+          parseError instanceof Error ? parseError.message : String(parseError)
+        }`,
+      );
+      operations = [];
+    }
+  }
 
   const metadata: CatalogGraphqlSchema = {
     schemaRef,
@@ -1134,6 +1064,7 @@ function resolveParameter(
   spec: OpenApiSpec,
   parameter: OpenApiParameter | OpenApiReference,
 ): OpenApiParameter | null {
+  if (!parameter || typeof parameter !== "object") return null;
   if ("$ref" in parameter) {
     const resolved = resolveLocalRef(spec, parameter.$ref);
     if (!resolved) return null;
@@ -1205,6 +1136,7 @@ function processOperation(
   const responses: CatalogEndpoint["responses"] = {};
   if (operation.responses) {
     for (const [status, resp] of Object.entries(operation.responses)) {
+      if (!resp || typeof resp !== "object") continue;
       if ("$ref" in resp) {
         responses[status] = {
           description: `See ${(resp as { $ref: string }).$ref}`,
@@ -1222,7 +1154,10 @@ function processOperation(
 
   const operationId =
     operation.operationId ||
-    `${httpMethod}${pathStr.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    `${httpMethod}_${pathStr
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")}`;
 
   let graphql: CatalogGraphqlSchema | undefined;
   const graphqlSchemaRef = operation["x-godaddy-graphql-schema"];
@@ -1303,10 +1238,33 @@ function repairMissingJsonCommas(raw: string): string {
   return lines.join("\n");
 }
 
+/**
+ * Repair YAML lines where a colon is missing the required trailing space,
+ * e.g. `operationId:disableWebScannerAlert` → `operationId: disableWebScannerAlert`.
+ */
+function repairMissingYamlColonSpace(raw: string): string {
+  // Only match horizontal whitespace (spaces/tabs) so we don't span lines
+  return raw.replace(
+    /^([ \t]+\w+):([^\s#])/gm,
+    (_, key: string, val: string) => `${key}: ${val}`,
+  );
+}
+
 function parseOpenApiSpec(raw: string, specFile: string): OpenApiSpec {
   try {
     return parseYaml(raw) as OpenApiSpec;
   } catch (error) {
+    // Try YAML colon-space repair first (works for both .yaml and .json)
+    const yamlRepaired = repairMissingYamlColonSpace(raw);
+    if (yamlRepaired !== raw) {
+      try {
+        console.error(`WARNING: repaired missing colon-space in ${specFile}`);
+        return parseYaml(yamlRepaired) as OpenApiSpec;
+      } catch {
+        // fall through to JSON repair
+      }
+    }
+
     const lowerPath = specFile.toLowerCase();
     if (!lowerPath.endsWith(".json")) {
       throw error;
@@ -1414,33 +1372,66 @@ async function main() {
       }
 
       try {
-        const raw = fs.readFileSync(source.specFile, "utf-8");
-        const spec = parseOpenApiSpec(raw, source.specFile);
-        const catalog = processSpec(spec, source.domain, source.specFile);
+        let catalog: CatalogDomain;
 
-        console.log(
-          `  Resolving external $refs for ${source.domain} (${source.repoName}/${source.specVersion})...`,
-        );
-        const resolved = (await resolveRefs(catalog)) as CatalogDomain;
+        if (source.graphqlOnly) {
+          // GraphQL-only source — synthesize a catalog from the schema
+          const gqlMeta = loadGraphqlSchemaMetadata(
+            source.specFile,
+            source.specFile,
+          );
+          // Replace the absolute temp path with a clean relative ref
+          gqlMeta.schemaRef = "./schema.graphql";
+          catalog = {
+            name: source.domain,
+            title: `${source.domain} GraphQL API`,
+            description: `GraphQL API with ${gqlMeta.operationCount} operations`,
+            version: source.specVersion.replace(/^v/, ""),
+            baseUrl: "",
+            endpoints: [
+              {
+                operationId: "graphql",
+                method: "POST",
+                path: "/graphql",
+                summary: "GraphQL API",
+                description: `GraphQL endpoint with ${gqlMeta.operationCount} operations`,
+                responses: {
+                  "200": { description: "GraphQL response" },
+                },
+                scopes: [],
+                graphql: gqlMeta,
+              },
+            ],
+          };
+          console.log(
+            `  ${source.domain}: GraphQL schema with ${gqlMeta.operationCount} operations (${source.repoName}/${source.specVersion})`,
+          );
+        } else {
+          console.log(
+            `  Dereferencing ${source.domain} (${source.repoName}/${source.specVersion})...`,
+          );
+          const spec = await dereferenceSpec(source.specFile);
+          catalog = processSpec(spec, source.domain, source.specFile);
+        }
 
         const filename = `${source.domain}.json`;
         activeDomainFiles.add(filename);
 
         fs.writeFileSync(
           path.join(OUTPUT_DIR, filename),
-          JSON.stringify(resolved, null, "\t"),
+          JSON.stringify(catalog, null, 2),
           "utf-8",
         );
 
         manifest.domains[source.domain] = {
           file: filename,
-          title: resolved.title,
-          endpointCount: resolved.endpoints.length,
+          title: catalog.title,
+          endpointCount: catalog.endpoints.length,
         };
 
-        totalEndpoints += resolved.endpoints.length;
+        totalEndpoints += catalog.endpoints.length;
         console.log(
-          `  ${source.domain}: ${resolved.endpoints.length} endpoints from ${spec.info.title} v${spec.info.version}`,
+          `  ${source.domain}: ${catalog.endpoints.length} endpoints from ${catalog.title} v${catalog.version}`,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1459,7 +1450,7 @@ async function main() {
 
   fs.writeFileSync(
     path.join(OUTPUT_DIR, "manifest.json"),
-    JSON.stringify(manifest, null, "\t"),
+    JSON.stringify(manifest, null, 2),
     "utf-8",
   );
 

@@ -1,0 +1,1675 @@
+{
+  "name": "recommendations",
+  "title": "GoDaddy Recommendation API",
+  "description": "",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "get_recommendations",
+      "method": "GET",
+      "path": "/recommendations",
+      "summary": "Return product recommendations",
+      "description": "Returns a recommendation with customer, business and/or product insights.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "query",
+          "required": true,
+          "description": "The Customer ID",
+          "schema": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f7f3b31-3140-4479-a1ad-117afc1514a7"
+          }
+        },
+        {
+          "name": "format",
+          "in": "query",
+          "required": false,
+          "description": "Format of the response",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "rad"
+            ]
+          }
+        },
+        {
+          "name": "domain",
+          "in": "query",
+          "required": false,
+          "description": "Customer's domain",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Customer or Domain insights raw format",
+                "properties": {
+                  "insights": {
+                    "oneOf": [
+                      {
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "domain": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "allOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "powerseller": {
+                                    "type": "boolean"
+                                  },
+                                  "cohort": {
+                                    "type": "string"
+                                  },
+                                  "confidence": {
+                                    "type": "integer"
+                                  },
+                                  "line-of-business": {
+                                    "type": "string"
+                                  },
+                                  "sales-channel": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "sales-volume": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "powerseller": {
+                                "type": "boolean"
+                              },
+                              "cohort": {
+                                "type": "string"
+                              },
+                              "confidence": {
+                                "type": "integer"
+                              },
+                              "line-of-business": {
+                                "type": "string"
+                              },
+                              "sales-channel": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "sales-volume": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "RAD Entity API Format necessary to integrate with RAD Platform",
+                "properties": {
+                  "results": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "data": {
+                        "type": "object",
+                        "description": "Customer or Domain insights raw format",
+                        "properties": {
+                          "insights": {
+                            "oneOf": [
+                              {
+                                "allOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "domain": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "allOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "powerseller": {
+                                            "type": "boolean"
+                                          },
+                                          "cohort": {
+                                            "type": "string"
+                                          },
+                                          "confidence": {
+                                            "type": "integer"
+                                          },
+                                          "line-of-business": {
+                                            "type": "string"
+                                          },
+                                          "sales-channel": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "sales-volume": {
+                                            "type": "number"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "allOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "powerseller": {
+                                        "type": "boolean"
+                                      },
+                                      "cohort": {
+                                        "type": "string"
+                                      },
+                                      "confidence": {
+                                        "type": "integer"
+                                      },
+                                      "line-of-business": {
+                                        "type": "string"
+                                      },
+                                      "sales-channel": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "sales-volume": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "400": {
+          "description": "Bad Request Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "401": {
+          "description": "Unauthorized Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "403": {
+          "description": "Authentication Client Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "409": {
+          "description": "A request conflict with the current state of the target resource",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "422": {
+          "description": "The server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions.",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": []
+    }
+  ]
+}

@@ -82,7 +82,7 @@ describe("API Core Functions", () => {
           headers: expect.objectContaining({
             Authorization: "Bearer test-token-123",
             "x-request-id": expect.any(String),
-            "user-agent": "godaddy-cli",
+            "user-agent": expect.stringMatching(/^godaddy-cli\/\d+\.\d+\.\d+$/),
           }),
         }),
       );

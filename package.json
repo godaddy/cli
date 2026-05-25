@@ -1,6 +1,6 @@
 {
   "name": "@godaddy/cli",
-  "version": "0.3.0",
+  "version": "0.5.2",
   "description": "GoDaddy CLI for managing applications and webhooks",
   "keywords": [
     "godaddy",
@@ -15,6 +15,10 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/godaddy/cli.git"
+  },
   "scripts": {
     "format": "pnpm biome format --write .",
     "lint": "pnpm biome lint  --write",
@@ -28,9 +32,10 @@
     "test:coverage": "vitest --coverage",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && pnpm publish --filter @godaddy/cli"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^15.3.5",
     "@biomejs/biome": "1.9.4",
     "@changesets/cli": "^2.29.8",
     "@types/node": "^22.14.1",

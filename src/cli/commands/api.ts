@@ -13,7 +13,7 @@ import {
 } from "../../core/api";
 import { authLoginEffect, getTokenInfoEffect } from "../../core/auth";
 import { AuthenticationError, ValidationError } from "../../effect/errors";
-import { protectPayload, truncateList } from "../agent/truncation";
+import { truncateList, writeFullOutput } from "../agent/truncation";
 import type { NextAction } from "../agent/types";
 import {
   type CatalogDomain,
@@ -497,6 +497,176 @@ function summarizeGraphqlSchema(graphql: CatalogEndpoint["graphql"]) {
 }
 
 // ---------------------------------------------------------------------------
+// Schema summarization for agent-friendly output
+// ---------------------------------------------------------------------------
+
+interface SchemaSummaryProperty {
+  name: string;
+  type: string;
+  required: boolean;
+  description?: string;
+  format?: string;
+  enum?: unknown[];
+  items?: string;
+}
+
+/**
+ * Summarize a JSON Schema into a compact representation suitable for LLM
+ * context windows. Shows top-level properties with types, required markers,
+ * and up to one level of nested object properties.
+ */
+function summarizeSchema(
+  schema: Record<string, unknown> | undefined,
+): SchemaSummaryProperty[] | undefined {
+  if (!schema) return undefined;
+
+  const properties = schema.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (!properties) {
+    if (schema.type || schema.enum) {
+      return [
+        {
+          name: "(value)",
+          type: schemaTypeLabel(schema),
+          required: true,
+        },
+      ];
+    }
+    return undefined;
+  }
+
+  const required = new Set(
+    Array.isArray(schema.required) ? (schema.required as string[]) : [],
+  );
+
+  return Object.entries(properties).map(([name, prop]) => {
+    const entry: SchemaSummaryProperty = {
+      name,
+      type: schemaTypeLabel(prop),
+      required: required.has(name),
+    };
+
+    if (typeof prop.description === "string" && prop.description.length > 0) {
+      entry.description = prop.description.slice(0, 120);
+    }
+    if (typeof prop.format === "string") {
+      entry.format = prop.format;
+    }
+    if (Array.isArray(prop.enum) && prop.enum.length <= 10) {
+      entry.enum = prop.enum;
+    }
+    if (
+      prop.type === "array" &&
+      typeof prop.items === "object" &&
+      prop.items !== null
+    ) {
+      const items = prop.items as Record<string, unknown>;
+      entry.items = schemaTypeLabel(items);
+    }
+
+    return entry;
+  });
+}
+
+function schemaTypeLabel(schema: Record<string, unknown>): string {
+  if (!schema) return "unknown";
+  if (typeof schema.type === "string") {
+    if (schema.type === "array" && schema.items) {
+      const items = schema.items as Record<string, unknown>;
+      return `array<${schemaTypeLabel(items)}>`;
+    }
+    if (schema.type === "object" && schema.properties) {
+      const props = Object.keys(
+        schema.properties as Record<string, unknown>,
+      ).slice(0, 5);
+      const more = Object.keys(schema.properties as object).length;
+      const suffix = props.length < more ? ", ..." : "";
+      return `object{${props.join(", ")}${suffix}}`;
+    }
+    return schema.format
+      ? `${schema.type}(${schema.format})`
+      : (schema.type as string);
+  }
+  if (Array.isArray(schema.enum)) {
+    const vals = (schema.enum as unknown[]).slice(0, 8);
+    const suffix = (schema.enum as unknown[]).length > 8 ? ", ..." : "";
+    return `enum(${vals.join("|")}${suffix})`;
+  }
+  if (Array.isArray(schema.oneOf)) return "oneOf";
+  if (Array.isArray(schema.anyOf)) return "anyOf";
+  if (Array.isArray(schema.allOf)) return "allOf";
+  if (schema.$ref) return `ref(${schema.$ref as string})`;
+  return "object";
+}
+
+function summarizeResponses(
+  responses: CatalogEndpoint["responses"] | undefined,
+):
+  | Record<string, { description: string; schema?: SchemaSummaryProperty[] }>
+  | undefined {
+  if (!responses) return undefined;
+  const result: Record<
+    string,
+    { description: string; schema?: SchemaSummaryProperty[] }
+  > = {};
+  for (const [status, resp] of Object.entries(responses)) {
+    result[status] = {
+      description: resp.description || "",
+      schema: summarizeSchema(
+        resp.schema as Record<string, unknown> | undefined,
+      ),
+    };
+  }
+  return result;
+}
+
+function summarizeRequestBody(
+  requestBody: CatalogEndpoint["requestBody"] | undefined,
+):
+  | {
+      required: boolean;
+      contentType?: string;
+      description?: string;
+      schema?: SchemaSummaryProperty[];
+    }
+  | undefined {
+  if (!requestBody) return undefined;
+  return {
+    required: requestBody.required,
+    contentType: requestBody.contentType,
+    description: requestBody.description,
+    schema: summarizeSchema(
+      requestBody.schema as Record<string, unknown> | undefined,
+    ),
+  };
+}
+
+/**
+ * Returns true if the summarized schemas contain nested object/array types
+ * that the inline summary cannot fully represent.
+ */
+function hasComplexNestedTypes(
+  requestSchema: SchemaSummaryProperty[] | undefined,
+  responses:
+    | Record<string, { description: string; schema?: SchemaSummaryProperty[] }>
+    | undefined,
+): boolean {
+  const check = (props: SchemaSummaryProperty[] | undefined) =>
+    props?.some(
+      (p) => p.type.startsWith("object{") || p.type.startsWith("array<object"),
+    ) ?? false;
+
+  if (check(requestSchema)) return true;
+  if (responses) {
+    for (const resp of Object.values(responses)) {
+      if (check(resp.schema)) return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Subcommand: api list
 // ---------------------------------------------------------------------------
 
@@ -612,13 +782,20 @@ const apiDescribe = Command.make(
     endpoint: Args.text({ name: "endpoint" }).pipe(
       Args.withDescription("API path (e.g. /location/addresses)"),
     ),
+    method: Options.text("method").pipe(
+      Options.withAlias("m"),
+      Options.withDescription("HTTP method (GET, POST, PUT, PATCH, DELETE)"),
+      Options.optional,
+    ),
   },
-  ({ endpoint }) =>
+  ({ endpoint, method }) =>
     Effect.gen(function* () {
       const writer = yield* EnvelopeWriter;
 
       const { catalogPathCandidates: pathCandidates } =
         parseEndpointInput(endpoint);
+
+      const methodFilter = Option.getOrUndefined(method)?.toUpperCase();
 
       // Try exact path lookup first
       let result: Option.Option<{
@@ -627,10 +804,22 @@ const apiDescribe = Command.make(
       }> = Option.none();
 
       for (const candidatePath of pathCandidates) {
-        const exactMatch = yield* findEndpointByAnyMethodEffect(candidatePath);
-        if (Option.isSome(exactMatch)) {
-          result = exactMatch;
-          break;
+        if (methodFilter) {
+          const exactMatch = yield* findEndpointByPathEffect(
+            methodFilter,
+            candidatePath,
+          );
+          if (Option.isSome(exactMatch)) {
+            result = exactMatch;
+            break;
+          }
+        } else {
+          const exactMatch =
+            yield* findEndpointByAnyMethodEffect(candidatePath);
+          if (Option.isSome(exactMatch)) {
+            result = exactMatch;
+            break;
+          }
         }
       }
 
@@ -682,7 +871,40 @@ const apiDescribe = Command.make(
 
       const { domain, endpoint: ep } = result.value;
 
-      const payload = protectPayload(
+      const summarizedRequest = summarizeRequestBody(ep.requestBody);
+      const summarizedResponses = summarizeResponses(ep.responses);
+
+      // Only write the full schema file + hint when there are nested
+      // objects that the summary can't fully represent.
+      const hasNestedObjects = hasComplexNestedTypes(
+        summarizedRequest?.schema,
+        summarizedResponses,
+      );
+
+      let schemaDetail: { note: string; file: string } | undefined;
+      if (hasNestedObjects) {
+        const fullSchemaPath = writeFullOutput(
+          `api-describe-${ep.operationId}`,
+          {
+            domain: domain.name,
+            baseUrl: domain.baseUrl,
+            operationId: ep.operationId,
+            method: ep.method,
+            path: ep.path,
+            parameters: ep.parameters,
+            requestBody: ep.requestBody,
+            responses: ep.responses,
+            scopes: ep.scopes,
+          },
+        );
+        schemaDetail = {
+          note: "Inline schemas show top-level property names and types. Read the file below for full nested object definitions.",
+          file: fullSchemaPath,
+        };
+      }
+
+      yield* writer.emitSuccess(
+        "godaddy api describe",
         {
           domain: domain.name,
           baseUrl: domain.baseUrl,
@@ -696,22 +918,11 @@ const apiDescribe = Command.make(
           summary: ep.summary,
           description: ep.description,
           parameters: ep.parameters,
-          requestBody: ep.requestBody,
-          responses: ep.responses,
+          requestBody: summarizedRequest,
+          responses: summarizedResponses,
           scopes: ep.scopes,
           graphql: summarizeGraphqlSchema(ep.graphql),
-        },
-        `api-describe-${ep.operationId}`,
-      );
-
-      yield* writer.emitSuccess(
-        "godaddy api describe",
-        {
-          ...payload.value,
-          truncated: payload.metadata?.truncated ?? false,
-          total: payload.metadata?.total,
-          shown: payload.metadata?.shown,
-          full_output: payload.metadata?.full_output,
+          schema_detail: schemaDetail,
         },
         describeNextActions(domain, ep),
       );

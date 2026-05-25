@@ -1,10 +1,13 @@
-import * as HelpDoc from "@effect/cli/HelpDoc";
-import type { ValidationError as EffectValidationError } from "@effect/cli/ValidationError";
 import {
   type ApiErrorContext,
   type CliError,
+  type ServerError,
+  type ServerErrorKind,
+  type ValidationError,
   errorCode,
-} from "../../effect/errors";
+} from "@/effect/errors";
+import * as HelpDoc from "@effect/cli/HelpDoc";
+import type { ValidationError as EffectValidationError } from "@effect/cli/ValidationError";
 
 export interface AgentErrorDetails {
   message: string;
@@ -91,25 +94,64 @@ function fixForNetworkError(
   return "Verify environment connectivity with: godaddy env get and retry.";
 }
 
+/** Envelope `fix` string per `ServerErrorKind`. */
+const SERVER_FIX: Record<ServerErrorKind, string> = {
+  VALIDATION:
+    "Review the per-field issues in error.details.fields (and error.details.response for the raw server payload) and retry with valid values.",
+  FORBIDDEN:
+    "Your account or token lacks permission for this operation. Contact your org admin, or switch environments with: godaddy env use <environment>.",
+  NOT_FOUND:
+    "Use 'godaddy application list' to find the correct name/id, or create the resource first.",
+  CONFLICT:
+    "Resolve the conflicting state shown in error.details.response (see errors[].extensions.fields for the specific field/value) and retry.",
+  RATE_LIMITED:
+    "Rate limit exceeded. Retry later; inspect error.details.response for any retry-after hint from the server.",
+};
+
 function fromTaggedError(error: CliError): AgentErrorDetails {
   const code = errorCode(error);
   const message = error.userMessage || error.message;
   const details = apiDetails(error);
 
   switch (error._tag) {
-    case "ValidationError":
+    case "ValidationError": {
+      // Client-side (arktype) validation failure — no request was sent.
+      const fields = (error as ValidationError).fields;
+      const hasFields = Array.isArray(fields) && fields.length > 0;
       return {
         message,
         code,
-        fix: "Review command arguments and try again with valid values.",
+        fix: hasFields
+          ? "Review the per-field issues in error.details.fields and retry with valid values."
+          : "Review command arguments and try again with valid values.",
+        details: hasFields ? { fields } : undefined,
       };
+    }
     case "AuthenticationError":
+      // Envelope emits `AUTH_REQUIRED` (not `errorCode()`'s `AUTH_ERROR`)
+      // for historical compatibility with existing agent consumers.
+      // Aligning the two values is tracked as a follow-up.
       return {
         message,
         code: "AUTH_REQUIRED",
         fix: "Run: godaddy auth login",
         details,
       };
+    case "ServerError": {
+      const server = error as ServerError;
+      const hasFields =
+        Array.isArray(server.fields) && server.fields.length > 0;
+      const mergedDetails =
+        hasFields && server.kind === "VALIDATION"
+          ? { ...(details ?? {}), fields: server.fields }
+          : details;
+      return {
+        message,
+        code,
+        fix: SERVER_FIX[server.kind],
+        details: mergedDetails,
+      };
+    }
     case "ConfigurationError":
       return {
         message,
@@ -184,6 +226,7 @@ function isTaggedError(error: unknown): error is CliError {
       "ValidationError",
       "NetworkError",
       "AuthenticationError",
+      "ServerError",
       "ConfigurationError",
       "SecurityError",
     ].includes((error as { _tag: string })._tag)

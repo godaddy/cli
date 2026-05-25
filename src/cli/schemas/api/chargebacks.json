@@ -1,0 +1,3506 @@
+{
+  "name": "chargebacks",
+  "title": "Chargeback Management",
+  "description": "API capable of fetching, challenging and accepting chargebacks and managing related disputes",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "post_transaction_disputes_disputeId_submit",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/submit",
+      "summary": "Submit evidence",
+      "description": "Submit dispute documents with dispute notes",
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/chargeabck/dispute-notes.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "DisputeNotes",
+          "type": "object",
+          "description": "Notes related to the dispute and associated documents.",
+          "properties": {
+            "disputeNote": {
+              "type": "string",
+              "description": "A note providing additional context or information specifically about the dispute.",
+              "example": "Customer did not recognize the transaction, initiated dispute."
+            },
+            "documentNote": {
+              "type": "string",
+              "description": "A note pertaining to the documents linked to the dispute, summarizing their content or relevance.",
+              "example": "Transaction receipt and customer communication logs attached."
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Submit status",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/submit-response.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SubmitResponse",
+            "type": "object",
+            "description": "Submit Status",
+            "properties": {
+              "status": {
+                "type": "string",
+                "description": "Indicate success by returning 'SUCCESS'",
+                "example": "SUCCESS"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:update"
+      ]
+    },
+    {
+      "operationId": "post_transaction_disputes_disputeId_accept",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/accept",
+      "summary": "Accept a chargeback",
+      "description": "Accept a chargeback when you don't want to fight back",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Submit status",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/accept-response.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "AcceptResponse",
+            "type": "object",
+            "description": "Accept Status",
+            "properties": {
+              "status": {
+                "type": "string",
+                "description": "Indicate success by returning 'SUCCESS'",
+                "example": "SUCCESS"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:update"
+      ]
+    },
+    {
+      "operationId": "patch_transaction_disputes_disputeId",
+      "method": "PATCH",
+      "path": "/transaction-disputes/{disputeId}",
+      "summary": "Update Dispute",
+      "description": "Either transactionId related to the dispute can be updated, or isReviewed can be updated",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "array",
+          "title": "Patch Request",
+          "description": "An array of JSON patch objects to apply partial updates to resources.",
+          "items": {
+            "$id": "https://godaddy.com/schemas/common/patch.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Patch",
+            "description": "The JSON patch object to apply partial updates to resources.",
+            "properties": {
+              "op": {
+                "type": "string",
+                "description": "The operation to complete.",
+                "enum": [
+                  "add",
+                  "remove",
+                  "replace",
+                  "move",
+                  "copy",
+                  "test"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "description": "The JSON pointer to the target document location at which to complete the operation."
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array",
+                    "items": {}
+                  },
+                  {
+                    "type": "object"
+                  }
+                ],
+                "nullable": true,
+                "description": "The value to apply. The `remove` operation does not require a value."
+              },
+              "from": {
+                "type": "string",
+                "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation."
+              }
+            },
+            "required": [
+              "op"
+            ]
+          }
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "No Content"
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:update"
+      ]
+    },
+    {
+      "operationId": "get_transaction_disputes_disputeId",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}",
+      "summary": "Retrieve dispute details",
+      "description": "Retrieve the dispute information with disputeId",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "A dispute",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/simple-dispute.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SimpleDispute",
+            "type": "object",
+            "description": "Dispute details including phase and status information",
+            "properties": {
+              "disputeId": {
+                "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+                "type": "string",
+                "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "disputePhaseId": {
+                "description": "Dispute phase unique identifier in the format of a URN with 'urn:dph:' prefix followed by a UUID",
+                "type": "string",
+                "pattern": "^urn:dph:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "chargebackControlNumber": {
+                "description": "External unique identifier for a chargeback",
+                "type": "string"
+              },
+              "transactionId": {
+                "description": "Unique identifier for transaction",
+                "type": "string",
+                "format": "uuid"
+              },
+              "businessId": {
+                "description": "Unique identifier for business",
+                "type": "string",
+                "format": "uuid"
+              },
+              "storeId": {
+                "description": "Unique identifier for store",
+                "type": "string",
+                "format": "uuid"
+              },
+              "distributorId": {
+                "description": "Unique identifier for distributor",
+                "type": "string",
+                "format": "uuid"
+              },
+              "customerName": {
+                "description": "Name of the customer",
+                "type": "string"
+              },
+              "disputePhase": {
+                "$id": "https://godaddy.com/schema/common/dispute-phase.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "title": "Dispute Phase",
+                "description": "The phase of the dispute. Possible values [First Chargeback, Second Chargeback, Chargeback Reversal, Arbitration, Compliance, Good Faith, Fee, Pre-Arbitration, Pre-Compliance, Pre-Note, Retrieval, Collections, ACH RETURN]"
+              },
+              "disputePhaseStatus": {
+                "$id": "https://godaddy.com/schema/common/phase-status.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "title": "Phase Status",
+                "description": "The status of the dispute phase. Possible values [New, Pending Submission, Submitted to Acquirer, Expired, Accepted, Declined, Fee Acknowledged, Fulfilled Merchant, Fulfilled-Acquirer, Reversed, Return Created]"
+              },
+              "disputeStatus": {
+                "$id": "https://godaddy.com/schema/common/dispute-status.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "title": "Dispute Status",
+                "description": "The status of the dispute",
+                "enum": [
+                  "NEED_RESPONSE",
+                  "IN_REVIEW",
+                  "LOST",
+                  "WON"
+                ]
+              },
+              "isReviewed": {
+                "type": "boolean",
+                "description": "Indicate whether merchants have reviewed WIN/LOST status of a chargeback phase"
+              },
+              "processor": {
+                "type": "string",
+                "enum": [
+                  "ELAVON",
+                  "ADYEN"
+                ]
+              },
+              "txnAmount": {
+                "type": "integer",
+                "description": "The amount associated with the original transaction"
+              },
+              "chargebackAmount": {
+                "type": "integer",
+                "description": "The amount associated with the chargeback"
+              },
+              "currency": {
+                "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string",
+                "title": "Currency Code",
+                "description": "A three-character ISO-4217 currency code.",
+                "minLength": 3,
+                "maxLength": 3
+              },
+              "reasonCode": {
+                "type": "string",
+                "description": "The reason Code of the chargeback"
+              },
+              "isActionable": {
+                "type": "boolean",
+                "description": "Indicate whether merchants should take an action",
+                "nullable": true
+              },
+              "isRespondable": {
+                "type": "boolean",
+                "description": "Indicate whether merchants can respond (upload and submit) to a dispute",
+                "nullable": true
+              },
+              "isAccepted": {
+                "type": "boolean",
+                "description": "Indicate whether merchants accepted the chargeback"
+              },
+              "isRefundSettledIncluded": {
+                "type": "boolean",
+                "description": "Indicate whether original transaction has settled refunds"
+              },
+              "refundDetails": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/chargeabck/refund-detail.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "RefundDetail",
+                  "type": "object",
+                  "description": "Refund details of the original transaction",
+                  "properties": {
+                    "refundTxnId": {
+                      "type": "string",
+                      "description": "Refund transaction Id"
+                    },
+                    "isSettled": {
+                      "type": "boolean",
+                      "description": "Indicate whether the refund transaction is settled"
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "description": "The amount associated with the refund transaction"
+                    },
+                    "currency": {
+                      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Currency Code",
+                      "description": "A three-character ISO-4217 currency code.",
+                      "minLength": 3,
+                      "maxLength": 3
+                    }
+                  }
+                },
+                "description": "A list of refund details of the original transaction"
+              },
+              "expiresAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "processBy": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "receivedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 64,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:read"
+      ]
+    },
+    {
+      "operationId": "get_transaction_disputes",
+      "method": "GET",
+      "path": "/transaction-disputes",
+      "summary": "Retrieve a list of disputes",
+      "description": "Retrieve a list of disputes filtered by constraints. This endpoint won't provide refund related details. Please use /disputes/{disputeId} if you need this information",
+      "parameters": [
+        {
+          "name": "disputeIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of dispute unique identifiers",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "chargebackControlNumbers",
+          "in": "query",
+          "required": false,
+          "description": "A list of external unique identifiers for chargeback cases",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "transactionIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of unique identifiers for transactions",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "businessIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of unique identifiers for businesses",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "An unique identifier for storeId",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "disputePhase",
+          "in": "query",
+          "required": false,
+          "description": "The current phase of the dispute",
+          "schema": {
+            "$id": "https://godaddy.com/schema/common/dispute-phase.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "string",
+            "title": "Dispute Phase",
+            "description": "The phase of the dispute. Possible values [First Chargeback, Second Chargeback, Chargeback Reversal, Arbitration, Compliance, Good Faith, Fee, Pre-Arbitration, Pre-Compliance, Pre-Note, Retrieval, Collections, ACH RETURN]"
+          }
+        },
+        {
+          "name": "phaseStatuses",
+          "in": "query",
+          "required": false,
+          "description": "A list of statuses of the dispute phase. Choose to filter by either phaseStatuses or disputeStatus",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$id": "https://godaddy.com/schema/common/phase-status.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "title": "Phase Status",
+              "description": "The status of the dispute phase. Possible values [New, Pending Submission, Submitted to Acquirer, Expired, Accepted, Declined, Fee Acknowledged, Fulfilled Merchant, Fulfilled-Acquirer, Reversed, Return Created]"
+            }
+          }
+        },
+        {
+          "name": "disputeStatus",
+          "in": "query",
+          "required": false,
+          "description": "The overall status of the dispute. Choose to filter by either phaseStatuses or disputeStatus",
+          "schema": {
+            "$id": "https://godaddy.com/schema/common/dispute-status.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "string",
+            "title": "Dispute Status",
+            "description": "The status of the dispute",
+            "enum": [
+              "NEED_RESPONSE",
+              "IN_REVIEW",
+              "LOST",
+              "WON"
+            ]
+          }
+        },
+        {
+          "name": "isReviewed",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants have reviewed WIN/LOST status of a chargeback phase",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isAccepted",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants accepted the dispute",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isActionable",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants should take an action.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "isRespondable",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether merchants can upload a document.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reasonCodes",
+          "in": "query",
+          "required": false,
+          "description": "A list of reason Code of the chargeback",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "processor",
+          "in": "query",
+          "required": false,
+          "description": "The processor of the dispute",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ELAVON",
+              "ADYEN"
+            ]
+          }
+        },
+        {
+          "name": "currency",
+          "in": "query",
+          "required": false,
+          "description": "The currency in which the amount is specified",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "string",
+            "title": "Currency Code",
+            "description": "A three-character ISO-4217 currency code.",
+            "minLength": 3,
+            "maxLength": 3
+          }
+        },
+        {
+          "name": "sortBy",
+          "in": "query",
+          "required": false,
+          "description": "The field by which to sort the results. 'disputeExpiredAt' and 'disputeProcessedBy' share the same enum 'EXPIRED_AT'. Default is 'UPDATED_AT'",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "RECEIVED_AT",
+              "EXPIRED_AT",
+              "UPDATED_AT"
+            ],
+            "default": "UPDATED_AT"
+          }
+        },
+        {
+          "name": "sortOrder",
+          "in": "query",
+          "required": false,
+          "description": "The order of sorting, either ascending ('ASC') or descending ('DESC'). Default is descending ('DESC')",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ASC",
+              "DESC"
+            ],
+            "default": "DESC"
+          }
+        },
+        {
+          "name": "processByAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes to be processed after a given date/time (RFC 3339)",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "processByBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes to be processed before a given date/time (RFC 3339)",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "expiresAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes expiring after a specified date/time (RFC 3339)",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "expiresBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filter disputes expiring before a specified date/time (RFC 3339)",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "receivedAfter",
+          "in": "query",
+          "required": false,
+          "description": "Filters for disputes that were received after the specified date and time. The date and time should be RFC 3339 format",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "receivedBefore",
+          "in": "query",
+          "required": false,
+          "description": "Filters for disputes that were received before the specified date and time. The date and time should be RFC 3339 format",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "The number of records per page. Default is 10",
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page number of the results to retrieve. Default is 1",
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "A boolean that indicates whether the total number of records is required. Default is false",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "A list of disputes including pagination",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/simple-dispute-list.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SimpleDisputeList",
+            "type": "object",
+            "description": "Represents a collection of dispute items, each containing key details of individual disputes, along with navigation links for pagination or related actions",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/chargeabck/simple-dispute.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "SimpleDispute",
+                  "type": "object",
+                  "description": "Dispute details including phase and status information",
+                  "properties": {
+                    "disputeId": {
+                      "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+                      "type": "string",
+                      "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    },
+                    "disputePhaseId": {
+                      "description": "Dispute phase unique identifier in the format of a URN with 'urn:dph:' prefix followed by a UUID",
+                      "type": "string",
+                      "pattern": "^urn:dph:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    },
+                    "chargebackControlNumber": {
+                      "description": "External unique identifier for a chargeback",
+                      "type": "string"
+                    },
+                    "transactionId": {
+                      "description": "Unique identifier for transaction",
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "businessId": {
+                      "description": "Unique identifier for business",
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "storeId": {
+                      "description": "Unique identifier for store",
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "distributorId": {
+                      "description": "Unique identifier for distributor",
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "customerName": {
+                      "description": "Name of the customer",
+                      "type": "string"
+                    },
+                    "disputePhase": {
+                      "$id": "https://godaddy.com/schema/common/dispute-phase.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Dispute Phase",
+                      "description": "The phase of the dispute. Possible values [First Chargeback, Second Chargeback, Chargeback Reversal, Arbitration, Compliance, Good Faith, Fee, Pre-Arbitration, Pre-Compliance, Pre-Note, Retrieval, Collections, ACH RETURN]"
+                    },
+                    "disputePhaseStatus": {
+                      "$id": "https://godaddy.com/schema/common/phase-status.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Phase Status",
+                      "description": "The status of the dispute phase. Possible values [New, Pending Submission, Submitted to Acquirer, Expired, Accepted, Declined, Fee Acknowledged, Fulfilled Merchant, Fulfilled-Acquirer, Reversed, Return Created]"
+                    },
+                    "disputeStatus": {
+                      "$id": "https://godaddy.com/schema/common/dispute-status.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Dispute Status",
+                      "description": "The status of the dispute",
+                      "enum": [
+                        "NEED_RESPONSE",
+                        "IN_REVIEW",
+                        "LOST",
+                        "WON"
+                      ]
+                    },
+                    "isReviewed": {
+                      "type": "boolean",
+                      "description": "Indicate whether merchants have reviewed WIN/LOST status of a chargeback phase"
+                    },
+                    "processor": {
+                      "type": "string",
+                      "enum": [
+                        "ELAVON",
+                        "ADYEN"
+                      ]
+                    },
+                    "txnAmount": {
+                      "type": "integer",
+                      "description": "The amount associated with the original transaction"
+                    },
+                    "chargebackAmount": {
+                      "type": "integer",
+                      "description": "The amount associated with the chargeback"
+                    },
+                    "currency": {
+                      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Currency Code",
+                      "description": "A three-character ISO-4217 currency code.",
+                      "minLength": 3,
+                      "maxLength": 3
+                    },
+                    "reasonCode": {
+                      "type": "string",
+                      "description": "The reason Code of the chargeback"
+                    },
+                    "isActionable": {
+                      "type": "boolean",
+                      "description": "Indicate whether merchants should take an action",
+                      "nullable": true
+                    },
+                    "isRespondable": {
+                      "type": "boolean",
+                      "description": "Indicate whether merchants can respond (upload and submit) to a dispute",
+                      "nullable": true
+                    },
+                    "isAccepted": {
+                      "type": "boolean",
+                      "description": "Indicate whether merchants accepted the chargeback"
+                    },
+                    "isRefundSettledIncluded": {
+                      "type": "boolean",
+                      "description": "Indicate whether original transaction has settled refunds"
+                    },
+                    "refundDetails": {
+                      "type": "array",
+                      "items": {
+                        "$id": "https://godaddy.com/schemas/commerce/chargeabck/refund-detail.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "title": "RefundDetail",
+                        "type": "object",
+                        "description": "Refund details of the original transaction",
+                        "properties": {
+                          "refundTxnId": {
+                            "type": "string",
+                            "description": "Refund transaction Id"
+                          },
+                          "isSettled": {
+                            "type": "boolean",
+                            "description": "Indicate whether the refund transaction is settled"
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "description": "The amount associated with the refund transaction"
+                          },
+                          "currency": {
+                            "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                            "$schema": "https://json-schema.org/draft/2020-12/schema",
+                            "type": "string",
+                            "title": "Currency Code",
+                            "description": "A three-character ISO-4217 currency code.",
+                            "minLength": 3,
+                            "maxLength": 3
+                          }
+                        }
+                      },
+                      "description": "A list of refund details of the original transaction"
+                    },
+                    "expiresAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    },
+                    "processBy": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    },
+                    "receivedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    },
+                    "updatedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    }
+                  }
+                },
+                "description": "An array of dispute items"
+              },
+              "totalItems": {
+                "type": "integer",
+                "description": "Indicate the total number of items in the full result list. Only be returned when totalRequired is set to true"
+              },
+              "totalPages": {
+                "type": "integer",
+                "description": "Indicate the total number of pages of response available. Only be returned when totalRequired is set to true"
+              },
+              "links": {
+                "type": "array",
+                "items": null,
+                "description": "An array of link objects providing navigational URLs"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:read"
+      ]
+    },
+    {
+      "operationId": "post_transaction_disputes_disputeId_documents",
+      "method": "POST",
+      "path": "/transaction-disputes/{disputeId}/documents",
+      "summary": "Upload evidence",
+      "description": "When disputing a chargeback, you can upload evidence",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "multipart/form-data",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/chargeabck/document.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "Document",
+          "type": "object",
+          "description": "Document file and context",
+          "properties": {
+            "file": {
+              "type": "string",
+              "format": "binary",
+              "description": "Binary file content"
+            },
+            "documentType": {
+              "type": "string",
+              "description": "Type of the document. Possible values include [Drivers License, Tax Return, Passport, Trade, KYC, Other]"
+            },
+            "mimeType": {
+              "type": "string",
+              "description": "MIME type of the document. Possible values include [application/pdf, image/tiff, image/jpeg]"
+            },
+            "documentDescription": {
+              "type": "string",
+              "description": "Description of the document"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Document meta data",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/document-metadata.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "DocumentMetaData",
+            "type": "object",
+            "description": "Document meta data",
+            "properties": {
+              "documentId": {
+                "type": "string",
+                "description": "An array of document unique identifiers in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+                "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Created time in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z"
+              },
+              "size": {
+                "type": "integer",
+                "description": "Size of the document in bytes"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL pointing to the document"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:create"
+      ]
+    },
+    {
+      "operationId": "get_transaction_disputes_disputeId_documents",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}/documents",
+      "summary": "Retrieve a list of dispute documents",
+      "description": "Retrieve a list of dispute documents",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentIds",
+          "in": "query",
+          "required": false,
+          "description": "A list of dispute document unique identifiers",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "disputePhase",
+          "in": "query",
+          "required": false,
+          "description": "The current phase of the dispute",
+          "schema": {
+            "$id": "https://godaddy.com/schema/common/phase-status.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "string",
+            "title": "Phase Status",
+            "description": "The status of the dispute phase. Possible values [New, Pending Submission, Submitted to Acquirer, Expired, Accepted, Declined, Fee Acknowledged, Fulfilled Merchant, Fulfilled-Acquirer, Reversed, Return Created]"
+          }
+        },
+        {
+          "name": "deleted",
+          "in": "query",
+          "required": false,
+          "description": "Indicate whether the document is deleted",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "startTime",
+          "in": "query",
+          "required": false,
+          "description": "Filters for dispute documents that were created after the specified date and time. The date and time should be in RFC 3339 format",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "endTime",
+          "in": "query",
+          "required": false,
+          "description": "Filters for dispute documents that were created before the specified date and time. The date and time should be in RFC 3339 format",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 64,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "The number of records per page. Default is 10",
+          "schema": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page number of the results to retrieve. Default is 1",
+          "schema": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "A boolean that indicates whether the total number of records is required. Default is false",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Dispute document list with pagination",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/dispute-document-list.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "DisputeDocumentList",
+            "type": "object",
+            "description": "Represents a collection of dispute document items, each containing key details of individual dispute documents, along with navigation links for pagination or related actions",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/chargeabck/simple-dispute-document.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "SimpleDisputeDocument",
+                  "type": "object",
+                  "description": "Dispute document details",
+                  "properties": {
+                    "disputeDocumentId": {
+                      "description": "Dispute Document unique identifier in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+                      "type": "string",
+                      "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    },
+                    "disputeId": {
+                      "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+                      "type": "string",
+                      "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    },
+                    "filename": {
+                      "description": "The name of the dispute document file",
+                      "type": "string"
+                    },
+                    "documentType": {
+                      "type": "string",
+                      "description": "Type of the document. Possible values include [Drivers License, Tax Return, Passport, Trade, KYC, Other]"
+                    },
+                    "mimeType": {
+                      "type": "string",
+                      "description": "MIME type of the document. Possible values include [application/pdf, image/tiff, image/jpeg]"
+                    },
+                    "documentDescription": {
+                      "type": "string",
+                      "description": "Description of the document"
+                    },
+                    "disputePhase": {
+                      "$id": "https://godaddy.com/schema/common/dispute-phase.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "string",
+                      "title": "Dispute Phase",
+                      "description": "The phase of the dispute. Possible values [First Chargeback, Second Chargeback, Chargeback Reversal, Arbitration, Compliance, Good Faith, Fee, Pre-Arbitration, Pre-Compliance, Pre-Note, Retrieval, Collections, ACH RETURN]"
+                    },
+                    "processor": {
+                      "description": "The processor of the dispute",
+                      "type": "string",
+                      "enum": [
+                        "ELAVON",
+                        "ADYEN"
+                      ]
+                    },
+                    "status": {
+                      "description": "Document upload and submit status. Possible value include [Inprogress, SUCCESS, Successfully Uploaded, DOC_SZ_LRG, Scan Failed]. The final successful stage is 'Successfully Uploaded'",
+                      "type": "string"
+                    },
+                    "link": {
+                      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "title": "Link Description",
+                      "type": "object",
+                      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                      "properties": {
+                        "href": {
+                          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "rel": {
+                          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                          "type": "string"
+                        },
+                        "title": {
+                          "description": "The link title.",
+                          "type": "string"
+                        },
+                        "targetMediaType": {
+                          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                          "type": "string"
+                        },
+                        "targetSchema": {
+                          "description": "The schema that describes the link target."
+                        },
+                        "method": {
+                          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                          "type": "string"
+                        },
+                        "submissionMediaType": {
+                          "description": "The media type with which to submit data with the request.",
+                          "type": "string",
+                          "default": "application/json"
+                        },
+                        "submissionSchema": {
+                          "description": "The schema that describes the request data."
+                        }
+                      },
+                      "required": [
+                        "rel",
+                        "href"
+                      ]
+                    },
+                    "submittedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    },
+                    "createdAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    },
+                    "updatedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 64,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+                    }
+                  }
+                },
+                "description": "An array of dispute document items"
+              },
+              "totalItems": {
+                "type": "integer",
+                "description": "Indicate the total number of items in the full result list. Only be returned when totalRequired is set to true"
+              },
+              "totalPages": {
+                "type": "integer",
+                "description": "Indicate the total number of pages of response available. Only be returned when totalRequired is set to true"
+              },
+              "links": {
+                "type": "array",
+                "items": null,
+                "description": "An array of link objects providing navigational URLs"
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:read"
+      ]
+    },
+    {
+      "operationId": "delete_transaction_disputes_disputeId_documents_disputeDocumentId",
+      "method": "DELETE",
+      "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
+      "summary": "Delete an uploaded document",
+      "description": "Delete an uploaded document. You cannot delete a submitted document.",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute Document unique identifier in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "204": {
+          "description": "No Content"
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:delete"
+      ]
+    },
+    {
+      "operationId": "get_transaction_disputes_disputeId_documents_disputeDocumentId",
+      "method": "GET",
+      "path": "/transaction-disputes/{disputeId}/documents/{disputeDocumentId}",
+      "summary": "Getting an uploaded/submitted dispute document",
+      "description": "This endpoint allows for retrieving of a document associated with a specific dispute. The document is returned as a file attachment in the response.",
+      "parameters": [
+        {
+          "name": "disputeId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute unique identifier in the format of a URN with 'urn:dsp:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:dsp:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        {
+          "name": "disputeDocumentId",
+          "in": "path",
+          "required": true,
+          "description": "Dispute Document unique identifier in the format of a URN with 'urn:doc:' prefix followed by a UUID",
+          "schema": {
+            "type": "string",
+            "pattern": "^urn:doc:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successfully retrieved  the document.",
+          "schema": {
+            "type": "string",
+            "format": "binary"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:read"
+      ]
+    },
+    {
+      "operationId": "get_transaction_dispute_document_constraints",
+      "method": "GET",
+      "path": "/transaction-dispute-document-constraints",
+      "summary": "",
+      "parameters": [
+        {
+          "name": "processor",
+          "in": "query",
+          "required": true,
+          "description": "The processor of the disputes",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ADYEN",
+              "ELAVON"
+            ]
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successfully retrieved the file constraints.",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/chargeabck/document-constraints.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "DocumentConstraints",
+            "type": "object",
+            "description": "The constraints of the defense documents to be uploaded",
+            "properties": {
+              "properties": {
+                "fileExtensions": {
+                  "description": "A list of allowed file extensions",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "maxFileSizes": {
+                  "description": "A list of maximum file sizes",
+                  "type": "array",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/chargeabck/max-file-size.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "MaxFileSize",
+                    "type": "object",
+                    "description": "The maximum size of the file",
+                    "properties": {
+                      "properties": {
+                        "mimeType": {
+                          "description": "allowed mimeType",
+                          "type": "String"
+                        },
+                        "maxFileSize": {
+                          "description": "maximum file size based on the mimeType in MB",
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                },
+                "maxFileCount": {
+                  "description": "Allowed maximum number of files to be submitted in total",
+                  "type": "integer"
+                },
+                "additionalConstraints": {
+                  "description": "Additional constraints from different credit card brands",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/error.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "title": "Error",
+            "description": "The error information.",
+            "definitions": {
+              "error-details": {
+                "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Error Details",
+                "type": "object",
+                "description": "The error details. Required for client-side `4XX` errors.",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the field that caused the error."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                    "default": "body"
+                  },
+                  "issue": {
+                    "type": "string",
+                    "description": "The unique fine-grained application-level error code."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                  }
+                },
+                "required": [
+                  "issue"
+                ]
+              },
+              "link-description": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Link Description",
+                "type": "object",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ]
+              }
+            },
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The human-readable, unique name of the error."
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Internal identifier used for correlation purposes."
+              },
+              "message": {
+                "type": "string",
+                "description": "The message that describes the error."
+              },
+              "informationLink": {
+                "type": "string",
+                "description": "The URI for detailed information related to this error for the developer."
+              },
+              "details": {
+                "type": "array",
+                "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+                "additionalItems": false,
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/error-details.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Error Details",
+                  "type": "object",
+                  "description": "The error details. Required for client-side `4XX` errors.",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The value of the field that caused the error."
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+                      "default": "body"
+                    },
+                    "issue": {
+                      "type": "string",
+                      "description": "The unique fine-grained application-level error code."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value."
+                    }
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "links": {
+                "type": "array",
+                "description": "An array of error-related HATEOAS links.",
+                "readOnly": true,
+                "items": {
+                  "readOnly": true,
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "title": "Link Description",
+                  "type": "object",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string",
+                      "default": "application/json"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "correlationId",
+              "message"
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.transaction-disputes:read"
+      ]
+    }
+  ]
+}

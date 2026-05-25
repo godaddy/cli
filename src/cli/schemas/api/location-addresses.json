@@ -30,7 +30,9 @@
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["SUCCESS"]
+                "enum": [
+                  "SUCCESS"
+                ]
               },
               "data": {
                 "type": "object",
@@ -38,6 +40,8 @@
                   "matches": {
                     "type": "array",
                     "items": {
+                      "$id": "https://godaddy.com/schemas/common/address.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "title": "Postal Address (Medium-Grained)",
                       "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
@@ -84,6 +88,8 @@
                         },
                         "countryCode": {
                           "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions.",
+                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                          "$schema": "http://json-schema.org/draft/2020-12/schema",
                           "type": "string",
                           "maxLength": 2,
                           "minLength": 2,
@@ -130,9 +136,11 @@
                               "maxLength": 1
                             },
                             "geoCoordinates": {
+                              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
+                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                              "$schema": "https://json-schema.org/draft/2020-12/schema",
                               "type": "object",
                               "title": "Geographic Coordinates",
-                              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
                               "properties": {
                                 "longitude": {
                                   "type": "string",
@@ -143,43 +151,53 @@
                                   "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}"
                                 }
                               },
-                              "required": ["longitude", "latitude"]
+                              "required": [
+                                "longitude",
+                                "latitude"
+                              ]
                             }
                           }
                         }
                       },
-                      "required": ["countryCode"]
+                      "required": [
+                        "countryCode"
+                      ]
                     }
                   }
                 }
               }
             },
-            "required": ["status", "data"]
+            "required": [
+              "status",
+              "data"
+            ]
           }
         },
         "401": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "403": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "404": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "500": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "502": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "503": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "504": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         }
       },
-      "scopes": ["location.address-verification:execute"]
+      "scopes": [
+        "location.address-verification:execute"
+      ]
     },
     {
       "operationId": "commerce.location.verify-address",
@@ -191,6 +209,8 @@
         "description": "This is the address to be verified",
         "contentType": "application/json",
         "schema": {
+          "$id": "https://godaddy.com/schemas/common/address.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
           "title": "Postal Address (Medium-Grained)",
           "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
@@ -237,6 +257,8 @@
             },
             "countryCode": {
               "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions.",
+              "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+              "$schema": "http://json-schema.org/draft/2020-12/schema",
               "type": "string",
               "maxLength": 2,
               "minLength": 2,
@@ -283,9 +305,11 @@
                   "maxLength": 1
                 },
                 "geoCoordinates": {
+                  "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
+                  "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
                   "type": "object",
                   "title": "Geographic Coordinates",
-                  "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
                   "properties": {
                     "longitude": {
                       "type": "string",
@@ -296,12 +320,17 @@
                       "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}"
                     }
                   },
-                  "required": ["longitude", "latitude"]
+                  "required": [
+                    "longitude",
+                    "latitude"
+                  ]
                 }
               }
             }
           },
-          "required": ["countryCode"]
+          "required": [
+            "countryCode"
+          ]
         }
       },
       "responses": {
@@ -312,7 +341,9 @@
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["SUCCESS"]
+                "enum": [
+                  "SUCCESS"
+                ]
               },
               "data": {
                 "type": "object",
@@ -320,6 +351,8 @@
                   "matches": {
                     "type": "array",
                     "items": {
+                      "$id": "https://godaddy.com/schemas/common/address.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
                       "type": "object",
                       "title": "Postal Address (Medium-Grained)",
                       "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
@@ -366,6 +399,8 @@
                         },
                         "countryCode": {
                           "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions.",
+                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                          "$schema": "http://json-schema.org/draft/2020-12/schema",
                           "type": "string",
                           "maxLength": 2,
                           "minLength": 2,
@@ -412,9 +447,11 @@
                               "maxLength": 1
                             },
                             "geoCoordinates": {
+                              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
+                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                              "$schema": "https://json-schema.org/draft/2020-12/schema",
                               "type": "object",
                               "title": "Geographic Coordinates",
-                              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`.",
                               "properties": {
                                 "longitude": {
                                   "type": "string",
@@ -425,43 +462,53 @@
                                   "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}"
                                 }
                               },
-                              "required": ["longitude", "latitude"]
+                              "required": [
+                                "longitude",
+                                "latitude"
+                              ]
                             }
                           }
                         }
                       },
-                      "required": ["countryCode"]
+                      "required": [
+                        "countryCode"
+                      ]
                     }
                   }
                 }
               }
             },
-            "required": ["status", "data"]
+            "required": [
+              "status",
+              "data"
+            ]
           }
         },
         "401": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "403": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "404": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "500": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "502": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "503": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         },
         "504": {
-          "description": "See https://schemas.api.godaddy.com/common-types/v1/schemas/yaml/error.yaml"
+          "description": "The error information."
         }
       },
-      "scopes": ["location.address-verification:execute"]
+      "scopes": [
+        "location.address-verification:execute"
+      ]
     }
   ]
 }

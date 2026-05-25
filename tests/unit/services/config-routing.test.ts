@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   type Config,
+  addActionToConfigEffect,
   createConfigFileEffect,
   createEnvFileEffect,
   getConfigFilePath,
@@ -65,6 +66,42 @@ describe("Config Environment Routing", () => {
 
     expect(fs.existsSync(path.join(tempDir, "godaddy.dev.toml"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, "godaddy.ote.toml"))).toBe(false);
+  });
+
+  test("adds actions to the explicit config path", async () => {
+    const configPath = path.join(tempDir, "godaddy.ote.toml");
+    fs.writeFileSync(
+      configPath,
+      [
+        'name = "test-app"',
+        'client_id = "a502484b-d7b1-4509-aa88-08b391a54c28"',
+        'description = "Test app"',
+        'version = "1.0.0"',
+        'url = "https://example.com"',
+        'proxy_url = "https://example.com/api"',
+        'authorization_scopes = [ "shopper.readonly" ]',
+        "actions = [ ]",
+        "",
+        "[subscriptions]",
+        "webhook = [ ]",
+        "",
+      ].join("\n"),
+    );
+
+    await runEffect(
+      addActionToConfigEffect(
+        {
+          name: "commerce.communications.broadcast",
+          url: "/actions/broadcast",
+        },
+        { configPath },
+      ),
+    );
+
+    const content = fs.readFileSync(configPath, "utf-8");
+    expect(content).toContain('name = "commerce.communications.broadcast"');
+    expect(content).toContain('url = "/actions/broadcast"');
+    expect(fs.existsSync(path.join(tempDir, "godaddy.toml"))).toBe(false);
   });
 
   test("writes env file to mapped environment file", async () => {

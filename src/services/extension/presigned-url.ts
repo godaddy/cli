@@ -3,6 +3,8 @@
  * Phase 3: GraphQL integration for generateReleaseUploadUrl mutation
  */
 
+import { type CliError, NetworkError } from "@/effect/errors";
+import { mapGraphQLError } from "@/services/graphql-error";
 import {
   getRequestHeaders,
   makeGraphQLClientEffect,
@@ -12,11 +14,6 @@ import type { Fetch } from "@effect/platform/FetchHttpClient";
 import type { FileSystem } from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import { graphql } from "gql.tada";
-import {
-  type ConfigurationError,
-  NetworkError,
-  type ValidationError,
-} from "../../effect/errors";
 
 const logger = getLogger();
 
@@ -63,11 +60,7 @@ const GenerateReleaseUploadUrlMutation = graphql(`
 export function getUploadTargetEffect(
   params: GetUploadTargetParams,
   accessToken: string,
-): Effect.Effect<
-  UploadTarget,
-  NetworkError | ConfigurationError | ValidationError,
-  FileSystem | Fetch
-> {
+): Effect.Effect<UploadTarget, CliError, FileSystem | Fetch> {
   return Effect.gen(function* () {
     logger.debug(
       {
@@ -80,6 +73,11 @@ export function getUploadTargetEffect(
 
     const client = yield* makeGraphQLClientEffect();
 
+    // Use the shared mapGraphQLError so presigned-URL failures produce
+    // the same tagged-error classification and envelope shape as the rest
+    // of the source-of-truth calls (ServerError with a `kind` discriminant
+    // for classified server errors, AuthenticationError for auth failures,
+    // NetworkError with HTTP context for unknown/transport failures).
     const response = yield* Effect.tryPromise({
       try: () =>
         client.request(
@@ -94,11 +92,7 @@ export function getUploadTargetEffect(
           },
           getRequestHeaders(accessToken),
         ),
-      catch: (error) =>
-        new NetworkError({
-          message: `Failed to get upload URL: ${error instanceof Error ? error.message : String(error)}`,
-          userMessage: "Failed to generate presigned upload URL",
-        }),
+      catch: mapGraphQLError,
     });
 
     if (!response.generateReleaseUploadUrl) {

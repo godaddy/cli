@@ -6,6 +6,7 @@
     "useIgnoreFile": false
   },
   "files": {
+    "maxSize": 4194304,
     "ignoreUnknown": false,
     "ignore": [
       "node_modules",

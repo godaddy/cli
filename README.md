@@ -68,6 +68,7 @@ Returns environment/auth snapshots and the full command tree.
 - `godaddy application disable <name> --store-id <storeId>`
 - `godaddy application archive <name>`
 - `godaddy application init [--name <name>] [--description <description>] [--url <url>] [--proxy-url <proxyUrl>] [--scopes <scopes>] [--config <path>] [--environment <env>]`
+  - `--url` and `--proxy-url` must be publicly-resolvable `http(s)` URLs. `localhost`, loopback (`127.0.0.1`, `::1`), link-local, and RFC1918 private IPs are rejected. For local development, expose a tunnel (e.g. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [ngrok](https://ngrok.com/)) and register the tunnel hostname.
 - `godaddy application release <name> --release-version <version> [--description <description>] [--config <path>] [--environment <env>]`
 - `godaddy application deploy <name> [--config <path>] [--environment <env>] [--follow]`
 

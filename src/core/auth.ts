@@ -12,6 +12,7 @@ import type { Keychain } from "../effect/services/keychain";
 // handler (Promise context), outside the Effect runtime. The Fetch tag is for
 // code within Effect.gen contexts.
 import { loggedFetch } from "../services/logger";
+import { cliTraceHeaders } from "../shared/cli-trace";
 import {
   type Environment,
   envGetEffect,
@@ -183,6 +184,7 @@ export function authLoginEffect(options?: {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/x-www-form-urlencoded",
+                      ...cliTraceHeaders(),
                     },
                     body: new URLSearchParams({
                       client_id: clientId,

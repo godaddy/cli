@@ -1,5 +1,5 @@
 {
-  "generated": "2026-03-18T18:46:55.475Z",
+  "generated": "2026-05-14T16:10:01.272Z",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -21,6 +21,16 @@
       "title": "Channels API",
       "endpointCount": 8
     },
+    "chargebacks": {
+      "file": "chargebacks.json",
+      "title": "Chargeback Management",
+      "endpointCount": 10
+    },
+    "customer-profiles": {
+      "file": "customer-profiles.json",
+      "title": "Customers API",
+      "endpointCount": 9
+    },
     "fulfillments": {
       "file": "fulfillments.json",
       "title": "Fulfillment Service",
@@ -39,12 +49,47 @@
     "orders": {
       "file": "orders.json",
       "title": "Order Service",
-      "endpointCount": 14
+      "endpointCount": 15
+    },
+    "payment-requests": {
+      "file": "payment-requests.json",
+      "title": "Payment Requests API",
+      "endpointCount": 5
+    },
+    "payments": {
+      "file": "payments.json",
+      "title": "Payments API",
+      "endpointCount": 43
+    },
+    "price-adjustments": {
+      "file": "price-adjustments.json",
+      "title": "GoDaddy Price Adjustment API",
+      "endpointCount": 10
+    },
+    "recommendations": {
+      "file": "recommendations.json",
+      "title": "GoDaddy Recommendation API",
+      "endpointCount": 1
+    },
+    "shipping": {
+      "file": "shipping.json",
+      "title": "Shipping Service",
+      "endpointCount": 7
     },
     "stores": {
       "file": "stores.json",
       "title": "Commerce Store API",
       "endpointCount": 8
+    },
+    "subscriptions": {
+      "file": "subscriptions.json",
+      "title": "Commerce Subscription API",
+      "endpointCount": 8
+    },
+    "taxes": {
+      "file": "taxes.json",
+      "title": "Tax GraphQL API",
+      "endpointCount": 1
     },
     "transactions": {
       "file": "transactions.json",

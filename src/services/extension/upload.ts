@@ -99,8 +99,11 @@ export function uploadArtifactEffect(
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      // Use only the requiredHeaders from the presigned URL (already signed)
-      // Filter out x-amz-meta-upload-id as it's not signed
+      // Presigned S3 PUT: send only the headers returned with the URL (they are
+      // part of the AWS Signature v4 signing string). Do not add `user-agent` or
+      // `x-request-id` here — unsigned headers can still affect behavior, and
+      // anything not in the signature can break the upload. Traceability for
+      // this hop is the presigned URL request (GraphQL), not the PUT itself.
       const { "x-amz-meta-upload-id": _, ...headers } = target.requiredHeaders;
 
       logger.debug(

@@ -32,6 +32,7 @@ import {
   getExtensionsFromConfigEffect,
 } from "../services/config";
 import { bundleExtensionEffect as bundleExtServiceEffect } from "../services/extension/bundler";
+import { publicHttpUrl } from "../services/public-url";
 import { getUploadTargetEffect } from "../services/extension/presigned-url";
 import {
   scanBundleEffect,
@@ -182,9 +183,9 @@ const updateApplicationInputValidator = type({
 
 const createApplicationInputValidator = type({
   name: "string",
-  description: "string",
-  url: type.keywords.string.url.root,
-  proxyUrl: type.keywords.string.url.root,
+  description: "string", 
+  url: publicHttpUrl,
+  proxyUrl: publicHttpUrl,
   authorizationScopes: "string[]?",
 });
 
@@ -477,7 +478,7 @@ export function applicationInitEffect(
       return yield* Effect.fail(
         new ValidationError({
           message: validationResult.summary,
-          userMessage: "Invalid application configuration",
+          userMessage: `Invalid application configuration: ${validationResult.summary}`,
         }),
       );
     }

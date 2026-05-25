@@ -16,6 +16,9 @@
           "in": "path",
           "required": true,
           "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
             "type": "string",
             "format": "uuid"
           }
@@ -26,6 +29,9 @@
           "required": true,
           "description": "Store ID header required by catalog subgraph",
           "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
             "type": "string",
             "format": "uuid"
           }
@@ -36,7 +42,9 @@
         "contentType": "application/json",
         "schema": {
           "type": "object",
-          "required": ["query"],
+          "required": [
+            "query"
+          ],
           "properties": {
             "query": {
               "type": "string"
@@ -88,10 +96,13 @@
           "description": "Internal server error"
         }
       },
-      "scopes": ["commerce.product:read", "commerce.product:write"],
+      "scopes": [
+        "commerce.product:read",
+        "commerce.product:write"
+      ],
       "graphql": {
         "schemaRef": "./graphql/schema.graphql",
-        "operationCount": 145,
+        "operationCount": 149,
         "operations": [
           {
             "name": "attribute",
@@ -262,6 +273,56 @@
                 "name": "id",
                 "type": "String!",
                 "required": true
+              }
+            ]
+          },
+          {
+            "name": "inventoryAdjustmentReasons",
+            "kind": "query",
+            "returnType": "InventoryAdjustmentReasonConnection",
+            "description": "List inventory adjustment reasons available to the current store. Includes both store-scoped and global preset reasons.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "InventoryAdjustmentReasonOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "status",
+                "type": "InventoryAdjustmentReasonStatusFilter",
+                "required": false
               }
             ]
           },
@@ -1838,6 +1899,20 @@
             ]
           },
           {
+            "name": "archiveInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Archive a store-scoped inventory adjustment reason. Global reasons cannot be archived.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationArchiveInventoryAdjustmentReasonInput!",
+                "required": true
+              }
+            ]
+          },
+          {
             "name": "archiveList",
             "kind": "mutation",
             "returnType": "List",
@@ -2003,6 +2078,20 @@
               {
                 "name": "input",
                 "type": "MutationCreateInventoryAdjustmentInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Create a new store-scoped inventory adjustment reason. Name must be kebab-case and must not start with \"g-\" (reserved for global presets). Once created, the name is immutable.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateInventoryAdjustmentReasonInput!",
                 "required": true
               }
             ]
@@ -3055,6 +3144,20 @@
               {
                 "name": "input",
                 "type": "MutationUpdateAttributeValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Update the label of a store-scoped inventory adjustment reason. Global preset reasons cannot be updated.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationUpdateInventoryAdjustmentReasonInput!",
                 "required": true
               }
             ]
