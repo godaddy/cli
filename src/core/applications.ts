@@ -183,7 +183,7 @@ const updateApplicationInputValidator = type({
 
 const createApplicationInputValidator = type({
   name: "string",
-  description: "string", 
+  description: "string",
   url: publicHttpUrl,
   proxyUrl: publicHttpUrl,
   authorizationScopes: "string[]?",
