@@ -711,13 +711,6 @@ const appInit = Command.make(
             userMessage: "Proxy URL is required",
           }),
         );
-      if (!input.authorizationScopes.length)
-        return yield* Effect.fail(
-          new ValidationError({
-            message: "Authorization scopes are required",
-            userMessage: "Authorization scopes are required",
-          }),
-        );
 
       const environment = yield* resolveEnvironmentEffect(envStr);
       const appData = yield* applicationInitEffect(input, environment);

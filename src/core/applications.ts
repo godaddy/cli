@@ -90,7 +90,7 @@ export interface CreateApplicationInput {
   description: string;
   url: string;
   proxyUrl: string;
-  authorizationScopes: string[];
+  authorizationScopes?: string[];
 }
 
 export interface CreatedApplicationInfo {
@@ -185,7 +185,7 @@ const createApplicationInputValidator = type({
   description: "string",
   url: type.keywords.string.url.root,
   proxyUrl: type.keywords.string.url.root,
-  authorizationScopes: type.string.array().moreThanLength(0),
+  authorizationScopes: "string[]?",
 });
 
 // ---------------------------------------------------------------------------

@@ -146,7 +146,7 @@ export const applicationInput = type({
   description: "string",
   url: type.keywords.string.url.root,
   proxyUrl: type.keywords.string.url.root,
-  authorizationScopes: type.string.array().moreThanLength(0),
+  authorizationScopes: "string[]?",
 });
 
 export const updateApplicationInput = type({
