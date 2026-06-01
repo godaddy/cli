@@ -1,8 +1,8 @@
 use std::sync::OnceLock;
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam,
-    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -47,26 +47,68 @@ struct Endpoint {
 static CATALOG: OnceLock<Vec<Domain>> = OnceLock::new();
 
 const DOMAIN_FILES: &[(&str, &str)] = &[
-    ("bulk-operations", include_str!("../../schemas/api/bulk-operations.json")),
-    ("businesses", include_str!("../../schemas/api/businesses.json")),
-    ("catalog-products", include_str!("../../schemas/api/catalog-products.json")),
+    (
+        "bulk-operations",
+        include_str!("../../schemas/api/bulk-operations.json"),
+    ),
+    (
+        "businesses",
+        include_str!("../../schemas/api/businesses.json"),
+    ),
+    (
+        "catalog-products",
+        include_str!("../../schemas/api/catalog-products.json"),
+    ),
     ("channels", include_str!("../../schemas/api/channels.json")),
-    ("chargebacks", include_str!("../../schemas/api/chargebacks.json")),
-    ("customer-profiles", include_str!("../../schemas/api/customer-profiles.json")),
-    ("fulfillments", include_str!("../../schemas/api/fulfillments.json")),
-    ("location-addresses", include_str!("../../schemas/api/location-addresses.json")),
-    ("metafields", include_str!("../../schemas/api/metafields.json")),
-    ("onboarding", include_str!("../../schemas/api/onboarding.json")),
+    (
+        "chargebacks",
+        include_str!("../../schemas/api/chargebacks.json"),
+    ),
+    (
+        "customer-profiles",
+        include_str!("../../schemas/api/customer-profiles.json"),
+    ),
+    (
+        "fulfillments",
+        include_str!("../../schemas/api/fulfillments.json"),
+    ),
+    (
+        "location-addresses",
+        include_str!("../../schemas/api/location-addresses.json"),
+    ),
+    (
+        "metafields",
+        include_str!("../../schemas/api/metafields.json"),
+    ),
+    (
+        "onboarding",
+        include_str!("../../schemas/api/onboarding.json"),
+    ),
     ("orders", include_str!("../../schemas/api/orders.json")),
-    ("payment-requests", include_str!("../../schemas/api/payment-requests.json")),
+    (
+        "payment-requests",
+        include_str!("../../schemas/api/payment-requests.json"),
+    ),
     ("payments", include_str!("../../schemas/api/payments.json")),
-    ("price-adjustments", include_str!("../../schemas/api/price-adjustments.json")),
-    ("recommendations", include_str!("../../schemas/api/recommendations.json")),
+    (
+        "price-adjustments",
+        include_str!("../../schemas/api/price-adjustments.json"),
+    ),
+    (
+        "recommendations",
+        include_str!("../../schemas/api/recommendations.json"),
+    ),
     ("shipping", include_str!("../../schemas/api/shipping.json")),
     ("stores", include_str!("../../schemas/api/stores.json")),
-    ("subscriptions", include_str!("../../schemas/api/subscriptions.json")),
+    (
+        "subscriptions",
+        include_str!("../../schemas/api/subscriptions.json"),
+    ),
     ("taxes", include_str!("../../schemas/api/taxes.json")),
-    ("transactions", include_str!("../../schemas/api/transactions.json")),
+    (
+        "transactions",
+        include_str!("../../schemas/api/transactions.json"),
+    ),
 ];
 
 fn catalog() -> &'static [Domain] {
@@ -191,16 +233,14 @@ fn list_command() -> RuntimeCommandSpec {
                     })
                 })
                 .collect();
-            Ok(
-                CommandResult::new(json!(domains)).with_next_actions(vec![
-                    NextAction::new(
-                        "api list --domain <domain>",
-                        "List endpoints in a specific domain",
-                    )
-                    .with_param("domain", NextActionParam::required()),
-                    NextAction::new("api search <query>", "Search across all endpoints"),
-                ]),
-            )
+            Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
+                NextAction::new(
+                    "api list --domain <domain>",
+                    "List endpoints in a specific domain",
+                )
+                .with_param("domain", NextActionParam::required()),
+                NextAction::new("api search <query>", "Search across all endpoints"),
+            ]))
         },
     )
 }
@@ -266,11 +306,7 @@ fn search_command() -> RuntimeCommandSpec {
                     .help("Search term (matches path, operationId, summary, description)"),
             ),
         |ctx| async move {
-            let query = ctx
-                .args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let hits = search_endpoints(catalog(), query);
             if hits.is_empty() {
                 return Ok(CommandResult::new(json!([])));
@@ -287,15 +323,13 @@ fn search_command() -> RuntimeCommandSpec {
                     })
                 })
                 .collect();
-            Ok(
-                CommandResult::new(json!(results)).with_next_actions(vec![
-                    NextAction::new(
-                        "api describe <operationId>",
-                        "Get full details for a result",
-                    )
-                    .with_param("operationId", NextActionParam::required()),
-                ]),
-            )
+            Ok(CommandResult::new(json!(results)).with_next_actions(vec![
+                NextAction::new(
+                    "api describe <operationId>",
+                    "Get full details for a result",
+                )
+                .with_param("operationId", NextActionParam::required()),
+            ]))
         },
     )
 }
@@ -399,9 +433,21 @@ fn call_command() -> RuntimeCommandSpec {
                     .help("Required OAuth scope(s); on 403 a re-auth hint is shown"),
             ),
         |ctx| async move {
-            let endpoint = ctx.args.get("endpoint").and_then(|v| v.as_str()).unwrap_or("");
-            let method = ctx.args.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
-            let token = ctx.credential.as_ref().map(|c| c.token.clone()).unwrap_or_default();
+            let endpoint = ctx
+                .args
+                .get("endpoint")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let method = ctx
+                .args
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET");
+            let token = ctx
+                .credential
+                .as_ref()
+                .map(|c| c.token.clone())
+                .unwrap_or_default();
             let base_url = crate::application::client::api_url_for_env(&ctx.middleware.env);
             let url = format!("{base_url}{endpoint}");
 
@@ -415,9 +461,7 @@ fn call_command() -> RuntimeCommandSpec {
                     ))
                 })?;
                 request_body = Some(serde_json::from_str(&content).map_err(|e| {
-                    cli_engine::CliCoreError::message(format!(
-                        "invalid JSON in '{file_path}': {e}"
-                    ))
+                    cli_engine::CliCoreError::message(format!("invalid JSON in '{file_path}': {e}"))
                 })?);
             } else if let Some(body_str) = ctx.args.get("body").and_then(|v| v.as_str()) {
                 request_body = Some(serde_json::from_str(body_str).map_err(|e| {
@@ -448,9 +492,7 @@ fn call_command() -> RuntimeCommandSpec {
             let mut req = crate::application::client::make_http_client()
                 .request(
                     method.parse().map_err(|_| {
-                        cli_engine::CliCoreError::message(format!(
-                            "invalid HTTP method: {method}"
-                        ))
+                        cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
                     })?,
                     &url,
                 )
@@ -467,15 +509,16 @@ fn call_command() -> RuntimeCommandSpec {
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
 
             let status = resp.status().as_u16();
-            let include_headers =
-                ctx.args.get("include").and_then(|v| v.as_bool()).unwrap_or(false);
+            let include_headers = ctx
+                .args
+                .get("include")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let response_headers: Option<serde_json::Map<String, Value>> = if include_headers {
                 Some(
                     resp.headers()
                         .iter()
-                        .filter_map(|(k, v)| {
-                            v.to_str().ok().map(|s| (k.to_string(), json!(s)))
-                        })
+                        .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.to_string(), json!(s))))
                         .collect(),
                 )
             } else {
@@ -486,7 +529,11 @@ fn call_command() -> RuntimeCommandSpec {
                 .args
                 .get("scope")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let body: Value = resp.json().await.unwrap_or(json!(null));

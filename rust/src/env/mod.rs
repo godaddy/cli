@@ -1,4 +1,6 @@
-use cli_engine::{CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+};
 use serde_json::json;
 
 const OTE_API_URL: &str = "https://api.ote-godaddy.com";

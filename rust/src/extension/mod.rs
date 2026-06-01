@@ -295,9 +295,7 @@ static RULE_DEFS: &[RuleDef] = &[
         severity: Severity::Block,
         description: "Bundled code contains a debugger statement which enables remote debugging access",
         signal_patterns: &[],
-        patterns: &[
-            r#"\bdebugger\b"#,
-        ],
+        patterns: &[r#"\bdebugger\b"#],
     },
     // SEC115 — dynamic require/import (no signal, block)
     RuleDef {
@@ -350,9 +348,7 @@ fn line_number(content: &str, byte_offset: usize) -> usize {
 }
 
 fn extract_snippet(content: &str, byte_offset: usize) -> String {
-    let line_start = content[..byte_offset]
-        .rfind('\n')
-        .map_or(0, |i| i + 1);
+    let line_start = content[..byte_offset].rfind('\n').map_or(0, |i| i + 1);
     let line_end = content[byte_offset..]
         .find('\n')
         .map_or(content.len(), |i| byte_offset + i);
@@ -850,8 +846,7 @@ mod tests {
 
     #[test]
     fn sec101_eval_buffer_base64() {
-        let findings =
-            scan_bundle(r#"eval(Buffer.from("aGVsbG8=", "base64"));"#, "test.mjs");
+        let findings = scan_bundle(r#"eval(Buffer.from("aGVsbG8=", "base64"));"#, "test.mjs");
         assert!(
             findings.iter().any(|f| f.rule_id == "SEC101"),
             "findings: {findings:?}"
@@ -1207,8 +1202,7 @@ mod tests {
 
     #[test]
     fn sec107_require_node_inspector_with_wait() {
-        let content =
-            r#"var inspector = require("node:inspector"); inspector.waitForDebugger();"#;
+        let content = r#"var inspector = require("node:inspector"); inspector.waitForDebugger();"#;
         let findings = scan_bundle(content, "test.mjs");
         assert!(
             findings.iter().any(|f| f.rule_id == "SEC107"),
@@ -1262,8 +1256,7 @@ mod tests {
     #[test]
     fn sec108_require_https_with_url() {
         // Use a trusted godaddy.com domain so SEC112 (block) does not also fire.
-        let content =
-            r#"var https = require("https"); https.get("https://api.godaddy.com/v1/");"#;
+        let content = r#"var https = require("https"); https.get("https://api.godaddy.com/v1/");"#;
         let findings = scan_bundle(content, "test.mjs");
         assert!(
             findings.iter().any(|f| f.rule_id == "SEC108"),
@@ -1315,8 +1308,7 @@ mod tests {
 
     #[test]
     fn sec108_no_signal_skips_rule() {
-        let findings =
-            scan_bundle(r#"const url = "https://api.example.com";"#, "test.mjs");
+        let findings = scan_bundle(r#"const url = "https://api.example.com";"#, "test.mjs");
         assert!(
             findings.iter().all(|f| f.rule_id != "SEC108"),
             "SEC108 should not fire without http/axios import: {findings:?}"
@@ -1573,8 +1565,10 @@ mod tests {
 
     #[test]
     fn sec112_trusted_godaddy_subdomain_allowed() {
-        let findings =
-            scan_bundle(r#"fetch("https://api.godaddy.com/v1/products");"#, "test.mjs");
+        let findings = scan_bundle(
+            r#"fetch("https://api.godaddy.com/v1/products");"#,
+            "test.mjs",
+        );
         assert!(
             findings.iter().all(|f| f.rule_id != "SEC112"),
             "godaddy.com subdomain should be trusted: {findings:?}"
@@ -1633,8 +1627,10 @@ mod tests {
 
     #[test]
     fn sec113_buffer_from_base64_blocked() {
-        let findings =
-            scan_bundle(r#"const x = Buffer.from("shortval", "base64");"#, "test.mjs");
+        let findings = scan_bundle(
+            r#"const x = Buffer.from("shortval", "base64");"#,
+            "test.mjs",
+        );
         assert!(
             findings.iter().any(|f| f.rule_id == "SEC113"),
             "findings: {findings:?}"
@@ -1643,8 +1639,7 @@ mod tests {
 
     #[test]
     fn sec113_buffer_from_hex_blocked() {
-        let findings =
-            scan_bundle(r#"const x = Buffer.from("deadbeef", "hex");"#, "test.mjs");
+        let findings = scan_bundle(r#"const x = Buffer.from("deadbeef", "hex");"#, "test.mjs");
         assert!(
             findings.iter().any(|f| f.rule_id == "SEC113"),
             "findings: {findings:?}"
@@ -1653,8 +1648,10 @@ mod tests {
 
     #[test]
     fn sec113_buffer_from_utf8_allowed() {
-        let findings =
-            scan_bundle(r#"const x = Buffer.from("hello world", "utf8");"#, "test.mjs");
+        let findings = scan_bundle(
+            r#"const x = Buffer.from("hello world", "utf8");"#,
+            "test.mjs",
+        );
         assert!(
             findings.iter().all(|f| f.rule_id != "SEC113"),
             "utf8 encoding should not match SEC113: {findings:?}"

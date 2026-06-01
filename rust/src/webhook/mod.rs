@@ -1,11 +1,13 @@
-use cli_engine::{CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+};
 
 use crate::application::client::api_url_for_env;
 
 pub fn module() -> Module {
     Module::new("GPA", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new("webhook", "Manage webhook event types"))
-            .with_command(RuntimeCommandSpec::new_with_context(
+        RuntimeGroupSpec::new(GroupSpec::new("webhook", "Manage webhook event types")).with_command(
+            RuntimeCommandSpec::new_with_context(
                 CommandSpec::new("events", "List available webhook event types")
                     .with_system("webhooks")
                     .with_tier(Tier::Read),
@@ -37,6 +39,7 @@ pub fn module() -> Module {
                         .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
                     Ok(CommandResult::new(data))
                 },
-            ))
+            ),
+        )
     })
 }

@@ -1,13 +1,27 @@
-use cli_engine::{CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+};
 use serde_json::json;
 
 /// Static catalog of available GoDaddy action names.
 /// Loaded from the manifest at compile time.
 const ACTIONS: &[(&str, &str)] = &[
-    ("location.address.verify", "Verify and standardize a physical address"),
-    ("commerce.taxes.calculate", "Calculate taxes for a commerce transaction"),
-    ("commerce.shipping-rates.calculate", "Calculate shipping rates"),
-    ("commerce.price-adjustment.apply", "Apply a price adjustment"),
+    (
+        "location.address.verify",
+        "Verify and standardize a physical address",
+    ),
+    (
+        "commerce.taxes.calculate",
+        "Calculate taxes for a commerce transaction",
+    ),
+    (
+        "commerce.shipping-rates.calculate",
+        "Calculate shipping rates",
+    ),
+    (
+        "commerce.price-adjustment.apply",
+        "Apply a price adjustment",
+    ),
     ("notifications.email.send", "Send an email notification"),
     ("commerce.payment.process", "Process a payment"),
     ("commerce.payment.refund", "Refund a payment"),
@@ -17,13 +31,27 @@ const ACTIONS: &[(&str, &str)] = &[
 /// Key is the action name; value is the full JSON schema.
 fn load_action_schema(name: &str) -> Option<serde_json::Value> {
     let json_str = match name {
-        "location.address.verify" => include_str!("../../schemas/actions/location-address-verify.json"),
-        "commerce.taxes.calculate" => include_str!("../../schemas/actions/commerce-taxes-calculate.json"),
-        "commerce.shipping-rates.calculate" => include_str!("../../schemas/actions/commerce-shipping-rates-calculate.json"),
-        "commerce.price-adjustment.apply" => include_str!("../../schemas/actions/commerce-price-adjustment-apply.json"),
-        "notifications.email.send" => include_str!("../../schemas/actions/notifications-email-send.json"),
-        "commerce.payment.process" => include_str!("../../schemas/actions/commerce-payment-process.json"),
-        "commerce.payment.refund" => include_str!("../../schemas/actions/commerce-payment-refund.json"),
+        "location.address.verify" => {
+            include_str!("../../schemas/actions/location-address-verify.json")
+        }
+        "commerce.taxes.calculate" => {
+            include_str!("../../schemas/actions/commerce-taxes-calculate.json")
+        }
+        "commerce.shipping-rates.calculate" => {
+            include_str!("../../schemas/actions/commerce-shipping-rates-calculate.json")
+        }
+        "commerce.price-adjustment.apply" => {
+            include_str!("../../schemas/actions/commerce-price-adjustment-apply.json")
+        }
+        "notifications.email.send" => {
+            include_str!("../../schemas/actions/notifications-email-send.json")
+        }
+        "commerce.payment.process" => {
+            include_str!("../../schemas/actions/commerce-payment-process.json")
+        }
+        "commerce.payment.refund" => {
+            include_str!("../../schemas/actions/commerce-payment-refund.json")
+        }
         _ => return None,
     };
     serde_json::from_str(json_str).ok()

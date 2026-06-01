@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -186,11 +186,15 @@ fn github_client() -> Result<reqwest::blocking::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::ACCEPT,
-        "application/vnd.github+json".parse().expect("valid header value"),
+        "application/vnd.github+json"
+            .parse()
+            .expect("valid header value"),
     );
     headers.insert(
         reqwest::header::USER_AGENT,
-        "godaddy-cli-api-catalog-generator".parse().expect("valid header value"),
+        "godaddy-cli-api-catalog-generator"
+            .parse()
+            .expect("valid header value"),
     );
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         let token = token.trim().to_owned();
@@ -215,7 +219,10 @@ fn list_repos_for_owner_path(
         let url = format!(
             "{GITHUB_API_BASE}/{owner_path}/{GITHUB_ORG}/repos?per_page={GITHUB_PAGE_SIZE}&page={page}&type=public&sort=full_name&direction=asc"
         );
-        let resp = client.get(&url).send().context("GitHub API request failed")?;
+        let resp = client
+            .get(&url)
+            .send()
+            .context("GitHub API request failed")?;
         let status = resp.status();
         if status == 404 {
             return Ok(Vec::new());
@@ -282,10 +289,7 @@ fn find_latest_spec_file(repo_dir: &Path) -> Option<(String, PathBuf, bool)> {
                 return Some((version.clone(), p, false));
             }
         }
-        for name in &[
-            "graphql/schema.graphql",
-            "schema.graphql",
-        ] {
+        for name in &["graphql/schema.graphql", "schema.graphql"] {
             let p = repo_dir.join(version).join("schemas").join(name);
             if p.exists() {
                 return Some((version.clone(), p, true));
@@ -371,7 +375,13 @@ fn clone_repo(clone_url: &str, target: &Path, git_ref: Option<&str>) -> Result<(
             "origin",
             r,
         ])?;
-        git_run(&["-C", &target.to_string_lossy(), "checkout", "--quiet", "FETCH_HEAD"])?;
+        git_run(&[
+            "-C",
+            &target.to_string_lossy(),
+            "checkout",
+            "--quiet",
+            "FETCH_HEAD",
+        ])?;
     }
     Ok(())
 }
@@ -431,7 +441,9 @@ fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
             .map(|r| r.name.clone())
             .collect();
         if names.is_empty() {
-            eprintln!("WARNING: no commerce specs found via GitHub discovery; using bootstrap list");
+            eprintln!(
+                "WARNING: no commerce specs found via GitHub discovery; using bootstrap list"
+            );
             names = BOOTSTRAP_REPOS.iter().map(|s| s.to_string()).collect();
         }
         names
@@ -526,7 +538,9 @@ fn regex_is_match_commerce_spec(name: &str) -> bool {
         && let Some(slug) = rest.strip_suffix("-specification")
     {
         return !slug.is_empty()
-            && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            && slug
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
     }
     false
 }
@@ -537,8 +551,7 @@ fn regex_is_match_commerce_spec(name: &str) -> bool {
 
 fn parse_yaml_or_json(src: &str, path: &Path) -> Result<Value> {
     // serde_yaml handles both YAML and JSON
-    serde_yaml::from_str(src)
-        .with_context(|| format!("failed to parse {}", path.display()))
+    serde_yaml::from_str(src).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 // ---------------------------------------------------------------------------
@@ -605,7 +618,11 @@ fn resolve_ref(
             .strip_prefix("https://schemas.api.godaddy.com")
             .unwrap_or("")
             .strip_prefix("/common-types")
-            .unwrap_or(ref_str.strip_prefix("https://schemas.api.godaddy.com").unwrap_or(""));
+            .unwrap_or(
+                ref_str
+                    .strip_prefix("https://schemas.api.godaddy.com")
+                    .unwrap_or(""),
+            );
         let local_path = ct_dir.join(url_path.trim_start_matches('/'));
         return load_external_ref(&local_path, common_types_dir, depth);
     }
@@ -641,7 +658,10 @@ fn load_external_ref(path: &Path, common_types_dir: Option<&Path>, depth: usize)
     } else if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
         fallback
     } else {
-        eprintln!("WARNING: cannot read ref file {}: No such file or directory (os error 2)", path.display());
+        eprintln!(
+            "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
+            path.display()
+        );
         return None;
     };
 
@@ -652,7 +672,13 @@ fn load_external_ref(path: &Path, common_types_dir: Option<&Path>, depth: usize)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
     let dir = resolved.parent().unwrap_or(&resolved);
-    Some(dereference(&parsed.clone(), parsed, dir, common_types_dir, depth + 1))
+    Some(dereference(
+        &parsed.clone(),
+        parsed,
+        dir,
+        common_types_dir,
+        depth + 1,
+    ))
 }
 
 /// Normalize a path by resolving `.` and `..` components without hitting the filesystem.
@@ -660,7 +686,9 @@ fn normalize_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
-            std::path::Component::ParentDir => { out.pop(); }
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
             std::path::Component::CurDir => {}
             c => out.push(c),
         }
@@ -694,13 +722,21 @@ fn resolve_common_types_path(path: &Path, common_types_dir: Option<&Path>) -> Op
         ("yaml", "json", "json")
     };
 
-    let nested = ct_dir.join("v1").join("schemas").join(primary_sub).join(basename_str.as_ref());
+    let nested = ct_dir
+        .join("v1")
+        .join("schemas")
+        .join(primary_sub)
+        .join(basename_str.as_ref());
     if nested.exists() {
         return Some(nested);
     }
     let stem = path.file_stem()?.to_string_lossy();
     let alt_name = format!("{stem}.{alt_ext}");
-    let alt = ct_dir.join("v1").join("schemas").join(alt_sub).join(&alt_name);
+    let alt = ct_dir
+        .join("v1")
+        .join("schemas")
+        .join(alt_sub)
+        .join(&alt_name);
     if alt.exists() {
         return Some(alt);
     }
@@ -760,7 +796,11 @@ fn normalize_scope(scope: &str) -> String {
 
 fn normalize_scope_action(action: &str) -> String {
     let a = action.trim().to_lowercase();
-    if a == "read-write" { "write".to_owned() } else { a }
+    if a == "read-write" {
+        "write".to_owned()
+    } else {
+        a
+    }
 }
 
 fn extract_scopes(security: &Value) -> Vec<String> {
@@ -798,7 +838,11 @@ fn resolve_base_url(servers: &Value) -> String {
         _ => return String::new(),
     };
     let server = &arr[0];
-    let mut url = server.get("url").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let mut url = server
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
     if let Some(vars) = server.get("variables").and_then(|v| v.as_object()) {
         for (key, var) in vars {
             if let Some(default) = var.get("default").and_then(|v| v.as_str()) {
@@ -812,10 +856,22 @@ fn resolve_base_url(servers: &Value) -> String {
 fn process_parameter(param: &Value) -> Option<CatalogParameter> {
     let name = param.get("name")?.as_str()?.to_owned();
     let location = param.get("in")?.as_str()?.to_owned();
-    let required = param.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
-    let description = param.get("description").and_then(|v| v.as_str()).map(str::to_owned);
+    let required = param
+        .get("required")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let description = param
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     let schema = param.get("schema").cloned();
-    Some(CatalogParameter { name, location, required, description, schema })
+    Some(CatalogParameter {
+        name,
+        location,
+        required,
+        description,
+        schema,
+    })
 }
 
 fn process_request_body(rb: &Value) -> Option<CatalogRequestBody> {
@@ -823,15 +879,30 @@ fn process_request_body(rb: &Value) -> Option<CatalogRequestBody> {
     if rb.get("$ref").is_some() {
         return None;
     }
-    let required = rb.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
-    let description = rb.get("description").and_then(|v| v.as_str()).map(str::to_owned);
+    let required = rb
+        .get("required")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let description = rb
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     let content = rb.get("content")?.as_object()?;
-    let content_type = content.keys().next().cloned().unwrap_or_else(|| "application/json".to_owned());
+    let content_type = content
+        .keys()
+        .next()
+        .cloned()
+        .unwrap_or_else(|| "application/json".to_owned());
     let schema = content
         .get(&content_type)
         .and_then(|ct| ct.get("schema"))
         .cloned();
-    Some(CatalogRequestBody { required, description, content_type, schema })
+    Some(CatalogRequestBody {
+        required,
+        description,
+        content_type,
+        schema,
+    })
 }
 
 fn process_responses(responses: &Value) -> HashMap<String, CatalogResponse> {
@@ -851,14 +922,24 @@ fn process_responses(responses: &Value) -> HashMap<String, CatalogResponse> {
             );
             continue;
         }
-        let description = resp.get("description").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+        let description = resp
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_owned();
         let schema = resp
             .get("content")
             .and_then(|c| c.as_object())
             .and_then(|c| c.values().next())
             .and_then(|ct| ct.get("schema"))
             .cloned();
-        map.insert(status.clone(), CatalogResponse { description, schema });
+        map.insert(
+            status.clone(),
+            CatalogResponse {
+                description,
+                schema,
+            },
+        );
     }
     map
 }
@@ -897,7 +978,11 @@ fn process_operation(
         operation_id
     };
 
-    let summary = operation.get("summary").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let summary = operation
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
     let description = operation
         .get("description")
         .and_then(|v| v.as_str())
@@ -915,11 +1000,17 @@ fn process_operation(
         .iter()
         .filter_map(|p| {
             // Skip $ref params that weren't resolved
-            if p.get("$ref").is_some() { return None; }
+            if p.get("$ref").is_some() {
+                return None;
+            }
             process_parameter(p)
         })
         .collect();
-    let parameters = if parameters.is_empty() { None } else { Some(parameters) };
+    let parameters = if parameters.is_empty() {
+        None
+    } else {
+        Some(parameters)
+    };
 
     let request_body = operation.get("requestBody").and_then(process_request_body);
     let responses = operation
@@ -946,44 +1037,63 @@ fn process_operation(
                 Some(CatalogGraphqlSchema {
                     schema_ref: schema_ref.to_owned(),
                     operation_count: cached.operation_count,
-                    operations: cached.operations.iter().map(|op| CatalogGraphqlOperation {
-                        name: op.name.clone(),
-                        kind: op.kind.clone(),
-                        return_type: op.return_type.clone(),
-                        description: op.description.clone(),
-                        deprecated: op.deprecated,
-                        deprecation_reason: op.deprecation_reason.clone(),
-                        args: op.args.iter().map(|a| CatalogGraphqlArgument {
-                            name: a.name.clone(),
-                            arg_type: a.arg_type.clone(),
-                            required: a.required,
-                            description: a.description.clone(),
-                            default_value: a.default_value.clone(),
-                        }).collect(),
-                    }).collect(),
-                })
-            } else {
-                match load_graphql_schema(&resolved, schema_ref, common_types_dir) {
-                    Ok(gql) => {
-                        graphql_cache.insert(cache_key, CatalogGraphqlSchema {
-                            schema_ref: gql.schema_ref.clone(),
-                            operation_count: gql.operation_count,
-                            operations: gql.operations.iter().map(|op| CatalogGraphqlOperation {
-                                name: op.name.clone(),
-                                kind: op.kind.clone(),
-                                return_type: op.return_type.clone(),
-                                description: op.description.clone(),
-                                deprecated: op.deprecated,
-                                deprecation_reason: op.deprecation_reason.clone(),
-                                args: op.args.iter().map(|a| CatalogGraphqlArgument {
+                    operations: cached
+                        .operations
+                        .iter()
+                        .map(|op| CatalogGraphqlOperation {
+                            name: op.name.clone(),
+                            kind: op.kind.clone(),
+                            return_type: op.return_type.clone(),
+                            description: op.description.clone(),
+                            deprecated: op.deprecated,
+                            deprecation_reason: op.deprecation_reason.clone(),
+                            args: op
+                                .args
+                                .iter()
+                                .map(|a| CatalogGraphqlArgument {
                                     name: a.name.clone(),
                                     arg_type: a.arg_type.clone(),
                                     required: a.required,
                                     description: a.description.clone(),
                                     default_value: a.default_value.clone(),
-                                }).collect(),
-                            }).collect(),
-                        });
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+            } else {
+                match load_graphql_schema(&resolved, schema_ref, common_types_dir) {
+                    Ok(gql) => {
+                        graphql_cache.insert(
+                            cache_key,
+                            CatalogGraphqlSchema {
+                                schema_ref: gql.schema_ref.clone(),
+                                operation_count: gql.operation_count,
+                                operations: gql
+                                    .operations
+                                    .iter()
+                                    .map(|op| CatalogGraphqlOperation {
+                                        name: op.name.clone(),
+                                        kind: op.kind.clone(),
+                                        return_type: op.return_type.clone(),
+                                        description: op.description.clone(),
+                                        deprecated: op.deprecated,
+                                        deprecation_reason: op.deprecation_reason.clone(),
+                                        args: op
+                                            .args
+                                            .iter()
+                                            .map(|a| CatalogGraphqlArgument {
+                                                name: a.name.clone(),
+                                                arg_type: a.arg_type.clone(),
+                                                required: a.required,
+                                                description: a.description.clone(),
+                                                default_value: a.default_value.clone(),
+                                            })
+                                            .collect(),
+                                    })
+                                    .collect(),
+                            },
+                        );
                         Some(gql)
                     }
                     Err(e) => {
@@ -1008,7 +1118,12 @@ fn process_operation(
     }
 }
 
-fn process_spec(spec: Value, domain: &str, spec_file: &Path, common_types_dir: Option<&Path>) -> CatalogDomain {
+fn process_spec(
+    spec: Value,
+    domain: &str,
+    spec_file: &Path,
+    common_types_dir: Option<&Path>,
+) -> CatalogDomain {
     let base_url = spec
         .get("servers")
         .map(resolve_base_url)
@@ -1063,7 +1178,14 @@ fn process_spec(spec: Value, domain: &str, spec_file: &Path, common_types_dir: O
         }
     }
 
-    CatalogDomain { name: domain.to_owned(), title, description, version, base_url, endpoints }
+    CatalogDomain {
+        name: domain.to_owned(),
+        title,
+        description,
+        version,
+        base_url,
+        endpoints,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,10 +1239,7 @@ fn parse_graphql_operations(source: &str) -> Result<Vec<CatalogGraphqlOperation>
         };
 
         for field in &obj.fields {
-            let deprecated = field
-                .directives
-                .iter()
-                .any(|d| d.name == "deprecated");
+            let deprecated = field.directives.iter().any(|d| d.name == "deprecated");
             let deprecation_reason = field
                 .directives
                 .iter()
@@ -1139,10 +1258,9 @@ fn parse_graphql_operations(source: &str) -> Result<Vec<CatalogGraphqlOperation>
                 .iter()
                 .map(|arg| {
                     let type_str = graphql_type_to_string(&arg.value_type);
-                    let required = matches!(
-                        arg.value_type,
-                        graphql_parser::schema::Type::NonNullType(_)
-                    ) && arg.default_value.is_none();
+                    let required =
+                        matches!(arg.value_type, graphql_parser::schema::Type::NonNullType(_))
+                            && arg.default_value.is_none();
                     let default_value = arg.default_value.as_ref().map(|v| format!("{v}"));
                     CatalogGraphqlArgument {
                         name: arg.name.clone(),
@@ -1198,10 +1316,16 @@ where
 // GraphQL-only domain synthesis
 // ---------------------------------------------------------------------------
 
-fn synthesize_graphql_domain(source: &SpecSource, common_types_dir: Option<&Path>) -> CatalogDomain {
+fn synthesize_graphql_domain(
+    source: &SpecSource,
+    common_types_dir: Option<&Path>,
+) -> CatalogDomain {
     let gql = load_graphql_schema(&source.spec_file, "./schema.graphql", common_types_dir)
         .unwrap_or_else(|e| {
-            eprintln!("WARNING: failed to load GraphQL schema for {}: {e}", source.domain);
+            eprintln!(
+                "WARNING: failed to load GraphQL schema for {}: {e}",
+                source.domain
+            );
             CatalogGraphqlSchema {
                 schema_ref: "./schema.graphql".to_owned(),
                 operation_count: 0,
@@ -1214,7 +1338,11 @@ fn synthesize_graphql_domain(source: &SpecSource, common_types_dir: Option<&Path
         name: source.domain.clone(),
         title: format!("{} GraphQL API", source.domain),
         description: format!("GraphQL API with {op_count} operations"),
-        version: source.spec_version.strip_prefix('v').unwrap_or(&source.spec_version).to_owned(),
+        version: source
+            .spec_version
+            .strip_prefix('v')
+            .unwrap_or(&source.spec_version)
+            .to_owned(),
         base_url: String::new(),
         endpoints: vec![CatalogEndpoint {
             operation_id: "graphql".to_owned(),
@@ -1226,10 +1354,13 @@ fn synthesize_graphql_domain(source: &SpecSource, common_types_dir: Option<&Path
             request_body: None,
             responses: {
                 let mut r = HashMap::new();
-                r.insert("200".to_owned(), CatalogResponse {
-                    description: "GraphQL response".to_owned(),
-                    schema: None,
-                });
+                r.insert(
+                    "200".to_owned(),
+                    CatalogResponse {
+                        description: "GraphQL response".to_owned(),
+                        schema: None,
+                    },
+                );
                 r
             },
             scopes: Vec::new(),
@@ -1309,13 +1440,16 @@ fn main() -> Result<()> {
 
         let filename = format!("{}.json", source.domain);
         let out_path = output_dir.join(&filename);
-        let json = serde_json::to_string_pretty(&catalog)
-            .context("failed to serialize catalog domain")?;
+        let json =
+            serde_json::to_string_pretty(&catalog).context("failed to serialize catalog domain")?;
         std::fs::write(&out_path, &json)
             .with_context(|| format!("failed to write {}", out_path.display()))?;
 
         let ep_count = catalog.endpoints.len();
-        eprintln!("  {} endpoints from {} v{}", ep_count, catalog.title, catalog.version);
+        eprintln!(
+            "  {} endpoints from {} v{}",
+            ep_count, catalog.title, catalog.version
+        );
         total_endpoints += ep_count;
 
         manifest.domains.insert(
@@ -1334,13 +1468,17 @@ fn main() -> Result<()> {
 
     // Write manifest
     let manifest_path = output_dir.join("manifest.json");
-    let manifest_json = serde_json::to_string_pretty(&manifest).context("failed to serialize manifest")?;
+    let manifest_json =
+        serde_json::to_string_pretty(&manifest).context("failed to serialize manifest")?;
     std::fs::write(&manifest_path, &manifest_json)
         .with_context(|| format!("failed to write {}", manifest_path.display()))?;
 
     // Cleanup temp dir
     if let Err(e) = std::fs::remove_dir_all(&tmpdir) {
-        eprintln!("WARNING: failed to clean up temp dir {}: {e}", tmpdir.display());
+        eprintln!(
+            "WARNING: failed to clean up temp dir {}: {e}",
+            tmpdir.display()
+        );
     }
 
     eprintln!(

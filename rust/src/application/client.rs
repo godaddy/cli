@@ -78,7 +78,11 @@ impl ApplicationClient {
                     .iter()
                     .filter_map(|e| {
                         let node = &e["node"];
-                        if node.is_null() { None } else { Some(node.clone()) }
+                        if node.is_null() {
+                            None
+                        } else {
+                            Some(node.clone())
+                        }
                     })
                     .collect()
             })
@@ -158,7 +162,12 @@ impl ApplicationClient {
         .await
     }
 
-    pub async fn upload_artifact(&self, url: &str, headers: &Value, bytes: Vec<u8>) -> Result<(), ClientError> {
+    pub async fn upload_artifact(
+        &self,
+        url: &str,
+        headers: &Value,
+        bytes: Vec<u8>,
+    ) -> Result<(), ClientError> {
         let mut req = self.client.put(url).body(bytes);
         if let Some(obj) = headers.as_object() {
             for (k, v) in obj {

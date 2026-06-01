@@ -66,7 +66,9 @@ impl AuthProvider for GoDaddyAuthProvider {
     }
 
     async fn get_credential(&self, env: &str, command: &str, tier: &str) -> Result<Credential> {
-        self.provider_for(env)?.get_credential(env, command, tier).await
+        self.provider_for(env)?
+            .get_credential(env, command, tier)
+            .await
     }
 
     async fn status(&self, env: &str) -> Result<Credential> {

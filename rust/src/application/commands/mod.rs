@@ -92,7 +92,14 @@ fn info_command() -> RuntimeCommandSpec {
                         format!("application deploy --name {name}"),
                         "Deploy this application",
                     )
-                    .with_param("name", NextActionParam { value: Some(name.clone()), required: true, ..Default::default() }),
+                    .with_param(
+                        "name",
+                        NextActionParam {
+                            value: Some(name.clone()),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
                     NextAction::new(
                         "application update --id <id>",
                         "Update application metadata",
@@ -188,8 +195,7 @@ fn init_command() -> RuntimeCommandSpec {
             let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
 
             // Write godaddy.toml for the created application
-            let config_path =
-                crate::config::config_path(Some(ctx.middleware.env.as_str()));
+            let config_path = crate::config::config_path(Some(ctx.middleware.env.as_str()));
             let config = crate::config::Config {
                 name: name.clone(),
                 client_id: client_id.clone(),
@@ -211,7 +217,10 @@ fn init_command() -> RuntimeCommandSpec {
                     "application add action --name <name> --url <url>",
                     "Add an action to godaddy.toml",
                 ),
-                NextAction::new("application validate", "Validate the generated godaddy.toml"),
+                NextAction::new(
+                    "application validate",
+                    "Validate the generated godaddy.toml",
+                ),
                 NextAction::new(
                     "application release --application-id <id> --version 0.0.1",
                     "Create the first release",
@@ -242,12 +251,9 @@ fn validate_command() -> RuntimeCommandSpec {
                 .as_deref()
                 .map(std::path::Path::new)
                 .map(std::path::Path::to_owned)
-                .unwrap_or_else(|| {
-                    crate::config::config_path(Some(ctx.middleware.env.as_str()))
-                });
-            crate::config::read_config(&path).map_err(|e| {
-                cli_engine::CliCoreError::message(format!("invalid config: {e}"))
-            })?;
+                .unwrap_or_else(|| crate::config::config_path(Some(ctx.middleware.env.as_str())));
+            crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(format!("invalid config: {e}")))?;
             Ok(CommandResult::new(
                 json!({ "valid": true, "path": path.display().to_string() }),
             ))
@@ -303,12 +309,26 @@ fn update_command() -> RuntimeCommandSpec {
                         format!("application info --name {name}"),
                         "Inspect updated application",
                     )
-                    .with_param("name", NextActionParam { value: Some(name.clone()), required: true, ..Default::default() }),
+                    .with_param(
+                        "name",
+                        NextActionParam {
+                            value: Some(name.clone()),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
                     NextAction::new(
                         format!("application deploy --name {name}"),
                         "Deploy updated application",
                     )
-                    .with_param("name", NextActionParam { value: Some(name), required: true, ..Default::default() }),
+                    .with_param(
+                        "name",
+                        NextActionParam {
+                            value: Some(name),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
                 ]),
             )
         },
@@ -347,13 +367,34 @@ fn enable_command() -> RuntimeCommandSpec {
                         format!("application disable {name} --store-id {store_id}"),
                         "Disable the application on the same store",
                     )
-                    .with_param("name", NextActionParam { value: Some(name.clone()), required: true, ..Default::default() })
-                    .with_param("store-id", NextActionParam { value: Some(store_id.clone()), required: true, ..Default::default() }),
+                    .with_param(
+                        "name",
+                        NextActionParam {
+                            value: Some(name.clone()),
+                            required: true,
+                            ..Default::default()
+                        },
+                    )
+                    .with_param(
+                        "store-id",
+                        NextActionParam {
+                            value: Some(store_id.clone()),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
                     NextAction::new(
                         format!("application info --name {name}"),
                         "Inspect application",
                     )
-                    .with_param("name", NextActionParam { value: Some(name), required: true, ..Default::default() }),
+                    .with_param(
+                        "name",
+                        NextActionParam {
+                            value: Some(name),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
                 ]),
             )
         },
@@ -393,13 +434,34 @@ fn disable_command() -> RuntimeCommandSpec {
                             format!("application enable {name} --store-id {store_id}"),
                             "Re-enable the application on the same store",
                         )
-                        .with_param("name", NextActionParam { value: Some(name.clone()), required: true, ..Default::default() })
-                        .with_param("store-id", NextActionParam { value: Some(store_id.clone()), required: true, ..Default::default() }),
+                        .with_param(
+                            "name",
+                            NextActionParam {
+                                value: Some(name.clone()),
+                                required: true,
+                                ..Default::default()
+                            },
+                        )
+                        .with_param(
+                            "store-id",
+                            NextActionParam {
+                                value: Some(store_id.clone()),
+                                required: true,
+                                ..Default::default()
+                            },
+                        ),
                         NextAction::new(
                             format!("application info --name {name}"),
                             "Inspect application",
                         )
-                        .with_param("name", NextActionParam { value: Some(name), required: true, ..Default::default() }),
+                        .with_param(
+                            "name",
+                            NextActionParam {
+                                value: Some(name),
+                                required: true,
+                                ..Default::default()
+                            },
+                        ),
                     ],
                 ),
             )
@@ -425,12 +487,13 @@ fn archive_command() -> RuntimeCommandSpec {
             let app_id = app_data["application"]["id"]
                 .as_str()
                 .ok_or_else(|| {
-                    cli_engine::CliCoreError::message(format!(
-                        "application '{name}' not found"
-                    ))
+                    cli_engine::CliCoreError::message(format!("application '{name}' not found"))
                 })?
                 .to_owned();
-            let data = client.archive_application(&app_id).await.map_err(client_err)?;
+            let data = client
+                .archive_application(&app_id)
+                .await
+                .map_err(client_err)?;
             Ok(
                 CommandResult::new(data["archiveApplication"].clone()).with_next_actions(vec![
                     NextAction::new("application list", "List remaining applications"),
@@ -468,18 +531,23 @@ fn release_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let app_id = arg_str(&ctx, "application-id").to_owned();
             let version = arg_str(&ctx, "version").to_owned();
-            let description =
-                ctx.args.get("description").and_then(|v| v.as_str()).map(str::to_owned);
+            let description = ctx
+                .args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned);
             let mut input = json!({ "applicationId": app_id, "version": version });
             if let Some(desc) = description {
                 input["description"] = json!(desc);
             }
             let client = make_client(&ctx)?;
             let data = client.create_release(input).await.map_err(client_err)?;
-            Ok(CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
-                NextAction::new("application deploy --name <name>", "Deploy this release"),
-                NextAction::new("application info --name <name>", "Inspect application"),
-            ]))
+            Ok(
+                CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
+                    NextAction::new("application deploy --name <name>", "Deploy this release"),
+                    NextAction::new("application info --name <name>", "Inspect application"),
+                ]),
+            )
         },
     )
 }
@@ -498,9 +566,18 @@ fn deploy_command() -> RuntimeCommandSpec {
                     .help("Application name"),
             ),
         |ctx, sender: StreamSender| async move {
-            let name = ctx.args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+            let name = ctx
+                .args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_owned();
             let env = ctx.middleware.env.clone();
-            let token = ctx.credential.as_ref().map(|c| c.token.clone()).unwrap_or_default();
+            let token = ctx
+                .credential
+                .as_ref()
+                .map(|c| c.token.clone())
+                .unwrap_or_default();
             let base_url = api_url_for_env(&env);
             let client = ApplicationClient::new(base_url, token);
 
@@ -592,7 +669,11 @@ fn collect_extensions(
     let mut result = Vec::new();
     if let Some(exts) = &config.extensions {
         for e in &exts.embed {
-            result.push((e.name.clone(), e.source.clone(), crate::extension::ExtensionType::Embed));
+            result.push((
+                e.name.clone(),
+                e.source.clone(),
+                crate::extension::ExtensionType::Embed,
+            ));
         }
         for e in &exts.checkout {
             result.push((
@@ -636,7 +717,9 @@ async fn deploy_extension(
     let ext_dir = source.parent().unwrap_or(std::path::Path::new("."));
     let bundle = crate::extension::bundle_extension(source, *ext_type, ext_dir)
         .await
-        .map_err(|e| cli_engine::CliCoreError::message(format!("bundle failed for '{ext_name}': {e}")))?;
+        .map_err(|e| {
+            cli_engine::CliCoreError::message(format!("bundle failed for '{ext_name}': {e}"))
+        })?;
 
     sender
         .send(json!({
@@ -669,7 +752,10 @@ async fn deploy_extension(
                 if f.snippet.is_empty() {
                     format!("  {} ({}:{}): {}", f.rule_id, f.file, f.line, f.message)
                 } else {
-                    format!("  {} ({}:{}): {}\n    > {}", f.rule_id, f.file, f.line, f.message, f.snippet)
+                    format!(
+                        "  {} ({}:{}): {}\n    > {}",
+                        f.rule_id, f.file, f.line, f.message, f.snippet
+                    )
                 }
             })
             .collect();
@@ -803,14 +889,18 @@ pub fn add_group() -> RuntimeGroupSpec {
                     .args
                     .get("events")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_owned))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let path = crate::config::config_path(Some(&ctx.middleware.env));
                 let mut config = crate::config::read_config(&path)
                     .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                let subs = config.subscriptions.get_or_insert_with(|| {
-                    crate::config::SubscriptionsConfig { webhook: vec![] }
-                });
+                let subs = config
+                    .subscriptions
+                    .get_or_insert_with(|| crate::config::SubscriptionsConfig { webhook: vec![] });
                 subs.webhook.push(crate::config::SubscriptionConfig {
                     name: name.clone(),
                     events: events.clone(),
@@ -818,127 +908,147 @@ pub fn add_group() -> RuntimeGroupSpec {
                 });
                 crate::config::write_config(&path, &config)
                     .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(json!({ "name": name, "url": url, "events": events })))
+                Ok(CommandResult::new(
+                    json!({ "name": name, "url": url, "events": events }),
+                ))
             },
         ))
         .with_group(add_extension_group())
 }
 
 pub fn add_extension_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new("extension", "Add an extension to godaddy.toml"))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("embed", "Add an embed extension")
-                .with_system("applications")
-                .with_tier(Tier::Mutate)
-                .with_arg(clap::Arg::new("name").long("name").required(true).help("Extension name"))
-                .with_arg(
-                    clap::Arg::new("handle")
-                        .long("handle")
-                        .required(true)
-                        .help("Unique handle"),
-                )
-                .with_arg(
-                    clap::Arg::new("source")
-                        .long("source")
-                        .required(true)
-                        .help("Source file path"),
-                ),
-            |ctx| async move {
-                let name = arg_str(&ctx, "name").to_owned();
-                let handle = arg_str(&ctx, "handle").to_owned();
-                let source = arg_str(&ctx, "source").to_owned();
-                let path = crate::config::config_path(Some(&ctx.middleware.env));
-                let mut config = crate::config::read_config(&path)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                let exts = config.extensions.get_or_insert_with(|| {
-                    crate::config::ExtensionsConfig {
-                        embed: vec![],
-                        checkout: vec![],
-                        blocks: None,
-                    }
+    RuntimeGroupSpec::new(GroupSpec::new(
+        "extension",
+        "Add an extension to godaddy.toml",
+    ))
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("embed", "Add an embed extension")
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_arg(
+                clap::Arg::new("name")
+                    .long("name")
+                    .required(true)
+                    .help("Extension name"),
+            )
+            .with_arg(
+                clap::Arg::new("handle")
+                    .long("handle")
+                    .required(true)
+                    .help("Unique handle"),
+            )
+            .with_arg(
+                clap::Arg::new("source")
+                    .long("source")
+                    .required(true)
+                    .help("Source file path"),
+            ),
+        |ctx| async move {
+            let name = arg_str(&ctx, "name").to_owned();
+            let handle = arg_str(&ctx, "handle").to_owned();
+            let source = arg_str(&ctx, "source").to_owned();
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let exts = config
+                .extensions
+                .get_or_insert_with(|| crate::config::ExtensionsConfig {
+                    embed: vec![],
+                    checkout: vec![],
+                    blocks: None,
                 });
-                exts.embed.push(crate::config::EmbedExtensionConfig {
-                    name: name.clone(),
-                    handle: handle.clone(),
-                    source,
-                    targets: vec![],
+            exts.embed.push(crate::config::EmbedExtensionConfig {
+                name: name.clone(),
+                handle: handle.clone(),
+                source,
+                targets: vec![],
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            Ok(CommandResult::new(
+                json!({ "name": name, "handle": handle, "type": "embed" }),
+            ))
+        },
+    ))
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("checkout", "Add a checkout extension")
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_arg(
+                clap::Arg::new("name")
+                    .long("name")
+                    .required(true)
+                    .help("Extension name"),
+            )
+            .with_arg(
+                clap::Arg::new("handle")
+                    .long("handle")
+                    .required(true)
+                    .help("Unique handle"),
+            )
+            .with_arg(
+                clap::Arg::new("source")
+                    .long("source")
+                    .required(true)
+                    .help("Source file path"),
+            ),
+        |ctx| async move {
+            let name = arg_str(&ctx, "name").to_owned();
+            let handle = arg_str(&ctx, "handle").to_owned();
+            let source = arg_str(&ctx, "source").to_owned();
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let exts = config
+                .extensions
+                .get_or_insert_with(|| crate::config::ExtensionsConfig {
+                    embed: vec![],
+                    checkout: vec![],
+                    blocks: None,
                 });
-                crate::config::write_config(&path, &config)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(json!({ "name": name, "handle": handle, "type": "embed" })))
-            },
-        ))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("checkout", "Add a checkout extension")
-                .with_system("applications")
-                .with_tier(Tier::Mutate)
-                .with_arg(clap::Arg::new("name").long("name").required(true).help("Extension name"))
-                .with_arg(
-                    clap::Arg::new("handle")
-                        .long("handle")
-                        .required(true)
-                        .help("Unique handle"),
-                )
-                .with_arg(
-                    clap::Arg::new("source")
-                        .long("source")
-                        .required(true)
-                        .help("Source file path"),
-                ),
-            |ctx| async move {
-                let name = arg_str(&ctx, "name").to_owned();
-                let handle = arg_str(&ctx, "handle").to_owned();
-                let source = arg_str(&ctx, "source").to_owned();
-                let path = crate::config::config_path(Some(&ctx.middleware.env));
-                let mut config = crate::config::read_config(&path)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                let exts = config.extensions.get_or_insert_with(|| {
-                    crate::config::ExtensionsConfig {
-                        embed: vec![],
-                        checkout: vec![],
-                        blocks: None,
-                    }
+            exts.checkout.push(crate::config::CheckoutExtensionConfig {
+                name: name.clone(),
+                handle: handle.clone(),
+                source,
+                targets: vec![],
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            Ok(CommandResult::new(
+                json!({ "name": name, "handle": handle, "type": "checkout" }),
+            ))
+        },
+    ))
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("blocks", "Add a blocks extension")
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_arg(
+                clap::Arg::new("source")
+                    .long("source")
+                    .required(true)
+                    .help("Source file path"),
+            ),
+        |ctx| async move {
+            let source = arg_str(&ctx, "source").to_owned();
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let exts = config
+                .extensions
+                .get_or_insert_with(|| crate::config::ExtensionsConfig {
+                    embed: vec![],
+                    checkout: vec![],
+                    blocks: None,
                 });
-                exts.checkout.push(crate::config::CheckoutExtensionConfig {
-                    name: name.clone(),
-                    handle: handle.clone(),
-                    source,
-                    targets: vec![],
-                });
-                crate::config::write_config(&path, &config)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(
-                    json!({ "name": name, "handle": handle, "type": "checkout" }),
-                ))
-            },
-        ))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("blocks", "Add a blocks extension")
-                .with_system("applications")
-                .with_tier(Tier::Mutate)
-                .with_arg(
-                    clap::Arg::new("source")
-                        .long("source")
-                        .required(true)
-                        .help("Source file path"),
-                ),
-            |ctx| async move {
-                let source = arg_str(&ctx, "source").to_owned();
-                let path = crate::config::config_path(Some(&ctx.middleware.env));
-                let mut config = crate::config::read_config(&path)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                let exts = config.extensions.get_or_insert_with(|| {
-                    crate::config::ExtensionsConfig {
-                        embed: vec![],
-                        checkout: vec![],
-                        blocks: None,
-                    }
-                });
-                exts.blocks =
-                    Some(crate::config::BlocksExtensionConfig { source: source.clone() });
-                crate::config::write_config(&path, &config)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(json!({ "source": source, "type": "blocks" })))
-            },
-        ))
+            exts.blocks = Some(crate::config::BlocksExtensionConfig {
+                source: source.clone(),
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            Ok(CommandResult::new(
+                json!({ "source": source, "type": "blocks" }),
+            ))
+        },
+    ))
 }
