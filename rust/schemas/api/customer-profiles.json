@@ -1,0 +1,1420 @@
+{
+  "name": "customer-profiles",
+  "title": "Customers API",
+  "description": "This API can be used to retrieve, create, update and delete customers as well as customer information.",
+  "version": "1.1.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "commerceCustomerCreateActivity",
+      "method": "POST",
+      "path": "/stores/{storeId}/customer-activities",
+      "summary": "Create customer activity",
+      "description": "This endpoint can be used to create an actvity for a specific customer using the store ID. Customer activities are the series of actions a customer can perform such as orders, bookings, and payments, which can be tracked for further analysis. Customer data will only be added when the customer does not yet exist.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Activity and contact data",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "activity": {
+              "description": "Data about the activity",
+              "properties": {
+                "source": {
+                  "description": "Source application of the interaction",
+                  "enum": [
+                    "COMMERCE",
+                    "CONVERSATIONS",
+                    "EMAIL_MARKETING",
+                    "GDSOCIAL",
+                    "GOPAY",
+                    "INVOICE",
+                    "POYNT",
+                    "ONLINE_APPOINTMENTS",
+                    "ONLINE_STORE",
+                    "PAYMENTS",
+                    "WEBSITE_BUILDER"
+                  ],
+                  "type": "string"
+                },
+                "type": {
+                  "description": "The type of activity to associate with the customer",
+                  "enum": [
+                    "BOOKING_CLAIMED",
+                    "BOOKING_CREATED",
+                    "BOOKING_RESCHEDULED",
+                    "ORDER_CREATED",
+                    "PAYMENT_COMPLETED",
+                    "PAYMENT_REFUNDED",
+                    "PAYMENT_VOIDED"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "type"
+              ],
+              "type": "object"
+            },
+            "customer": {
+              "allOf": [
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerId"
+                    },
+                    {
+                      "properties": {
+                        "addresses": {
+                          "default": [],
+                          "description": "Array of customer addresses. Note that currently only one address is supported",
+                          "items": {
+                            "$ref": "#/components/schemas/Address"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        },
+                        "emails": {
+                          "default": [],
+                          "description": "Array of email addresses",
+                          "items": {
+                            "$ref": "#/components/schemas/Email"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        },
+                        "firstName": {
+                          "example": "Fredrick",
+                          "maxLength": 50,
+                          "pattern": "^[\\u0080-\\uFFFFa-zA-Z0-9\\-.,\\(\\)\\@&' ]*$",
+                          "type": "string"
+                        },
+                        "instantMessages": {
+                          "default": [],
+                          "description": "Array of instant messaging accounts associated with the customer",
+                          "items": {
+                            "$ref": "#/components/schemas/InstantMessage"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "lastName": {
+                          "example": "Smith",
+                          "maxLength": 50,
+                          "pattern": "^[\\u0080-\\uFFFFa-zA-Z0-9\\-.,\\(\\)\\@&' ]*$",
+                          "type": "string"
+                        },
+                        "nickname": {
+                          "description": "Name by which customer should be addressed",
+                          "example": "Fred",
+                          "maxLength": 50,
+                          "pattern": "^[\\u0080-\\uFFFFa-zA-Z0-9\\-.,\\(\\)\\@&' ]*$",
+                          "type": "string"
+                        },
+                        "organization": {
+                          "example": "GoDaddy",
+                          "format": "organization-name",
+                          "maxLength": 100,
+                          "pattern": "^[\\u0080-\\uFFFFa-zA-Z0-9\\-.,\\(\\)\\\\@&!' +]*$",
+                          "type": "string"
+                        },
+                        "phones": {
+                          "default": [],
+                          "description": "Array of phone numbers",
+                          "items": {
+                            "$ref": "#/components/schemas/Phone"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        },
+                        "socialProfiles": {
+                          "default": [],
+                          "description": "Array of social profiles associated with the customer",
+                          "items": {
+                            "$ref": "#/components/schemas/SocialProfile"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        },
+                        "urls": {
+                          "default": [],
+                          "description": "Array of urls associated with the customer",
+                          "items": {
+                            "$ref": "#/components/schemas/Url"
+                          },
+                          "maxLength": 10,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "firstName",
+                        "lastName",
+                        "email",
+                        "phone"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                {
+                  "properties": {
+                    "externalIdentifier": {
+                      "properties": {
+                        "externalId": {
+                          "description": "The external id for the customer in another service",
+                          "maxLength": 255,
+                          "type": "string"
+                        },
+                        "source": {
+                          "description": "The name of service from which the external id originates",
+                          "example": "INVOICE",
+                          "maxLength": 255,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "externalId",
+                        "source"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "listKeys": {
+                      "description": "List memberships that should be changed for the customer",
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "listKeys"
+                  ]
+                }
+              ],
+              "description": "Customer data regarding the customer who performed the activity. Customer data will only be added when the customer does not yet exist.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "activity",
+            "customer"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "An activity for the given contact has been created"
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:create"
+      ]
+    },
+    {
+      "operationId": "CommerceCustomerJoin",
+      "method": "POST",
+      "path": "/stores/{storeId}/customer-join",
+      "summary": "Join customers",
+      "description": "This endpoint can be used to combine two or more customers together to create a single customer. The customer with the most complete basic attributes such as name, organization, and job title will be selected as the primary customer, and any attributes from the other customers will be reverse merged into the primary customer.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer IDs",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "customerIds": {
+              "description": "Array of Customer IDs to join",
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 50,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "customerIds"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "202": {
+          "description": "A Join Customers action was successfully created",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "properties": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "rel": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "links"
+            ],
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:update"
+      ]
+    },
+    {
+      "operationId": "GetRequest",
+      "method": "GET",
+      "path": "/stores/{storeId}/customer-requests/{requestId}",
+      "summary": "Get customer request by ID",
+      "description": "This endpoint can be used to retrieve a customer request using the store and request ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "requestId",
+          "in": "path",
+          "required": true,
+          "description": "Request identifier",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "success",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RequestId"
+              },
+              {
+                "properties": {
+                  "customerIds": {
+                    "description": "IDs of the customer records affected - created or updated - by the request",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "errors": {
+                    "items": {
+                      "$ref": "#/components/schemas/CustomerError"
+                    },
+                    "type": "array"
+                  },
+                  "links": {
+                    "description": "HATEOAS link relations",
+                    "items": {
+                      "$ref": "./common-types/v1/schemas/yaml/link-description.yaml"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/ActionStatuses"
+                  },
+                  "undoSupport": {
+                    "description": "Whether or not the request can be undone automatically",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:create",
+        "commerce.customer:update"
+      ]
+    },
+    {
+      "operationId": "CustomersList",
+      "method": "GET",
+      "path": "/stores/{storeId}/customers",
+      "summary": "Get customers",
+      "description": "This endpoint can be used to retrieve a list of customers for a specific store. Deleted customers are excluded by default.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "The page of results to return for pagination. Only supported up to the first 10 000 records of a result set. Use pageToken rather than page where possible. PageToken and page can not be used in combination, doing so will result in a 422 response.",
+          "schema": {
+            "default": 1,
+            "format": "integer-positive",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Maximum number of items to return. If used with page will return results with an offset of page * pageSize",
+          "schema": {
+            "default": 25,
+            "format": "integer-positive",
+            "maximum": 500,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Use the `pageToken` returned from a previous search in order to obtain the next set of results. Use pageToken rather than page where possible. PageToken and page can not be used in combination, doing so will result in a 422 response.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "description": "Indicates whether the response should include the total number of items and pages through response properties totalItems and totalPages respectively.",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "queryString",
+          "in": "query",
+          "required": false,
+          "description": "Search term - this string will be matched as a starts with for all text fields",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "nonEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by presence of at least one of these fields",
+          "schema": {
+            "items": {
+              "enum": [
+                "EMAIL",
+                "FIRST_NAME",
+                "LAST_NAME",
+                "PHONE"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "emptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by absence of at least one of these fields",
+          "schema": {
+            "items": {
+              "enum": [
+                "EMAIL",
+                "FIRST_NAME",
+                "LAST_NAME",
+                "PHONE"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "allNonEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by presence of all of these fields",
+          "schema": {
+            "items": {
+              "enum": [
+                "EMAIL",
+                "FIRST_NAME",
+                "LAST_NAME",
+                "PHONE"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "allEmptyFields",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by absence of all of these fields",
+          "schema": {
+            "items": {
+              "enum": [
+                "EMAIL",
+                "FIRST_NAME",
+                "LAST_NAME",
+                "PHONE"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "externalIdentifiers",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers by external identifier; provide as comma separated values in the form `type:value` (eg: `poynt:123,asin:B0B9F7WNQH`)",
+          "schema": {
+            "items": {
+              "description": "External identifier type and value separated by a colon, eg `poynt:123`",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "updatedAtStart",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers whose updatedAt is >= the specified date",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "maxLength": 64,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "updatedAtEnd",
+          "in": "query",
+          "required": false,
+          "description": "Filter customers whose updatedAt is <= the specified date",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "maxLength": 64,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "allOf": [
+              {
+                "properties": {
+                  "links": {
+                    "description": "HATEOAS link relations",
+                    "items": {
+                      "$ref": "./common-types/v1/schemas/yaml/link-description.yaml"
+                    },
+                    "type": "array"
+                  },
+                  "totalItems": {
+                    "description": "The total number of items in the full result set. Only returned if the `totalRequired` param is true",
+                    "type": "integer"
+                  },
+                  "totalPages": {
+                    "description": "The total number of pages of results in the full result set. Only returned if the `totalRequired` param is true",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "links"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "customers": {
+                    "description": "Array of customers",
+                    "items": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/CustomerBase"
+                        },
+                        {
+                          "$ref": "#/components/schemas/UpdatedAt"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ListKeys"
+                        },
+                        {
+                          "properties": {
+                            "joined": {
+                              "default": false,
+                              "description": "Whether the customer has been joined with one or more other customers to create a single customer",
+                              "type": "boolean"
+                            },
+                            "orderCount": {
+                              "description": "Number of orders the customer has made",
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "paymentCount": {
+                              "description": "Number of payments the customer has completed",
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "profileImageUrl": {
+                              "description": "Url of the profile images for the customer",
+                              "format": "url",
+                              "type": "string"
+                            },
+                            "trackingDisabled": {
+                              "default": false,
+                              "description": "Whether the customer has opted out of tracking (eg. email opens and link clicks)",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "customerId"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "customers"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:show"
+      ]
+    },
+    {
+      "operationId": "CommerceCustomersCreate",
+      "method": "POST",
+      "path": "/stores/{storeId}/customers",
+      "summary": "Create a new customer",
+      "description": "This endpoint can be used to create or de-duplicate - using channel data - and merge into existing customer. If the provided channels differ from existing customer data, a new customer will be created. This endpoint will not remove any existing data and is additive in cases where merges occur.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer data to import",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "customer": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CustomerBase"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerAdmin"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerExternalIdentifier"
+                },
+                {
+                  "$ref": "#/components/schemas/ListKeys"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "required": [
+            "customer",
+            "source"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "202": {
+          "description": "A CUSTOMER_CREATE action was successfully created",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "properties": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "rel": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "links"
+            ],
+            "type": "object"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:create"
+      ]
+    },
+    {
+      "operationId": "FetchCustomer",
+      "method": "GET",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Get customer by ID",
+      "description": "Retrieve the information of a single customer using the store and customer IDs.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Request was successful",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerBase"
+              },
+              {
+                "$ref": "#/components/schemas/UpdatedAt"
+              },
+              {
+                "$ref": "#/components/schemas/ListKeys"
+              },
+              {
+                "properties": {
+                  "joined": {
+                    "default": false,
+                    "description": "Whether the customer has been joined with one or more other customers to create a single customer",
+                    "type": "boolean"
+                  },
+                  "orderCount": {
+                    "description": "Number of orders the customer has made",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "paymentCount": {
+                    "description": "Number of payments the customer has completed",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "profileImageUrl": {
+                    "description": "Url of the profile images for the customer",
+                    "format": "url",
+                    "type": "string"
+                  },
+                  "trackingDisabled": {
+                    "default": false,
+                    "description": "Whether the customer has opted out of tracking (eg. email opens and link clicks)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "customerId"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:read"
+      ]
+    },
+    {
+      "operationId": "CommerceCustomersUpdate",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Update customer",
+      "description": "This endpoint can be used to update the information of a specific customer using the store and customer ID.",
+      "parameters": [
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "Customer data to import",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "customer": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CustomerBase"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerAdmin"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerExternalIdentifier"
+                },
+                {
+                  "$ref": "#/components/schemas/ListKeys"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdatedAt"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "required": [
+            "customer",
+            "source"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "202": {
+          "description": "A CUSTOMER_UPDATE action was successfully created",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "properties": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "rel": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "links"
+            ],
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:update"
+      ]
+    },
+    {
+      "operationId": "DeleteCustomer",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/customers/{customerId}",
+      "summary": "Delete customer by ID",
+      "description": "Delete the information a single customer using the store and customer IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "202": {
+          "description": "A Delete action was successfully created",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "properties": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "rel": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "links"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:update"
+      ]
+    },
+    {
+      "operationId": "CommerceCustomerUnjoin",
+      "method": "POST",
+      "path": "/stores/{storeId}/customers/{customerId}/customer-unjoin",
+      "summary": "Separate joined customers",
+      "description": "This endpoint can be used to undo all previous customer joins for a specific customer. Previously joined customers will now be available as individual customers.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "An identifier for a store",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "description": "The id of the specific customer",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests received within interval",
+          "schema": {
+            "$ref": "#/components/schemas/ErrorLimit"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "202": {
+          "description": "An Unjoin Customers action was successfully created",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "properties": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "rel": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "links"
+            ],
+            "type": "object"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.customer:update"
+      ]
+    }
+  ]
+}

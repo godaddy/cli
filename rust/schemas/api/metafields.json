@@ -1,0 +1,1068 @@
+{
+  "name": "metafields",
+  "title": "Metafields API",
+  "description": "This API allows for an extension of top-level commerce entities with custom data, providing the appropriate endpoints for managing commerce metafields.",
+  "version": "1.0.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "getMetafieldDefinitionTypes",
+      "method": "GET",
+      "path": "/stores/{storeId}/metafield-definition-types",
+      "summary": "Get all metafield definition types",
+      "description": "This endpoint can be used to retrieve all the metafield definition types available using the store ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "responses": {
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "An array of metafield definition types that are available for clients to use when creating metafield definitions and values",
+          "schema": {
+            "properties": {
+              "metafieldDefinitionTypes": {
+                "items": {
+                  "$ref": "./models/metafield-definition-type.json"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:read"
+      ]
+    },
+    {
+      "operationId": "getMetafieldDefinitions",
+      "method": "GET",
+      "path": "/stores/{storeId}/metafield-definitions",
+      "summary": "Get metafield definition",
+      "description": "Retrieves all metafield definitions for a given store and resourceType",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "A non-negative, non-zero integer indicating the maximum number of resouces to return at one time",
+          "schema": {
+            "default": 25,
+            "format": "int64",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "The cursor to use to fetch the next page of results",
+          "schema": {
+            "description": "A string cursor representing a key or ID to use to fetch the next page of results",
+            "example": "MTY1MTc0NTczMDAwMDsyRzVWc1dFRmhJa3RIOFBZNHFDMGlPR0RwVko=",
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageTokenDirection",
+          "in": "query",
+          "required": false,
+          "description": "Direction indicating whether to fetch the next page of results or the previous page of results",
+          "schema": {
+            "default": "FORWARD",
+            "description": "Page token direction",
+            "enum": [
+              "BACKWARD",
+              "FORWARD"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "resourceType",
+          "in": "query",
+          "required": true,
+          "description": "The resource type that the metafield definitions belong to",
+          "schema": {
+            "description": "Resource type enum value",
+            "enum": [
+              "STORE",
+              "CHANNEL",
+              "ORDER",
+              "PRODUCT",
+              "PRODUCT_VARIANT",
+              "CUSTOMER"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "namespace",
+          "in": "query",
+          "required": false,
+          "description": "A namespace to filter metafields by",
+          "schema": {
+            "description": "The namespace of the metafields to query by",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "An array of metafield definitions that are associated with the given store and resourceType",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "metafieldDefinitions": {
+                "items": {
+                  "$ref": "./models/metafield-definition.json"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:read"
+      ]
+    },
+    {
+      "operationId": "createMetafieldDefinition",
+      "method": "POST",
+      "path": "/stores/{storeId}/metafield-definitions",
+      "summary": "Create a metafield definition",
+      "description": "This endpoint can be used to create a metafield definition and associate it with a store and resourceType",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The metafield definition to create",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "metafieldDefinition": {
+              "$ref": "./inputs/metafield-definition-create-input.json"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Success response when creating a metafield definition",
+          "schema": {
+            "properties": {
+              "metafieldDefinition": {
+                "$ref": "./models/metafield-definition.json"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:create"
+      ]
+    },
+    {
+      "operationId": "getMetafieldDefinition",
+      "method": "GET",
+      "path": "/stores/{storeId}/metafield-definitions/{metafieldDefinitionId}",
+      "summary": "Get metafield definition by ID ",
+      "description": "This endpoint returns a single metafield definition using the metafield ID or resourceType and nampespace and key.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldDefinitionId",
+          "in": "path",
+          "required": true,
+          "description": "The metafield definition ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "A single metafield definition object",
+          "schema": {
+            "properties": {
+              "metafieldDefinition": {
+                "$ref": "./models/metafield-definition.json"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:read"
+      ]
+    },
+    {
+      "operationId": "updateMetafieldDefinition",
+      "method": "PUT",
+      "path": "/stores/{storeId}/metafield-definitions/{metafieldDefinitionId}",
+      "summary": "Update a metafield definition",
+      "description": "This endpoint can be used to update a single metafield definition using the store and metafieldDefinition IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldDefinitionId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the metafield definition to update",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The metafield definition fields to update",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "metafield": {
+              "$ref": "./inputs/metafield-definition-update-input.json"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "responses": {
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when updating a metafield definition",
+          "schema": {
+            "properties": {
+              "metafield": {
+                "$ref": "./models/metafield-definition.json"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:update"
+      ]
+    },
+    {
+      "operationId": "deleteMetafieldDefinition",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/metafield-definitions/{metafieldDefinitionId}",
+      "summary": "Delete a metafield",
+      "description": "This endpoint can be used to delete a single metafield definition using the store and metafieldDefinition IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldDefinitionId",
+          "in": "path",
+          "required": true,
+          "description": "The metafield definition ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "A single metafield definition object",
+          "schema": {
+            "properties": {
+              "id": {
+                "description": "The ID of the deleted metafield definition",
+                "type": "string"
+              },
+              "status": {
+                "description": "The status of the deleted metafield definition",
+                "enum": [
+                  "success",
+                  "error"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:delete"
+      ]
+    },
+    {
+      "operationId": "getMetafields",
+      "method": "GET",
+      "path": "/stores/{storeId}/metafields",
+      "summary": "Get metafields",
+      "description": "This endpoint retrieves all the metafields for a given store using the store and resource IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "A non-negative, non-zero integer indicating the maximum number of resouces to return at one time",
+          "schema": {
+            "default": 25,
+            "format": "int64",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "The cursor to use to fetch the next page of results",
+          "schema": {
+            "description": "A string cursor representing a key or ID to use to fetch the next page of results",
+            "example": "MTY1MTc0NTczMDAwMDsyRzVWc1dFRmhJa3RIOFBZNHFDMGlPR0RwVko=",
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageTokenDirection",
+          "in": "query",
+          "required": false,
+          "description": "Direction indicating whether to fetch the next page of results or the previous page of results",
+          "schema": {
+            "default": "FORWARD",
+            "description": "Page token direction",
+            "enum": [
+              "BACKWARD",
+              "FORWARD"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "resourceIds",
+          "in": "query",
+          "required": true,
+          "description": "A comma-delmited string of resourceIds to filter metafields by",
+          "schema": {
+            "description": "A comma-delmited string of resourceIds",
+            "type": "string"
+          }
+        },
+        {
+          "name": "namespace",
+          "in": "query",
+          "required": false,
+          "description": "A namespace to filter metafields by",
+          "schema": {
+            "description": "The namespace of the metafields to query by",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "An array of metafields that are associated with the given store and resourceId",
+          "schema": {
+            "properties": {
+              "links": {
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "metafields": {
+                "items": {
+                  "$ref": "./models/metafield.json"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:read"
+      ]
+    },
+    {
+      "operationId": "createMetafield",
+      "method": "POST",
+      "path": "/stores/{storeId}/metafields",
+      "summary": "Create metafield",
+      "description": "This endpoint creates a metafield and associates it with a store and resource using the store ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The metafield to create",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./inputs/metafield-create-input.json"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when creating a metafield",
+          "schema": {
+            "properties": {
+              "metafield": {
+                "$ref": "./models/metafield.json"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:create"
+      ]
+    },
+    {
+      "operationId": "bulkDeleteMetafields",
+      "method": "POST",
+      "path": "/stores/{storeId}/metafields/bulk-delete",
+      "summary": "Bulk deletes metafields",
+      "description": "This endpoint bulk deletes metafields by resourceId, namespace, and key.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The metafields to delete",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./inputs/metafields-bulk-delete-input.json"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when bulk deleting metafields",
+          "schema": {
+            "properties": {
+              "metafieldIds": {
+                "description": "The IDs of the deleted metafields",
+                "items": {
+                  "description": "The ID of the deleted metafield",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:delete"
+      ]
+    },
+    {
+      "operationId": "getMetafield",
+      "method": "GET",
+      "path": "/stores/{storeId}/metafields/{metafieldId}",
+      "summary": "Get a metafield",
+      "description": "Retrieve the information of a single metafield from a specific store using the store and metafield IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the metafield",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when getting a metafield",
+          "schema": {
+            "properties": {
+              "metafield": {
+                "$ref": "./models/metafield.json"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:read"
+      ]
+    },
+    {
+      "operationId": "updateMetafield",
+      "method": "PUT",
+      "path": "/stores/{storeId}/metafields/{metafieldId}",
+      "summary": "Update a metafield",
+      "description": "Update the information of a single metafield using the store and metafield IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the metafield to update",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The metafield fields to update",
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "metafield": {
+              "$ref": "./inputs/metafield-update-input.json"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when updating a metafield",
+          "schema": {
+            "properties": {
+              "metafield": {
+                "$ref": "./models/metafield.json"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:update"
+      ]
+    },
+    {
+      "operationId": "deleteMetafield",
+      "method": "DELETE",
+      "path": "/stores/{storeId}/metafields/{metafieldId}",
+      "summary": "Delete a metafield",
+      "description": "Delete the information of a single metafield from a specific store using the store and metafield IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "The store ID that metafields are scoped to",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/uuid.json"
+          }
+        },
+        {
+          "name": "metafieldId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the metafield to delete",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "500": {
+          "description": "Server error",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "200": {
+          "description": "Success response when deleting a metafield",
+          "schema": {
+            "properties": {
+              "id": {
+                "description": "The ID of the deleted metafield",
+                "type": "string"
+              },
+              "status": {
+                "description": "Status of the delete operation",
+                "enum": [
+                  "success",
+                  "failure"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "https://schemas.api.godaddy.com/common-types/v1/schemas/json/error.json"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:delete"
+      ]
+    }
+  ]
+}

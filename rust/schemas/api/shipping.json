@@ -1,0 +1,893 @@
+{
+  "name": "shipping",
+  "title": "Shipping Service",
+  "description": "This API can be used for managing shipping",
+  "version": "1.9.0",
+  "baseUrl": "https://api.godaddy.com",
+  "endpoints": [
+    {
+      "operationId": "queryCarriers",
+      "method": "GET",
+      "path": "/v1/commerce/stores/{storeId}/shipping/carriers",
+      "summary": "List all carriers",
+      "description": "Find carriers and filter them using the criteria provided",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "A non-negative, non-zero integer indicating the maximum number of resouces to return at one time",
+          "schema": {
+            "default": 25,
+            "format": "int64",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Returns the resources that come after this specified cursor",
+          "schema": {
+            "description": "A cursor for use in pagination",
+            "example": "MTY1MTc0NTczMDAwMDsyRzVWc1dFRmhJa3RIOFBZNHFDMGlPR0RwVko=",
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageTokenDirection",
+          "in": "query",
+          "required": false,
+          "description": "Direction indicator used for cursor based pagination",
+          "schema": {
+            "default": "FORWARD",
+            "description": "Page token direction",
+            "enum": [
+              "BACKWARD",
+              "FORWARD"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully listed carriers",
+          "schema": {
+            "properties": {
+              "carriers": {
+                "items": {
+                  "$ref": "./models/Carrier.yaml"
+                },
+                "type": "array"
+              },
+              "links": {
+                "description": "Array containing one or more HATEOAS link relations that are relevant for traversing carriers",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "carriers",
+              "links"
+            ],
+            "title": "Carriers",
+            "type": "object"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.carrier:read"
+      ]
+    },
+    {
+      "operationId": "createCarrier",
+      "method": "POST",
+      "path": "/v1/commerce/stores/{storeId}/shipping/carriers",
+      "summary": "Create a new carrier",
+      "description": "Create a new carrier",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The carrier object to create",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Carrier.yaml"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully created the carrier",
+          "schema": {
+            "properties": {
+              "carrier": {
+                "$ref": "./models/Carrier.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "carrier"
+            ],
+            "title": "CarrierCreated",
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.carrier:create"
+      ]
+    },
+    {
+      "operationId": "findCarrier",
+      "method": "GET",
+      "path": "/v1/commerce/stores/{storeId}/shipping/carriers/{carrierId}",
+      "summary": "Find a carrier",
+      "description": "Find a single carrier using the carrier ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successfully found the carrier",
+          "schema": {
+            "properties": {
+              "carrier": {
+                "$ref": "./models/Carrier.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "carrier"
+            ],
+            "type": "object"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.carrier:read"
+      ]
+    },
+    {
+      "operationId": "queryShipments",
+      "method": "GET",
+      "path": "/v1/commerce/stores/{storeId}/shipping/shipments",
+      "summary": "List all shipments",
+      "description": "Find shipments and filter them using the criteria provided",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "A non-negative, non-zero integer indicating the maximum number of resouces to return at one time",
+          "schema": {
+            "default": 25,
+            "format": "int64",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Returns the resources that come after this specified cursor",
+          "schema": {
+            "description": "A cursor for use in pagination",
+            "example": "MTY1MTc0NTczMDAwMDsyRzVWc1dFRmhJa3RIOFBZNHFDMGlPR0RwVko=",
+            "type": "string"
+          }
+        },
+        {
+          "name": "pageTokenDirection",
+          "in": "query",
+          "required": false,
+          "description": "Direction indicator used for cursor based pagination",
+          "schema": {
+            "default": "FORWARD",
+            "description": "Page token direction",
+            "enum": [
+              "BACKWARD",
+              "FORWARD"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully listed shipments",
+          "schema": {
+            "properties": {
+              "links": {
+                "description": "Array containing one or more HATEOAS link relations that are relevant for traversing shipments",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "shipments": {
+                "items": {
+                  "$ref": "./models/Shipment.yaml"
+                },
+                "type": "array"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "shipments",
+              "links"
+            ],
+            "title": "Shipments",
+            "type": "object"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.shipment:read"
+      ]
+    },
+    {
+      "operationId": "createShipment",
+      "method": "POST",
+      "path": "/v1/commerce/stores/{storeId}/shipping/shipments",
+      "summary": "Create a new shipment",
+      "description": "Create a new shipment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The shipment object to create",
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "./models/Shipment.yaml"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Successfully created the shipment",
+          "schema": {
+            "properties": {
+              "shipment": {
+                "$ref": "./models/Shipment.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "shipment"
+            ],
+            "title": "ShipmentCreated",
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.shipment:create"
+      ]
+    },
+    {
+      "operationId": "findShipment",
+      "method": "GET",
+      "path": "/v1/commerce/stores/{storeId}/shipping/shipments/{shipmentId}",
+      "summary": "Find a shipment",
+      "description": "Find a single shipment using the shipment ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        },
+        {
+          "name": "shipmentId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the shipment",
+          "schema": {
+            "description": "UUID of the shipment",
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully found the shipment",
+          "schema": {
+            "properties": {
+              "shipment": {
+                "$ref": "./models/Shipment.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "shipment"
+            ],
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.shipment:read"
+      ]
+    },
+    {
+      "operationId": "cancelShipment",
+      "method": "POST",
+      "path": "/v1/commerce/stores/{storeId}/shipping/shipments/{shipmentId}/cancel",
+      "summary": "Cancel a shipment",
+      "description": "Cancel a shipment using the store and shipment IDs.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID"
+        },
+        {
+          "name": "shipmentId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the shipment",
+          "schema": {
+            "description": "UUID of the shipment",
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully canceled the shipment",
+          "schema": {
+            "properties": {
+              "shipment": {
+                "$ref": "./models/Shipment.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "shipment"
+            ],
+            "type": "object"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.shipment:cancel"
+      ]
+    }
+  ]
+}

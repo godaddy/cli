@@ -5,16 +5,12 @@ Contributing doesn't just mean submitting pull requests. To get involved you can
 report or triage bugs and participate in discussions on the evolution of each
 project.
 
-No matter how you want to get involved, we ask that you first learn what's
-expected of anyone who participates in the project by reading the Contribution
-Guidelines.
-
 ## Answering Questions
 
 One of the most important and immediate ways you can support this project is to
-answer questions on  [Github][issues]. Whether you're helping a newcomer
+answer questions on [GitHub][issues]. Whether you're helping a newcomer
 understand a feature or troubleshooting an edge case with a seasoned developer,
-your knowledge and experience with JS can go a long way to help others.
+your knowledge and experience can go a long way to help others.
 
 ## Reporting Bugs
 
@@ -24,15 +20,14 @@ security vulnerabilities.**
 
 Before submitting a ticket, please be sure to have a simple replication of the
 behavior. If the issue is isolated to one of the dependencies of this project,
-please create a Github issue in that project. All dependencies are open source
-software and can be easily found through [npm].
+please create a GitHub issue in that project.
 
 Submit a ticket for your issue, assuming one does not already exist:
 
 - Create it on our [Issue Tracker][issues]
 - Clearly describe the issue by following the template layout
   - Make sure to include steps to reproduce the bug.
-  - A reproducible (unit) test could be helpful in solving the bug.
+  - A reproducible test could be helpful in solving the bug.
   - Describe the environment that (re)produced the problem.
 
 > For a bug to be actionable, it needs to be reproducible. If you or
@@ -54,12 +49,39 @@ From a practical perspective, contributions are as simple as:
   the fix.
 - If possible, and if applicable, please also add/update unit tests for your
   changes.
-- Push the changes to your fork and submit a pull request to the 'master' branch
-  of the projects' repository.
+- Push the changes to your fork and submit a pull request to the `main` branch
+  of the project's repository.
 
 If you are interested in making a large change and feel unsure about its overall
 effect, please make sure to first discuss the change and reach a consensus with
 core contributors. Then ask about the best way to go about making the change.
+
+## Development Setup
+
+All source code lives under `rust/`. [Install Rust](https://rustup.rs/) if you
+haven't already.
+
+```bash
+cd rust
+
+# Build
+cargo build
+
+# Run tests
+cargo test
+
+# Lint (must pass with no warnings)
+cargo clippy -- -D warnings
+
+# Format
+cargo fmt
+
+# Type-check only (fast)
+cargo check
+
+# Regenerate the embedded API catalog
+cargo run -p generate-api-catalog
+```
 
 ## Code Review
 
@@ -92,137 +114,10 @@ approved, other developers with commit access may commit it for the author. When
 doing so, it is important to retain correct attribution of the contribution.
 Generally speaking, Git handles attribution automatically.
 
-## Markdown Documentation
-
-Each package should have a `README.md`, with guides and other documents under a
-`docs/` directory.
-
-```md
-# Name of package
-
-Short one or two sentence summary.
-
-<!-- A broad description of the plugin or package and the features it enables can
-follow with 1-2 paragraphs at most with brief example. More details should be
-reserved for [How it works] section below and/or extended files in `docs/`. -->
-
-#### Example
-
-## Installation
-
-Show `pnpm install` steps, and/or mention use with the create command.
-
-## Configuration
-
-### Options
-
-## Guides
-
-<!-- list additional docs -->
-
-- [List of other]
-- [markdown files]
-- [in docs/ directory]
-
-## Commands
-
-### <name> command
-
-Description of the command
-
-#### Example
-
-## Lifecycles
-
-### <name>
-
-Description of the lifecycle
-
-#### Example
-
-## How it works
-
-Description of what the plugin or package does in 1-3 paragraphs. If more is
-required, move to separate `docs/` file(s).
-
-## License
-
-Include a LICENSE.md file and link to it.
-```
-
-Some additional rules to note:
-
-- Examples should always use `####` heading (H4)
-- Example headings should always begin with "Example"
-  - Good:
-    - "Example config", "Example with Redux", "Example using Next.js"
-  - Bad:
-    - "Ex. 1: A thing", "Using Redux", "Next.js component example"
-- Never use `inline code` in headings
-- Never use `inline code` for links.
-- Add 'command' to names of commands in Commands section
-  - This will help heading links from other documents, distinguishing from
-    lifecycles which many times share the same name.
-- jsdocs2md output should go to `docs/API.md`.
-- Prefer reference links to inline.
-  - This making for easier reading when not using a markdown viewer
-  
-## Adding new packages to the monorepo
-
-Remember to run the `align-packages` script for new packages. This has been an
-issue in the past with `docs-graphs` missing the `publishConfig` field which
-messed with `lerna publish`. Without this, we had to step into each package and
-manually re-publish the ones that didn't make it out.
-
-## File and Directory Naming
-
-File and directory names should follow kebab-casing. Incorrect naming will
-generate a linting error.
-
-```md
-new-file.js
-example-directory-name/
-```
-
-## Submit a changeset
-
-This repository utilizes [changesets] to handle versioning and publishing. 
-For detailed information about our changeset workflow, configuration, and limitations, 
-please refer to our [changeset documentation](./docs/changeset.md).
-
-### Quick Start
-
-To create a changeset for your pull request:
-
-```bash
-pnpm run changeset
-```
-
-Follow the prompts to select packages and version bumps, then commit the generated 
-changeset file with your PR.
-
-## Publishing
-
-When a pull-request is merged into the `main` branch, the changeset will be used
-to determine the next version of the package.
-
-A "Version Packages" pull-request will be automatically created to bump the
-versions.
-If multiple PRs with changesets are merged, this PR will automatically update to
-include all changesets.
-
-When all changes are ready to be published, repo admins can force squash merge
-the "Version Packages" PR to main (CI worflows do not run on this automated branch).
-This will trigger the CI to publish the packages to npm.
 
 ## Additional Resources
 
 - [General GitHub Documentation](https://help.github.com/)
 - [GitHub Pull Request documentation](https://help.github.com/send-pull-requests/)
-- [JSDoc]
 
-[issues]: https://github.com/godaddy/javascript/issues
-[JSDoc]: https://jsdoc.app/
-[npm]: http://npmjs.org/
-[style]: https://github.com/godaddy/javascript/#godaddy-style
-[changesets]: https://github.com/changesets/changesets
+[issues]: https://github.com/godaddy/cli/issues

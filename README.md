@@ -4,8 +4,9 @@ Agent-first CLI for interacting with GoDaddy Developer Platform.
 
 ## Installation
 
+Download the latest release binary from the [releases page](https://github.com/godaddy/cli/releases) and place it on your `PATH`.
+
 ```bash
-npm install -g @godaddy/cli
 godaddy --help
 ```
 
@@ -96,7 +97,8 @@ Returns environment/auth snapshots and the full command tree.
 ## Development
 
 ```bash
-pnpm install
-pnpm run build
-pnpm test
+cd rust
+cargo build
+cargo test
+cargo clippy -- -D warnings
 ```

@@ -1,0 +1,2431 @@
+{
+  "name": "payment-requests",
+  "title": "Payment Requests API",
+  "description": "This API is capable of creating, updating and fetching payment requests across different stores.",
+  "version": "1.1.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "getPaymentRequests",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests",
+      "summary": "Get all payment requests",
+      "description": "Retrieve all the payment requests for a specific store using the store ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number (1-indexed)",
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Number of items per page",
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageToken",
+          "in": "query",
+          "required": false,
+          "description": "Token for retrieving the next page of results. This optimizes query execution on large datasets \nby continuing from a specific point rather than recalculating offsets. When provided, the 'page' parameter is ignored.\nObtained from the 'next' link in the previous response.\n",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "updatedAtAfter",
+          "in": "query",
+          "required": false,
+          "description": "Payment request filter updatedAt start date. Defaults to 1 day ago if not specified.",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "maxLength": 64,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "updatedAtBefore",
+          "in": "query",
+          "required": false,
+          "description": "Payment request filter updatedAt end date",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/date-time.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+            "maxLength": 64,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Filter by payment request status",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+            "enum": [
+              "RECEIVED",
+              "QUEUED",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "title": "Payment Request Status",
+            "type": "string"
+          }
+        },
+        {
+          "name": "deviceId",
+          "in": "query",
+          "required": false,
+          "description": "Filter by device identifier",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "description": "Filter by payment request type",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sortBy",
+          "in": "query",
+          "required": false,
+          "description": "Payment request sort field",
+          "schema": {
+            "default": "updatedAt",
+            "enum": [
+              "updatedAt"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "sortOrder",
+          "in": "query",
+          "required": false,
+          "description": "Payment request sort order",
+          "schema": {
+            "default": "ASC",
+            "enum": [
+              "ASC",
+              "DESC"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "description": "Error response",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Payment Requests List",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "./models/PaymentRequest.yaml"
+                },
+                "type": "array"
+              }
+            }
+          }
+        }
+      },
+      "scopes": [
+        "commerce.payment-request:read"
+      ]
+    },
+    {
+      "operationId": "createPaymentRequest",
+      "method": "POST",
+      "path": "/stores/{storeId}/payment-requests",
+      "summary": "Create a new payment request (Async)",
+      "description": "Create a new payment request for the specified store. This is an **asynchronous operation**.\n\n**Async Processing:**\n- Returns `202 Accepted` with immediate `paymentRequestId` for tracking\n- Processing happens in the background with status updates via callbacks\n- Use callbacks (if configured) or polling GET endpoint for completion status\n- Initial status will be `RECEIVED` or `QUEUED`\n\n**Idempotency:**\n- The `X-Request-Id` header is used for idempotency\n- Duplicate requests with the same `X-Request-Id` within 24 hours will return the existing payment request\n- This prevents duplicate payment requests due to network issues or retries\n\n**Required Properties:**\n- `amount` - Payment request amount\n- `type` - Payment request type\n\n**Optional Properties:**\n- `deviceId` - Device identifier for this payment request\n- `paymentInstructions` - Payment instructions\n- `notes` - Additional notes about the payment request\n- `references` - External system references\n- `callbackConfig` - Configuration for async status notifications\n\n**Idempotency:** This endpoint supports idempotency via the X-Request-Id header to prevent duplicate payment requests.\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/payment-request.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "description": "A Payment Request represents an intent to process a payment transaction. It contains all the necessary \ninformation to initiate payment processing on a device and track the payment lifecycle from creation \nthrough completion.\n\n**Lifecycle Overview:**\n1. Created with initial status (RECEIVED/QUEUED)\n2. Sent to device for customer interaction\n3. Customer completes payment flow on device\n4. Transaction(s) created and associated with payment request\n5. Final status reached (COMPLETED/FAILED)\n\n**Key Concepts:**\n- **Async Processing**: Payment requests are processed asynchronously with status updates via callbacks\n- **Device Integration**: Payment requests are sent to physical payment devices (terminals, tablets, etc.)\n- **Activity Tracking**: All interactions and events are logged in the activities array\n- **Transaction Association**: Completed payments generate transaction records linked via transactionIds\n\n**Integration Patterns:**\n- Use callbacks for real-time status updates during async processing\n- Poll the GET endpoint if callbacks are not configured\n- Monitor activities array for detailed payment flow tracking\n- Handle race conditions gracefully (payment may complete while processing other operations)\n",
+          "properties": {
+            "activities": {
+              "description": "Chronological log of all activities and events for this payment request",
+              "example": [
+                {
+                  "data": {
+                    "deviceId": "terminal-123"
+                  },
+                  "timestamp": "2024-01-15T10:30:00Z",
+                  "type": "PAYMENT_REQUEST_RECEIVED"
+                },
+                {
+                  "data": {
+                    "tipAmount": 2.5
+                  },
+                  "timestamp": "2024-01-15T10:31:15Z",
+                  "type": "CUSTOMER_ENTERED_TIP"
+                }
+              ],
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Activity record for a payment request",
+                "properties": {
+                  "data": {
+                    "additionalProperties": true,
+                    "description": "Additional context data for the activity",
+                    "example": {
+                      "deviceId": "dev789",
+                      "transactionId": "txn456",
+                      "userId": "user123"
+                    },
+                    "type": "object"
+                  },
+                  "timestamp": {
+                    "description": "Timestamp when the activity occurred in RFC 3339 format",
+                    "example": "2022-07-21T17:32:28Z",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "type": {
+                    "description": "Type of activity performed on the payment request",
+                    "example": "CREATED",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "timestamp"
+                ],
+                "title": "Payment Request Activity",
+                "type": "object"
+              },
+              "readOnly": true,
+              "type": "array"
+            },
+            "amount": {
+              "$ref": "../transaction-models/v2/schemas/models/Amount.yaml",
+              "description": "Payment amount with currency information"
+            },
+            "callbackConfig": {
+              "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-configuration.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Complete configuration for async API callbacks. Defines where to send notifications, \nhow to authenticate, what data to include, and which events to trigger callbacks.\n\nNote: Retry policy is handled at the system level with standard exponential backoff.\n",
+              "examples": [
+                {
+                  "authentication": {
+                    "secret": "your-shared-secret-key",
+                    "type": "hmac"
+                  },
+                  "events": [
+                    "RECEIVED",
+                    "COMPLETED",
+                    "FAILED"
+                  ],
+                  "payloadConfig": {
+                    "includeFields": [
+                      "paymentRequestId",
+                      "type",
+                      "amount",
+                      "storeId",
+                      "transactions"
+                    ],
+                    "legacyMode": false
+                  },
+                  "url": "https://client.example.com/webhooks/payment-requests"
+                },
+                {
+                  "events": [
+                    "COMPLETED"
+                  ],
+                  "payloadConfig": {
+                    "includeFields": [
+                      "paymentRequestId",
+                      "type",
+                      "amount"
+                    ],
+                    "legacyMode": false
+                  },
+                  "url": "https://dev-client.example.com/webhooks"
+                },
+                {
+                  "authentication": {
+                    "token": "legacy-bearer-token-12345",
+                    "type": "bearer"
+                  },
+                  "events": [
+                    "COMPLETED",
+                    "FAILED"
+                  ],
+                  "payloadConfig": {
+                    "includeFields": [
+                      "paymentRequestId",
+                      "type",
+                      "transactionIds",
+                      "transactions"
+                    ],
+                    "legacyMode": true
+                  },
+                  "url": "https://legacy-client.example.com/callbacks"
+                }
+              ],
+              "properties": {
+                "authentication": {
+                  "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-authentication.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Authentication configuration for callback endpoints. Supports multiple authentication methods for secure callback delivery.\n\nRecommended method: HMAC for production environments as it provides cryptographic proof of authenticity and prevents tampering.\n",
+                  "discriminator": {
+                    "mapping": {
+                      "apikey": "./APIKeyAuthentication.yaml",
+                      "bearer": "./BearerTokenAuthentication.yaml",
+                      "hmac": "./HMACAuthentication.yaml",
+                      "none": "./NoAuthentication.yaml"
+                    },
+                    "propertyName": "type"
+                  },
+                  "examples": [
+                    {
+                      "type": "hmac",
+                      "value": "your-shared-secret-key"
+                    },
+                    {
+                      "type": "bearer",
+                      "value": "sample-jwt"
+                    },
+                    {
+                      "type": "apikey",
+                      "value": "client-api-key-12345"
+                    },
+                    {
+                      "headerName": "X-Client-API-Key",
+                      "type": "apikey",
+                      "value": "client-api-key-12345"
+                    },
+                    {
+                      "type": "none"
+                    }
+                  ],
+                  "oneOf": [
+                    {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/hmac-authentication.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "HMAC authentication using shared secret for payload signing",
+                      "properties": {
+                        "type": {
+                          "const": "hmac",
+                          "description": "Authentication method for callback requests",
+                          "type": "string"
+                        },
+                        "value": {
+                          "description": "Shared secret key for payload signing.\n\nWhen using HMAC, the service sends fixed standard headers:\n- X-Signature: HMAC signature of the payload\n- X-Timestamp: Unix timestamp when request was sent\n- X-Request-Id: Unique request identifier for tracing\n",
+                          "example": "your-shared-secret-key",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "title": "HMAC Authentication",
+                      "type": "object"
+                    },
+                    {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/bearer-token-authentication.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Bearer token authentication using Authorization header",
+                      "properties": {
+                        "type": {
+                          "const": "bearer",
+                          "description": "Authentication method for callback requests",
+                          "type": "string"
+                        },
+                        "value": {
+                          "description": "Bearer token for Authorization header",
+                          "example": "sample-jwt",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "title": "Bearer Token Authentication",
+                      "type": "object"
+                    },
+                    {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/apikey-authentication.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "API key authentication using custom or default header",
+                      "properties": {
+                        "headerName": {
+                          "default": "X-API-Key",
+                          "description": "Custom header name for API key authentication.\nDefaults to 'X-API-Key' if not specified.\n",
+                          "example": "X-Custom-API-Key",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "apikey",
+                          "description": "Authentication method for callback requests",
+                          "type": "string"
+                        },
+                        "value": {
+                          "description": "API key value for custom header",
+                          "example": "client-api-key-12345",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "title": "API Key Authentication",
+                      "type": "object"
+                    },
+                    {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/no-authentication.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "No authentication (development only)",
+                      "properties": {
+                        "type": {
+                          "const": "none",
+                          "description": "Authentication method for callback requests",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "title": "No Authentication",
+                      "type": "object"
+                    }
+                  ],
+                  "title": "Callback Authentication"
+                },
+                "events": {
+                  "description": "Array of payment request status values that should trigger callback notifications.\nEvents correspond to PaymentRequestStatus transitions.\n\nAvailable Events (from PaymentRequestStatus):\n- RECEIVED: When payment request is initially received\n- QUEUED: When payment request is queued for processing\n- IN_PROGRESS: When payment request processing begins\n- COMPLETED: When payment request processing is successfully completed\n- FAILED: When payment request processing fails\n",
+                  "example": [
+                    "RECEIVED",
+                    "COMPLETED",
+                    "FAILED"
+                  ],
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+                    "enum": [
+                      "RECEIVED",
+                      "QUEUED",
+                      "IN_PROGRESS",
+                      "FAILED",
+                      "COMPLETED"
+                    ],
+                    "title": "Payment Request Status",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "payloadConfig": {
+                  "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-payload-configuration.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Configuration for callback payload content. Allows clients to specify exactly which fields to include in callback notifications.\n\nSupports both real PaymentRequest fields and virtual fields:\n- Real fields: Actual properties from the PaymentRequest schema\n- Virtual fields: Computed/expanded fields (currently only 'transactions' is supported)\n\nVirtual Field Details:\n- 'transactions': Expands transactionIds to include full transaction objects\n  - Uses legacyMode to determine schema version (v1 when true, v2 when false)\n  - Adds a 'transactions' array alongside the existing 'transactionIds' array\n",
+                  "examples": [
+                    {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount"
+                      ],
+                      "legacyMode": false
+                    },
+                    {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount",
+                        "storeId",
+                        "transactionIds",
+                        "activities"
+                      ],
+                      "legacyMode": false
+                    },
+                    {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount",
+                        "storeId",
+                        "transactionIds",
+                        "transactions",
+                        "activities"
+                      ],
+                      "legacyMode": false
+                    },
+                    {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount",
+                        "transactions"
+                      ],
+                      "legacyMode": true
+                    }
+                  ],
+                  "properties": {
+                    "includeFields": {
+                      "description": "Array of field names to include in callback payload.\n\nReal Fields (PaymentRequest properties):\n- paymentRequestId, type, transactionRefNum, storeId, deviceId, amount\n- paymentInstructions, notes, references, transactionIds, links, activities\n- createdAt, updatedAt\n\nVirtual Fields (computed/expanded):\n- 'transactions': Expands transactionIds to full transaction objects (only virtual field currently supported)\n",
+                      "items": {
+                        "enum": [
+                          "paymentRequestId",
+                          "type",
+                          "transactionRefNum",
+                          "storeId",
+                          "deviceId",
+                          "amount",
+                          "paymentInstructions",
+                          "notes",
+                          "references",
+                          "transactionIds",
+                          "links",
+                          "activities",
+                          "createdAt",
+                          "updatedAt",
+                          "transactions"
+                        ],
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "legacyMode": {
+                      "default": false,
+                      "description": "Schema version control for virtual field expansions:\n- true: Use v1 transaction schema for 'transactions' virtual field\n- false: Use v2 transaction schema for 'transactions' virtual field (default)\nOnly affects virtual fields; real PaymentRequest fields are unaffected.\n",
+                      "example": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "includeFields"
+                  ],
+                  "title": "Callback Payload Configuration",
+                  "type": "object"
+                },
+                "url": {
+                  "description": "HTTPS callback URL where notifications will be sent",
+                  "example": "https://client.example.com/webhooks/payment-requests",
+                  "format": "uri",
+                  "pattern": "^https://",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "payloadConfig"
+              ],
+              "title": "Callback Configuration",
+              "type": "object"
+            },
+            "createdAt": {
+              "description": "Created time in RFC 3339 format",
+              "example": "2022-07-21T17:32:28Z",
+              "format": "date-time",
+              "readOnly": true,
+              "type": "string"
+            },
+            "deviceId": {
+              "description": "Device identifier for this payment request (UUID or URN format)",
+              "example": "urn:tid:2cf6f478-e7c6-3378-8cda-74ee60715e13",
+              "type": "string"
+            },
+            "links": {
+              "description": "HATEOAS links for related operations",
+              "items": {
+                "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                "properties": {
+                  "href": {
+                    "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  "method": {
+                    "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                    "type": "string"
+                  },
+                  "rel": {
+                    "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                    "type": "string"
+                  },
+                  "submissionMediaType": {
+                    "default": "application/json",
+                    "description": "The media type with which to submit data with the request.",
+                    "type": "string"
+                  },
+                  "submissionSchema": {
+                    "description": "The schema that describes the request data."
+                  },
+                  "targetMediaType": {
+                    "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                    "type": "string"
+                  },
+                  "targetSchema": {
+                    "description": "The schema that describes the link target."
+                  },
+                  "title": {
+                    "description": "The link title.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rel",
+                  "href"
+                ],
+                "title": "Link Description",
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "notes": {
+              "description": "Optional notes about the payment request",
+              "example": "Table 5 - Split payment with card",
+              "maxLength": 512,
+              "type": "string"
+            },
+            "originalTransactionId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "paymentInstructions": {
+              "$id": "https://godaddy.com/schemas/commerce/payment-request/dictionary.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "description": "Flat key-value pairs with string, boolean, or number values",
+              "maxProperties": 40,
+              "minProperties": 0,
+              "title": "Dictionary",
+              "type": "object"
+            },
+            "paymentRequestId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "references": {
+              "description": "External system references for tracking",
+              "example": [
+                {
+                  "additionalLabel": "POS Order",
+                  "type": "order_id",
+                  "value": "ORD-2024-001"
+                },
+                {
+                  "type": "invoice_number",
+                  "value": "INV-456789"
+                }
+              ],
+              "items": {
+                "$ref": "../transaction-models/v2/schemas/models/TransactionReference.yaml"
+              },
+              "type": "array"
+            },
+            "status": {
+              "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+              "enum": [
+                "RECEIVED",
+                "QUEUED",
+                "IN_PROGRESS",
+                "FAILED",
+                "COMPLETED"
+              ],
+              "title": "Payment Request Status",
+              "type": "string"
+            },
+            "storeId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "transactionIds": {
+              "description": "Transaction IDs created from this payment request (populated after processing)",
+              "example": [
+                "11111111-2222-3333-4444-555555555555"
+              ],
+              "items": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "readOnly": true,
+              "type": "array"
+            },
+            "transactionRefNum": {
+              "description": "Optional merchant reference number for tracking (UUID format)",
+              "example": "a1b2c3d4-e5f6-4789-9abc-def123456789",
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": {
+              "description": "Type of payment request indicating the transaction operation (AUTHORIZE, SALE, REFUND, etc.)",
+              "example": "SALE",
+              "type": "string"
+            },
+            "updatedAt": {
+              "description": "Updated time in RFC 3339 format",
+              "example": "2022-07-21T17:32:28Z",
+              "format": "date-time",
+              "readOnly": true,
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "createdAt"
+          ],
+          "title": "Payment Request",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "500": {
+          "description": "Internal Server Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity - Validation failed",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error response",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "429": {
+          "description": "Too Many Requests - Rate limit exceeded",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "400": {
+          "description": "Bad Request - Invalid input data",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "403": {
+          "description": "Forbidden - Insufficient permissions",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "401": {
+          "description": "Unauthorized - Invalid authentication credentials",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "202": {
+          "description": "Payment request accepted for async processing",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/payment-request.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A Payment Request represents an intent to process a payment transaction. It contains all the necessary \ninformation to initiate payment processing on a device and track the payment lifecycle from creation \nthrough completion.\n\n**Lifecycle Overview:**\n1. Created with initial status (RECEIVED/QUEUED)\n2. Sent to device for customer interaction\n3. Customer completes payment flow on device\n4. Transaction(s) created and associated with payment request\n5. Final status reached (COMPLETED/FAILED)\n\n**Key Concepts:**\n- **Async Processing**: Payment requests are processed asynchronously with status updates via callbacks\n- **Device Integration**: Payment requests are sent to physical payment devices (terminals, tablets, etc.)\n- **Activity Tracking**: All interactions and events are logged in the activities array\n- **Transaction Association**: Completed payments generate transaction records linked via transactionIds\n\n**Integration Patterns:**\n- Use callbacks for real-time status updates during async processing\n- Poll the GET endpoint if callbacks are not configured\n- Monitor activities array for detailed payment flow tracking\n- Handle race conditions gracefully (payment may complete while processing other operations)\n",
+            "properties": {
+              "activities": {
+                "description": "Chronological log of all activities and events for this payment request",
+                "example": [
+                  {
+                    "data": {
+                      "deviceId": "terminal-123"
+                    },
+                    "timestamp": "2024-01-15T10:30:00Z",
+                    "type": "PAYMENT_REQUEST_RECEIVED"
+                  },
+                  {
+                    "data": {
+                      "tipAmount": 2.5
+                    },
+                    "timestamp": "2024-01-15T10:31:15Z",
+                    "type": "CUSTOMER_ENTERED_TIP"
+                  }
+                ],
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Activity record for a payment request",
+                  "properties": {
+                    "data": {
+                      "additionalProperties": true,
+                      "description": "Additional context data for the activity",
+                      "example": {
+                        "deviceId": "dev789",
+                        "transactionId": "txn456",
+                        "userId": "user123"
+                      },
+                      "type": "object"
+                    },
+                    "timestamp": {
+                      "description": "Timestamp when the activity occurred in RFC 3339 format",
+                      "example": "2022-07-21T17:32:28Z",
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "Type of activity performed on the payment request",
+                      "example": "CREATED",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "timestamp"
+                  ],
+                  "title": "Payment Request Activity",
+                  "type": "object"
+                },
+                "readOnly": true,
+                "type": "array"
+              },
+              "amount": {
+                "$ref": "../transaction-models/v2/schemas/models/Amount.yaml",
+                "description": "Payment amount with currency information"
+              },
+              "callbackConfig": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-configuration.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Complete configuration for async API callbacks. Defines where to send notifications, \nhow to authenticate, what data to include, and which events to trigger callbacks.\n\nNote: Retry policy is handled at the system level with standard exponential backoff.\n",
+                "examples": [
+                  {
+                    "authentication": {
+                      "secret": "your-shared-secret-key",
+                      "type": "hmac"
+                    },
+                    "events": [
+                      "RECEIVED",
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount",
+                        "storeId",
+                        "transactions"
+                      ],
+                      "legacyMode": false
+                    },
+                    "url": "https://client.example.com/webhooks/payment-requests"
+                  },
+                  {
+                    "events": [
+                      "COMPLETED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount"
+                      ],
+                      "legacyMode": false
+                    },
+                    "url": "https://dev-client.example.com/webhooks"
+                  },
+                  {
+                    "authentication": {
+                      "token": "legacy-bearer-token-12345",
+                      "type": "bearer"
+                    },
+                    "events": [
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "transactionIds",
+                        "transactions"
+                      ],
+                      "legacyMode": true
+                    },
+                    "url": "https://legacy-client.example.com/callbacks"
+                  }
+                ],
+                "properties": {
+                  "authentication": {
+                    "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-authentication.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Authentication configuration for callback endpoints. Supports multiple authentication methods for secure callback delivery.\n\nRecommended method: HMAC for production environments as it provides cryptographic proof of authenticity and prevents tampering.\n",
+                    "discriminator": {
+                      "mapping": {
+                        "apikey": "./APIKeyAuthentication.yaml",
+                        "bearer": "./BearerTokenAuthentication.yaml",
+                        "hmac": "./HMACAuthentication.yaml",
+                        "none": "./NoAuthentication.yaml"
+                      },
+                      "propertyName": "type"
+                    },
+                    "examples": [
+                      {
+                        "type": "hmac",
+                        "value": "your-shared-secret-key"
+                      },
+                      {
+                        "type": "bearer",
+                        "value": "sample-jwt"
+                      },
+                      {
+                        "type": "apikey",
+                        "value": "client-api-key-12345"
+                      },
+                      {
+                        "headerName": "X-Client-API-Key",
+                        "type": "apikey",
+                        "value": "client-api-key-12345"
+                      },
+                      {
+                        "type": "none"
+                      }
+                    ],
+                    "oneOf": [
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/hmac-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "HMAC authentication using shared secret for payload signing",
+                        "properties": {
+                          "type": {
+                            "const": "hmac",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "Shared secret key for payload signing.\n\nWhen using HMAC, the service sends fixed standard headers:\n- X-Signature: HMAC signature of the payload\n- X-Timestamp: Unix timestamp when request was sent\n- X-Request-Id: Unique request identifier for tracing\n",
+                            "example": "your-shared-secret-key",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "HMAC Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/bearer-token-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "Bearer token authentication using Authorization header",
+                        "properties": {
+                          "type": {
+                            "const": "bearer",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "Bearer token for Authorization header",
+                            "example": "sample-jwt",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "Bearer Token Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/apikey-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "API key authentication using custom or default header",
+                        "properties": {
+                          "headerName": {
+                            "default": "X-API-Key",
+                            "description": "Custom header name for API key authentication.\nDefaults to 'X-API-Key' if not specified.\n",
+                            "example": "X-Custom-API-Key",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "apikey",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "API key value for custom header",
+                            "example": "client-api-key-12345",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "API Key Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/no-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "No authentication (development only)",
+                        "properties": {
+                          "type": {
+                            "const": "none",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "title": "No Authentication",
+                        "type": "object"
+                      }
+                    ],
+                    "title": "Callback Authentication"
+                  },
+                  "events": {
+                    "description": "Array of payment request status values that should trigger callback notifications.\nEvents correspond to PaymentRequestStatus transitions.\n\nAvailable Events (from PaymentRequestStatus):\n- RECEIVED: When payment request is initially received\n- QUEUED: When payment request is queued for processing\n- IN_PROGRESS: When payment request processing begins\n- COMPLETED: When payment request processing is successfully completed\n- FAILED: When payment request processing fails\n",
+                    "example": [
+                      "RECEIVED",
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+                      "enum": [
+                        "RECEIVED",
+                        "QUEUED",
+                        "IN_PROGRESS",
+                        "FAILED",
+                        "COMPLETED"
+                      ],
+                      "title": "Payment Request Status",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "payloadConfig": {
+                    "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-payload-configuration.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Configuration for callback payload content. Allows clients to specify exactly which fields to include in callback notifications.\n\nSupports both real PaymentRequest fields and virtual fields:\n- Real fields: Actual properties from the PaymentRequest schema\n- Virtual fields: Computed/expanded fields (currently only 'transactions' is supported)\n\nVirtual Field Details:\n- 'transactions': Expands transactionIds to include full transaction objects\n  - Uses legacyMode to determine schema version (v1 when true, v2 when false)\n  - Adds a 'transactions' array alongside the existing 'transactionIds' array\n",
+                    "examples": [
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "storeId",
+                          "transactionIds",
+                          "activities"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "storeId",
+                          "transactionIds",
+                          "transactions",
+                          "activities"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "transactions"
+                        ],
+                        "legacyMode": true
+                      }
+                    ],
+                    "properties": {
+                      "includeFields": {
+                        "description": "Array of field names to include in callback payload.\n\nReal Fields (PaymentRequest properties):\n- paymentRequestId, type, transactionRefNum, storeId, deviceId, amount\n- paymentInstructions, notes, references, transactionIds, links, activities\n- createdAt, updatedAt\n\nVirtual Fields (computed/expanded):\n- 'transactions': Expands transactionIds to full transaction objects (only virtual field currently supported)\n",
+                        "items": {
+                          "enum": [
+                            "paymentRequestId",
+                            "type",
+                            "transactionRefNum",
+                            "storeId",
+                            "deviceId",
+                            "amount",
+                            "paymentInstructions",
+                            "notes",
+                            "references",
+                            "transactionIds",
+                            "links",
+                            "activities",
+                            "createdAt",
+                            "updatedAt",
+                            "transactions"
+                          ],
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "legacyMode": {
+                        "default": false,
+                        "description": "Schema version control for virtual field expansions:\n- true: Use v1 transaction schema for 'transactions' virtual field\n- false: Use v2 transaction schema for 'transactions' virtual field (default)\nOnly affects virtual fields; real PaymentRequest fields are unaffected.\n",
+                        "example": false,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "includeFields"
+                    ],
+                    "title": "Callback Payload Configuration",
+                    "type": "object"
+                  },
+                  "url": {
+                    "description": "HTTPS callback URL where notifications will be sent",
+                    "example": "https://client.example.com/webhooks/payment-requests",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "payloadConfig"
+                ],
+                "title": "Callback Configuration",
+                "type": "object"
+              },
+              "createdAt": {
+                "description": "Created time in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z",
+                "format": "date-time",
+                "readOnly": true,
+                "type": "string"
+              },
+              "deviceId": {
+                "description": "Device identifier for this payment request (UUID or URN format)",
+                "example": "urn:tid:2cf6f478-e7c6-3378-8cda-74ee60715e13",
+                "type": "string"
+              },
+              "links": {
+                "description": "HATEOAS links for related operations",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "notes": {
+                "description": "Optional notes about the payment request",
+                "example": "Table 5 - Split payment with card",
+                "maxLength": 512,
+                "type": "string"
+              },
+              "originalTransactionId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "paymentInstructions": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/dictionary.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "description": "Flat key-value pairs with string, boolean, or number values",
+                "maxProperties": 40,
+                "minProperties": 0,
+                "title": "Dictionary",
+                "type": "object"
+              },
+              "paymentRequestId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "references": {
+                "description": "External system references for tracking",
+                "example": [
+                  {
+                    "additionalLabel": "POS Order",
+                    "type": "order_id",
+                    "value": "ORD-2024-001"
+                  },
+                  {
+                    "type": "invoice_number",
+                    "value": "INV-456789"
+                  }
+                ],
+                "items": {
+                  "$ref": "../transaction-models/v2/schemas/models/TransactionReference.yaml"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+                "enum": [
+                  "RECEIVED",
+                  "QUEUED",
+                  "IN_PROGRESS",
+                  "FAILED",
+                  "COMPLETED"
+                ],
+                "title": "Payment Request Status",
+                "type": "string"
+              },
+              "storeId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "transactionIds": {
+                "description": "Transaction IDs created from this payment request (populated after processing)",
+                "example": [
+                  "11111111-2222-3333-4444-555555555555"
+                ],
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "readOnly": true,
+                "type": "array"
+              },
+              "transactionRefNum": {
+                "description": "Optional merchant reference number for tracking (UUID format)",
+                "example": "a1b2c3d4-e5f6-4789-9abc-def123456789",
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": {
+                "description": "Type of payment request indicating the transaction operation (AUTHORIZE, SALE, REFUND, etc.)",
+                "example": "SALE",
+                "type": "string"
+              },
+              "updatedAt": {
+                "description": "Updated time in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z",
+                "format": "date-time",
+                "readOnly": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "createdAt"
+            ],
+            "title": "Payment Request",
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.payment-request:write"
+      ]
+    },
+    {
+      "operationId": "getPaymentRequestById",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}",
+      "summary": "Get payment request by ID",
+      "description": "Retrieve complete information for a single payment request including:\n- Payment request details and current status\n- Amount information\n- Associated transaction IDs\n- Device and store information\n- References and metadata\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "403": {
+          "description": "Forbidden - Insufficient permissions",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "401": {
+          "description": "Unauthorized - Invalid authentication credentials",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "429": {
+          "description": "Too Many Requests - Rate limit exceeded",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error response",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "500": {
+          "description": "Internal Server Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "400": {
+          "description": "Bad Request - Invalid input data",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Payment request retrieved successfully",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/payment-request.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A Payment Request represents an intent to process a payment transaction. It contains all the necessary \ninformation to initiate payment processing on a device and track the payment lifecycle from creation \nthrough completion.\n\n**Lifecycle Overview:**\n1. Created with initial status (RECEIVED/QUEUED)\n2. Sent to device for customer interaction\n3. Customer completes payment flow on device\n4. Transaction(s) created and associated with payment request\n5. Final status reached (COMPLETED/FAILED)\n\n**Key Concepts:**\n- **Async Processing**: Payment requests are processed asynchronously with status updates via callbacks\n- **Device Integration**: Payment requests are sent to physical payment devices (terminals, tablets, etc.)\n- **Activity Tracking**: All interactions and events are logged in the activities array\n- **Transaction Association**: Completed payments generate transaction records linked via transactionIds\n\n**Integration Patterns:**\n- Use callbacks for real-time status updates during async processing\n- Poll the GET endpoint if callbacks are not configured\n- Monitor activities array for detailed payment flow tracking\n- Handle race conditions gracefully (payment may complete while processing other operations)\n",
+            "properties": {
+              "activities": {
+                "description": "Chronological log of all activities and events for this payment request",
+                "example": [
+                  {
+                    "data": {
+                      "deviceId": "terminal-123"
+                    },
+                    "timestamp": "2024-01-15T10:30:00Z",
+                    "type": "PAYMENT_REQUEST_RECEIVED"
+                  },
+                  {
+                    "data": {
+                      "tipAmount": 2.5
+                    },
+                    "timestamp": "2024-01-15T10:31:15Z",
+                    "type": "CUSTOMER_ENTERED_TIP"
+                  }
+                ],
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Activity record for a payment request",
+                  "properties": {
+                    "data": {
+                      "additionalProperties": true,
+                      "description": "Additional context data for the activity",
+                      "example": {
+                        "deviceId": "dev789",
+                        "transactionId": "txn456",
+                        "userId": "user123"
+                      },
+                      "type": "object"
+                    },
+                    "timestamp": {
+                      "description": "Timestamp when the activity occurred in RFC 3339 format",
+                      "example": "2022-07-21T17:32:28Z",
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "Type of activity performed on the payment request",
+                      "example": "CREATED",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "timestamp"
+                  ],
+                  "title": "Payment Request Activity",
+                  "type": "object"
+                },
+                "readOnly": true,
+                "type": "array"
+              },
+              "amount": {
+                "$ref": "../transaction-models/v2/schemas/models/Amount.yaml",
+                "description": "Payment amount with currency information"
+              },
+              "callbackConfig": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-configuration.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Complete configuration for async API callbacks. Defines where to send notifications, \nhow to authenticate, what data to include, and which events to trigger callbacks.\n\nNote: Retry policy is handled at the system level with standard exponential backoff.\n",
+                "examples": [
+                  {
+                    "authentication": {
+                      "secret": "your-shared-secret-key",
+                      "type": "hmac"
+                    },
+                    "events": [
+                      "RECEIVED",
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount",
+                        "storeId",
+                        "transactions"
+                      ],
+                      "legacyMode": false
+                    },
+                    "url": "https://client.example.com/webhooks/payment-requests"
+                  },
+                  {
+                    "events": [
+                      "COMPLETED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "amount"
+                      ],
+                      "legacyMode": false
+                    },
+                    "url": "https://dev-client.example.com/webhooks"
+                  },
+                  {
+                    "authentication": {
+                      "token": "legacy-bearer-token-12345",
+                      "type": "bearer"
+                    },
+                    "events": [
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "payloadConfig": {
+                      "includeFields": [
+                        "paymentRequestId",
+                        "type",
+                        "transactionIds",
+                        "transactions"
+                      ],
+                      "legacyMode": true
+                    },
+                    "url": "https://legacy-client.example.com/callbacks"
+                  }
+                ],
+                "properties": {
+                  "authentication": {
+                    "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-authentication.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Authentication configuration for callback endpoints. Supports multiple authentication methods for secure callback delivery.\n\nRecommended method: HMAC for production environments as it provides cryptographic proof of authenticity and prevents tampering.\n",
+                    "discriminator": {
+                      "mapping": {
+                        "apikey": "./APIKeyAuthentication.yaml",
+                        "bearer": "./BearerTokenAuthentication.yaml",
+                        "hmac": "./HMACAuthentication.yaml",
+                        "none": "./NoAuthentication.yaml"
+                      },
+                      "propertyName": "type"
+                    },
+                    "examples": [
+                      {
+                        "type": "hmac",
+                        "value": "your-shared-secret-key"
+                      },
+                      {
+                        "type": "bearer",
+                        "value": "sample-jwt"
+                      },
+                      {
+                        "type": "apikey",
+                        "value": "client-api-key-12345"
+                      },
+                      {
+                        "headerName": "X-Client-API-Key",
+                        "type": "apikey",
+                        "value": "client-api-key-12345"
+                      },
+                      {
+                        "type": "none"
+                      }
+                    ],
+                    "oneOf": [
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/hmac-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "HMAC authentication using shared secret for payload signing",
+                        "properties": {
+                          "type": {
+                            "const": "hmac",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "Shared secret key for payload signing.\n\nWhen using HMAC, the service sends fixed standard headers:\n- X-Signature: HMAC signature of the payload\n- X-Timestamp: Unix timestamp when request was sent\n- X-Request-Id: Unique request identifier for tracing\n",
+                            "example": "your-shared-secret-key",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "HMAC Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/bearer-token-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "Bearer token authentication using Authorization header",
+                        "properties": {
+                          "type": {
+                            "const": "bearer",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "Bearer token for Authorization header",
+                            "example": "sample-jwt",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "Bearer Token Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/apikey-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "API key authentication using custom or default header",
+                        "properties": {
+                          "headerName": {
+                            "default": "X-API-Key",
+                            "description": "Custom header name for API key authentication.\nDefaults to 'X-API-Key' if not specified.\n",
+                            "example": "X-Custom-API-Key",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "apikey",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "API key value for custom header",
+                            "example": "client-api-key-12345",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "value"
+                        ],
+                        "title": "API Key Authentication",
+                        "type": "object"
+                      },
+                      {
+                        "$id": "https://godaddy.com/schemas/commerce/payment-request/no-authentication.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "No authentication (development only)",
+                        "properties": {
+                          "type": {
+                            "const": "none",
+                            "description": "Authentication method for callback requests",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "title": "No Authentication",
+                        "type": "object"
+                      }
+                    ],
+                    "title": "Callback Authentication"
+                  },
+                  "events": {
+                    "description": "Array of payment request status values that should trigger callback notifications.\nEvents correspond to PaymentRequestStatus transitions.\n\nAvailable Events (from PaymentRequestStatus):\n- RECEIVED: When payment request is initially received\n- QUEUED: When payment request is queued for processing\n- IN_PROGRESS: When payment request processing begins\n- COMPLETED: When payment request processing is successfully completed\n- FAILED: When payment request processing fails\n",
+                    "example": [
+                      "RECEIVED",
+                      "COMPLETED",
+                      "FAILED"
+                    ],
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+                      "enum": [
+                        "RECEIVED",
+                        "QUEUED",
+                        "IN_PROGRESS",
+                        "FAILED",
+                        "COMPLETED"
+                      ],
+                      "title": "Payment Request Status",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "payloadConfig": {
+                    "$id": "https://godaddy.com/schemas/commerce/payment-request/callback-payload-configuration.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Configuration for callback payload content. Allows clients to specify exactly which fields to include in callback notifications.\n\nSupports both real PaymentRequest fields and virtual fields:\n- Real fields: Actual properties from the PaymentRequest schema\n- Virtual fields: Computed/expanded fields (currently only 'transactions' is supported)\n\nVirtual Field Details:\n- 'transactions': Expands transactionIds to include full transaction objects\n  - Uses legacyMode to determine schema version (v1 when true, v2 when false)\n  - Adds a 'transactions' array alongside the existing 'transactionIds' array\n",
+                    "examples": [
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "storeId",
+                          "transactionIds",
+                          "activities"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "storeId",
+                          "transactionIds",
+                          "transactions",
+                          "activities"
+                        ],
+                        "legacyMode": false
+                      },
+                      {
+                        "includeFields": [
+                          "paymentRequestId",
+                          "type",
+                          "amount",
+                          "transactions"
+                        ],
+                        "legacyMode": true
+                      }
+                    ],
+                    "properties": {
+                      "includeFields": {
+                        "description": "Array of field names to include in callback payload.\n\nReal Fields (PaymentRequest properties):\n- paymentRequestId, type, transactionRefNum, storeId, deviceId, amount\n- paymentInstructions, notes, references, transactionIds, links, activities\n- createdAt, updatedAt\n\nVirtual Fields (computed/expanded):\n- 'transactions': Expands transactionIds to full transaction objects (only virtual field currently supported)\n",
+                        "items": {
+                          "enum": [
+                            "paymentRequestId",
+                            "type",
+                            "transactionRefNum",
+                            "storeId",
+                            "deviceId",
+                            "amount",
+                            "paymentInstructions",
+                            "notes",
+                            "references",
+                            "transactionIds",
+                            "links",
+                            "activities",
+                            "createdAt",
+                            "updatedAt",
+                            "transactions"
+                          ],
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "legacyMode": {
+                        "default": false,
+                        "description": "Schema version control for virtual field expansions:\n- true: Use v1 transaction schema for 'transactions' virtual field\n- false: Use v2 transaction schema for 'transactions' virtual field (default)\nOnly affects virtual fields; real PaymentRequest fields are unaffected.\n",
+                        "example": false,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "includeFields"
+                    ],
+                    "title": "Callback Payload Configuration",
+                    "type": "object"
+                  },
+                  "url": {
+                    "description": "HTTPS callback URL where notifications will be sent",
+                    "example": "https://client.example.com/webhooks/payment-requests",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "payloadConfig"
+                ],
+                "title": "Callback Configuration",
+                "type": "object"
+              },
+              "createdAt": {
+                "description": "Created time in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z",
+                "format": "date-time",
+                "readOnly": true,
+                "type": "string"
+              },
+              "deviceId": {
+                "description": "Device identifier for this payment request (UUID or URN format)",
+                "example": "urn:tid:2cf6f478-e7c6-3378-8cda-74ee60715e13",
+                "type": "string"
+              },
+              "links": {
+                "description": "HATEOAS links for related operations",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "notes": {
+                "description": "Optional notes about the payment request",
+                "example": "Table 5 - Split payment with card",
+                "maxLength": 512,
+                "type": "string"
+              },
+              "originalTransactionId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "paymentInstructions": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/dictionary.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "description": "Flat key-value pairs with string, boolean, or number values",
+                "maxProperties": 40,
+                "minProperties": 0,
+                "title": "Dictionary",
+                "type": "object"
+              },
+              "paymentRequestId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "references": {
+                "description": "External system references for tracking",
+                "example": [
+                  {
+                    "additionalLabel": "POS Order",
+                    "type": "order_id",
+                    "value": "ORD-2024-001"
+                  },
+                  {
+                    "type": "invoice_number",
+                    "value": "INV-456789"
+                  }
+                ],
+                "items": {
+                  "$ref": "../transaction-models/v2/schemas/models/TransactionReference.yaml"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$id": "https://godaddy.com/schemas/commerce/payment-request/payment-request-status.v2",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Current status of the payment request in its lifecycle.\n\n**Status Flow:**\n- **RECEIVED**: Initial status when payment request is created\n- **QUEUED**: Payment request is queued for processing\n- **IN_PROGRESS**: Payment is being processed on the device\n- **COMPLETED**: Payment successfully processed and transactions created\n- **FAILED**: Payment failed due to error or customer cancellation\n",
+                "enum": [
+                  "RECEIVED",
+                  "QUEUED",
+                  "IN_PROGRESS",
+                  "FAILED",
+                  "COMPLETED"
+                ],
+                "title": "Payment Request Status",
+                "type": "string"
+              },
+              "storeId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "transactionIds": {
+                "description": "Transaction IDs created from this payment request (populated after processing)",
+                "example": [
+                  "11111111-2222-3333-4444-555555555555"
+                ],
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "readOnly": true,
+                "type": "array"
+              },
+              "transactionRefNum": {
+                "description": "Optional merchant reference number for tracking (UUID format)",
+                "example": "a1b2c3d4-e5f6-4789-9abc-def123456789",
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": {
+                "description": "Type of payment request indicating the transaction operation (AUTHORIZE, SALE, REFUND, etc.)",
+                "example": "SALE",
+                "type": "string"
+              },
+              "updatedAt": {
+                "description": "Updated time in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z",
+                "format": "date-time",
+                "readOnly": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "createdAt"
+            ],
+            "title": "Payment Request",
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Not Found - Resource does not exist",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.payment-request:read"
+      ]
+    },
+    {
+      "operationId": "getPaymentRequestActivities",
+      "method": "GET",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}/activities",
+      "summary": "Get all activities for a payment request",
+      "description": "Retrieve all activities for a specific payment request in chronological order.\n\n**Use Cases:**\n- View complete payment flow history\n- Debug payment processing issues\n- Audit customer interactions and device events\n- Analyze payment request lifecycle and timing\n\n**Filtering Options:**\n- Filter by activity type(s) to focus on specific events\n- Filter by time range to analyze specific periods\n- Use pagination for large activity logs\n\n**Response Details:**\n- Activities are returned in chronological order (oldest first)\n- Each activity includes type, timestamp, and optional data\n- Pagination is supported for large result sets\n\n**Note:** Activities are immutable - this endpoint is read-only.\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number (1-indexed)",
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "description": "Number of items per page",
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "activityType",
+          "in": "query",
+          "required": false,
+          "description": "Filter by activity type",
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "startTime",
+          "in": "query",
+          "required": false,
+          "description": "Filter activities after this time (ISO 8601 format)",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "name": "endTime",
+          "in": "query",
+          "required": false,
+          "description": "Filter activities before this time (ISO 8601 format)",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "404": {
+          "description": "Not Found - Resource does not exist",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "401": {
+          "description": "Unauthorized - Invalid authentication credentials",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error response",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "500": {
+          "description": "Internal Server Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "429": {
+          "description": "Too Many Requests - Rate limit exceeded",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "400": {
+          "description": "Bad Request - Invalid input data",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Payment request activities retrieved successfully",
+          "schema": {
+            "allOf": [
+              {
+                "properties": {
+                  "currentPage": {
+                    "description": "Current page number",
+                    "type": "integer"
+                  },
+                  "links": {
+                    "items": {
+                      "$ref": "./common-types/v1/schemas/yaml/link-description.yaml"
+                    },
+                    "type": "array"
+                  },
+                  "pageSize": {
+                    "description": "Number of items per page",
+                    "type": "integer"
+                  },
+                  "pageToken": {
+                    "description": "Token for retrieving the next page of results. Use this value in the pageToken query parameter for the next request.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Activity record for a payment request",
+                  "properties": {
+                    "data": {
+                      "additionalProperties": true,
+                      "description": "Additional context data for the activity",
+                      "example": {
+                        "deviceId": "dev789",
+                        "transactionId": "txn456",
+                        "userId": "user123"
+                      },
+                      "type": "object"
+                    },
+                    "timestamp": {
+                      "description": "Timestamp when the activity occurred in RFC 3339 format",
+                      "example": "2022-07-21T17:32:28Z",
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "Type of activity performed on the payment request",
+                      "example": "CREATED",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "timestamp"
+                  ],
+                  "title": "Payment Request Activity",
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "title": "PaymentRequestActivities"
+          }
+        },
+        "403": {
+          "description": "Forbidden - Insufficient permissions",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.payment-request:read"
+      ]
+    },
+    {
+      "operationId": "addPaymentRequestActivity",
+      "method": "POST",
+      "path": "/stores/{storeId}/payment-requests/{paymentRequestId}/activities",
+      "summary": "Add activity to payment request",
+      "description": "Add a new activity entry to a payment request for tracking customer and device interactions.\n\n**Common Use Cases:**\n- Device events: \"PAYMENT_REQUEST_RECEIVED\", \"PAYMENT_POPUP_DISPLAYED\", \"CARD_READER_ACTIVATED\"\n- Customer interactions: \"CUSTOMER_ENTERED_TIP\", \"PIN_ENTRY_STARTED\", \"SIGNATURE_REQUESTED\"\n- Transaction flow: \"CUSTOMER_APPROVED_AMOUNT\", \"CUSTOMER_CANCELLED_TRANSACTION\", \"PAYMENT_METHOD_SELECTED\"\n- Processing events: \"SENT_TO_PROCESSOR\", \"AUTHORIZATION_RECEIVED\", \"RECEIPT_PRINTED\"\n\n**Required Properties:**\n- `type` - Activity type identifier (e.g., \"CUSTOMER_ENTERED_TIP\")\n- `timestamp` - When the activity occurred (ISO 8601 format)\n\n**Optional Properties:**\n- `data` - Additional context data (e.g., tip amount, card type, error details)\n\n**Notes:**\n- Activities are append-only and cannot be modified once created\n- Use the actual occurrence time, not when you're logging the activity\n- Maintain consistent activity type naming across your integration\n",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the store",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "paymentRequestId",
+          "in": "path",
+          "required": true,
+          "description": "Unique identifier for the payment request",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Unique request identifier for idempotency and tracing. Used to prevent duplicate payment requests.",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "description": "Activity record for a payment request",
+          "properties": {
+            "data": {
+              "additionalProperties": true,
+              "description": "Additional context data for the activity",
+              "example": {
+                "deviceId": "dev789",
+                "transactionId": "txn456",
+                "userId": "user123"
+              },
+              "type": "object"
+            },
+            "timestamp": {
+              "description": "Timestamp when the activity occurred in RFC 3339 format",
+              "example": "2022-07-21T17:32:28Z",
+              "format": "date-time",
+              "type": "string"
+            },
+            "type": {
+              "description": "Type of activity performed on the payment request",
+              "example": "CREATED",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "timestamp"
+          ],
+          "title": "Payment Request Activity",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "default": {
+          "description": "Error response",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "400": {
+          "description": "Bad Request - Invalid input data",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity - Validation failed",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "201": {
+          "description": "Payment request activity created successfully",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/payment-request/activity.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Activity record for a payment request",
+            "properties": {
+              "data": {
+                "additionalProperties": true,
+                "description": "Additional context data for the activity",
+                "example": {
+                  "deviceId": "dev789",
+                  "transactionId": "txn456",
+                  "userId": "user123"
+                },
+                "type": "object"
+              },
+              "timestamp": {
+                "description": "Timestamp when the activity occurred in RFC 3339 format",
+                "example": "2022-07-21T17:32:28Z",
+                "format": "date-time",
+                "type": "string"
+              },
+              "type": {
+                "description": "Type of activity performed on the payment request",
+                "example": "CREATED",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "timestamp"
+            ],
+            "title": "Payment Request Activity",
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Not Found - Resource does not exist",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "403": {
+          "description": "Forbidden - Insufficient permissions",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "500": {
+          "description": "Internal Server Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "429": {
+          "description": "Too Many Requests - Rate limit exceeded",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "401": {
+          "description": "Unauthorized - Invalid authentication credentials",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.payment-request:write"
+      ]
+    }
+  ]
+}

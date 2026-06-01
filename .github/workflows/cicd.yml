@@ -1,40 +1,46 @@
 name: CICD
-on: 
+on:
   push:
     branches:
       - 'main'
   pull_request:
     branches:
-     - '*'
+      - '*'
 
 jobs:
   cicd:
     runs-on: ubuntu-latest
     concurrency: ${{ github.workflow }}-${{ github.ref }}
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6.0.5
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev build-essential python3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6.4.0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
+          components: clippy, rustfmt
 
-      - name: Install dependencies
-        run: pnpm install
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build CLI
-        run: pnpm run build
+      - name: Check
+        run: cargo check
 
-      - name: Type check
-        run: pnpm run check
+      - name: Format
+        run: cargo fmt --check
 
-      - name: Run tests
-        run: pnpm test
+      - name: Lint
+        run: cargo clippy -- -D warnings
+
+      - name: Test
+        run: cargo test

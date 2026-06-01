@@ -1,0 +1,2306 @@
+{
+  "name": "subscriptions",
+  "title": "Commerce Subscription API",
+  "description": "This API is capable of recording and obtaining commerce subscription information",
+  "version": "1.1.0",
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "getPlans",
+      "method": "GET",
+      "path": "/plans",
+      "summary": "Get Subscription Plans",
+      "description": "Retrieve the subscription plans by params",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "applicationId",
+          "in": "query",
+          "required": true,
+          "description": "Godaddy Platform Application ID (required)",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Status of the subscription plan",
+          "schema": {
+            "default": "ACTIVE",
+            "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED.",
+            "pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Plans Found",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan-list.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a list of subscription plans",
+            "properties": {
+              "items": {
+                "description": "Array containing the current page of subscription plans",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
+                  "properties": {
+                    "applicationId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "applicationType": {
+                      "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
+                      "type": "string",
+                      "x-server-pattern": "^(GODADDY_APP)$"
+                    },
+                    "billingProvider": {
+                      "description": "Identifies which external billing system the billingReferenceId belongs to. Acceptable values: POYNT_BILLING, GODADDY_ECOMM.\n",
+                      "type": "string",
+                      "x-server-pattern": "^(POYNT_BILLING|GODADDY_ECOMM)$"
+                    },
+                    "billingReferenceId": {
+                      "description": "The identifier for this plan in the external billing system used for checkout and payment processing. Today this is a Poynt Billing plan ID.\n",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "countryCode": {
+                      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                      "$schema": "http://json-schema.org/draft/2020-12/schema",
+                      "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                      "maxLength": 2,
+                      "minLength": 2,
+                      "pattern": "^([A-Z]{2}|C2)$",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "description": {
+                      "description": "Detailed description of what the subscription plan provides",
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "description": "The display name of the subscription plan shown to customers",
+                      "maxLength": 200,
+                      "type": "string"
+                    },
+                    "id": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "marketingData": {
+                      "additionalProperties": true,
+                      "description": "Marketing information for the subscription plan",
+                      "properties": {
+                        "features": {
+                          "description": "List of marketing features to highlight",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "headline": {
+                          "description": "Main marketing headline for the plan",
+                          "maxLength": 200,
+                          "type": "string"
+                        },
+                        "shortDescription": {
+                          "description": "Short marketing description (1-2 sentences)",
+                          "maxLength": 500,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "name": {
+                      "description": "The reference key of the subscription plan. For GODADDY_APP plans, unique per applicationId.\n",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "pricing": {
+                      "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
+                      "discriminator": {
+                        "mapping": {
+                          "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
+                          "FREE": "./FreePricing.yaml"
+                        },
+                        "propertyName": "pricingModel"
+                      },
+                      "oneOf": [
+                        {
+                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "additionalProperties": false,
+                          "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
+                          "properties": {
+                            "pricingModel": {
+                              "const": "FREE",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "pricingModel"
+                          ],
+                          "title": "Free Pricing",
+                          "type": "object"
+                        },
+                        {
+                          "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
+                          "properties": {
+                            "billingCycle": {
+                              "description": "The recurring interval at which the plan is billed.",
+                              "type": "string",
+                              "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
+                            },
+                            "price": {
+                              "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                              "$schema": "http://json-schema.org/draft/2020-12/schema",
+                              "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
+                              "properties": {
+                                "currencyCode": {
+                                  "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                                  "description": "A three-character ISO-4217 currency code.",
+                                  "maxLength": 3,
+                                  "minLength": 3,
+                                  "title": "Currency Code",
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "currencyCode",
+                                "value"
+                              ],
+                              "title": "Simple Money",
+                              "type": "object"
+                            },
+                            "pricingModel": {
+                              "const": "FIXED_RECURRING",
+                              "type": "string"
+                            },
+                            "trialDays": {
+                              "description": "Number of days the customer gets free access before the first charge. Payment info is collected upfront. Re-subscriptions skip the trial.\n",
+                              "maximum": 365,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "pricingModel",
+                            "billingCycle",
+                            "price"
+                          ],
+                          "title": "Fixed Recurring Pricing",
+                          "type": "object"
+                        }
+                      ],
+                      "title": "Pricing Model"
+                    },
+                    "status": {
+                      "default": "ACTIVE",
+                      "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED",
+                      "type": "string",
+                      "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
+                    },
+                    "updatedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "pricing"
+                  ],
+                  "title": "Subscription Plan",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "links": {
+                "description": "Array of HATEOAS link relations that should be used to navigate across pages of Plans",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "totalItems": {
+                "description": "Total number of Plans matching the search criteria. Returned only when totalRequired is set to true.",
+                "type": "integer"
+              },
+              "totalPages": {
+                "description": "Total number of pages matching the search criteria. Returned only when totalRequired is set to true.",
+                "type": "integer"
+              }
+            },
+            "title": "Subscription Plan List",
+            "type": "object"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription-plan:read"
+      ]
+    },
+    {
+      "operationId": "createPlan",
+      "method": "POST",
+      "path": "/plans",
+      "summary": "Create Subscription Plan",
+      "description": "Create Subscription Plan",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
+          "properties": {
+            "applicationId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "applicationType": {
+              "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
+              "type": "string",
+              "x-server-pattern": "^(GODADDY_APP)$"
+            },
+            "billingProvider": {
+              "description": "Identifies which external billing system the billingReferenceId belongs to. Acceptable values: POYNT_BILLING, GODADDY_ECOMM.\n",
+              "type": "string",
+              "x-server-pattern": "^(POYNT_BILLING|GODADDY_ECOMM)$"
+            },
+            "billingReferenceId": {
+              "description": "The identifier for this plan in the external billing system used for checkout and payment processing. Today this is a Poynt Billing plan ID.\n",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "countryCode": {
+              "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+              "$schema": "http://json-schema.org/draft/2020-12/schema",
+              "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+              "maxLength": 2,
+              "minLength": 2,
+              "pattern": "^([A-Z]{2}|C2)$",
+              "type": "string"
+            },
+            "createdAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            },
+            "description": {
+              "description": "Detailed description of what the subscription plan provides",
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "displayName": {
+              "description": "The display name of the subscription plan shown to customers",
+              "maxLength": 200,
+              "type": "string"
+            },
+            "id": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "marketingData": {
+              "additionalProperties": true,
+              "description": "Marketing information for the subscription plan",
+              "properties": {
+                "features": {
+                  "description": "List of marketing features to highlight",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "headline": {
+                  "description": "Main marketing headline for the plan",
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "shortDescription": {
+                  "description": "Short marketing description (1-2 sentences)",
+                  "maxLength": 500,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "description": "The reference key of the subscription plan. For GODADDY_APP plans, unique per applicationId.\n",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "pricing": {
+              "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
+              "discriminator": {
+                "mapping": {
+                  "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
+                  "FREE": "./FreePricing.yaml"
+                },
+                "propertyName": "pricingModel"
+              },
+              "oneOf": [
+                {
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
+                  "properties": {
+                    "pricingModel": {
+                      "const": "FREE",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "pricingModel"
+                  ],
+                  "title": "Free Pricing",
+                  "type": "object"
+                },
+                {
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
+                  "properties": {
+                    "billingCycle": {
+                      "description": "The recurring interval at which the plan is billed.",
+                      "type": "string",
+                      "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
+                    },
+                    "price": {
+                      "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                      "$schema": "http://json-schema.org/draft/2020-12/schema",
+                      "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
+                      "properties": {
+                        "currencyCode": {
+                          "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "A three-character ISO-4217 currency code.",
+                          "maxLength": 3,
+                          "minLength": 3,
+                          "title": "Currency Code",
+                          "type": "string"
+                        },
+                        "value": {
+                          "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "currencyCode",
+                        "value"
+                      ],
+                      "title": "Simple Money",
+                      "type": "object"
+                    },
+                    "pricingModel": {
+                      "const": "FIXED_RECURRING",
+                      "type": "string"
+                    },
+                    "trialDays": {
+                      "description": "Number of days the customer gets free access before the first charge. Payment info is collected upfront. Re-subscriptions skip the trial.\n",
+                      "maximum": 365,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pricingModel",
+                    "billingCycle",
+                    "price"
+                  ],
+                  "title": "Fixed Recurring Pricing",
+                  "type": "object"
+                }
+              ],
+              "title": "Pricing Model"
+            },
+            "status": {
+              "default": "ACTIVE",
+              "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED",
+              "type": "string",
+              "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
+            },
+            "updatedAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "pricing"
+          ],
+          "title": "Subscription Plan",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "201": {
+          "description": "Plan Created",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "applicationType": {
+                "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_APP)$"
+              },
+              "billingProvider": {
+                "description": "Identifies which external billing system the billingReferenceId belongs to. Acceptable values: POYNT_BILLING, GODADDY_ECOMM.\n",
+                "type": "string",
+                "x-server-pattern": "^(POYNT_BILLING|GODADDY_ECOMM)$"
+              },
+              "billingReferenceId": {
+                "description": "The identifier for this plan in the external billing system used for checkout and payment processing. Today this is a Poynt Billing plan ID.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "countryCode": {
+                "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                "maxLength": 2,
+                "minLength": 2,
+                "pattern": "^([A-Z]{2}|C2)$",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "description": {
+                "description": "Detailed description of what the subscription plan provides",
+                "maxLength": 1000,
+                "type": "string"
+              },
+              "displayName": {
+                "description": "The display name of the subscription plan shown to customers",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "marketingData": {
+                "additionalProperties": true,
+                "description": "Marketing information for the subscription plan",
+                "properties": {
+                  "features": {
+                    "description": "List of marketing features to highlight",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "headline": {
+                    "description": "Main marketing headline for the plan",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "shortDescription": {
+                    "description": "Short marketing description (1-2 sentences)",
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "name": {
+                "description": "The reference key of the subscription plan. For GODADDY_APP plans, unique per applicationId.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "pricing": {
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
+                "discriminator": {
+                  "mapping": {
+                    "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
+                    "FREE": "./FreePricing.yaml"
+                  },
+                  "propertyName": "pricingModel"
+                },
+                "oneOf": [
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "additionalProperties": false,
+                    "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
+                    "properties": {
+                      "pricingModel": {
+                        "const": "FREE",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "pricingModel"
+                    ],
+                    "title": "Free Pricing",
+                    "type": "object"
+                  },
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
+                    "properties": {
+                      "billingCycle": {
+                        "description": "The recurring interval at which the plan is billed.",
+                        "type": "string",
+                        "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
+                      },
+                      "price": {
+                        "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                        "$schema": "http://json-schema.org/draft/2020-12/schema",
+                        "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
+                        "properties": {
+                          "currencyCode": {
+                            "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                            "$schema": "https://json-schema.org/draft/2020-12/schema",
+                            "description": "A three-character ISO-4217 currency code.",
+                            "maxLength": 3,
+                            "minLength": 3,
+                            "title": "Currency Code",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "currencyCode",
+                          "value"
+                        ],
+                        "title": "Simple Money",
+                        "type": "object"
+                      },
+                      "pricingModel": {
+                        "const": "FIXED_RECURRING",
+                        "type": "string"
+                      },
+                      "trialDays": {
+                        "description": "Number of days the customer gets free access before the first charge. Payment info is collected upfront. Re-subscriptions skip the trial.\n",
+                        "maximum": 365,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "pricingModel",
+                      "billingCycle",
+                      "price"
+                    ],
+                    "title": "Fixed Recurring Pricing",
+                    "type": "object"
+                  }
+                ],
+                "title": "Pricing Model"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED",
+                "type": "string",
+                "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "pricing"
+            ],
+            "title": "Subscription Plan",
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription-plan:create"
+      ]
+    },
+    {
+      "operationId": "getPlanById",
+      "method": "GET",
+      "path": "/plans/{planId}",
+      "summary": "Get Subscription Plan",
+      "description": "Retrieve the information of the Subscription Plan by ID.",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "planId",
+          "in": "path",
+          "required": true,
+          "description": "The plan ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Plan Found",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "applicationType": {
+                "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_APP)$"
+              },
+              "billingProvider": {
+                "description": "Identifies which external billing system the billingReferenceId belongs to. Acceptable values: POYNT_BILLING, GODADDY_ECOMM.\n",
+                "type": "string",
+                "x-server-pattern": "^(POYNT_BILLING|GODADDY_ECOMM)$"
+              },
+              "billingReferenceId": {
+                "description": "The identifier for this plan in the external billing system used for checkout and payment processing. Today this is a Poynt Billing plan ID.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "countryCode": {
+                "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                "maxLength": 2,
+                "minLength": 2,
+                "pattern": "^([A-Z]{2}|C2)$",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "description": {
+                "description": "Detailed description of what the subscription plan provides",
+                "maxLength": 1000,
+                "type": "string"
+              },
+              "displayName": {
+                "description": "The display name of the subscription plan shown to customers",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "marketingData": {
+                "additionalProperties": true,
+                "description": "Marketing information for the subscription plan",
+                "properties": {
+                  "features": {
+                    "description": "List of marketing features to highlight",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "headline": {
+                    "description": "Main marketing headline for the plan",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "shortDescription": {
+                    "description": "Short marketing description (1-2 sentences)",
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "name": {
+                "description": "The reference key of the subscription plan. For GODADDY_APP plans, unique per applicationId.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "pricing": {
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
+                "discriminator": {
+                  "mapping": {
+                    "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
+                    "FREE": "./FreePricing.yaml"
+                  },
+                  "propertyName": "pricingModel"
+                },
+                "oneOf": [
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "additionalProperties": false,
+                    "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
+                    "properties": {
+                      "pricingModel": {
+                        "const": "FREE",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "pricingModel"
+                    ],
+                    "title": "Free Pricing",
+                    "type": "object"
+                  },
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
+                    "properties": {
+                      "billingCycle": {
+                        "description": "The recurring interval at which the plan is billed.",
+                        "type": "string",
+                        "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
+                      },
+                      "price": {
+                        "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                        "$schema": "http://json-schema.org/draft/2020-12/schema",
+                        "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
+                        "properties": {
+                          "currencyCode": {
+                            "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                            "$schema": "https://json-schema.org/draft/2020-12/schema",
+                            "description": "A three-character ISO-4217 currency code.",
+                            "maxLength": 3,
+                            "minLength": 3,
+                            "title": "Currency Code",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "currencyCode",
+                          "value"
+                        ],
+                        "title": "Simple Money",
+                        "type": "object"
+                      },
+                      "pricingModel": {
+                        "const": "FIXED_RECURRING",
+                        "type": "string"
+                      },
+                      "trialDays": {
+                        "description": "Number of days the customer gets free access before the first charge. Payment info is collected upfront. Re-subscriptions skip the trial.\n",
+                        "maximum": 365,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "pricingModel",
+                      "billingCycle",
+                      "price"
+                    ],
+                    "title": "Fixed Recurring Pricing",
+                    "type": "object"
+                  }
+                ],
+                "title": "Pricing Model"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED",
+                "type": "string",
+                "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "pricing"
+            ],
+            "title": "Subscription Plan",
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription-plan:read"
+      ]
+    },
+    {
+      "operationId": "updatePlan",
+      "method": "PATCH",
+      "path": "/plans/{planId}",
+      "summary": "Update Subscription Plan",
+      "description": "Update Subscription Plan",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "planId",
+          "in": "path",
+          "required": true,
+          "description": "The plan ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "items": {
+            "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "An array of JSON patch objects to apply partial updates to resources.",
+            "items": {
+              "$id": "https://godaddy.com/schemas/common/patch.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "The JSON patch object to apply partial updates to resources.",
+              "properties": {
+                "from": {
+                  "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
+                  "type": "string"
+                },
+                "op": {
+                  "description": "The operation to complete.",
+                  "enum": [
+                    "add",
+                    "remove",
+                    "replace",
+                    "move",
+                    "copy",
+                    "test"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The JSON pointer to the target document location at which to complete the operation.",
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {},
+                      "type": "array"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ],
+                  "description": "The value to apply. The `remove` operation does not require a value.",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "op"
+              ],
+              "title": "Patch",
+              "type": "object"
+            },
+            "title": "Patch Request",
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Plan updated",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-plan.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "applicationType": {
+                "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_APP)$"
+              },
+              "billingProvider": {
+                "description": "Identifies which external billing system the billingReferenceId belongs to. Acceptable values: POYNT_BILLING, GODADDY_ECOMM.\n",
+                "type": "string",
+                "x-server-pattern": "^(POYNT_BILLING|GODADDY_ECOMM)$"
+              },
+              "billingReferenceId": {
+                "description": "The identifier for this plan in the external billing system used for checkout and payment processing. Today this is a Poynt Billing plan ID.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "countryCode": {
+                "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                "$schema": "http://json-schema.org/draft/2020-12/schema",
+                "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                "maxLength": 2,
+                "minLength": 2,
+                "pattern": "^([A-Z]{2}|C2)$",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "description": {
+                "description": "Detailed description of what the subscription plan provides",
+                "maxLength": 1000,
+                "type": "string"
+              },
+              "displayName": {
+                "description": "The display name of the subscription plan shown to customers",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "marketingData": {
+                "additionalProperties": true,
+                "description": "Marketing information for the subscription plan",
+                "properties": {
+                  "features": {
+                    "description": "List of marketing features to highlight",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "headline": {
+                    "description": "Main marketing headline for the plan",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "shortDescription": {
+                    "description": "Short marketing description (1-2 sentences)",
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "name": {
+                "description": "The reference key of the subscription plan. For GODADDY_APP plans, unique per applicationId.\n",
+                "maxLength": 100,
+                "type": "string"
+              },
+              "pricing": {
+                "$id": "https://godaddy.com/schemas/commerce/subscriptions/pricing-model.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
+                "discriminator": {
+                  "mapping": {
+                    "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
+                    "FREE": "./FreePricing.yaml"
+                  },
+                  "propertyName": "pricingModel"
+                },
+                "oneOf": [
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/free-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "additionalProperties": false,
+                    "description": "Pricing configuration for a free plan. No charge, entitlement only. No billing cycle, price, or trial fields are applicable.\n",
+                    "properties": {
+                      "pricingModel": {
+                        "const": "FREE",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "pricingModel"
+                    ],
+                    "title": "Free Pricing",
+                    "type": "object"
+                  },
+                  {
+                    "$id": "https://godaddy.com/schemas/commerce/subscriptions/fixed-recurring-pricing.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Pricing configuration for a fixed recurring plan. A fixed amount is charged on a recurring billing cycle.\n",
+                    "properties": {
+                      "billingCycle": {
+                        "description": "The recurring interval at which the plan is billed.",
+                        "type": "string",
+                        "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
+                      },
+                      "price": {
+                        "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+                        "$schema": "http://json-schema.org/draft/2020-12/schema",
+                        "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
+                        "properties": {
+                          "currencyCode": {
+                            "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+                            "$schema": "https://json-schema.org/draft/2020-12/schema",
+                            "description": "A three-character ISO-4217 currency code.",
+                            "maxLength": 3,
+                            "minLength": 3,
+                            "title": "Currency Code",
+                            "type": "string"
+                          },
+                          "value": {
+                            "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "currencyCode",
+                          "value"
+                        ],
+                        "title": "Simple Money",
+                        "type": "object"
+                      },
+                      "pricingModel": {
+                        "const": "FIXED_RECURRING",
+                        "type": "string"
+                      },
+                      "trialDays": {
+                        "description": "Number of days the customer gets free access before the first charge. Payment info is collected upfront. Re-subscriptions skip the trial.\n",
+                        "maximum": 365,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "pricingModel",
+                      "billingCycle",
+                      "price"
+                    ],
+                    "title": "Fixed Recurring Pricing",
+                    "type": "object"
+                  }
+                ],
+                "title": "Pricing Model"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription plan. E.g. ACTIVE, DRAFT, DEPRECATED, DISCONTINUED",
+                "type": "string",
+                "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "pricing"
+            ],
+            "title": "Subscription Plan",
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription-plan:update"
+      ]
+    },
+    {
+      "operationId": "getSubscriptions",
+      "method": "GET",
+      "path": "/subscriptions",
+      "summary": "Get Subscriptions",
+      "description": "Retrieve the subscriptions by params",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "customerId",
+          "in": "query",
+          "required": false,
+          "description": "Customer ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "businessId",
+          "in": "query",
+          "required": false,
+          "description": "Business ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "applicationId",
+          "in": "query",
+          "required": false,
+          "description": "Godaddy Platform Application ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "planId",
+          "in": "query",
+          "required": false,
+          "description": "Filter subscriptions by plan ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "required": false,
+          "description": "Status of the subscription",
+          "schema": {
+            "default": "ACTIVE",
+            "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+            "pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "description": "Type of the subscription. Possible values are GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP.",
+          "schema": {
+            "default": "GODADDY_ECOMM,POYNT_BUNDLE,CUSTOM",
+            "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP. Default: GODADDY_ECOMM,POYNT_BUNDLE,CUSTOM",
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "pageSize",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "totalRequired",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Subscriptions Found",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription-list.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a list of subscriptions",
+            "properties": {
+              "items": {
+                "description": "Array containing the current page of subscriptions",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Resource representing a Subscription that can be applied at Business or Store level",
+                  "properties": {
+                    "applicationId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "customerId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "entitlementId": {
+                      "description": "The identifier of the entitlement, if attached to one",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "planId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "default": "ACTIVE",
+                      "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+                      "type": "string",
+                      "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+                    },
+                    "storeId": {
+                      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "subscriptionPlanRef": {
+                      "description": "The reference key of the plan or product subscribed to",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP",
+                      "type": "string",
+                      "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
+                    },
+                    "updatedAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subscriptionPlanRef"
+                  ],
+                  "title": "Subscription",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "links": {
+                "description": "Array of HATEOAS link relations that should be used to navigate across pages of Subscriptions",
+                "items": {
+                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+                  "properties": {
+                    "href": {
+                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "method": {
+                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+                      "type": "string"
+                    },
+                    "rel": {
+                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+                      "type": "string"
+                    },
+                    "submissionMediaType": {
+                      "default": "application/json",
+                      "description": "The media type with which to submit data with the request.",
+                      "type": "string"
+                    },
+                    "submissionSchema": {
+                      "description": "The schema that describes the request data."
+                    },
+                    "targetMediaType": {
+                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+                      "type": "string"
+                    },
+                    "targetSchema": {
+                      "description": "The schema that describes the link target."
+                    },
+                    "title": {
+                      "description": "The link title.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rel",
+                    "href"
+                  ],
+                  "title": "Link Description",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "totalItems": {
+                "description": "Total number of Subscriptions matching the search criteria. Returned only when totalRequired is set to true.",
+                "type": "integer"
+              },
+              "totalPages": {
+                "description": "Total number of pages matching the search criteria. Returned only when totalRequired is set to true.",
+                "type": "integer"
+              }
+            },
+            "title": "Subscription List",
+            "type": "object"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription:read",
+        "commerce.store:read",
+        "commerce.business:read"
+      ]
+    },
+    {
+      "operationId": "createSubscription",
+      "method": "POST",
+      "path": "/subscriptions",
+      "summary": "Create Subscription",
+      "description": "Create Subscription",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "description": "Resource representing a Subscription that can be applied at Business or Store level",
+          "properties": {
+            "applicationId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "businessId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "createdAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            },
+            "customerId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "entitlementId": {
+              "description": "The identifier of the entitlement, if attached to one",
+              "type": "string"
+            },
+            "expiresAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            },
+            "id": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "planId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "status": {
+              "default": "ACTIVE",
+              "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+              "type": "string",
+              "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+            },
+            "storeId": {
+              "$id": "https://godaddy.com/schemas/common/uuid.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+              "format": "uuid",
+              "type": "string"
+            },
+            "subscriptionPlanRef": {
+              "description": "The reference key of the plan or product subscribed to",
+              "type": "string"
+            },
+            "type": {
+              "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP",
+              "type": "string",
+              "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
+            },
+            "updatedAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "subscriptionPlanRef"
+          ],
+          "title": "Subscription",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Subscription Created",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription that can be applied at Business or Store level",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "businessId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "customerId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "entitlementId": {
+                "description": "The identifier of the entitlement, if attached to one",
+                "type": "string"
+              },
+              "expiresAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "planId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+                "type": "string",
+                "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+              },
+              "storeId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "subscriptionPlanRef": {
+                "description": "The reference key of the plan or product subscribed to",
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "subscriptionPlanRef"
+            ],
+            "title": "Subscription",
+            "type": "object"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription:create",
+        "commerce.store:update",
+        "commerce.business:update"
+      ]
+    },
+    {
+      "operationId": "getSubscriptionById",
+      "method": "GET",
+      "path": "/subscriptions/{subscriptionId}",
+      "summary": "Get Subscription",
+      "description": "Retrieve the information of the Subscription by ID.",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "in": "path",
+          "required": true,
+          "description": "The subscription ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Subscription Found",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription that can be applied at Business or Store level",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "businessId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "customerId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "entitlementId": {
+                "description": "The identifier of the entitlement, if attached to one",
+                "type": "string"
+              },
+              "expiresAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "planId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+                "type": "string",
+                "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+              },
+              "storeId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "subscriptionPlanRef": {
+                "description": "The reference key of the plan or product subscribed to",
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "subscriptionPlanRef"
+            ],
+            "title": "Subscription",
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription:read",
+        "commerce.business:read",
+        "commerce.store:read"
+      ]
+    },
+    {
+      "operationId": "updateSubscription",
+      "method": "PATCH",
+      "path": "/subscriptions/{subscriptionId}",
+      "summary": "Update Subscription",
+      "description": "Update Subscription",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "required": false,
+          "description": "Request ID",
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "storeId",
+          "in": "query",
+          "required": false,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/uuid.yaml"
+          }
+        },
+        {
+          "name": "subscriptionId",
+          "in": "path",
+          "required": true,
+          "description": "The subscription ID",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": false,
+        "contentType": "application/json",
+        "schema": {
+          "items": {
+            "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "An array of JSON patch objects to apply partial updates to resources.",
+            "items": {
+              "$id": "https://godaddy.com/schemas/common/patch.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "The JSON patch object to apply partial updates to resources.",
+              "properties": {
+                "from": {
+                  "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
+                  "type": "string"
+                },
+                "op": {
+                  "description": "The operation to complete.",
+                  "enum": [
+                    "add",
+                    "remove",
+                    "replace",
+                    "move",
+                    "copy",
+                    "test"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The JSON pointer to the target document location at which to complete the operation.",
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {},
+                      "type": "array"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ],
+                  "description": "The value to apply. The `remove` operation does not require a value.",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "op"
+              ],
+              "title": "Patch",
+              "type": "object"
+            },
+            "title": "Patch Request",
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "responses": {
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "./common-types/v1/schemas/yaml/error.yaml"
+          }
+        },
+        "200": {
+          "description": "Subscription updated",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/commerce/subscriptions/subscription.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Resource representing a Subscription that can be applied at Business or Store level",
+            "properties": {
+              "applicationId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "businessId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "createdAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "customerId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "entitlementId": {
+                "description": "The identifier of the entitlement, if attached to one",
+                "type": "string"
+              },
+              "expiresAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              },
+              "id": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "planId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "default": "ACTIVE",
+                "description": "The status of the subscription. E.g. ACTIVE, PENDING, SUSPENDED, CANCELLED. Default is ACTIVE.",
+                "type": "string",
+                "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
+              },
+              "storeId": {
+                "$id": "https://godaddy.com/schemas/common/uuid.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+                "format": "uuid",
+                "type": "string"
+              },
+              "subscriptionPlanRef": {
+                "description": "The reference key of the plan or product subscribed to",
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the subscription. E.g. GODADDY_ECOMM, POYNT_BUNDLE, CUSTOM, GODADDY_APP",
+                "type": "string",
+                "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
+              },
+              "updatedAt": {
+                "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                "maxLength": 64,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "subscriptionPlanRef"
+            ],
+            "title": "Subscription",
+            "type": "object"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.subscription:update",
+        "commerce.store:update",
+        "commerce.business:update"
+      ]
+    }
+  ]
+}

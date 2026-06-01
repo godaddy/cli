@@ -1,0 +1,3495 @@
+{
+  "name": "catalog-products",
+  "title": "Catalog GraphQL API",
+  "description": "",
+  "version": "2.0.0",
+  "baseUrl": "https://api.godaddy.com/v2/commerce",
+  "endpoints": [
+    {
+      "operationId": "postCatalogGraphql",
+      "method": "POST",
+      "path": "/stores/{storeId}/catalog-subgraph",
+      "summary": "Catalog GraphQL endpoint",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "name": "x-store-id",
+          "in": "header",
+          "required": true,
+          "description": "Store ID header required by catalog subgraph",
+          "schema": {
+            "$id": "https://godaddy.com/schemas/common/uuid.v1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "contentType": "application/json",
+        "schema": {
+          "properties": {
+            "operationName": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "variables": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "500": {
+          "description": "Internal server error"
+        },
+        "401": {
+          "description": "Unauthorized"
+        },
+        "200": {
+          "description": "GraphQL response",
+          "schema": {
+            "properties": {
+              "data": {
+                "additionalProperties": true,
+                "nullable": true,
+                "type": "object"
+              },
+              "errors": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "403": {
+          "description": "Forbidden"
+        },
+        "400": {
+          "description": "Invalid request"
+        },
+        "404": {
+          "description": "Store not found"
+        }
+      },
+      "scopes": [
+        "commerce.product:read",
+        "commerce.product:write"
+      ],
+      "graphql": {
+        "schemaRef": "./graphql/schema.graphql",
+        "operationCount": 149,
+        "operations": [
+          {
+            "name": "SKU",
+            "kind": "query",
+            "returnType": "SKU",
+            "deprecated": true,
+            "deprecationReason": "Use sku instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "SKUGroup",
+            "kind": "query",
+            "returnType": "SKUGroup",
+            "deprecated": true,
+            "deprecationReason": "Use skuGroup instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "SKUGroups",
+            "kind": "query",
+            "returnType": "QuerySKUGroupsConnection",
+            "deprecated": true,
+            "deprecationReason": "Use skuGroups instead.",
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "channelId",
+                "type": "SKUGroupChannelIdFilter",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "SKUGroupIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "listId",
+                "type": "ListIdFilter",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "SKUGroupOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "SKUGroupStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "SKUs",
+            "kind": "query",
+            "returnType": "QuerySKUsConnection",
+            "deprecated": true,
+            "deprecationReason": "Use skus instead.",
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "attributeValues",
+                "type": "SKUAttributeValueFilter",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "SKUIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "locationId",
+                "type": "LocationIdFilter",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "SKUOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "skuGroupId",
+                "type": "SKUGroupIdFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "SKUStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "attribute",
+            "kind": "query",
+            "returnType": "Attribute",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "attributeValue",
+            "kind": "query",
+            "returnType": "AttributeValue",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "attributeValues",
+            "kind": "query",
+            "returnType": "QueryAttributeValuesConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "attributeId",
+                "type": "AttributeIdFilter",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "AttributeValueIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "AttributeValueOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "skuId",
+                "type": "SKUIdFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "attributes",
+            "kind": "query",
+            "returnType": "QueryAttributesConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "AttributeIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "AttributeOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "skuGroupId",
+                "type": "SKUGroupIdFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "inventoryAdjustment",
+            "kind": "query",
+            "returnType": "InventoryAdjustment",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "inventoryAdjustmentReasons",
+            "kind": "query",
+            "returnType": "InventoryAdjustmentReasonConnection",
+            "description": "List inventory adjustment reasons available to the current store. Includes both store-scoped and global preset reasons.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "InventoryAdjustmentReasonOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "status",
+                "type": "InventoryAdjustmentReasonStatusFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "inventoryAdjustments",
+            "kind": "query",
+            "returnType": "QueryInventoryAdjustmentsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "InventoryAdjustmentIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "locationId",
+                "type": "LocationIdFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "InventoryAdjustmentOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "skuId",
+                "type": "SKUIdFilter",
+                "required": false
+              },
+              {
+                "name": "type",
+                "type": "InventoryAdjustmentTypeFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "inventoryCount",
+            "kind": "query",
+            "returnType": "[InventoryCount!]",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "locationId",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "skuId",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "type",
+                "type": "String",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "inventoryCounts",
+            "kind": "query",
+            "returnType": "QueryInventoryCountsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "InventoryCountIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "locationId",
+                "type": "LocationIdFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "InventoryCountOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "skuId",
+                "type": "SKUIdFilter",
+                "required": false
+              },
+              {
+                "name": "type",
+                "type": "InventoryCountTypeFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "list",
+            "kind": "query",
+            "returnType": "List",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "listTree",
+            "kind": "query",
+            "returnType": "ListTree",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "listTreeNode",
+            "kind": "query",
+            "returnType": "ListTreeNode",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "listTreeNodes",
+            "kind": "query",
+            "returnType": "QueryListTreeNodesConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "ListTreeNodeIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "listId",
+                "type": "ListIdFilter",
+                "required": false
+              },
+              {
+                "name": "listTreeId",
+                "type": "ListTreeIdFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "ListTreeNodeOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "parentNodeId",
+                "type": "ListTreeNodeParentNodeIdFilter",
+                "required": false
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "listTrees",
+            "kind": "query",
+            "returnType": "QueryListTreesConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "ListTreeIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "ListTreeOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "ListTreeStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "lists",
+            "kind": "query",
+            "returnType": "QueryListsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "ListIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "ListOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "skuGroupId",
+                "type": "SKUGroupIdFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "ListStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "location",
+            "kind": "query",
+            "returnType": "Location",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "locations",
+            "kind": "query",
+            "returnType": "QueryLocationsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "LocationIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "LocationOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "skuId",
+                "type": "SKUIdFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "LocationStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "options",
+            "kind": "query",
+            "returnType": "QueryOptionsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "OptionIdsFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "OptionOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "skuGroupId",
+                "type": "SKUGroupIdFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "sku",
+            "kind": "query",
+            "returnType": "SKU",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "skuGroup",
+            "kind": "query",
+            "returnType": "SKUGroup",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "skuGroups",
+            "kind": "query",
+            "returnType": "QuerySkuGroupsConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "channelId",
+                "type": "SKUGroupChannelIdFilter",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "SKUGroupIdsFilter",
+                "required": false
+              },
+              {
+                "name": "label",
+                "type": "LabelFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "listId",
+                "type": "ListIdFilter",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "SKUGroupOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "SKUGroupStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "skus",
+            "kind": "query",
+            "returnType": "QuerySkusConnection",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "after",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "attributeValues",
+                "type": "SKUAttributeValueFilter",
+                "required": false
+              },
+              {
+                "name": "before",
+                "type": "String",
+                "required": false
+              },
+              {
+                "name": "code",
+                "type": "SKUCodeFilter",
+                "required": false
+              },
+              {
+                "name": "createdAt",
+                "type": "CreatedAtFilter",
+                "required": false
+              },
+              {
+                "name": "first",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "id",
+                "type": "SKUIdsFilter",
+                "required": false
+              },
+              {
+                "name": "label",
+                "type": "LabelFilter",
+                "required": false
+              },
+              {
+                "name": "last",
+                "type": "Int",
+                "required": false
+              },
+              {
+                "name": "locationId",
+                "type": "LocationIdFilter",
+                "required": false
+              },
+              {
+                "name": "name",
+                "type": "NameFilter",
+                "required": false
+              },
+              {
+                "name": "orderBy",
+                "type": "SKUOrderBy",
+                "required": false
+              },
+              {
+                "name": "paginationType",
+                "type": "PaginationType",
+                "required": false,
+                "defaultValue": "CURSOR"
+              },
+              {
+                "name": "queryFilter",
+                "type": "String",
+                "required": false,
+                "description": "A string filter in the ODATA format. ex: \"label eq 'shirt' and contains(code, '123')\".\n\n\t\nSupported columns: `label`, `code`\n\t\nSupported operators: `eq`, `ne`, `lt`, `gt`, `and`, `or`\n\t\nSupported functions: `contains`"
+              },
+              {
+                "name": "referenceValue",
+                "type": "ReferenceValueFilter",
+                "required": false
+              },
+              {
+                "name": "skuGroupId",
+                "type": "SKUGroupIdFilter",
+                "required": false
+              },
+              {
+                "name": "status",
+                "type": "SKUStatusFilter",
+                "required": false
+              },
+              {
+                "name": "updatedAt",
+                "type": "UpdatedAtFilter",
+                "required": false
+              }
+            ]
+          },
+          {
+            "name": "addAttributeValuesToSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add Attribute Value(s) to an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `addAttributeValuesToSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddAttributeValuesToSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addAttributeValuesToSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add Attribute Value(s) to an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddAttributeValuesToSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addAttributesToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add Attributes to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addAttributesToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddAttributesToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addAttributesToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add Attributes to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddAttributesToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addChannelsToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add channels to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addChannelsToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddChannelsToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addChannelsToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add channels to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddChannelsToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addListTreeNodesToListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Add a new node to a list tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddListTreeNodesToListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addListTreeNodesToParentListTreeNode",
+            "kind": "mutation",
+            "returnType": "ListTreeNode",
+            "description": "Add a new node to a list tree node.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddListTreeNodesToParentListTreeNodeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addMediaObjectsToList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Add media objects to an existing List.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddMediaObjectsToListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addMediaObjectsToSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add media objects to an existing SKU",
+            "deprecated": true,
+            "deprecationReason": "Use `addMediaObjectsToSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddMediaObjectsToSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addMediaObjectsToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add media objects to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addMediaObjectsToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddMediaObjectsToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addMediaObjectsToSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add media objects to an existing SKU",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddMediaObjectsToSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addMediaObjectsToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add media objects to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddMediaObjectsToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addOptionsToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add options to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addOptionsToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddOptionsToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addOptionsToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add options to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddOptionsToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Add references to an existing List.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Add references to an existing List Tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToListTreeNode",
+            "kind": "mutation",
+            "returnType": "ListTreeNode",
+            "description": "Add references to an existing List Tree Node",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToListTreeNodeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Add references to an existing location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add references to an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `addReferencesToSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add references to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addReferencesToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add references to an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addReferencesToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add references to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddReferencesToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSKUGroupToLists",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add a single SKU Group to multiple lists",
+            "deprecated": true,
+            "deprecationReason": "Use `addSkuGroupToLists` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSKUGroupToListsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSKUGroupsToList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Add SKU Groups to an existing list.",
+            "deprecated": true,
+            "deprecationReason": "Use `addSkuGroupsToList` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSKUGroupsToListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSKUsToLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Add SKUs to an existing location.",
+            "deprecated": true,
+            "deprecationReason": "Use `addSkusToLocation` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSKUsToLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSKUsToSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add SKUs to an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `addSkusToSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSKUsToSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkuGroupToLists",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add a single SKU Group to multiple lists",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkuGroupToListsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkuGroupsToList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Add SKU Groups to an existing list.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkuGroupsToListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkusToLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Add SKUs to an existing location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkusToLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "addSkusToSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add SKUs to an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationAddSkusToSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Archive a store-scoped inventory adjustment reason. Global reasons cannot be archived.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationArchiveInventoryAdjustmentReasonInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Archive a list.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Archive a list tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Archive a location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Archive an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `archiveSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Archive an existing SKU Group.",
+            "deprecated": true,
+            "deprecationReason": "Use `archiveSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Archive an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "archiveSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Archive an existing SKU Group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "commitInventory",
+            "kind": "mutation",
+            "returnType": "[InventoryAdjustment!]",
+            "description": "Commit new inventory. If there are not enough available inventory, they will be moved to backordered if allowed. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#2.-commitInventory",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCommitInventoryInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createAttribute",
+            "kind": "mutation",
+            "returnType": "Attribute",
+            "description": "Create a new attribute.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateAttributeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createAttributeValue",
+            "kind": "mutation",
+            "returnType": "AttributeValue",
+            "description": "Create a new attribute value.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "CreateAttributeValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createAttributeValues",
+            "kind": "mutation",
+            "returnType": "[AttributeValue!]",
+            "description": "Create new attribute values.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "[CreateAttributeValueInput!]!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createInventoryAdjustment",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustment",
+            "description": "Create a new inventory adjustment.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateInventoryAdjustmentInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Create a new store-scoped inventory adjustment reason. Name must be kebab-case and must not start with \"g-\" (reserved for global presets). Once created, the name is immutable.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateInventoryAdjustmentReasonInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Create a new list.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Create a new list tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Create a new location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOption",
+            "kind": "mutation",
+            "returnType": "Option",
+            "description": "Create a new option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateOptionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOptionPrice",
+            "kind": "mutation",
+            "returnType": "OptionPrice",
+            "description": "Create a flat price for the option. This will be ignore if a price is present on the option values.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateOptionPriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOptionValue",
+            "kind": "mutation",
+            "returnType": "OptionValue",
+            "description": "Create a new option value.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateOptionValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOptionValuePrice",
+            "kind": "mutation",
+            "returnType": "OptionValuePrice",
+            "description": "Create a price.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateOptionValuePriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createOptionValues",
+            "kind": "mutation",
+            "returnType": "[OptionValue!]",
+            "description": "Create multiple new Option Values in a single transaction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "[MutationCreateOptionValueInput!]!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Create a new SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `createSku` instead.",
+            "args": [
+              {
+                "name": "input",
+                "type": "CreateSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Create a new SKU Group.",
+            "deprecated": true,
+            "deprecationReason": "Use `createSkuGroup` instead.",
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSKUPrice",
+            "kind": "mutation",
+            "returnType": "SKUPrice",
+            "description": "Create a price.",
+            "deprecated": true,
+            "deprecationReason": "Use `createSkuPrice` instead.",
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateSKUPriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSKUs",
+            "kind": "mutation",
+            "returnType": "[SKU!]",
+            "description": "Create multiple new SKUs in a single transaction.",
+            "deprecated": true,
+            "deprecationReason": "Use `createSkus` instead.",
+            "args": [
+              {
+                "name": "input",
+                "type": "[CreateSKUInput!]!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Create a new SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "CreateSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Create a new SKU Group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSkuPrice",
+            "kind": "mutation",
+            "returnType": "SKUPrice",
+            "description": "Create a price.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationCreateSkuPriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "createSkus",
+            "kind": "mutation",
+            "returnType": "[SKU!]",
+            "description": "Create multiple new SKUs in a single transaction.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "[CreateSKUInput!]!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "deleteSkuGroupById",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "WARNING: This mutation hard deletes an existing SKU Group and all its associated records.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "releaseInventory",
+            "kind": "mutation",
+            "returnType": "[InventoryAdjustment!]",
+            "description": "Release inventory from committed. If there are not enough committed inventory, this mutation will error. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#3.-releaseInventory",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationReleaseInventoryInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeAttributeValuesFromAttribute",
+            "kind": "mutation",
+            "returnType": "Attribute",
+            "description": "Remove Attribute Value(s) from an existing Attribute.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveAttributeValuesFromAttributeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeAttributeValuesFromSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove Attribute Value(s) from an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeAttributeValuesFromSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveAttributeValuesFromSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeAttributeValuesFromSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove Attribute Value(s) from an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveAttributeValuesFromSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeAttributesFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove Attributes from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeAttributesFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveAttributesFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeAttributesFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove Attributes from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveAttributesFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeChannelsFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove channel associations from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeChannelsFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveChannelsFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeChannelsFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove channel associations from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveChannelsFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeListTreeNodesFromListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Remove nodes from a list tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveListTreeNodesFromListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeListTreeNodesFromParentListTreeNode",
+            "kind": "mutation",
+            "returnType": "ListTreeNode",
+            "description": "Remove nodes from a list tree node.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveListTreeNodesFromParentListTreeNodeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeMediaObjectsFromList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Remove media objects from an existing List.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveMediaObjectsFromListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeMediaObjectsFromSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove media objects from an existing SKU",
+            "deprecated": true,
+            "deprecationReason": "Use `removeMediaObjectsFromSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveMediaObjectsFromSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeMediaObjectsFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove media objects from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeMediaObjectsFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveMediaObjectsFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeMediaObjectsFromSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove media objects from an existing SKU",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveMediaObjectsFromSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeMediaObjectsFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove media objects from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveMediaObjectsFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeOption",
+            "kind": "mutation",
+            "returnType": "Null",
+            "description": "Remove an existing option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeOptionValue",
+            "kind": "mutation",
+            "returnType": "Null",
+            "description": "Remove an existing option value.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeOptionValuesFromListOption",
+            "kind": "mutation",
+            "returnType": "ListOption",
+            "description": "Remove values from an existing Option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveOptionValuesFromListOptionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeOptionsFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove Options from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeOptionsFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveOptionsFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeOptionsFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove Options from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveOptionsFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removePricesFromOption",
+            "kind": "mutation",
+            "returnType": "Option",
+            "description": "Remove prices from an existing Option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemovePricesFromOptionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removePricesFromOptionValue",
+            "kind": "mutation",
+            "returnType": "OptionValue",
+            "description": "Remove prices from an existing OptionValue.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemovePricesFromOptionValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removePricesFromSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove prices from an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `removePricesFromSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemovePricesFromSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removePricesFromSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove prices from an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemovePricesFromSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Remove references from an existing List.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Remove references from an existing List Tree",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromListTreeNode",
+            "kind": "mutation",
+            "returnType": "ListTreeNode",
+            "description": "Remove references from an existing List Tree Node",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromListTreeNodeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Remove references from an existing location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove references from an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeReferencesFromSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove references from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeReferencesFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Remove references from an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeReferencesFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove references from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveReferencesFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSKUGroupFromLists",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove a single SKU Group from multiple lists",
+            "deprecated": true,
+            "deprecationReason": "Use `removeSkuGroupFromLists` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSKUGroupFromListsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSKUGroupsFromList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Remove SKU Groups from an existing list.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeSkuGroupsFromList` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSKUGroupsFromListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSKUsFromLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Remove SKU from an existing location.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeSkusFromLocation` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSKUsFromLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSKUsFromSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove SKUs from an existing SKU group.",
+            "deprecated": true,
+            "deprecationReason": "Use `removeSkusFromSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSKUsFromSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkuGroupFromLists",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove a single SKU Group from multiple lists",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkuGroupFromListsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkuGroupsFromList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Remove SKU Groups from an existing list.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkuGroupsFromListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusFromLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Remove SKU from an existing location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusFromLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "removeSkusFromSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Remove SKUs from an existing SKU group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationRemoveSkusFromSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "stockInventory",
+            "kind": "mutation",
+            "returnType": "[InventoryAdjustment!]",
+            "description": "Stock new inventory. If there are backordered inventory, they will be moved to committed. Any extra inventory will be added to available. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#1.-stockInventory",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationStockInventoryInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateAttribute",
+            "kind": "mutation",
+            "returnType": "Attribute",
+            "description": "Update an existing attribute.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateAttributeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateAttributeValue",
+            "kind": "mutation",
+            "returnType": "AttributeValue",
+            "description": "Update an existing attribute value.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateAttributeValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateInventoryAdjustmentReason",
+            "kind": "mutation",
+            "returnType": "InventoryAdjustmentReason",
+            "description": "Update the label of a store-scoped inventory adjustment reason. Global preset reasons cannot be updated.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "input",
+                "type": "MutationUpdateInventoryAdjustmentReasonInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateList",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Update an existing list.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateListInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateListMediaObjects",
+            "kind": "mutation",
+            "returnType": "List",
+            "description": "Add media objects or update existing media objects to existing List.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateListMediaObjectsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateListTree",
+            "kind": "mutation",
+            "returnType": "ListTree",
+            "description": "Update an existing list tree.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateListTreeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateListTreeNode",
+            "kind": "mutation",
+            "returnType": "ListTreeNode",
+            "description": "Update an existing list tree node.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateListTreeNodeInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateLocation",
+            "kind": "mutation",
+            "returnType": "Location",
+            "description": "Update an existing location.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateLocationInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateOption",
+            "kind": "mutation",
+            "returnType": "Option",
+            "description": "Update an existing option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateOptionInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateOptionPrice",
+            "kind": "mutation",
+            "returnType": "OptionPrice",
+            "description": "Update an existing price object for an option.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateOptionPriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateOptionValue",
+            "kind": "mutation",
+            "returnType": "OptionValue",
+            "description": "Update an existing option value.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateOptionValueInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateOptionValuePrice",
+            "kind": "mutation",
+            "returnType": "OptionValuePrice",
+            "description": "Update an existing price object.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateOptionValuePriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSKU",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Update an existing SKU.",
+            "deprecated": true,
+            "deprecationReason": "Use `updateSku` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSKUInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSKUGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Update an existing SKU Group.",
+            "deprecated": true,
+            "deprecationReason": "Use `updateSkuGroup` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSKUGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSKUPrice",
+            "kind": "mutation",
+            "returnType": "SKUPrice",
+            "description": "Update an existing price object.",
+            "deprecated": true,
+            "deprecationReason": "Use `updateSkuPrice` instead.",
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSKUPriceInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSku",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Update an existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSkuInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSkuGroup",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Update an existing SKU Group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSkuGroupInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSkuGroupMediaObjects",
+            "kind": "mutation",
+            "returnType": "SKUGroup",
+            "description": "Add media objects or update existing media objects to existing SKU Group.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSkuGroupMediaObjectsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSkuMediaObjects",
+            "kind": "mutation",
+            "returnType": "SKU",
+            "description": "Add media objects or update existing media objects to existing SKU.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSkuMediaObjectsInput!",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "updateSkuPrice",
+            "kind": "mutation",
+            "returnType": "SKUPrice",
+            "description": "Update an existing price object.",
+            "deprecated": false,
+            "args": [
+              {
+                "name": "id",
+                "type": "String!",
+                "required": true
+              },
+              {
+                "name": "input",
+                "type": "MutationUpdateSkuPriceInput!",
+                "required": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

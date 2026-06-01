@@ -2,44 +2,105 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
-
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+    tags:
+      - 'v*'
 
 permissions:
-  id-token: write
   contents: write
-  pull-requests: write
 
 jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: godaddy
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: godaddy
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: godaddy
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: godaddy
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: godaddy.exe
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Install cross
+        if: matrix.cross == true
+        run: cargo install cross --locked
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          ARCHIVE="godaddy-${TAG}-${{ matrix.target }}"
+          mkdir dist
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/
+          cd dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "../${ARCHIVE}.zip" ${{ matrix.artifact }}
+            echo "ARCHIVE=${ARCHIVE}.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "../${ARCHIVE}.tar.gz" ${{ matrix.artifact }}
+            echo "ARCHIVE=${ARCHIVE}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: rust/${{ env.ARCHIVE }}
+
   release:
-    name: Release
+    name: Create GitHub Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v6.0.2
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6.0.5
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev build-essential python3
-
-      - name: Setup Node
-        uses: actions/setup-node@v6.4.0
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: "24"
-          cache: "pnpm"
+          path: artifacts
+          merge-multiple: true
 
-      - name: Install Dependencies
-        run: pnpm install --prefer-offline
-
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1.7.0
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
-          version: pnpm run version
-          publish: pnpm publish --filter @godaddy/cli
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/*
+          generate_release_notes: true

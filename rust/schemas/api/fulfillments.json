@@ -1,0 +1,2224 @@
+{
+  "name": "fulfillments",
+  "title": "Fulfillment Service",
+  "description": "The Fulfillment API is intended to be a key component of the Sell Everywhere Engine, our next-generation ecommerce system that will consolidate functionality between Online Store, Sellbrite, Woo, and Poynt.",
+  "version": "1.1.0",
+  "baseUrl": "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
+  "endpoints": [
+    {
+      "operationId": "commerce.fulfillmentPlans.query",
+      "method": "GET",
+      "path": "/stores/{storeId}/fulfillmentPlans",
+      "summary": "Retrieve and filter fulfillments",
+      "description": "Retrieve all fulfillment plans filtered by the criteria provided",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./models/FulfillmentPlan.yaml#/properties/storeId"
+          }
+        },
+        {
+          "name": "orderId",
+          "in": "query",
+          "required": true,
+          "description": "Order ID",
+          "schema": {
+            "$ref": "./models/FulfillmentPlan.yaml#/properties/orderId"
+          }
+        },
+        {
+          "name": "includeFulfillments",
+          "in": "query",
+          "required": false,
+          "description": "Determines if the response contains fulfillments associated with the fulfillment plans",
+          "schema": {
+            "default": true,
+            "description": "Determines if fulfillments should be returned alongs fulfillment plans",
+            "type": "boolean"
+          }
+        }
+      ],
+      "responses": {
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully listed fulfillment plans",
+          "schema": {
+            "properties": {
+              "fulfillmentPlans": {
+                "description": "List of fulfillment plans",
+                "items": {
+                  "allOf": [
+                    {
+                      "$ref": "./models/FulfillmentPlan.yaml"
+                    },
+                    {
+                      "properties": {
+                        "fulfillments": {
+                          "description": "List of fulfillments associated to the fulfillment plan",
+                          "items": {
+                            "$ref": "./models/Fulfillment.yaml"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "fulfillmentPlans"
+            ],
+            "type": "object"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "commerce.fulfillments.create",
+      "method": "POST",
+      "path": "/stores/{storeId}/fulfillments",
+      "summary": "Create a new fulfillment",
+      "description": "Create a new fulfillment",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./models/FulfillmentPlan.yaml#/properties/storeId"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The fulfillment object to create",
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-conditionals.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "allOf": [
+            {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A fulfillment represents a task to fulfill one or more items from a single location for a single fulfillment mode. A Fulfillment can exist in the context of an order or be independent of one.",
+              "properties": {
+                "createdAt": {
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                  "maxLength": 64,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                  "type": "string"
+                },
+                "destination": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Groups together relevant details about an address for a fulfillment",
+                  "properties": {
+                    "address": {
+                      "$id": "https://godaddy.com/schemas/common/address.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                      "properties": {
+                        "addressDetails": {
+                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                          "properties": {
+                            "addressType": {
+                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                              "maxLength": 1,
+                              "type": "string"
+                            },
+                            "buildingName": {
+                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "deliveryService": {
+                              "description": "The delivery service. Post office box, bag number, or post office name.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "geoCoordinates": {
+                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                              "$schema": "https://json-schema.org/draft/2020-12/schema",
+                              "description": "The geographic latitude and longitude coordinates.",
+                              "properties": {
+                                "latitude": {
+                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                                  "type": "string"
+                                },
+                                "longitude": {
+                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "longitude",
+                                "latitude"
+                              ],
+                              "title": "Geographic Coordinates",
+                              "type": "object"
+                            },
+                            "streetName": {
+                              "description": "The street name. Just `Drury` in `Drury Lane`.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "streetNumber": {
+                              "description": "The street number.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "streetType": {
+                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "subBuilding": {
+                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                              "maxLength": 100,
+                              "type": "string"
+                            }
+                          },
+                          "title": "Address Details",
+                          "type": "object"
+                        },
+                        "addressLine1": {
+                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "addressLine2": {
+                          "description": "The second line of the address. For example, office suite or apartment number.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "addressLine3": {
+                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "adminArea1": {
+                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "adminArea2": {
+                          "description": "A city, town, or village. Smaller than `adminArea1`.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "adminArea3": {
+                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "adminArea4": {
+                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "countryCode": {
+                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                          "$schema": "http://json-schema.org/draft/2020-12/schema",
+                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                          "maxLength": 2,
+                          "minLength": 2,
+                          "pattern": "^([A-Z]{2}|C2)$",
+                          "type": "string"
+                        },
+                        "postalCode": {
+                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                          "maxLength": 60,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "countryCode"
+                      ],
+                      "title": "Postal Address (Medium-Grained)",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "address"
+                  ],
+                  "title": "Fulfillment Address",
+                  "type": "object"
+                },
+                "detailedStatus": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/status.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Detailed status for a fulfillment providing more granular information about the fulfillment state. This field is required for all fulfillment operations. \n\n **For updates**: Must be present and be one of the valid detailed statuses. \n\n **For creates**: Must be present and valid for the initial status being set (see fulfillment-constraints.json for validation rules). \n\n **Status Values**: \n\n `ERROR`: There was an error when trying to process the fulfillment \n\n `CANCELED`: The fulfillment has been canceled \n\n `CONFIRMED`: The fulfillment has been confirmed and is ready to be processed \n\n `AWAITING_FULFILLMENT`: The fulfillment is awaiting fulfillment processing \n\n `OUT_FOR_FULFILLMENT`: The fulfillment is out for fulfillment (e.g., shipped, out for delivery) \n\n `ATTEMPTED_FULFILLMENT`: An attempt was made to fulfill the order but was unsuccessful \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `AWAITING_PICKUP`: The fulfillment is ready for pickup",
+                  "enum": [
+                    "ERROR",
+                    "CANCELED",
+                    "CONFIRMED",
+                    "AWAITING_FULFILLMENT",
+                    "OUT_FOR_FULFILLMENT",
+                    "ATTEMPTED_FULFILLMENT",
+                    "SUCCESS",
+                    "AWAITING_PICKUP"
+                  ],
+                  "title": "Fulfillment detailed status",
+                  "type": "string"
+                },
+                "externalId": {
+                  "description": "External identifier for the fulfillment",
+                  "example": "FM-Y6BN43DB590L",
+                  "type": "string"
+                },
+                "fulfillmentPlanId": {
+                  "description": "Reference to the FulfillmentPlan this fulfillment was created from. Used for linking and reporting.",
+                  "example": "FulfillmentPlan_TG41sWEXyIktH8PY4eI0nOGDoB6",
+                  "type": "string"
+                },
+                "fulfillmentWindow": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-window.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Specifies the time window for fulfillment (e.g., delivery slot or pickup time)",
+                  "properties": {
+                    "endAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    },
+                    "startAt": {
+                      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                      "maxLength": 64,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "startAt",
+                    "endAt"
+                  ],
+                  "title": "Fulfillment Window",
+                  "type": "object"
+                },
+                "history": {
+                  "description": "List of history events associated to the fulfillment",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/history-event.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Records a event that happened to a fulfillment / fulfillment plan",
+                    "properties": {
+                      "createdAt": {
+                        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                        "maxLength": 64,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "eventName": {
+                        "description": "Name of the history event",
+                        "example": "FULFILLMENT.CANCELED",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "eventName",
+                      "createdAt"
+                    ],
+                    "title": "History event",
+                    "type": "object"
+                  },
+                  "readOnly": true,
+                  "type": "array"
+                },
+                "id": {
+                  "description": "An identifier unique to the fulfillment (`Fulfillment_<KSUID>`). Auto-generated by our system on creation",
+                  "example": "Fulfillment_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+                  "readOnly": true,
+                  "type": "string"
+                },
+                "inventoryBehavior": {
+                  "default": "OBEY_POLICY",
+                  "description": "Inventory policy for this fulfillment. Valid values: OBEY_POLICY (default), BYPASS. OBEY_POLICY decrements inventory and enforces stock checks; BYPASS skips inventory checks and allows fulfillment regardless of stock.",
+                  "enum": [
+                    "OBEY_POLICY",
+                    "BYPASS"
+                  ],
+                  "type": "string"
+                },
+                "items": {
+                  "description": "Items in the fulfillment",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-item.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Represents an item that's included in a fulfillment / fulfillment plan",
+                    "properties": {
+                      "fulfillmentPlanItemId": {
+                        "description": "Reference to the FulfillmentPlanItem this item fulfills. Required if the fulfillment is linked to a plan.",
+                        "type": "string"
+                      },
+                      "lineItemId": {
+                        "description": "Reference to a Line Item as defined by the Order service. Optional since fulfillments do not have to be tied to an order.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Name of the fulfillment item used for display purposes",
+                        "type": "string"
+                      },
+                      "productId": {
+                        "description": "Reference to a Product as defined by the Catalog service (commerce API v1). Optional.",
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "description": "Quantity for the fulfillment item. Note this could be a float value (e.g. 2.3 Kgs)",
+                        "format": "float",
+                        "type": "number"
+                      },
+                      "sku": {
+                        "description": "SKU for the fulfillment item. Optional. Deprecated in v2",
+                        "type": "string"
+                      },
+                      "skuId": {
+                        "description": "Reference to a SKU as defined by the Catalog service (commerce API v2). Optional.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "quantity",
+                      "name"
+                    ],
+                    "title": "Fulfillment Item",
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "locationId": {
+                  "description": "Reference to the Inventory Location (as defined by the Inventory Service) where the fulfillment was processed at",
+                  "type": "string"
+                },
+                "mode": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-mode.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Possible modes for a fulfillment \n\n `SHIP`: The fulfillment is a shipping fulfillment \n\n `DELIVERY` The fulfillment is a local delivery fulfillment \n\n `PICKUP` The fulfillment is a pickup fulfillment \n\n `FOR_HERE` The fulfillment is made at the location with no online interaction \n\n `DIGITAL` The fulfillment is a digital fulfillment",
+                  "enum": [
+                    "SHIP",
+                    "DELIVERY",
+                    "PICKUP",
+                    "FOR_HERE",
+                    "DIGITAL"
+                  ],
+                  "title": "Fulfillment mode",
+                  "type": "string"
+                },
+                "notes": {
+                  "description": "List of FulfillmentNote objects, used for internal or customer-facing notes.",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-note.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Represents a note attached to a fulfillment, which may be customer-facing or internal",
+                    "properties": {
+                      "author": {
+                        "description": "Name or identifier of the note's author.",
+                        "type": "string"
+                      },
+                      "authorType": {
+                        "default": "CUSTOMER",
+                        "description": "Type of author. Used for filtering and display. Defaults to CUSTOMER.",
+                        "enum": [
+                          "CUSTOMER",
+                          "MERCHANT",
+                          "NONE"
+                        ],
+                        "type": "string"
+                      },
+                      "content": {
+                        "description": "The note content, which may be customer-facing or internal.",
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                        "maxLength": 64,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "description": "Unique identifier for the note. Used for referencing and editing notes.",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                        "maxLength": 64,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "content"
+                    ],
+                    "title": "Fulfillment Note",
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "orderId": {
+                  "description": "Reference to an order as defined by the Orders Service",
+                  "example": "Order_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+                  "type": "string"
+                },
+                "origin": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Groups together relevant details about an address for a fulfillment",
+                  "properties": {
+                    "address": {
+                      "$id": "https://godaddy.com/schemas/common/address.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                      "properties": {
+                        "addressDetails": {
+                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                          "properties": {
+                            "addressType": {
+                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                              "maxLength": 1,
+                              "type": "string"
+                            },
+                            "buildingName": {
+                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "deliveryService": {
+                              "description": "The delivery service. Post office box, bag number, or post office name.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "geoCoordinates": {
+                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                              "$schema": "https://json-schema.org/draft/2020-12/schema",
+                              "description": "The geographic latitude and longitude coordinates.",
+                              "properties": {
+                                "latitude": {
+                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                                  "type": "string"
+                                },
+                                "longitude": {
+                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "longitude",
+                                "latitude"
+                              ],
+                              "title": "Geographic Coordinates",
+                              "type": "object"
+                            },
+                            "streetName": {
+                              "description": "The street name. Just `Drury` in `Drury Lane`.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "streetNumber": {
+                              "description": "The street number.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "streetType": {
+                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                              "maxLength": 100,
+                              "type": "string"
+                            },
+                            "subBuilding": {
+                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                              "maxLength": 100,
+                              "type": "string"
+                            }
+                          },
+                          "title": "Address Details",
+                          "type": "object"
+                        },
+                        "addressLine1": {
+                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "addressLine2": {
+                          "description": "The second line of the address. For example, office suite or apartment number.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "addressLine3": {
+                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "adminArea1": {
+                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "adminArea2": {
+                          "description": "A city, town, or village. Smaller than `adminArea1`.",
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "adminArea3": {
+                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "adminArea4": {
+                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "countryCode": {
+                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                          "$schema": "http://json-schema.org/draft/2020-12/schema",
+                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                          "maxLength": 2,
+                          "minLength": 2,
+                          "pattern": "^([A-Z]{2}|C2)$",
+                          "type": "string"
+                        },
+                        "postalCode": {
+                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                          "maxLength": 60,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "countryCode"
+                      ],
+                      "title": "Postal Address (Medium-Grained)",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "address"
+                  ],
+                  "title": "Fulfillment Address",
+                  "type": "object"
+                },
+                "status": {
+                  "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-status.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "Possible statuses for a fulfillment \n\n `IN_PROGRESS`: The fulfillment has been acknowledged by a fulfillment service and is in progress \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `CANCELED`: The fulfillment has been canceled \n\n `ERROR`: There was an error when trying to process the fulfillment",
+                  "enum": [
+                    "IN_PROGRESS",
+                    "SUCCESS",
+                    "CANCELED",
+                    "ERROR"
+                  ],
+                  "title": "Fulfillment status",
+                  "type": "string"
+                },
+                "storeId": {
+                  "description": "ID of the store that the fulfillment belongs to",
+                  "example": "fd3d9291-dc9a-445d-aa68-d2ff1a77a83c",
+                  "type": "string"
+                },
+                "trackingData": {
+                  "description": "Tracking information for a fulfillment. The ability to have multiple tracking numbers for a single fulfillment is to support `last mile` shipping use cases. We do not support fulfilling multiple discrete sets of items (e.g. multiple boxes) in a single fulfillment",
+                  "items": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/tracking.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Groups together relevant details about tracking a fulfillment. Typically represents a shipping label for a service like USPS",
+                    "properties": {
+                      "labelId": {
+                        "description": "Reference to a Label as defined by the Label Service",
+                        "type": "string"
+                      },
+                      "number": {
+                        "description": "The tracking number",
+                        "example": "U897654321345678",
+                        "type": "string"
+                      },
+                      "provider": {
+                        "description": "Tracking provider (`UPS`, `USPS`, etc.)",
+                        "type": "string"
+                      },
+                      "service": {
+                        "description": "Tracking provider (`2nd Day`, `Priority`, `Express` etc.)",
+                        "type": "string"
+                      },
+                      "url": {
+                        "description": "The tracking URL",
+                        "example": "http://www.ups.com/WebTracking/track?trackNums=U897654321345678&track.x=Track",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "number"
+                    ],
+                    "title": "Tracking",
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "updatedAt": {
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                  "maxLength": 64,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "storeId",
+                "mode",
+                "status",
+                "detailedStatus",
+                "locationId",
+                "items"
+              ],
+              "title": "Fulfillment",
+              "type": "object"
+            },
+            {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-constraints.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Validation constraints for a fulfillment",
+              "else": {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "SUCCESS"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "detailedStatus": {
+                      "enum": [
+                        "SUCCESS"
+                      ]
+                    }
+                  }
+                }
+              },
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "IN_PROGRESS"
+                  }
+                }
+              },
+              "properties": {
+                "detailedStatus": {
+                  "anyOf": [
+                    {
+                      "description": "Valid detailed statuses when status is IN_PROGRESS",
+                      "enum": [
+                        "CONFIRMED",
+                        "AWAITING_FULFILLMENT",
+                        "OUT_FOR_FULFILLMENT",
+                        "ATTEMPTED_FULFILLMENT",
+                        "AWAITING_PICKUP"
+                      ]
+                    },
+                    {
+                      "description": "Valid detailed statuses when status is SUCCESS",
+                      "enum": [
+                        "SUCCESS"
+                      ]
+                    }
+                  ],
+                  "description": "Valid detailed statuses for fulfillment operations based on status",
+                  "type": "string"
+                },
+                "status": {
+                  "description": "Valid statuses for fulfillment operations",
+                  "enum": [
+                    "IN_PROGRESS",
+                    "SUCCESS"
+                  ],
+                  "type": "string"
+                }
+              },
+              "then": {
+                "properties": {
+                  "detailedStatus": {
+                    "enum": [
+                      "CONFIRMED",
+                      "AWAITING_FULFILLMENT",
+                      "OUT_FOR_FULFILLMENT",
+                      "ATTEMPTED_FULFILLMENT",
+                      "AWAITING_PICKUP"
+                    ]
+                  }
+                }
+              },
+              "title": "Fulfillment Constraints",
+              "type": "object"
+            }
+          ],
+          "description": "Schema for fulfillment with conditional validation constraints. The detailedStatus field is required for all fulfillment operations (both create and update) and must be valid for the initial status being set during creation.",
+          "title": "Fulfillment Conditionals",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully created the fulfillment",
+          "schema": {
+            "properties": {
+              "fulfillment": {
+                "$ref": "./models/Fulfillment.yaml"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "fulfillment"
+            ],
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": []
+    },
+    {
+      "operationId": "commerce.fulfillments.patch",
+      "method": "PATCH",
+      "path": "/stores/{storeId}/fulfillments/{fulfillmentId}",
+      "summary": "Patch a fulfillment",
+      "description": "Modify an existing fulfillment using the fulfillment ID.",
+      "parameters": [
+        {
+          "name": "storeId",
+          "in": "path",
+          "required": true,
+          "description": "Store ID",
+          "schema": {
+            "$ref": "./models/FulfillmentPlan.yaml#/properties/storeId"
+          }
+        },
+        {
+          "name": "fulfillmentId",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the fulfillment",
+          "schema": {
+            "$ref": "./models/Fulfillment.yaml#/properties/id"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "description": "The fulfillment object to patch",
+        "contentType": "application/json",
+        "schema": {
+          "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment.v1",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "description": "A fulfillment represents a task to fulfill one or more items from a single location for a single fulfillment mode. A Fulfillment can exist in the context of an order or be independent of one.",
+          "properties": {
+            "createdAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            },
+            "destination": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Groups together relevant details about an address for a fulfillment",
+              "properties": {
+                "address": {
+                  "$id": "https://godaddy.com/schemas/common/address.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                  "properties": {
+                    "addressDetails": {
+                      "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                      "properties": {
+                        "addressType": {
+                          "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                          "maxLength": 1,
+                          "type": "string"
+                        },
+                        "buildingName": {
+                          "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "deliveryService": {
+                          "description": "The delivery service. Post office box, bag number, or post office name.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "geoCoordinates": {
+                          "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "The geographic latitude and longitude coordinates.",
+                          "properties": {
+                            "latitude": {
+                              "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                              "type": "string"
+                            },
+                            "longitude": {
+                              "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "longitude",
+                            "latitude"
+                          ],
+                          "title": "Geographic Coordinates",
+                          "type": "object"
+                        },
+                        "streetName": {
+                          "description": "The street name. Just `Drury` in `Drury Lane`.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "streetNumber": {
+                          "description": "The street number.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "streetType": {
+                          "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "subBuilding": {
+                          "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                          "maxLength": 100,
+                          "type": "string"
+                        }
+                      },
+                      "title": "Address Details",
+                      "type": "object"
+                    },
+                    "addressLine1": {
+                      "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "description": "The second line of the address. For example, office suite or apartment number.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "addressLine3": {
+                      "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "adminArea1": {
+                      "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "adminArea2": {
+                      "description": "A city, town, or village. Smaller than `adminArea1`.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "adminArea3": {
+                      "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "adminArea4": {
+                      "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "countryCode": {
+                      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                      "$schema": "http://json-schema.org/draft/2020-12/schema",
+                      "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                      "maxLength": 2,
+                      "minLength": 2,
+                      "pattern": "^([A-Z]{2}|C2)$",
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                      "maxLength": 60,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "countryCode"
+                  ],
+                  "title": "Postal Address (Medium-Grained)",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "address"
+              ],
+              "title": "Fulfillment Address",
+              "type": "object"
+            },
+            "detailedStatus": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/status.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Detailed status for a fulfillment providing more granular information about the fulfillment state. This field is required for all fulfillment operations. \n\n **For updates**: Must be present and be one of the valid detailed statuses. \n\n **For creates**: Must be present and valid for the initial status being set (see fulfillment-constraints.json for validation rules). \n\n **Status Values**: \n\n `ERROR`: There was an error when trying to process the fulfillment \n\n `CANCELED`: The fulfillment has been canceled \n\n `CONFIRMED`: The fulfillment has been confirmed and is ready to be processed \n\n `AWAITING_FULFILLMENT`: The fulfillment is awaiting fulfillment processing \n\n `OUT_FOR_FULFILLMENT`: The fulfillment is out for fulfillment (e.g., shipped, out for delivery) \n\n `ATTEMPTED_FULFILLMENT`: An attempt was made to fulfill the order but was unsuccessful \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `AWAITING_PICKUP`: The fulfillment is ready for pickup",
+              "enum": [
+                "ERROR",
+                "CANCELED",
+                "CONFIRMED",
+                "AWAITING_FULFILLMENT",
+                "OUT_FOR_FULFILLMENT",
+                "ATTEMPTED_FULFILLMENT",
+                "SUCCESS",
+                "AWAITING_PICKUP"
+              ],
+              "title": "Fulfillment detailed status",
+              "type": "string"
+            },
+            "externalId": {
+              "description": "External identifier for the fulfillment",
+              "example": "FM-Y6BN43DB590L",
+              "type": "string"
+            },
+            "fulfillmentPlanId": {
+              "description": "Reference to the FulfillmentPlan this fulfillment was created from. Used for linking and reporting.",
+              "example": "FulfillmentPlan_TG41sWEXyIktH8PY4eI0nOGDoB6",
+              "type": "string"
+            },
+            "fulfillmentWindow": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-window.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Specifies the time window for fulfillment (e.g., delivery slot or pickup time)",
+              "properties": {
+                "endAt": {
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                  "maxLength": 64,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                  "type": "string"
+                },
+                "startAt": {
+                  "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                  "maxLength": 64,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "startAt",
+                "endAt"
+              ],
+              "title": "Fulfillment Window",
+              "type": "object"
+            },
+            "history": {
+              "description": "List of history events associated to the fulfillment",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/fulfillment/history-event.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Records a event that happened to a fulfillment / fulfillment plan",
+                "properties": {
+                  "createdAt": {
+                    "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                    "maxLength": 64,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  },
+                  "eventName": {
+                    "description": "Name of the history event",
+                    "example": "FULFILLMENT.CANCELED",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventName",
+                  "createdAt"
+                ],
+                "title": "History event",
+                "type": "object"
+              },
+              "readOnly": true,
+              "type": "array"
+            },
+            "id": {
+              "description": "An identifier unique to the fulfillment (`Fulfillment_<KSUID>`). Auto-generated by our system on creation",
+              "example": "Fulfillment_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+              "readOnly": true,
+              "type": "string"
+            },
+            "inventoryBehavior": {
+              "default": "OBEY_POLICY",
+              "description": "Inventory policy for this fulfillment. Valid values: OBEY_POLICY (default), BYPASS. OBEY_POLICY decrements inventory and enforces stock checks; BYPASS skips inventory checks and allows fulfillment regardless of stock.",
+              "enum": [
+                "OBEY_POLICY",
+                "BYPASS"
+              ],
+              "type": "string"
+            },
+            "items": {
+              "description": "Items in the fulfillment",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-item.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Represents an item that's included in a fulfillment / fulfillment plan",
+                "properties": {
+                  "fulfillmentPlanItemId": {
+                    "description": "Reference to the FulfillmentPlanItem this item fulfills. Required if the fulfillment is linked to a plan.",
+                    "type": "string"
+                  },
+                  "lineItemId": {
+                    "description": "Reference to a Line Item as defined by the Order service. Optional since fulfillments do not have to be tied to an order.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Name of the fulfillment item used for display purposes",
+                    "type": "string"
+                  },
+                  "productId": {
+                    "description": "Reference to a Product as defined by the Catalog service (commerce API v1). Optional.",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "description": "Quantity for the fulfillment item. Note this could be a float value (e.g. 2.3 Kgs)",
+                    "format": "float",
+                    "type": "number"
+                  },
+                  "sku": {
+                    "description": "SKU for the fulfillment item. Optional. Deprecated in v2",
+                    "type": "string"
+                  },
+                  "skuId": {
+                    "description": "Reference to a SKU as defined by the Catalog service (commerce API v2). Optional.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "quantity",
+                  "name"
+                ],
+                "title": "Fulfillment Item",
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "locationId": {
+              "description": "Reference to the Inventory Location (as defined by the Inventory Service) where the fulfillment was processed at",
+              "type": "string"
+            },
+            "mode": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-mode.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Possible modes for a fulfillment \n\n `SHIP`: The fulfillment is a shipping fulfillment \n\n `DELIVERY` The fulfillment is a local delivery fulfillment \n\n `PICKUP` The fulfillment is a pickup fulfillment \n\n `FOR_HERE` The fulfillment is made at the location with no online interaction \n\n `DIGITAL` The fulfillment is a digital fulfillment",
+              "enum": [
+                "SHIP",
+                "DELIVERY",
+                "PICKUP",
+                "FOR_HERE",
+                "DIGITAL"
+              ],
+              "title": "Fulfillment mode",
+              "type": "string"
+            },
+            "notes": {
+              "description": "List of FulfillmentNote objects, used for internal or customer-facing notes.",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-note.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Represents a note attached to a fulfillment, which may be customer-facing or internal",
+                "properties": {
+                  "author": {
+                    "description": "Name or identifier of the note's author.",
+                    "type": "string"
+                  },
+                  "authorType": {
+                    "default": "CUSTOMER",
+                    "description": "Type of author. Used for filtering and display. Defaults to CUSTOMER.",
+                    "enum": [
+                      "CUSTOMER",
+                      "MERCHANT",
+                      "NONE"
+                    ],
+                    "type": "string"
+                  },
+                  "content": {
+                    "description": "The note content, which may be customer-facing or internal.",
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                    "maxLength": 64,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Unique identifier for the note. Used for referencing and editing notes.",
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                    "maxLength": 64,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "content"
+                ],
+                "title": "Fulfillment Note",
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "orderId": {
+              "description": "Reference to an order as defined by the Orders Service",
+              "example": "Order_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+              "type": "string"
+            },
+            "origin": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Groups together relevant details about an address for a fulfillment",
+              "properties": {
+                "address": {
+                  "$id": "https://godaddy.com/schemas/common/address.v1",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                  "properties": {
+                    "addressDetails": {
+                      "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                      "properties": {
+                        "addressType": {
+                          "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                          "maxLength": 1,
+                          "type": "string"
+                        },
+                        "buildingName": {
+                          "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "deliveryService": {
+                          "description": "The delivery service. Post office box, bag number, or post office name.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "geoCoordinates": {
+                          "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "The geographic latitude and longitude coordinates.",
+                          "properties": {
+                            "latitude": {
+                              "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                              "type": "string"
+                            },
+                            "longitude": {
+                              "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "longitude",
+                            "latitude"
+                          ],
+                          "title": "Geographic Coordinates",
+                          "type": "object"
+                        },
+                        "streetName": {
+                          "description": "The street name. Just `Drury` in `Drury Lane`.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "streetNumber": {
+                          "description": "The street number.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "streetType": {
+                          "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                          "maxLength": 100,
+                          "type": "string"
+                        },
+                        "subBuilding": {
+                          "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                          "maxLength": 100,
+                          "type": "string"
+                        }
+                      },
+                      "title": "Address Details",
+                      "type": "object"
+                    },
+                    "addressLine1": {
+                      "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "description": "The second line of the address. For example, office suite or apartment number.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "addressLine3": {
+                      "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "adminArea1": {
+                      "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "adminArea2": {
+                      "description": "A city, town, or village. Smaller than `adminArea1`.",
+                      "maxLength": 300,
+                      "type": "string"
+                    },
+                    "adminArea3": {
+                      "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "adminArea4": {
+                      "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    "countryCode": {
+                      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                      "$schema": "http://json-schema.org/draft/2020-12/schema",
+                      "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                      "maxLength": 2,
+                      "minLength": 2,
+                      "pattern": "^([A-Z]{2}|C2)$",
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                      "maxLength": 60,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "countryCode"
+                  ],
+                  "title": "Postal Address (Medium-Grained)",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "address"
+              ],
+              "title": "Fulfillment Address",
+              "type": "object"
+            },
+            "status": {
+              "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-status.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Possible statuses for a fulfillment \n\n `IN_PROGRESS`: The fulfillment has been acknowledged by a fulfillment service and is in progress \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `CANCELED`: The fulfillment has been canceled \n\n `ERROR`: There was an error when trying to process the fulfillment",
+              "enum": [
+                "IN_PROGRESS",
+                "SUCCESS",
+                "CANCELED",
+                "ERROR"
+              ],
+              "title": "Fulfillment status",
+              "type": "string"
+            },
+            "storeId": {
+              "description": "ID of the store that the fulfillment belongs to",
+              "example": "fd3d9291-dc9a-445d-aa68-d2ff1a77a83c",
+              "type": "string"
+            },
+            "trackingData": {
+              "description": "Tracking information for a fulfillment. The ability to have multiple tracking numbers for a single fulfillment is to support `last mile` shipping use cases. We do not support fulfilling multiple discrete sets of items (e.g. multiple boxes) in a single fulfillment",
+              "items": {
+                "$id": "https://godaddy.com/schemas/commerce/fulfillment/tracking.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Groups together relevant details about tracking a fulfillment. Typically represents a shipping label for a service like USPS",
+                "properties": {
+                  "labelId": {
+                    "description": "Reference to a Label as defined by the Label Service",
+                    "type": "string"
+                  },
+                  "number": {
+                    "description": "The tracking number",
+                    "example": "U897654321345678",
+                    "type": "string"
+                  },
+                  "provider": {
+                    "description": "Tracking provider (`UPS`, `USPS`, etc.)",
+                    "type": "string"
+                  },
+                  "service": {
+                    "description": "Tracking provider (`2nd Day`, `Priority`, `Express` etc.)",
+                    "type": "string"
+                  },
+                  "url": {
+                    "description": "The tracking URL",
+                    "example": "http://www.ups.com/WebTracking/track?trackNums=U897654321345678&track.x=Track",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "number"
+                ],
+                "title": "Tracking",
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "updatedAt": {
+              "$id": "https://godaddy.com/schemas/common/date-time.v1",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "storeId",
+            "mode",
+            "status",
+            "detailedStatus",
+            "locationId",
+            "items"
+          ],
+          "title": "Fulfillment",
+          "type": "object"
+        }
+      },
+      "responses": {
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "504": {
+          "description": "Gateway or dependency timeout",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "500": {
+          "description": "Internal server error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "502": {
+          "description": "Bad gateway or failed dependency",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "503": {
+          "description": "Service is temporarily unavailable",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "200": {
+          "description": "Successfully patched the fulfillment",
+          "schema": {
+            "properties": {
+              "fulfillment": {
+                "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment.v1",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "A fulfillment represents a task to fulfill one or more items from a single location for a single fulfillment mode. A Fulfillment can exist in the context of an order or be independent of one.",
+                "properties": {
+                  "createdAt": {
+                    "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                    "maxLength": 64,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  },
+                  "destination": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Groups together relevant details about an address for a fulfillment",
+                    "properties": {
+                      "address": {
+                        "$id": "https://godaddy.com/schemas/common/address.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                        "properties": {
+                          "addressDetails": {
+                            "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                            "properties": {
+                              "addressType": {
+                                "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                                "maxLength": 1,
+                                "type": "string"
+                              },
+                              "buildingName": {
+                                "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "deliveryService": {
+                                "description": "The delivery service. Post office box, bag number, or post office name.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "geoCoordinates": {
+                                "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                                "description": "The geographic latitude and longitude coordinates.",
+                                "properties": {
+                                  "latitude": {
+                                    "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                                    "type": "string"
+                                  },
+                                  "longitude": {
+                                    "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "longitude",
+                                  "latitude"
+                                ],
+                                "title": "Geographic Coordinates",
+                                "type": "object"
+                              },
+                              "streetName": {
+                                "description": "The street name. Just `Drury` in `Drury Lane`.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "streetNumber": {
+                                "description": "The street number.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "streetType": {
+                                "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "subBuilding": {
+                                "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                                "maxLength": 100,
+                                "type": "string"
+                              }
+                            },
+                            "title": "Address Details",
+                            "type": "object"
+                          },
+                          "addressLine1": {
+                            "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "addressLine2": {
+                            "description": "The second line of the address. For example, office suite or apartment number.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "addressLine3": {
+                            "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "adminArea1": {
+                            "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "adminArea2": {
+                            "description": "A city, town, or village. Smaller than `adminArea1`.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "adminArea3": {
+                            "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "adminArea4": {
+                            "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "countryCode": {
+                            "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                            "$schema": "http://json-schema.org/draft/2020-12/schema",
+                            "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                            "maxLength": 2,
+                            "minLength": 2,
+                            "pattern": "^([A-Z]{2}|C2)$",
+                            "type": "string"
+                          },
+                          "postalCode": {
+                            "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                            "maxLength": 60,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "countryCode"
+                        ],
+                        "title": "Postal Address (Medium-Grained)",
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ],
+                    "title": "Fulfillment Address",
+                    "type": "object"
+                  },
+                  "detailedStatus": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/status.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Detailed status for a fulfillment providing more granular information about the fulfillment state. This field is required for all fulfillment operations. \n\n **For updates**: Must be present and be one of the valid detailed statuses. \n\n **For creates**: Must be present and valid for the initial status being set (see fulfillment-constraints.json for validation rules). \n\n **Status Values**: \n\n `ERROR`: There was an error when trying to process the fulfillment \n\n `CANCELED`: The fulfillment has been canceled \n\n `CONFIRMED`: The fulfillment has been confirmed and is ready to be processed \n\n `AWAITING_FULFILLMENT`: The fulfillment is awaiting fulfillment processing \n\n `OUT_FOR_FULFILLMENT`: The fulfillment is out for fulfillment (e.g., shipped, out for delivery) \n\n `ATTEMPTED_FULFILLMENT`: An attempt was made to fulfill the order but was unsuccessful \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `AWAITING_PICKUP`: The fulfillment is ready for pickup",
+                    "enum": [
+                      "ERROR",
+                      "CANCELED",
+                      "CONFIRMED",
+                      "AWAITING_FULFILLMENT",
+                      "OUT_FOR_FULFILLMENT",
+                      "ATTEMPTED_FULFILLMENT",
+                      "SUCCESS",
+                      "AWAITING_PICKUP"
+                    ],
+                    "title": "Fulfillment detailed status",
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "description": "External identifier for the fulfillment",
+                    "example": "FM-Y6BN43DB590L",
+                    "type": "string"
+                  },
+                  "fulfillmentPlanId": {
+                    "description": "Reference to the FulfillmentPlan this fulfillment was created from. Used for linking and reporting.",
+                    "example": "FulfillmentPlan_TG41sWEXyIktH8PY4eI0nOGDoB6",
+                    "type": "string"
+                  },
+                  "fulfillmentWindow": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-window.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Specifies the time window for fulfillment (e.g., delivery slot or pickup time)",
+                    "properties": {
+                      "endAt": {
+                        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                        "maxLength": 64,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "startAt": {
+                        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                        "maxLength": 64,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "startAt",
+                      "endAt"
+                    ],
+                    "title": "Fulfillment Window",
+                    "type": "object"
+                  },
+                  "history": {
+                    "description": "List of history events associated to the fulfillment",
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/fulfillment/history-event.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Records a event that happened to a fulfillment / fulfillment plan",
+                      "properties": {
+                        "createdAt": {
+                          "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                          "maxLength": 64,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                          "type": "string"
+                        },
+                        "eventName": {
+                          "description": "Name of the history event",
+                          "example": "FULFILLMENT.CANCELED",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "eventName",
+                        "createdAt"
+                      ],
+                      "title": "History event",
+                      "type": "object"
+                    },
+                    "readOnly": true,
+                    "type": "array"
+                  },
+                  "id": {
+                    "description": "An identifier unique to the fulfillment (`Fulfillment_<KSUID>`). Auto-generated by our system on creation",
+                    "example": "Fulfillment_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+                    "readOnly": true,
+                    "type": "string"
+                  },
+                  "inventoryBehavior": {
+                    "default": "OBEY_POLICY",
+                    "description": "Inventory policy for this fulfillment. Valid values: OBEY_POLICY (default), BYPASS. OBEY_POLICY decrements inventory and enforces stock checks; BYPASS skips inventory checks and allows fulfillment regardless of stock.",
+                    "enum": [
+                      "OBEY_POLICY",
+                      "BYPASS"
+                    ],
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "Items in the fulfillment",
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-item.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Represents an item that's included in a fulfillment / fulfillment plan",
+                      "properties": {
+                        "fulfillmentPlanItemId": {
+                          "description": "Reference to the FulfillmentPlanItem this item fulfills. Required if the fulfillment is linked to a plan.",
+                          "type": "string"
+                        },
+                        "lineItemId": {
+                          "description": "Reference to a Line Item as defined by the Order service. Optional since fulfillments do not have to be tied to an order.",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Name of the fulfillment item used for display purposes",
+                          "type": "string"
+                        },
+                        "productId": {
+                          "description": "Reference to a Product as defined by the Catalog service (commerce API v1). Optional.",
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "description": "Quantity for the fulfillment item. Note this could be a float value (e.g. 2.3 Kgs)",
+                          "format": "float",
+                          "type": "number"
+                        },
+                        "sku": {
+                          "description": "SKU for the fulfillment item. Optional. Deprecated in v2",
+                          "type": "string"
+                        },
+                        "skuId": {
+                          "description": "Reference to a SKU as defined by the Catalog service (commerce API v2). Optional.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "quantity",
+                        "name"
+                      ],
+                      "title": "Fulfillment Item",
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "locationId": {
+                    "description": "Reference to the Inventory Location (as defined by the Inventory Service) where the fulfillment was processed at",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-mode.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Possible modes for a fulfillment \n\n `SHIP`: The fulfillment is a shipping fulfillment \n\n `DELIVERY` The fulfillment is a local delivery fulfillment \n\n `PICKUP` The fulfillment is a pickup fulfillment \n\n `FOR_HERE` The fulfillment is made at the location with no online interaction \n\n `DIGITAL` The fulfillment is a digital fulfillment",
+                    "enum": [
+                      "SHIP",
+                      "DELIVERY",
+                      "PICKUP",
+                      "FOR_HERE",
+                      "DIGITAL"
+                    ],
+                    "title": "Fulfillment mode",
+                    "type": "string"
+                  },
+                  "notes": {
+                    "description": "List of FulfillmentNote objects, used for internal or customer-facing notes.",
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-note.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Represents a note attached to a fulfillment, which may be customer-facing or internal",
+                      "properties": {
+                        "author": {
+                          "description": "Name or identifier of the note's author.",
+                          "type": "string"
+                        },
+                        "authorType": {
+                          "default": "CUSTOMER",
+                          "description": "Type of author. Used for filtering and display. Defaults to CUSTOMER.",
+                          "enum": [
+                            "CUSTOMER",
+                            "MERCHANT",
+                            "NONE"
+                          ],
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "The note content, which may be customer-facing or internal.",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                          "maxLength": 64,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "description": "Unique identifier for the note. Used for referencing and editing notes.",
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                          "maxLength": 64,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "content"
+                      ],
+                      "title": "Fulfillment Note",
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "orderId": {
+                    "description": "Reference to an order as defined by the Orders Service",
+                    "example": "Order_2G5VsWEFhIktH8PY4qC0iOGDpVJ",
+                    "type": "string"
+                  },
+                  "origin": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-address.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Groups together relevant details about an address for a fulfillment",
+                    "properties": {
+                      "address": {
+                        "$id": "https://godaddy.com/schemas/common/address.v1",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+                        "properties": {
+                          "addressDetails": {
+                            "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+                            "properties": {
+                              "addressType": {
+                                "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                                "maxLength": 1,
+                                "type": "string"
+                              },
+                              "buildingName": {
+                                "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "deliveryService": {
+                                "description": "The delivery service. Post office box, bag number, or post office name.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "geoCoordinates": {
+                                "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+                                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                                "description": "The geographic latitude and longitude coordinates.",
+                                "properties": {
+                                  "latitude": {
+                                    "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+                                    "type": "string"
+                                  },
+                                  "longitude": {
+                                    "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "longitude",
+                                  "latitude"
+                                ],
+                                "title": "Geographic Coordinates",
+                                "type": "object"
+                              },
+                              "streetName": {
+                                "description": "The street name. Just `Drury` in `Drury Lane`.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "streetNumber": {
+                                "description": "The street number.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "streetType": {
+                                "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "subBuilding": {
+                                "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                                "maxLength": 100,
+                                "type": "string"
+                              }
+                            },
+                            "title": "Address Details",
+                            "type": "object"
+                          },
+                          "addressLine1": {
+                            "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "addressLine2": {
+                            "description": "The second line of the address. For example, office suite or apartment number.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "addressLine3": {
+                            "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "adminArea1": {
+                            "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "adminArea2": {
+                            "description": "A city, town, or village. Smaller than `adminArea1`.",
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "adminArea3": {
+                            "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "adminArea4": {
+                            "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+                            "maxLength": 100,
+                            "type": "string"
+                          },
+                          "countryCode": {
+                            "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+                            "$schema": "http://json-schema.org/draft/2020-12/schema",
+                            "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+                            "maxLength": 2,
+                            "minLength": 2,
+                            "pattern": "^([A-Z]{2}|C2)$",
+                            "type": "string"
+                          },
+                          "postalCode": {
+                            "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+                            "maxLength": 60,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "countryCode"
+                        ],
+                        "title": "Postal Address (Medium-Grained)",
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ],
+                    "title": "Fulfillment Address",
+                    "type": "object"
+                  },
+                  "status": {
+                    "$id": "https://godaddy.com/schemas/commerce/fulfillment/fulfillment-status.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Possible statuses for a fulfillment \n\n `IN_PROGRESS`: The fulfillment has been acknowledged by a fulfillment service and is in progress \n\n `SUCCESS`: The fulfillment has been completed successfully \n\n `CANCELED`: The fulfillment has been canceled \n\n `ERROR`: There was an error when trying to process the fulfillment",
+                    "enum": [
+                      "IN_PROGRESS",
+                      "SUCCESS",
+                      "CANCELED",
+                      "ERROR"
+                    ],
+                    "title": "Fulfillment status",
+                    "type": "string"
+                  },
+                  "storeId": {
+                    "description": "ID of the store that the fulfillment belongs to",
+                    "example": "fd3d9291-dc9a-445d-aa68-d2ff1a77a83c",
+                    "type": "string"
+                  },
+                  "trackingData": {
+                    "description": "Tracking information for a fulfillment. The ability to have multiple tracking numbers for a single fulfillment is to support `last mile` shipping use cases. We do not support fulfilling multiple discrete sets of items (e.g. multiple boxes) in a single fulfillment",
+                    "items": {
+                      "$id": "https://godaddy.com/schemas/commerce/fulfillment/tracking.v1",
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "description": "Groups together relevant details about tracking a fulfillment. Typically represents a shipping label for a service like USPS",
+                      "properties": {
+                        "labelId": {
+                          "description": "Reference to a Label as defined by the Label Service",
+                          "type": "string"
+                        },
+                        "number": {
+                          "description": "The tracking number",
+                          "example": "U897654321345678",
+                          "type": "string"
+                        },
+                        "provider": {
+                          "description": "Tracking provider (`UPS`, `USPS`, etc.)",
+                          "type": "string"
+                        },
+                        "service": {
+                          "description": "Tracking provider (`2nd Day`, `Priority`, `Express` etc.)",
+                          "type": "string"
+                        },
+                        "url": {
+                          "description": "The tracking URL",
+                          "example": "http://www.ups.com/WebTracking/track?trackNums=U897654321345678&track.x=Track",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "number"
+                      ],
+                      "title": "Tracking",
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "updatedAt": {
+                    "$id": "https://godaddy.com/schemas/common/date-time.v1",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+                    "maxLength": 64,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "storeId",
+                  "mode",
+                  "status",
+                  "detailedStatus",
+                  "locationId",
+                  "items"
+                ],
+                "title": "Fulfillment",
+                "type": "object"
+              },
+              "status": {
+                "description": "Status of the response",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "fulfillment"
+            ],
+            "type": "object"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "409": {
+          "description": "Application-specific server state error",
+          "schema": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "scopes": []
+    }
+  ]
+}
