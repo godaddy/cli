@@ -554,16 +554,21 @@ fn regex_is_match_commerce_spec(name: &str) -> bool {
 
 fn parse_yaml_or_json(src: &str, path: &Path) -> Result<Value> {
     // serde_yaml handles both YAML and JSON
-    serde_yaml::from_str(src)
-        .or_else(|_| {
-            // Some spec files authored on macOS use YAML double-quoted strings
-            // containing `\.` (a regex dot-escape) which is not a valid YAML 1.2
-            // escape sequence.  Retry after normalising `\.` → `\\.` inside
-            // double-quoted scalars so the parser accepts it.
-            let fixed = fix_yaml_invalid_dot_escapes(src);
-            serde_yaml::from_str(&fixed)
-        })
-        .with_context(|| format!("failed to parse {}", path.display()))
+    let first_err = match serde_yaml::from_str::<Value>(src) {
+        Ok(v) => return Ok(v),
+        Err(e) => e,
+    };
+    // Some spec files authored on macOS use YAML double-quoted strings
+    // containing `\.` (a regex dot-escape) which is not a valid YAML 1.2
+    // escape sequence.  Retry after normalising `\.` → `\\.` inside
+    // double-quoted scalars so the parser accepts it.
+    let fixed = fix_yaml_invalid_dot_escapes(src);
+    serde_yaml::from_str::<Value>(&fixed).with_context(|| {
+        format!(
+            "failed to parse {} (original error: {first_err})",
+            path.display()
+        )
+    })
 }
 
 /// Replace `\.` with `\\.` inside YAML double-quoted scalars.
@@ -649,13 +654,29 @@ fn json_pointer_escape(s: &str) -> String {
 ///   `./models/Order.yaml`  → `"Order"`
 ///   `https://.../error.json` → `"error"`
 fn derive_defs_key_for_path(ref_str: &str) -> String {
+    // External refs with a component-schema fragment (e.g. `./common.yaml#/components/schemas/Foo`)
+    // use the component name as the key, consistent with pure local `#/components/schemas/` refs
+    // and avoiding collisions when the same file is referenced for different components.
+    if let Some(frag_idx) = ref_str.find('#') {
+        let frag = &ref_str[frag_idx..];
+        for prefix in &["#/components/schemas/", "#/definitions/"] {
+            if let Some(rest) = frag.strip_prefix(prefix) {
+                let name = rest.split('/').next().unwrap_or(rest);
+                return sanitize_defs_key(name);
+            }
+        }
+    }
     let file_part = ref_str.split('#').next().unwrap_or(ref_str);
     let last_seg = file_part.rsplit(['/', '\\']).next().unwrap_or(file_part);
     let stem = match last_seg.rfind('.') {
         Some(pos) => &last_seg[..pos],
         None => last_seg,
     };
-    let sanitized: String = stem
+    sanitize_defs_key(stem)
+}
+
+fn sanitize_defs_key(s: &str) -> String {
+    let sanitized: String = s
         .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {
@@ -1995,6 +2016,15 @@ components:
         assert_eq!(
             derive_defs_key_for_path("./Bulk_Ingestion.yaml"),
             "Bulk_Ingestion"
+        );
+        // Fragment with component name takes precedence over file stem
+        assert_eq!(
+            derive_defs_key_for_path("./common.yaml#/components/schemas/Foo"),
+            "Foo"
+        );
+        assert_eq!(
+            derive_defs_key_for_path("./shared.yaml#/definitions/Bar"),
+            "Bar"
         );
     }
 }

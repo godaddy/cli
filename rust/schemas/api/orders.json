@@ -2061,7 +2061,7 @@
       "type": "object"
     },
     "percentage": {
-      "$id": "https://godaddy.com/schemas/common/percentage.json",
+      "$id": "https://godaddy.com/schemas/common/percentage.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A percentage value as a signed decimal number. For example, it defines a 12.34% interest rate as `12.34`.",
       "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$",
