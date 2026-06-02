@@ -892,7 +892,7 @@
             "customerIds": {
               "description": "Array of Customer IDs to join",
               "items": {
-                "$ref": "#/$defs/CustomerId/properties/customerId"
+                "$ref": "#/$defs/CustomerId~1properties~1customerId"
               },
               "maxItems": 50,
               "minItems": 2,

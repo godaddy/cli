@@ -1127,12 +1127,17 @@ fn process_responses(responses: &Value) -> HashMap<String, CatalogResponse> {
         None => return map,
     };
     for (status, resp) in obj {
-        if resp.get("$ref").is_some() {
+        if let Some(ref_val) = resp.get("$ref").and_then(|v| v.as_str()) {
+            let schema = if ref_val.starts_with("#/$defs/") {
+                Some(resp.clone())
+            } else {
+                None
+            };
             map.insert(
                 status.clone(),
                 CatalogResponse {
-                    description: format!("See {}", resp["$ref"].as_str().unwrap_or("")),
-                    schema: None,
+                    description: format!("See {ref_val}"),
+                    schema,
                 },
             );
             continue;
@@ -1653,7 +1658,12 @@ fn main() -> Result<()> {
         } else {
             let (spec, defs) = load_and_dereference(&source.spec_file, common_types)
                 .with_context(|| format!("failed to dereference {}", source.repo_name))?;
-            let unresolved = collect_unresolved_refs(&spec);
+            let mut unresolved = collect_unresolved_refs(&spec);
+            for def_val in defs.values() {
+                unresolved.extend(collect_unresolved_refs(def_val));
+            }
+            unresolved.sort();
+            unresolved.dedup();
             if !unresolved.is_empty() {
                 bail!(
                     "{} unresolved $ref(s) remain in {} after dereferencing:\n  {}",

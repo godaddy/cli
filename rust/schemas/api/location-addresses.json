@@ -309,25 +309,46 @@
           }
         },
         "401": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "403": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "404": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "500": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "502": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "503": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "504": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
@@ -382,25 +403,46 @@
           }
         },
         "401": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "403": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "404": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "500": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "502": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "503": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "504": {
-          "description": "See #/$defs/error"
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
