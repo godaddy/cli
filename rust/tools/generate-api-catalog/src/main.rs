@@ -590,6 +590,10 @@ fn fix_yaml_invalid_dot_escapes(src: &str) -> String {
                         // `\.` → `\\.` (escape the backslash so the dot is literal)
                         out.push_str("\\\\.");
                         chars.next();
+                    } else if chars.peek() == Some(&'"') {
+                        // `\"` — consume both so the closing quote doesn't end the scalar
+                        out.push_str("\\\"");
+                        chars.next();
                     } else {
                         out.push(c);
                     }
@@ -634,6 +638,12 @@ fn should_lift_to_defs(ref_str: &str) -> Option<String> {
     None
 }
 
+/// Escape a string for use as a single JSON Pointer segment (RFC 6901).
+/// `~` → `~0`, `/` → `~1`.
+fn json_pointer_escape(s: &str) -> String {
+    s.replace('~', "~0").replace('/', "~1")
+}
+
 /// Derive a stable `$defs` key from an external ref path or URL.
 /// Examples:
 ///   `./models/Order.yaml`  → `"Order"`
@@ -675,7 +685,7 @@ fn dereference(
                 if let Some(key) = should_lift_to_defs(&ref_str) {
                     // Already registered — return the local pointer immediately (dedup)
                     if defs.contains_key(&key) {
-                        return serde_json::json!({"$ref": format!("#/$defs/{key}")});
+                        return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
                     }
                     // Insert null placeholder before resolving (circular ref guard)
                     defs.insert(key.clone(), Value::Null);
@@ -690,7 +700,7 @@ fn dereference(
                     };
                     if let Some(content) = resolved_opt {
                         defs.insert(key.clone(), content);
-                        return serde_json::json!({"$ref": format!("#/$defs/{key}")});
+                        return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
                     }
                     // Resolution failed — remove placeholder and preserve original $ref
                     // so collect_unresolved_refs() will catch it.
