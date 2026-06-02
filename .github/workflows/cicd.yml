@@ -49,7 +49,7 @@ jobs:
         working-directory: .
         run: |
           set -o pipefail
-          if grep -r '"[$]ref"' rust/schemas/api/*.json | grep -v '"#/'; then
+          if grep -r '"[$]ref"[[:space:]]*:[[:space:]]*"[^#]' rust/schemas/api/*.json; then
             echo "ERROR: unresolved external \$ref(s) in committed API catalog schemas (shown above)"
             exit 1
           fi
