@@ -1,469 +1,905 @@
 {
-  "name": "onboarding",
-  "title": "Commerce Onboarding API",
-  "description": "<p>Onboarding platform facilitates onboarding a merchant onto GoDaddy's omni-channel products.<br><p>To onboard a merchant, various steps are taken to verify the owner information which permits access to payments, orders and GoDaddy products.",
-  "version": "1.0.0",
+  "$defs": {
+    "Application": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "This model represents the application which is use to begin the onboarding process",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/Channel"
+        },
+        "commerceAccountFeatures": {
+          "description": "Optional capabilities/functionalities associated with commerce account",
+          "items": {
+            "default": [],
+            "enum": [
+              "NO_EMAIL_COMMUNICATIONS"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "company": {
+          "$ref": "#/$defs/Company"
+        },
+        "id": {
+          "description": "Unique ID for the application",
+          "readOnly": true,
+          "type": "string"
+        },
+        "individuals": {
+          "description": "A list of applicants",
+          "items": {
+            "$ref": "#/$defs/Individual"
+          },
+          "type": "array"
+        },
+        "intent": {
+          "default": "CREATE_BUSINESS",
+          "description": "Identifies the type of onboarding application that is being requested for the commerce account",
+          "enum": [
+            "CREATE_BUSINESS",
+            "ADD_STORE",
+            "ADD_CHANNEL",
+            "ADD_PRODUCT"
+          ],
+          "type": "string"
+        },
+        "metadata": {
+          "description": "Additional parameters to create a specific type of application",
+          "properties": {
+            "applicationLevel": {
+              "description": "Current Application Level — i.e. BASIC, FULL",
+              "enum": [
+                "BASIC",
+                "FULL"
+              ],
+              "readOnly": true,
+              "type": "string"
+            },
+            "applicationStatus": {
+              "description": "The current status of the application",
+              "enum": [
+                "INCOMPLETE",
+                "PENDING_FULL_APPLICATION",
+                "IN_REVIEW",
+                "APPROVED",
+                "DECLINED"
+              ],
+              "readOnly": true,
+              "type": "string"
+            },
+            "businessId": {
+              "description": "Unique ID for the business",
+              "format": "uuid",
+              "type": "string"
+            },
+            "channelId": {
+              "description": "Unique ID for the channel",
+              "format": "uuid",
+              "type": "string"
+            },
+            "context": {
+              "description": "Header context",
+              "maxLength": 1024,
+              "type": "string"
+            },
+            "medium": {
+              "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
+              "maxLength": 64,
+              "type": "string"
+            },
+            "referralUrlId": {
+              "description": "The ID what was setup for a Distributor Merchant URL",
+              "maxLength": 256,
+              "type": "string"
+            },
+            "source": {
+              "description": "The point of origin that started this process",
+              "maxLength": 64,
+              "type": "string"
+            },
+            "storeId": {
+              "description": "Unique ID for the store",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "products": {
+          "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
+          "items": {
+            "$ref": "#/$defs/Product"
+          },
+          "type": "array"
+        },
+        "store": {
+          "$ref": "#/$defs/Store"
+        }
+      },
+      "required": [
+        "intent"
+      ],
+      "title": "Onboarding Application",
+      "type": "object"
+    },
+    "Channel": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An abstraction of data to create a channel",
+      "properties": {
+        "externalChannelId": {
+          "description": "Unique ID what represents an external resource",
+          "maxLength": 36,
+          "type": "string"
+        },
+        "externalChannelType": {
+          "description": "A term what represents the external channel id",
+          "maxLength": 128,
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique ID for the channel",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Channel name",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Channel",
+      "type": "object"
+    },
+    "Company": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/company.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Legal information specific to the business",
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "businessCategory": {
+          "description": "The type use to describe the business",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        },
+        "dba": {
+          "description": "The identity in which the business is conducted",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique ID for the Company resource",
+          "readOnly": true,
+          "type": "string"
+        },
+        "legalName": {
+          "description": "The formal name that appears on the legal business entity",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        },
+        "mcc": {
+          "description": "Merchant Category Code",
+          "maxLength": 4,
+          "pattern": "^[0-9]*$",
+          "type": "string"
+        },
+        "phone": {
+          "$ref": "#/$defs/phone"
+        },
+        "ventureId": {
+          "description": "An identifier to link merchants to products",
+          "format": "uuid",
+          "type": "string"
+        },
+        "website": {
+          "description": "Company website domain name",
+          "maxLength": 128,
+          "pattern": "^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}$",
+          "type": "string"
+        }
+      },
+      "title": "Company",
+      "type": "object"
+    },
+    "Individual": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Business account owner or the person filling out the application (applicant)",
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "customerId": {
+          "description": "Unique ID for GoDaddy customer",
+          "format": "uuid",
+          "type": "string"
+        },
+        "email": {
+          "$ref": "#/$defs/email-address"
+        },
+        "firstName": {
+          "description": "First name of the applicant",
+          "maxLength": 64,
+          "minLength": 2,
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique ID for the Individual",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ip": {
+          "description": "IP Address of the applicant",
+          "format": "ipv4",
+          "type": "string"
+        },
+        "lastName": {
+          "description": "Last name of the applicant",
+          "maxLength": 64,
+          "minLength": 2,
+          "type": "string"
+        },
+        "leadId": {
+          "description": "Unique Lead ID",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "phone": {
+          "$ref": "#/$defs/phone"
+        },
+        "type": {
+          "default": "APPLICANT",
+          "description": "Type of applicant",
+          "enum": [
+            "APPLICANT",
+            "OWNER",
+            "OWNER_APPLICANT"
+          ],
+          "type": "string"
+        },
+        "userId": {
+          "description": "Unique User ID",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "visitorId": {
+          "description": "The visitor id that was created during an anonymous visit",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "Individual",
+      "type": "object"
+    },
+    "PagedList": {
+      "properties": {
+        "links": {
+          "$ref": "#/$defs/link-description"
+        },
+        "totalItems": {
+          "description": "The total number of applications found",
+          "type": "integer"
+        },
+        "totalPages": {
+          "description": "The total number of pages per grouped applications",
+          "type": "integer"
+        }
+      }
+    },
+    "Product": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
+      "properties": {
+        "features": {
+          "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
+          "items": {
+            "default": [],
+            "enum": [
+              "TIP_ENABLED"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Unique ID for the product",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Product name",
+          "enum": [
+            "PAYMENTS"
+          ],
+          "type": "string"
+        }
+      },
+      "title": "Product",
+      "type": "object"
+    },
+    "Store": {
+      "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An abstraction of data to create a store",
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "category": {
+          "description": "The type use to describe the store",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique ID for the store",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Store name",
+          "maxLength": 128,
+          "minLength": 3,
+          "type": "string"
+        },
+        "website": {
+          "description": "Company website domain name",
+          "maxLength": 128,
+          "pattern": "^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}$",
+          "type": "string"
+        }
+      },
+      "title": "Store",
+      "type": "object"
+    },
+    "address": {
+      "$id": "https://godaddy.com/schemas/common/address.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+      "properties": {
+        "addressDetails": {
+          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+          "properties": {
+            "addressType": {
+              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+              "maxLength": 1,
+              "type": "string"
+            },
+            "buildingName": {
+              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "deliveryService": {
+              "description": "The delivery service. Post office box, bag number, or post office name.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "geoCoordinates": {
+              "$ref": "#/$defs/geo-coordinates"
+            },
+            "streetName": {
+              "description": "The street name. Just `Drury` in `Drury Lane`.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "streetNumber": {
+              "description": "The street number.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "streetType": {
+              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "subBuilding": {
+              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          "title": "Address Details",
+          "type": "object"
+        },
+        "addressLine1": {
+          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "addressLine2": {
+          "description": "The second line of the address. For example, office suite or apartment number.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "addressLine3": {
+          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "adminArea1": {
+          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "adminArea2": {
+          "description": "A city, town, or village. Smaller than `adminArea1`.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "adminArea3": {
+          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "adminArea4": {
+          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "countryCode": {
+          "$ref": "#/$defs/country-code"
+        },
+        "postalCode": {
+          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+          "maxLength": 60,
+          "type": "string"
+        }
+      },
+      "required": [
+        "countryCode"
+      ],
+      "title": "Postal Address (Medium-Grained)",
+      "type": "object"
+    },
+    "country-code": {
+      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+      "$schema": "http://json-schema.org/draft/2020-12/schema",
+      "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+      "maxLength": 2,
+      "minLength": 2,
+      "pattern": "^([A-Z]{2}|C2)$",
+      "type": "string"
+    },
+    "email-address": {
+      "$id": "https://godaddy.com/schemas/common/email-address.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
+      "maxLength": 254,
+      "minLength": 3,
+      "pattern": "^.+@[^\"\\-].+$",
+      "type": "string"
+    },
+    "error": {
+      "$id": "https://godaddy.com/schemas/common/error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
+      "description": "The error information.",
+      "properties": {
+        "correlationId": {
+          "description": "Internal identifier used for correlation purposes.",
+          "type": "string"
+        },
+        "details": {
+          "additionalItems": false,
+          "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+          "items": {
+            "$ref": "#/$defs/error-details"
+          },
+          "type": "array"
+        },
+        "informationLink": {
+          "description": "The URI for detailed information related to this error for the developer.",
+          "type": "string"
+        },
+        "links": {
+          "description": "An array of error-related HATEOAS links.",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "message": {
+          "description": "The message that describes the error.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The human-readable, unique name of the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "correlationId",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "error-details": {
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The error details. Required for client-side `4XX` errors.",
+      "properties": {
+        "description": {
+          "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value.",
+          "type": "string"
+        },
+        "field": {
+          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
+          "type": "string"
+        },
+        "issue": {
+          "description": "The unique fine-grained application-level error code.",
+          "type": "string"
+        },
+        "location": {
+          "default": "body",
+          "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the field that caused the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue"
+      ],
+      "title": "Error Details",
+      "type": "object"
+    },
+    "full-request": {
+      "summary": "Create Additional Channel: FULL REQUEST (with all available fields)",
+      "value": {
+        "channel": {
+          "externalChannelId": "e2bfe9e1-1ac5-486f-80eb-b3d736f7fc0d",
+          "externalChannelType": "gopay.client.int.dev-godaddy.com",
+          "name": "My best channel ever"
+        },
+        "intent": "ADD_CHANNEL",
+        "metadata": {
+          "businessId": "3d9da701-5ec5-46fa-85c7-f37ed3785eac",
+          "context": "Some context here",
+          "medium": "Some reseller info here",
+          "source": "Some source info here",
+          "storeId": "1a5ca283-6206-4ef8-ac81-0d0480e30d20"
+        }
+      }
+    },
+    "geo-coordinates": {
+      "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The geographic latitude and longitude coordinates.",
+      "properties": {
+        "latitude": {
+          "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+          "type": "string"
+        },
+        "longitude": {
+          "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+          "type": "string"
+        }
+      },
+      "required": [
+        "longitude",
+        "latitude"
+      ],
+      "title": "Geographic Coordinates",
+      "type": "object"
+    },
+    "link-description": {
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+      "properties": {
+        "href": {
+          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+          "format": "uri",
+          "type": "string"
+        },
+        "method": {
+          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+          "type": "string"
+        },
+        "rel": {
+          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+          "type": "string"
+        },
+        "submissionMediaType": {
+          "default": "application/json",
+          "description": "The media type with which to submit data with the request.",
+          "type": "string"
+        },
+        "submissionSchema": {
+          "description": "The schema that describes the request data."
+        },
+        "targetMediaType": {
+          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+          "type": "string"
+        },
+        "targetSchema": {
+          "description": "The schema that describes the link target."
+        },
+        "title": {
+          "description": "The link title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link Description",
+      "type": "object"
+    },
+    "minimal-request": {
+      "summary": "Create Additional Channel: MINIMUM REQUEST",
+      "value": {
+        "channel": {
+          "name": "My best channel ever"
+        },
+        "intent": "ADD_CHANNEL",
+        "metadata": {
+          "businessId": "3d9da701-5ec5-46fa-85c7-f37ed3785eac",
+          "storeId": "1a5ca283-6206-4ef8-ac81-0d0480e30d20"
+        }
+      }
+    },
+    "minimal-request-with-customer-id": {
+      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with customerId",
+      "value": {
+        "company": {
+          "address": {
+            "countryCode": "US"
+          },
+          "dba": "GoDaddy"
+        },
+        "individuals": [
+          {
+            "customerId": "9af92d50-9541-4ad8-8c67-37404fb6c104",
+            "type": "APPLICANT"
+          }
+        ],
+        "intent": "CREATE_BUSINESS",
+        "products": [
+          {
+            "name": "PAYMENTS"
+          }
+        ]
+      }
+    },
+    "minimal-request-with-first-last-name": {
+      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with first/last name",
+      "value": {
+        "company": {
+          "address": {
+            "countryCode": "US"
+          },
+          "dba": "GoDaddy"
+        },
+        "individuals": [
+          {
+            "firstName": "John",
+            "lastName": "Doe",
+            "type": "APPLICANT"
+          }
+        ],
+        "intent": "CREATE_BUSINESS",
+        "products": [
+          {
+            "name": "PAYMENTS"
+          }
+        ]
+      }
+    },
+    "minimal-request-with-ip": {
+      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with IP address",
+      "value": {
+        "company": {
+          "dba": "GoDaddy"
+        },
+        "individuals": [
+          {
+            "customerId": "9af92d50-9541-4ad8-8c67-37404fb6c104",
+            "ip": "10.10.10.10",
+            "type": "APPLICANT"
+          }
+        ],
+        "intent": "CREATE_BUSINESS",
+        "products": [
+          {
+            "name": "PAYMENTS"
+          }
+        ]
+      }
+    },
+    "minimal-request-without-payments": {
+      "summary": "Create Commerce Account: MINIMUM REQUEST without products",
+      "value": {
+        "company": {
+          "address": {
+            "countryCode": "US"
+          },
+          "dba": "GoDaddy"
+        },
+        "individuals": [
+          {
+            "firstName": "John",
+            "lastName": "Doe",
+            "type": "APPLICANT"
+          }
+        ],
+        "intent": "CREATE_BUSINESS",
+        "products": []
+      }
+    },
+    "patch": {
+      "$id": "https://godaddy.com/schemas/common/patch.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The JSON patch object to apply partial updates to resources.",
+      "properties": {
+        "from": {
+          "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
+          "type": "string"
+        },
+        "op": {
+          "description": "The operation to complete.",
+          "enum": [
+            "add",
+            "remove",
+            "replace",
+            "move",
+            "copy",
+            "test"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "The JSON pointer to the target document location at which to complete the operation.",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ],
+          "description": "The value to apply. The `remove` operation does not require a value.",
+          "nullable": true
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "Patch",
+      "type": "object"
+    },
+    "patch-request": {
+      "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An array of JSON patch objects to apply partial updates to resources.",
+      "items": {
+        "$ref": "#/$defs/patch"
+      },
+      "title": "Patch Request",
+      "type": "array"
+    },
+    "phone": {
+      "$id": "https://godaddy.com/schemas/common/phone.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
+      "properties": {
+        "countryCode": {
+          "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+          "maxLength": 3,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,3}?$",
+          "type": "string"
+        },
+        "extensionNumber": {
+          "description": "The extension number.",
+          "maxLength": 15,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,15}?$",
+          "type": "string"
+        },
+        "nationalNumber": {
+          "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+          "maxLength": 14,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,14}?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "countryCode",
+        "nationalNumber"
+      ],
+      "title": "Phone",
+      "type": "object"
+    }
+  },
   "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "description": "<p>Onboarding platform facilitates onboarding a merchant onto GoDaddy's omni-channel products.<br><p>To onboard a merchant, various steps are taken to verify the owner information which permits access to payments, orders and GoDaddy products.",
   "endpoints": [
     {
-      "operationId": "getOnboardingApplications",
-      "method": "GET",
-      "path": "/onboarding-applications",
-      "summary": "Get onboarding applications",
       "description": "Returns a list of existing onboarding applications",
+      "method": "GET",
+      "operationId": "getOnboardingApplications",
       "parameters": [
         {
-          "name": "businessId",
-          "in": "query",
-          "required": false,
           "description": "Unique ID for the business",
+          "in": "query",
+          "name": "businessId",
+          "required": false,
           "schema": {
             "type": "string"
           }
         },
         {
-          "name": "storeId",
-          "in": "query",
-          "required": false,
           "description": "Unique ID for the store",
+          "in": "query",
+          "name": "storeId",
+          "required": false,
           "schema": {
             "type": "string"
           }
         }
       ],
+      "path": "/onboarding-applications",
       "responses": {
         "200": {
           "description": "List of onboarding applications",
           "schema": {
             "allOf": [
               {
-                "properties": {
-                  "links": {
-                    "$ref": "./common-types/link-description.json"
-                  },
-                  "totalItems": {
-                    "description": "The total number of applications found",
-                    "type": "integer"
-                  },
-                  "totalPages": {
-                    "description": "The total number of pages per grouped applications",
-                    "type": "integer"
-                  }
-                }
+                "$ref": "#/$defs/PagedList"
               }
             ],
             "properties": {
               "items": {
                 "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "This model represents the application which is use to begin the onboarding process",
-                  "properties": {
-                    "channel": {
-                      "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An abstraction of data to create a channel",
-                      "properties": {
-                        "externalChannelId": {
-                          "description": "Unique ID what represents an external resource",
-                          "maxLength": 36,
-                          "type": "string"
-                        },
-                        "externalChannelType": {
-                          "description": "A term what represents the external channel id",
-                          "maxLength": 128,
-                          "type": "string"
-                        },
-                        "id": {
-                          "description": "Unique ID for the channel",
-                          "readOnly": true,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Channel name",
-                          "maxLength": 128,
-                          "minLength": 3,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "name"
-                      ],
-                      "title": "Channel",
-                      "type": "object"
-                    },
-                    "commerceAccountFeatures": {
-                      "description": "Optional capabilities/functionalities associated with commerce account",
-                      "items": {
-                        "default": [],
-                        "enum": [
-                          "NO_EMAIL_COMMUNICATIONS"
-                        ],
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "company": {
-                      "$ref": "./Company.yaml"
-                    },
-                    "id": {
-                      "description": "Unique ID for the application",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "individuals": {
-                      "description": "A list of applicants",
-                      "items": {
-                        "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                        "$schema": "https://json-schema.org/draft/2020-12/schema",
-                        "description": "Business account owner or the person filling out the application (applicant)",
-                        "properties": {
-                          "address": {
-                            "$id": "https://godaddy.com/schemas/common/address.v1",
-                            "$schema": "https://json-schema.org/draft/2020-12/schema",
-                            "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                            "properties": {
-                              "addressDetails": {
-                                "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                                "properties": {
-                                  "addressType": {
-                                    "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                                    "maxLength": 1,
-                                    "type": "string"
-                                  },
-                                  "buildingName": {
-                                    "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  },
-                                  "deliveryService": {
-                                    "description": "The delivery service. Post office box, bag number, or post office name.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  },
-                                  "geoCoordinates": {
-                                    "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                                    "description": "The geographic latitude and longitude coordinates.",
-                                    "properties": {
-                                      "latitude": {
-                                        "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                        "type": "string"
-                                      },
-                                      "longitude": {
-                                        "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "longitude",
-                                      "latitude"
-                                    ],
-                                    "title": "Geographic Coordinates",
-                                    "type": "object"
-                                  },
-                                  "streetName": {
-                                    "description": "The street name. Just `Drury` in `Drury Lane`.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  },
-                                  "streetNumber": {
-                                    "description": "The street number.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  },
-                                  "streetType": {
-                                    "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  },
-                                  "subBuilding": {
-                                    "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                                    "maxLength": 100,
-                                    "type": "string"
-                                  }
-                                },
-                                "title": "Address Details",
-                                "type": "object"
-                              },
-                              "addressLine1": {
-                                "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                                "maxLength": 300,
-                                "type": "string"
-                              },
-                              "addressLine2": {
-                                "description": "The second line of the address. For example, office suite or apartment number.",
-                                "maxLength": 300,
-                                "type": "string"
-                              },
-                              "addressLine3": {
-                                "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                                "maxLength": 100,
-                                "type": "string"
-                              },
-                              "adminArea1": {
-                                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                                "maxLength": 300,
-                                "type": "string"
-                              },
-                              "adminArea2": {
-                                "description": "A city, town, or village. Smaller than `adminArea1`.",
-                                "maxLength": 300,
-                                "type": "string"
-                              },
-                              "adminArea3": {
-                                "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                                "maxLength": 100,
-                                "type": "string"
-                              },
-                              "adminArea4": {
-                                "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                                "maxLength": 100,
-                                "type": "string"
-                              },
-                              "countryCode": {
-                                "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                                "$schema": "http://json-schema.org/draft/2020-12/schema",
-                                "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                                "maxLength": 2,
-                                "minLength": 2,
-                                "pattern": "^([A-Z]{2}|C2)$",
-                                "type": "string"
-                              },
-                              "postalCode": {
-                                "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                                "maxLength": 60,
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "countryCode"
-                            ],
-                            "title": "Postal Address (Medium-Grained)",
-                            "type": "object"
-                          },
-                          "customerId": {
-                            "description": "Unique ID for GoDaddy customer",
-                            "format": "uuid",
-                            "type": "string"
-                          },
-                          "email": {
-                            "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                            "$schema": "https://json-schema.org/draft/2020-12/schema",
-                            "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                            "maxLength": 254,
-                            "minLength": 3,
-                            "pattern": "^.+@[^\"\\-].+$",
-                            "type": "string"
-                          },
-                          "firstName": {
-                            "description": "First name of the applicant",
-                            "maxLength": 64,
-                            "minLength": 2,
-                            "type": "string"
-                          },
-                          "id": {
-                            "description": "Unique ID for the Individual",
-                            "readOnly": true,
-                            "type": "string"
-                          },
-                          "ip": {
-                            "description": "IP Address of the applicant",
-                            "format": "ipv4",
-                            "type": "string"
-                          },
-                          "lastName": {
-                            "description": "Last name of the applicant",
-                            "maxLength": 64,
-                            "minLength": 2,
-                            "type": "string"
-                          },
-                          "leadId": {
-                            "description": "Unique Lead ID",
-                            "maxLength": 64,
-                            "type": "string"
-                          },
-                          "phone": {
-                            "$id": "https://godaddy.com/schemas/common/phone.v1",
-                            "$schema": "https://json-schema.org/draft/2020-12/schema",
-                            "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                            "properties": {
-                              "countryCode": {
-                                "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                                "maxLength": 3,
-                                "minLength": 1,
-                                "pattern": "^[0-9]{1,3}?$",
-                                "type": "string"
-                              },
-                              "extensionNumber": {
-                                "description": "The extension number.",
-                                "maxLength": 15,
-                                "minLength": 1,
-                                "pattern": "^[0-9]{1,15}?$",
-                                "type": "string"
-                              },
-                              "nationalNumber": {
-                                "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                                "maxLength": 14,
-                                "minLength": 1,
-                                "pattern": "^[0-9]{1,14}?$",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "countryCode",
-                              "nationalNumber"
-                            ],
-                            "title": "Phone",
-                            "type": "object"
-                          },
-                          "type": {
-                            "default": "APPLICANT",
-                            "description": "Type of applicant",
-                            "enum": [
-                              "APPLICANT",
-                              "OWNER",
-                              "OWNER_APPLICANT"
-                            ],
-                            "type": "string"
-                          },
-                          "userId": {
-                            "description": "Unique User ID",
-                            "maxLength": 64,
-                            "type": "string"
-                          },
-                          "visitorId": {
-                            "description": "The visitor id that was created during an anonymous visit",
-                            "format": "uuid",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "email"
-                        ],
-                        "title": "Individual",
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "intent": {
-                      "default": "CREATE_BUSINESS",
-                      "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-                      "enum": [
-                        "CREATE_BUSINESS",
-                        "ADD_STORE",
-                        "ADD_CHANNEL",
-                        "ADD_PRODUCT"
-                      ],
-                      "type": "string"
-                    },
-                    "metadata": {
-                      "description": "Additional parameters to create a specific type of application",
-                      "properties": {
-                        "applicationLevel": {
-                          "description": "Current Application Level — i.e. BASIC, FULL",
-                          "enum": [
-                            "BASIC",
-                            "FULL"
-                          ],
-                          "readOnly": true,
-                          "type": "string"
-                        },
-                        "applicationStatus": {
-                          "description": "The current status of the application",
-                          "enum": [
-                            "INCOMPLETE",
-                            "PENDING_FULL_APPLICATION",
-                            "IN_REVIEW",
-                            "APPROVED",
-                            "DECLINED"
-                          ],
-                          "readOnly": true,
-                          "type": "string"
-                        },
-                        "businessId": {
-                          "description": "Unique ID for the business",
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        "channelId": {
-                          "description": "Unique ID for the channel",
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        "context": {
-                          "description": "Header context",
-                          "maxLength": 1024,
-                          "type": "string"
-                        },
-                        "medium": {
-                          "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                          "maxLength": 64,
-                          "type": "string"
-                        },
-                        "referralUrlId": {
-                          "description": "The ID what was setup for a Distributor Merchant URL",
-                          "maxLength": 256,
-                          "type": "string"
-                        },
-                        "source": {
-                          "description": "The point of origin that started this process",
-                          "maxLength": 64,
-                          "type": "string"
-                        },
-                        "storeId": {
-                          "description": "Unique ID for the store",
-                          "format": "uuid",
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    "products": {
-                      "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                      "items": {
-                        "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                        "$schema": "https://json-schema.org/draft/2020-12/schema",
-                        "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                        "properties": {
-                          "features": {
-                            "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                            "items": {
-                              "default": [],
-                              "enum": [
-                                "TIP_ENABLED"
-                              ],
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "id": {
-                            "description": "Unique ID for the product",
-                            "readOnly": true,
-                            "type": "string"
-                          },
-                          "name": {
-                            "description": "Product name",
-                            "enum": [
-                              "PAYMENTS"
-                            ],
-                            "type": "string"
-                          }
-                        },
-                        "title": "Product",
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "store": {
-                      "$ref": "./Store.yaml"
-                    }
-                  },
-                  "required": [
-                    "intent"
-                  ],
-                  "title": "Onboarding Application",
-                  "type": "object"
+                  "$ref": "#/$defs/Application"
                 },
                 "type": "array"
               }
@@ -474,1357 +910,91 @@
       "scopes": [
         "commerce.onboarding:read",
         "commerce.onboarding:write"
-      ]
+      ],
+      "summary": "Get onboarding applications"
     },
     {
-      "operationId": "createApplication",
-      "method": "POST",
-      "path": "/onboarding-applications",
-      "summary": "Create an onboarding application",
       "description": "Creates an application and start the onboarding process",
+      "method": "POST",
+      "operationId": "createApplication",
       "parameters": [
         {
-          "name": "mock",
-          "in": "query",
-          "required": false,
           "description": "Test account",
+          "in": "query",
+          "name": "mock",
+          "required": false,
           "schema": {
             "default": false,
             "type": "boolean"
           }
         },
         {
-          "name": "onboard",
-          "in": "query",
-          "required": false,
           "description": "When false, the application will be created without processing",
+          "in": "query",
+          "name": "onboard",
+          "required": false,
           "schema": {
             "default": true,
             "type": "boolean"
           }
         }
       ],
+      "path": "/onboarding-applications",
       "requestBody": {
-        "required": false,
         "contentType": "application/json",
+        "required": false,
         "schema": {
-          "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "description": "This model represents the application which is use to begin the onboarding process",
-          "properties": {
-            "channel": {
-              "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-              "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "description": "An abstraction of data to create a channel",
-              "properties": {
-                "externalChannelId": {
-                  "description": "Unique ID what represents an external resource",
-                  "maxLength": 36,
-                  "type": "string"
-                },
-                "externalChannelType": {
-                  "description": "A term what represents the external channel id",
-                  "maxLength": 128,
-                  "type": "string"
-                },
-                "id": {
-                  "description": "Unique ID for the channel",
-                  "readOnly": true,
-                  "type": "string"
-                },
-                "name": {
-                  "description": "Channel name",
-                  "maxLength": 128,
-                  "minLength": 3,
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "title": "Channel",
-              "type": "object"
-            },
-            "commerceAccountFeatures": {
-              "description": "Optional capabilities/functionalities associated with commerce account",
-              "items": {
-                "default": [],
-                "enum": [
-                  "NO_EMAIL_COMMUNICATIONS"
-                ],
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "company": {
-              "$ref": "./Company.yaml"
-            },
-            "id": {
-              "description": "Unique ID for the application",
-              "readOnly": true,
-              "type": "string"
-            },
-            "individuals": {
-              "description": "A list of applicants",
-              "items": {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "Business account owner or the person filling out the application (applicant)",
-                "properties": {
-                  "address": {
-                    "$id": "https://godaddy.com/schemas/common/address.v1",
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                    "properties": {
-                      "addressDetails": {
-                        "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                        "properties": {
-                          "addressType": {
-                            "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                            "maxLength": 1,
-                            "type": "string"
-                          },
-                          "buildingName": {
-                            "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                            "maxLength": 100,
-                            "type": "string"
-                          },
-                          "deliveryService": {
-                            "description": "The delivery service. Post office box, bag number, or post office name.",
-                            "maxLength": 100,
-                            "type": "string"
-                          },
-                          "geoCoordinates": {
-                            "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                            "$schema": "https://json-schema.org/draft/2020-12/schema",
-                            "description": "The geographic latitude and longitude coordinates.",
-                            "properties": {
-                              "latitude": {
-                                "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                "type": "string"
-                              },
-                              "longitude": {
-                                "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "longitude",
-                              "latitude"
-                            ],
-                            "title": "Geographic Coordinates",
-                            "type": "object"
-                          },
-                          "streetName": {
-                            "description": "The street name. Just `Drury` in `Drury Lane`.",
-                            "maxLength": 100,
-                            "type": "string"
-                          },
-                          "streetNumber": {
-                            "description": "The street number.",
-                            "maxLength": 100,
-                            "type": "string"
-                          },
-                          "streetType": {
-                            "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                            "maxLength": 100,
-                            "type": "string"
-                          },
-                          "subBuilding": {
-                            "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                            "maxLength": 100,
-                            "type": "string"
-                          }
-                        },
-                        "title": "Address Details",
-                        "type": "object"
-                      },
-                      "addressLine1": {
-                        "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                        "maxLength": 300,
-                        "type": "string"
-                      },
-                      "addressLine2": {
-                        "description": "The second line of the address. For example, office suite or apartment number.",
-                        "maxLength": 300,
-                        "type": "string"
-                      },
-                      "addressLine3": {
-                        "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                        "maxLength": 100,
-                        "type": "string"
-                      },
-                      "adminArea1": {
-                        "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                        "maxLength": 300,
-                        "type": "string"
-                      },
-                      "adminArea2": {
-                        "description": "A city, town, or village. Smaller than `adminArea1`.",
-                        "maxLength": 300,
-                        "type": "string"
-                      },
-                      "adminArea3": {
-                        "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                        "maxLength": 100,
-                        "type": "string"
-                      },
-                      "adminArea4": {
-                        "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                        "maxLength": 100,
-                        "type": "string"
-                      },
-                      "countryCode": {
-                        "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                        "$schema": "http://json-schema.org/draft/2020-12/schema",
-                        "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                        "maxLength": 2,
-                        "minLength": 2,
-                        "pattern": "^([A-Z]{2}|C2)$",
-                        "type": "string"
-                      },
-                      "postalCode": {
-                        "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                        "maxLength": 60,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "countryCode"
-                    ],
-                    "title": "Postal Address (Medium-Grained)",
-                    "type": "object"
-                  },
-                  "customerId": {
-                    "description": "Unique ID for GoDaddy customer",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "email": {
-                    "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                    "maxLength": 254,
-                    "minLength": 3,
-                    "pattern": "^.+@[^\"\\-].+$",
-                    "type": "string"
-                  },
-                  "firstName": {
-                    "description": "First name of the applicant",
-                    "maxLength": 64,
-                    "minLength": 2,
-                    "type": "string"
-                  },
-                  "id": {
-                    "description": "Unique ID for the Individual",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "ip": {
-                    "description": "IP Address of the applicant",
-                    "format": "ipv4",
-                    "type": "string"
-                  },
-                  "lastName": {
-                    "description": "Last name of the applicant",
-                    "maxLength": 64,
-                    "minLength": 2,
-                    "type": "string"
-                  },
-                  "leadId": {
-                    "description": "Unique Lead ID",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "phone": {
-                    "$id": "https://godaddy.com/schemas/common/phone.v1",
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                    "properties": {
-                      "countryCode": {
-                        "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                        "maxLength": 3,
-                        "minLength": 1,
-                        "pattern": "^[0-9]{1,3}?$",
-                        "type": "string"
-                      },
-                      "extensionNumber": {
-                        "description": "The extension number.",
-                        "maxLength": 15,
-                        "minLength": 1,
-                        "pattern": "^[0-9]{1,15}?$",
-                        "type": "string"
-                      },
-                      "nationalNumber": {
-                        "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                        "maxLength": 14,
-                        "minLength": 1,
-                        "pattern": "^[0-9]{1,14}?$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "countryCode",
-                      "nationalNumber"
-                    ],
-                    "title": "Phone",
-                    "type": "object"
-                  },
-                  "type": {
-                    "default": "APPLICANT",
-                    "description": "Type of applicant",
-                    "enum": [
-                      "APPLICANT",
-                      "OWNER",
-                      "OWNER_APPLICANT"
-                    ],
-                    "type": "string"
-                  },
-                  "userId": {
-                    "description": "Unique User ID",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "visitorId": {
-                    "description": "The visitor id that was created during an anonymous visit",
-                    "format": "uuid",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "email"
-                ],
-                "title": "Individual",
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "intent": {
-              "default": "CREATE_BUSINESS",
-              "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-              "enum": [
-                "CREATE_BUSINESS",
-                "ADD_STORE",
-                "ADD_CHANNEL",
-                "ADD_PRODUCT"
-              ],
-              "type": "string"
-            },
-            "metadata": {
-              "description": "Additional parameters to create a specific type of application",
-              "properties": {
-                "applicationLevel": {
-                  "description": "Current Application Level — i.e. BASIC, FULL",
-                  "enum": [
-                    "BASIC",
-                    "FULL"
-                  ],
-                  "readOnly": true,
-                  "type": "string"
-                },
-                "applicationStatus": {
-                  "description": "The current status of the application",
-                  "enum": [
-                    "INCOMPLETE",
-                    "PENDING_FULL_APPLICATION",
-                    "IN_REVIEW",
-                    "APPROVED",
-                    "DECLINED"
-                  ],
-                  "readOnly": true,
-                  "type": "string"
-                },
-                "businessId": {
-                  "description": "Unique ID for the business",
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "channelId": {
-                  "description": "Unique ID for the channel",
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "context": {
-                  "description": "Header context",
-                  "maxLength": 1024,
-                  "type": "string"
-                },
-                "medium": {
-                  "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                  "maxLength": 64,
-                  "type": "string"
-                },
-                "referralUrlId": {
-                  "description": "The ID what was setup for a Distributor Merchant URL",
-                  "maxLength": 256,
-                  "type": "string"
-                },
-                "source": {
-                  "description": "The point of origin that started this process",
-                  "maxLength": 64,
-                  "type": "string"
-                },
-                "storeId": {
-                  "description": "Unique ID for the store",
-                  "format": "uuid",
-                  "type": "string"
-                }
-              },
-              "type": "object"
-            },
-            "products": {
-              "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-              "items": {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                "properties": {
-                  "features": {
-                    "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                    "items": {
-                      "default": [],
-                      "enum": [
-                        "TIP_ENABLED"
-                      ],
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "id": {
-                    "description": "Unique ID for the product",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "name": {
-                    "description": "Product name",
-                    "enum": [
-                      "PAYMENTS"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "title": "Product",
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "store": {
-              "$ref": "./Store.yaml"
-            }
-          },
-          "required": [
-            "intent"
-          ],
-          "title": "Onboarding Application",
-          "type": "object"
+          "$ref": "#/$defs/Application"
         }
       },
       "responses": {
-        "400": {
-          "description": "Bad request",
-          "schema": {
-            "$ref": "./common-types/error.json"
-          }
-        },
         "201": {
           "description": "Onboarding Application has been created successfully",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "description": "This model represents the application which is use to begin the onboarding process",
-            "properties": {
-              "channel": {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "An abstraction of data to create a channel",
-                "properties": {
-                  "externalChannelId": {
-                    "description": "Unique ID what represents an external resource",
-                    "maxLength": 36,
-                    "type": "string"
-                  },
-                  "externalChannelType": {
-                    "description": "A term what represents the external channel id",
-                    "maxLength": 128,
-                    "type": "string"
-                  },
-                  "id": {
-                    "description": "Unique ID for the channel",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "name": {
-                    "description": "Channel name",
-                    "maxLength": 128,
-                    "minLength": 3,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "name"
-                ],
-                "title": "Channel",
-                "type": "object"
-              },
-              "commerceAccountFeatures": {
-                "description": "Optional capabilities/functionalities associated with commerce account",
-                "items": {
-                  "default": [],
-                  "enum": [
-                    "NO_EMAIL_COMMUNICATIONS"
-                  ],
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "company": {
-                "$ref": "./Company.yaml"
-              },
-              "id": {
-                "description": "Unique ID for the application",
-                "readOnly": true,
-                "type": "string"
-              },
-              "individuals": {
-                "description": "A list of applicants",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "Business account owner or the person filling out the application (applicant)",
-                  "properties": {
-                    "address": {
-                      "$id": "https://godaddy.com/schemas/common/address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                      "properties": {
-                        "addressDetails": {
-                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                          "properties": {
-                            "addressType": {
-                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                              "maxLength": 1,
-                              "type": "string"
-                            },
-                            "buildingName": {
-                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "deliveryService": {
-                              "description": "The delivery service. Post office box, bag number, or post office name.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "geoCoordinates": {
-                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                              "$schema": "https://json-schema.org/draft/2020-12/schema",
-                              "description": "The geographic latitude and longitude coordinates.",
-                              "properties": {
-                                "latitude": {
-                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                },
-                                "longitude": {
-                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "longitude",
-                                "latitude"
-                              ],
-                              "title": "Geographic Coordinates",
-                              "type": "object"
-                            },
-                            "streetName": {
-                              "description": "The street name. Just `Drury` in `Drury Lane`.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetNumber": {
-                              "description": "The street number.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetType": {
-                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "subBuilding": {
-                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                              "maxLength": 100,
-                              "type": "string"
-                            }
-                          },
-                          "title": "Address Details",
-                          "type": "object"
-                        },
-                        "addressLine1": {
-                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine2": {
-                          "description": "The second line of the address. For example, office suite or apartment number.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine3": {
-                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea1": {
-                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea2": {
-                          "description": "A city, town, or village. Smaller than `adminArea1`.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea3": {
-                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea4": {
-                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "countryCode": {
-                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                          "$schema": "http://json-schema.org/draft/2020-12/schema",
-                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                          "maxLength": 2,
-                          "minLength": 2,
-                          "pattern": "^([A-Z]{2}|C2)$",
-                          "type": "string"
-                        },
-                        "postalCode": {
-                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                          "maxLength": 60,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode"
-                      ],
-                      "title": "Postal Address (Medium-Grained)",
-                      "type": "object"
-                    },
-                    "customerId": {
-                      "description": "Unique ID for GoDaddy customer",
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "email": {
-                      "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                      "maxLength": 254,
-                      "minLength": 3,
-                      "pattern": "^.+@[^\"\\-].+$",
-                      "type": "string"
-                    },
-                    "firstName": {
-                      "description": "First name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "id": {
-                      "description": "Unique ID for the Individual",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "ip": {
-                      "description": "IP Address of the applicant",
-                      "format": "ipv4",
-                      "type": "string"
-                    },
-                    "lastName": {
-                      "description": "Last name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "leadId": {
-                      "description": "Unique Lead ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "phone": {
-                      "$id": "https://godaddy.com/schemas/common/phone.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                      "properties": {
-                        "countryCode": {
-                          "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 3,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,3}?$",
-                          "type": "string"
-                        },
-                        "extensionNumber": {
-                          "description": "The extension number.",
-                          "maxLength": 15,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,15}?$",
-                          "type": "string"
-                        },
-                        "nationalNumber": {
-                          "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 14,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,14}?$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode",
-                        "nationalNumber"
-                      ],
-                      "title": "Phone",
-                      "type": "object"
-                    },
-                    "type": {
-                      "default": "APPLICANT",
-                      "description": "Type of applicant",
-                      "enum": [
-                        "APPLICANT",
-                        "OWNER",
-                        "OWNER_APPLICANT"
-                      ],
-                      "type": "string"
-                    },
-                    "userId": {
-                      "description": "Unique User ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "visitorId": {
-                      "description": "The visitor id that was created during an anonymous visit",
-                      "format": "uuid",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "email"
-                  ],
-                  "title": "Individual",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "intent": {
-                "default": "CREATE_BUSINESS",
-                "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-                "enum": [
-                  "CREATE_BUSINESS",
-                  "ADD_STORE",
-                  "ADD_CHANNEL",
-                  "ADD_PRODUCT"
-                ],
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Additional parameters to create a specific type of application",
-                "properties": {
-                  "applicationLevel": {
-                    "description": "Current Application Level — i.e. BASIC, FULL",
-                    "enum": [
-                      "BASIC",
-                      "FULL"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "applicationStatus": {
-                    "description": "The current status of the application",
-                    "enum": [
-                      "INCOMPLETE",
-                      "PENDING_FULL_APPLICATION",
-                      "IN_REVIEW",
-                      "APPROVED",
-                      "DECLINED"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "businessId": {
-                    "description": "Unique ID for the business",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "channelId": {
-                    "description": "Unique ID for the channel",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "context": {
-                    "description": "Header context",
-                    "maxLength": 1024,
-                    "type": "string"
-                  },
-                  "medium": {
-                    "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "referralUrlId": {
-                    "description": "The ID what was setup for a Distributor Merchant URL",
-                    "maxLength": 256,
-                    "type": "string"
-                  },
-                  "source": {
-                    "description": "The point of origin that started this process",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "storeId": {
-                    "description": "Unique ID for the store",
-                    "format": "uuid",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              "products": {
-                "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                  "properties": {
-                    "features": {
-                      "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                      "items": {
-                        "default": [],
-                        "enum": [
-                          "TIP_ENABLED"
-                        ],
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "id": {
-                      "description": "Unique ID for the product",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "name": {
-                      "description": "Product name",
-                      "enum": [
-                        "PAYMENTS"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "title": "Product",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "store": {
-                "$ref": "./Store.yaml"
-              }
-            },
-            "required": [
-              "intent"
-            ],
-            "title": "Onboarding Application",
-            "type": "object"
+            "$ref": "#/$defs/Application"
+          }
+        },
+        "400": {
+          "description": "Bad request",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
       "scopes": [
         "commerce.onboarding:write"
-      ]
+      ],
+      "summary": "Create an onboarding application"
     },
     {
-      "operationId": "getOnboardingApplication",
-      "method": "GET",
-      "path": "/onboarding-applications/{onboardingApplicationId}",
-      "summary": "Get an onboarding application",
       "description": "Returns an onboarding application by id",
+      "method": "GET",
+      "operationId": "getOnboardingApplication",
       "parameters": [
         {
-          "name": "onboardingApplicationId",
           "in": "path",
+          "name": "onboardingApplicationId",
           "required": false,
           "schema": {
             "type": "string"
           }
         }
       ],
+      "path": "/onboarding-applications/{onboardingApplicationId}",
       "responses": {
         "200": {
           "description": "Found onboarding application",
           "schema": {
             "allOf": [
               {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "This model represents the application which is use to begin the onboarding process",
-                "properties": {
-                  "channel": {
-                    "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "description": "An abstraction of data to create a channel",
-                    "properties": {
-                      "externalChannelId": {
-                        "description": "Unique ID what represents an external resource",
-                        "maxLength": 36,
-                        "type": "string"
-                      },
-                      "externalChannelType": {
-                        "description": "A term what represents the external channel id",
-                        "maxLength": 128,
-                        "type": "string"
-                      },
-                      "id": {
-                        "description": "Unique ID for the channel",
-                        "readOnly": true,
-                        "type": "string"
-                      },
-                      "name": {
-                        "description": "Channel name",
-                        "maxLength": 128,
-                        "minLength": 3,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "name"
-                    ],
-                    "title": "Channel",
-                    "type": "object"
-                  },
-                  "commerceAccountFeatures": {
-                    "description": "Optional capabilities/functionalities associated with commerce account",
-                    "items": {
-                      "default": [],
-                      "enum": [
-                        "NO_EMAIL_COMMUNICATIONS"
-                      ],
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "company": {
-                    "$ref": "./Company.yaml"
-                  },
-                  "id": {
-                    "description": "Unique ID for the application",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "individuals": {
-                    "description": "A list of applicants",
-                    "items": {
-                      "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "Business account owner or the person filling out the application (applicant)",
-                      "properties": {
-                        "address": {
-                          "$id": "https://godaddy.com/schemas/common/address.v1",
-                          "$schema": "https://json-schema.org/draft/2020-12/schema",
-                          "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                          "properties": {
-                            "addressDetails": {
-                              "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                              "properties": {
-                                "addressType": {
-                                  "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                                  "maxLength": 1,
-                                  "type": "string"
-                                },
-                                "buildingName": {
-                                  "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                },
-                                "deliveryService": {
-                                  "description": "The delivery service. Post office box, bag number, or post office name.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                },
-                                "geoCoordinates": {
-                                  "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                                  "description": "The geographic latitude and longitude coordinates.",
-                                  "properties": {
-                                    "latitude": {
-                                      "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                      "type": "string"
-                                    },
-                                    "longitude": {
-                                      "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "longitude",
-                                    "latitude"
-                                  ],
-                                  "title": "Geographic Coordinates",
-                                  "type": "object"
-                                },
-                                "streetName": {
-                                  "description": "The street name. Just `Drury` in `Drury Lane`.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                },
-                                "streetNumber": {
-                                  "description": "The street number.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                },
-                                "streetType": {
-                                  "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                },
-                                "subBuilding": {
-                                  "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                                  "maxLength": 100,
-                                  "type": "string"
-                                }
-                              },
-                              "title": "Address Details",
-                              "type": "object"
-                            },
-                            "addressLine1": {
-                              "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                              "maxLength": 300,
-                              "type": "string"
-                            },
-                            "addressLine2": {
-                              "description": "The second line of the address. For example, office suite or apartment number.",
-                              "maxLength": 300,
-                              "type": "string"
-                            },
-                            "addressLine3": {
-                              "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "adminArea1": {
-                              "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                              "maxLength": 300,
-                              "type": "string"
-                            },
-                            "adminArea2": {
-                              "description": "A city, town, or village. Smaller than `adminArea1`.",
-                              "maxLength": 300,
-                              "type": "string"
-                            },
-                            "adminArea3": {
-                              "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "adminArea4": {
-                              "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "countryCode": {
-                              "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                              "$schema": "http://json-schema.org/draft/2020-12/schema",
-                              "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                              "maxLength": 2,
-                              "minLength": 2,
-                              "pattern": "^([A-Z]{2}|C2)$",
-                              "type": "string"
-                            },
-                            "postalCode": {
-                              "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                              "maxLength": 60,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "countryCode"
-                          ],
-                          "title": "Postal Address (Medium-Grained)",
-                          "type": "object"
-                        },
-                        "customerId": {
-                          "description": "Unique ID for GoDaddy customer",
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        "email": {
-                          "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                          "$schema": "https://json-schema.org/draft/2020-12/schema",
-                          "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                          "maxLength": 254,
-                          "minLength": 3,
-                          "pattern": "^.+@[^\"\\-].+$",
-                          "type": "string"
-                        },
-                        "firstName": {
-                          "description": "First name of the applicant",
-                          "maxLength": 64,
-                          "minLength": 2,
-                          "type": "string"
-                        },
-                        "id": {
-                          "description": "Unique ID for the Individual",
-                          "readOnly": true,
-                          "type": "string"
-                        },
-                        "ip": {
-                          "description": "IP Address of the applicant",
-                          "format": "ipv4",
-                          "type": "string"
-                        },
-                        "lastName": {
-                          "description": "Last name of the applicant",
-                          "maxLength": 64,
-                          "minLength": 2,
-                          "type": "string"
-                        },
-                        "leadId": {
-                          "description": "Unique Lead ID",
-                          "maxLength": 64,
-                          "type": "string"
-                        },
-                        "phone": {
-                          "$id": "https://godaddy.com/schemas/common/phone.v1",
-                          "$schema": "https://json-schema.org/draft/2020-12/schema",
-                          "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                          "properties": {
-                            "countryCode": {
-                              "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                              "maxLength": 3,
-                              "minLength": 1,
-                              "pattern": "^[0-9]{1,3}?$",
-                              "type": "string"
-                            },
-                            "extensionNumber": {
-                              "description": "The extension number.",
-                              "maxLength": 15,
-                              "minLength": 1,
-                              "pattern": "^[0-9]{1,15}?$",
-                              "type": "string"
-                            },
-                            "nationalNumber": {
-                              "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                              "maxLength": 14,
-                              "minLength": 1,
-                              "pattern": "^[0-9]{1,14}?$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "countryCode",
-                            "nationalNumber"
-                          ],
-                          "title": "Phone",
-                          "type": "object"
-                        },
-                        "type": {
-                          "default": "APPLICANT",
-                          "description": "Type of applicant",
-                          "enum": [
-                            "APPLICANT",
-                            "OWNER",
-                            "OWNER_APPLICANT"
-                          ],
-                          "type": "string"
-                        },
-                        "userId": {
-                          "description": "Unique User ID",
-                          "maxLength": 64,
-                          "type": "string"
-                        },
-                        "visitorId": {
-                          "description": "The visitor id that was created during an anonymous visit",
-                          "format": "uuid",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "email"
-                      ],
-                      "title": "Individual",
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "intent": {
-                    "default": "CREATE_BUSINESS",
-                    "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-                    "enum": [
-                      "CREATE_BUSINESS",
-                      "ADD_STORE",
-                      "ADD_CHANNEL",
-                      "ADD_PRODUCT"
-                    ],
-                    "type": "string"
-                  },
-                  "metadata": {
-                    "description": "Additional parameters to create a specific type of application",
-                    "properties": {
-                      "applicationLevel": {
-                        "description": "Current Application Level — i.e. BASIC, FULL",
-                        "enum": [
-                          "BASIC",
-                          "FULL"
-                        ],
-                        "readOnly": true,
-                        "type": "string"
-                      },
-                      "applicationStatus": {
-                        "description": "The current status of the application",
-                        "enum": [
-                          "INCOMPLETE",
-                          "PENDING_FULL_APPLICATION",
-                          "IN_REVIEW",
-                          "APPROVED",
-                          "DECLINED"
-                        ],
-                        "readOnly": true,
-                        "type": "string"
-                      },
-                      "businessId": {
-                        "description": "Unique ID for the business",
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "channelId": {
-                        "description": "Unique ID for the channel",
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "context": {
-                        "description": "Header context",
-                        "maxLength": 1024,
-                        "type": "string"
-                      },
-                      "medium": {
-                        "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                        "maxLength": 64,
-                        "type": "string"
-                      },
-                      "referralUrlId": {
-                        "description": "The ID what was setup for a Distributor Merchant URL",
-                        "maxLength": 256,
-                        "type": "string"
-                      },
-                      "source": {
-                        "description": "The point of origin that started this process",
-                        "maxLength": 64,
-                        "type": "string"
-                      },
-                      "storeId": {
-                        "description": "Unique ID for the store",
-                        "format": "uuid",
-                        "type": "string"
-                      }
-                    },
-                    "type": "object"
-                  },
-                  "products": {
-                    "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                    "items": {
-                      "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                      "properties": {
-                        "features": {
-                          "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                          "items": {
-                            "default": [],
-                            "enum": [
-                              "TIP_ENABLED"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "id": {
-                          "description": "Unique ID for the product",
-                          "readOnly": true,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Product name",
-                          "enum": [
-                            "PAYMENTS"
-                          ],
-                          "type": "string"
-                        }
-                      },
-                      "title": "Product",
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "store": {
-                    "$ref": "./Store.yaml"
-                  }
-                },
-                "required": [
-                  "intent"
-                ],
-                "title": "Onboarding Application",
-                "type": "object"
+                "$ref": "#/$defs/Application"
               }
             ],
             "properties": {
               "links": {
                 "description": "An array of error-related HATEOAS links.",
                 "items": {
-                  "$id": "https://godaddy.com/schemas/common/link-description.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
-                  "properties": {
-                    "href": {
-                      "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
-                      "format": "uri",
-                      "type": "string"
-                    },
-                    "method": {
-                      "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
-                      "type": "string"
-                    },
-                    "rel": {
-                      "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
-                      "type": "string"
-                    },
-                    "submissionMediaType": {
-                      "default": "application/json",
-                      "description": "The media type with which to submit data with the request.",
-                      "type": "string"
-                    },
-                    "submissionSchema": {
-                      "description": "The schema that describes the request data."
-                    },
-                    "targetMediaType": {
-                      "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
-                      "type": "string"
-                    },
-                    "targetSchema": {
-                      "description": "The schema that describes the link target."
-                    },
-                    "title": {
-                      "description": "The link title.",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "rel",
-                    "href"
-                  ],
-                  "title": "Link Description",
-                  "type": "object"
+                  "$ref": "#/$defs/link-description"
                 },
                 "readOnly": true,
                 "type": "array"
@@ -1835,978 +1005,105 @@
         "404": {
           "description": "Not found",
           "schema": {
-            "$ref": "./common-types/error.json"
+            "$ref": "#/$defs/error"
           }
         }
       },
       "scopes": [
         "commerce.onboarding:read",
         "commerce.onboarding:write"
-      ]
+      ],
+      "summary": "Get an onboarding application"
     },
     {
-      "operationId": "patchOnboardingApplication",
-      "method": "PATCH",
-      "path": "/onboarding-applications/{onboardingApplicationId}",
-      "summary": "Patch an onboarding application",
       "description": "Updates an application by id",
+      "method": "PATCH",
+      "operationId": "patchOnboardingApplication",
       "parameters": [
         {
-          "name": "onboardingApplicationId",
           "in": "path",
+          "name": "onboardingApplicationId",
           "required": false,
           "schema": {
             "type": "string"
           }
         }
       ],
+      "path": "/onboarding-applications/{onboardingApplicationId}",
       "requestBody": {
-        "required": false,
         "contentType": "application/json",
+        "required": false,
         "schema": {
-          "$id": "https://godaddy.com/schemas/common/patch-request.v1",
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "description": "An array of JSON patch objects to apply partial updates to resources.",
-          "items": {
-            "$id": "https://godaddy.com/schemas/common/patch.v1",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "description": "The JSON patch object to apply partial updates to resources.",
-            "properties": {
-              "from": {
-                "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
-                "type": "string"
-              },
-              "op": {
-                "description": "The operation to complete.",
-                "enum": [
-                  "add",
-                  "remove",
-                  "replace",
-                  "move",
-                  "copy",
-                  "test"
-                ],
-                "type": "string"
-              },
-              "path": {
-                "description": "The JSON pointer to the target document location at which to complete the operation.",
-                "type": "string"
-              },
-              "value": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "items": {},
-                    "type": "array"
-                  },
-                  {
-                    "type": "object"
-                  }
-                ],
-                "description": "The value to apply. The `remove` operation does not require a value.",
-                "nullable": true
-              }
-            },
-            "required": [
-              "op"
-            ],
-            "title": "Patch",
-            "type": "object"
-          },
-          "title": "Patch Request",
-          "type": "array"
+          "$ref": "#/$defs/patch-request"
         }
       },
       "responses": {
         "200": {
           "description": "Updated onboarding application",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "description": "This model represents the application which is use to begin the onboarding process",
-            "properties": {
-              "channel": {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "An abstraction of data to create a channel",
-                "properties": {
-                  "externalChannelId": {
-                    "description": "Unique ID what represents an external resource",
-                    "maxLength": 36,
-                    "type": "string"
-                  },
-                  "externalChannelType": {
-                    "description": "A term what represents the external channel id",
-                    "maxLength": 128,
-                    "type": "string"
-                  },
-                  "id": {
-                    "description": "Unique ID for the channel",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "name": {
-                    "description": "Channel name",
-                    "maxLength": 128,
-                    "minLength": 3,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "name"
-                ],
-                "title": "Channel",
-                "type": "object"
-              },
-              "commerceAccountFeatures": {
-                "description": "Optional capabilities/functionalities associated with commerce account",
-                "items": {
-                  "default": [],
-                  "enum": [
-                    "NO_EMAIL_COMMUNICATIONS"
-                  ],
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "company": {
-                "$ref": "./Company.yaml"
-              },
-              "id": {
-                "description": "Unique ID for the application",
-                "readOnly": true,
-                "type": "string"
-              },
-              "individuals": {
-                "description": "A list of applicants",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "Business account owner or the person filling out the application (applicant)",
-                  "properties": {
-                    "address": {
-                      "$id": "https://godaddy.com/schemas/common/address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                      "properties": {
-                        "addressDetails": {
-                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                          "properties": {
-                            "addressType": {
-                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                              "maxLength": 1,
-                              "type": "string"
-                            },
-                            "buildingName": {
-                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "deliveryService": {
-                              "description": "The delivery service. Post office box, bag number, or post office name.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "geoCoordinates": {
-                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                              "$schema": "https://json-schema.org/draft/2020-12/schema",
-                              "description": "The geographic latitude and longitude coordinates.",
-                              "properties": {
-                                "latitude": {
-                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                },
-                                "longitude": {
-                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "longitude",
-                                "latitude"
-                              ],
-                              "title": "Geographic Coordinates",
-                              "type": "object"
-                            },
-                            "streetName": {
-                              "description": "The street name. Just `Drury` in `Drury Lane`.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetNumber": {
-                              "description": "The street number.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetType": {
-                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "subBuilding": {
-                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                              "maxLength": 100,
-                              "type": "string"
-                            }
-                          },
-                          "title": "Address Details",
-                          "type": "object"
-                        },
-                        "addressLine1": {
-                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine2": {
-                          "description": "The second line of the address. For example, office suite or apartment number.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine3": {
-                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea1": {
-                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea2": {
-                          "description": "A city, town, or village. Smaller than `adminArea1`.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea3": {
-                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea4": {
-                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "countryCode": {
-                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                          "$schema": "http://json-schema.org/draft/2020-12/schema",
-                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                          "maxLength": 2,
-                          "minLength": 2,
-                          "pattern": "^([A-Z]{2}|C2)$",
-                          "type": "string"
-                        },
-                        "postalCode": {
-                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                          "maxLength": 60,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode"
-                      ],
-                      "title": "Postal Address (Medium-Grained)",
-                      "type": "object"
-                    },
-                    "customerId": {
-                      "description": "Unique ID for GoDaddy customer",
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "email": {
-                      "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                      "maxLength": 254,
-                      "minLength": 3,
-                      "pattern": "^.+@[^\"\\-].+$",
-                      "type": "string"
-                    },
-                    "firstName": {
-                      "description": "First name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "id": {
-                      "description": "Unique ID for the Individual",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "ip": {
-                      "description": "IP Address of the applicant",
-                      "format": "ipv4",
-                      "type": "string"
-                    },
-                    "lastName": {
-                      "description": "Last name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "leadId": {
-                      "description": "Unique Lead ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "phone": {
-                      "$id": "https://godaddy.com/schemas/common/phone.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                      "properties": {
-                        "countryCode": {
-                          "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 3,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,3}?$",
-                          "type": "string"
-                        },
-                        "extensionNumber": {
-                          "description": "The extension number.",
-                          "maxLength": 15,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,15}?$",
-                          "type": "string"
-                        },
-                        "nationalNumber": {
-                          "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 14,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,14}?$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode",
-                        "nationalNumber"
-                      ],
-                      "title": "Phone",
-                      "type": "object"
-                    },
-                    "type": {
-                      "default": "APPLICANT",
-                      "description": "Type of applicant",
-                      "enum": [
-                        "APPLICANT",
-                        "OWNER",
-                        "OWNER_APPLICANT"
-                      ],
-                      "type": "string"
-                    },
-                    "userId": {
-                      "description": "Unique User ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "visitorId": {
-                      "description": "The visitor id that was created during an anonymous visit",
-                      "format": "uuid",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "email"
-                  ],
-                  "title": "Individual",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "intent": {
-                "default": "CREATE_BUSINESS",
-                "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-                "enum": [
-                  "CREATE_BUSINESS",
-                  "ADD_STORE",
-                  "ADD_CHANNEL",
-                  "ADD_PRODUCT"
-                ],
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Additional parameters to create a specific type of application",
-                "properties": {
-                  "applicationLevel": {
-                    "description": "Current Application Level — i.e. BASIC, FULL",
-                    "enum": [
-                      "BASIC",
-                      "FULL"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "applicationStatus": {
-                    "description": "The current status of the application",
-                    "enum": [
-                      "INCOMPLETE",
-                      "PENDING_FULL_APPLICATION",
-                      "IN_REVIEW",
-                      "APPROVED",
-                      "DECLINED"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "businessId": {
-                    "description": "Unique ID for the business",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "channelId": {
-                    "description": "Unique ID for the channel",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "context": {
-                    "description": "Header context",
-                    "maxLength": 1024,
-                    "type": "string"
-                  },
-                  "medium": {
-                    "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "referralUrlId": {
-                    "description": "The ID what was setup for a Distributor Merchant URL",
-                    "maxLength": 256,
-                    "type": "string"
-                  },
-                  "source": {
-                    "description": "The point of origin that started this process",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "storeId": {
-                    "description": "Unique ID for the store",
-                    "format": "uuid",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              "products": {
-                "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                  "properties": {
-                    "features": {
-                      "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                      "items": {
-                        "default": [],
-                        "enum": [
-                          "TIP_ENABLED"
-                        ],
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "id": {
-                      "description": "Unique ID for the product",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "name": {
-                      "description": "Product name",
-                      "enum": [
-                        "PAYMENTS"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "title": "Product",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "store": {
-                "$ref": "./Store.yaml"
-              }
-            },
-            "required": [
-              "intent"
-            ],
-            "title": "Onboarding Application",
-            "type": "object"
-          }
-        },
-        "404": {
-          "description": "Not found",
-          "schema": {
-            "$ref": "./common-types/error.json"
+            "$ref": "#/$defs/Application"
           }
         },
         "400": {
           "description": "Bad request",
           "schema": {
-            "$ref": "./common-types/error.json"
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
       "scopes": [
         "commerce.onboarding:write"
-      ]
+      ],
+      "summary": "Patch an onboarding application"
     },
     {
-      "operationId": "patchOnboardingApplication",
-      "method": "POST",
-      "path": "/onboarding-applications/{onboardingApplicationId}/onboard",
-      "summary": "Start onboarding a merchant",
       "description": "Start the onboarding process for an existing application",
+      "method": "POST",
+      "operationId": "patchOnboardingApplication",
       "parameters": [
         {
-          "name": "onboardingApplicationId",
           "in": "path",
+          "name": "onboardingApplicationId",
           "required": false,
           "schema": {
             "type": "string"
           }
         }
       ],
+      "path": "/onboarding-applications/{onboardingApplicationId}/onboard",
       "responses": {
-        "404": {
-          "description": "Not found",
+        "200": {
+          "description": "Onboarded an existing onboarding application",
           "schema": {
-            "$ref": "./common-types/error.json"
+            "$ref": "#/$defs/Application"
           }
         },
         "400": {
           "description": "Bad request",
           "schema": {
-            "$ref": "./common-types/error.json"
+            "$ref": "#/$defs/error"
           }
         },
-        "200": {
-          "description": "Onboarded an existing onboarding application",
+        "404": {
+          "description": "Not found",
           "schema": {
-            "$id": "https://godaddy.com/schemas/commerce/onboarding/application-request.v1",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "description": "This model represents the application which is use to begin the onboarding process",
-            "properties": {
-              "channel": {
-                "$id": "https://godaddy.com/schemas/commerce/onboarding/store.v1",
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "description": "An abstraction of data to create a channel",
-                "properties": {
-                  "externalChannelId": {
-                    "description": "Unique ID what represents an external resource",
-                    "maxLength": 36,
-                    "type": "string"
-                  },
-                  "externalChannelType": {
-                    "description": "A term what represents the external channel id",
-                    "maxLength": 128,
-                    "type": "string"
-                  },
-                  "id": {
-                    "description": "Unique ID for the channel",
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "name": {
-                    "description": "Channel name",
-                    "maxLength": 128,
-                    "minLength": 3,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "name"
-                ],
-                "title": "Channel",
-                "type": "object"
-              },
-              "commerceAccountFeatures": {
-                "description": "Optional capabilities/functionalities associated with commerce account",
-                "items": {
-                  "default": [],
-                  "enum": [
-                    "NO_EMAIL_COMMUNICATIONS"
-                  ],
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "company": {
-                "$ref": "./Company.yaml"
-              },
-              "id": {
-                "description": "Unique ID for the application",
-                "readOnly": true,
-                "type": "string"
-              },
-              "individuals": {
-                "description": "A list of applicants",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/individual.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "Business account owner or the person filling out the application (applicant)",
-                  "properties": {
-                    "address": {
-                      "$id": "https://godaddy.com/schemas/common/address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                      "properties": {
-                        "addressDetails": {
-                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                          "properties": {
-                            "addressType": {
-                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                              "maxLength": 1,
-                              "type": "string"
-                            },
-                            "buildingName": {
-                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "deliveryService": {
-                              "description": "The delivery service. Post office box, bag number, or post office name.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "geoCoordinates": {
-                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                              "$schema": "https://json-schema.org/draft/2020-12/schema",
-                              "description": "The geographic latitude and longitude coordinates.",
-                              "properties": {
-                                "latitude": {
-                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                },
-                                "longitude": {
-                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "longitude",
-                                "latitude"
-                              ],
-                              "title": "Geographic Coordinates",
-                              "type": "object"
-                            },
-                            "streetName": {
-                              "description": "The street name. Just `Drury` in `Drury Lane`.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetNumber": {
-                              "description": "The street number.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetType": {
-                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "subBuilding": {
-                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                              "maxLength": 100,
-                              "type": "string"
-                            }
-                          },
-                          "title": "Address Details",
-                          "type": "object"
-                        },
-                        "addressLine1": {
-                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine2": {
-                          "description": "The second line of the address. For example, office suite or apartment number.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine3": {
-                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea1": {
-                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea2": {
-                          "description": "A city, town, or village. Smaller than `adminArea1`.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea3": {
-                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea4": {
-                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "countryCode": {
-                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                          "$schema": "http://json-schema.org/draft/2020-12/schema",
-                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                          "maxLength": 2,
-                          "minLength": 2,
-                          "pattern": "^([A-Z]{2}|C2)$",
-                          "type": "string"
-                        },
-                        "postalCode": {
-                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                          "maxLength": 60,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode"
-                      ],
-                      "title": "Postal Address (Medium-Grained)",
-                      "type": "object"
-                    },
-                    "customerId": {
-                      "description": "Unique ID for GoDaddy customer",
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "email": {
-                      "$id": "https://godaddy.com/schemas/common/email-address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
-                      "maxLength": 254,
-                      "minLength": 3,
-                      "pattern": "^.+@[^\"\\-].+$",
-                      "type": "string"
-                    },
-                    "firstName": {
-                      "description": "First name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "id": {
-                      "description": "Unique ID for the Individual",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "ip": {
-                      "description": "IP Address of the applicant",
-                      "format": "ipv4",
-                      "type": "string"
-                    },
-                    "lastName": {
-                      "description": "Last name of the applicant",
-                      "maxLength": 64,
-                      "minLength": 2,
-                      "type": "string"
-                    },
-                    "leadId": {
-                      "description": "Unique Lead ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "phone": {
-                      "$id": "https://godaddy.com/schemas/common/phone.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
-                      "properties": {
-                        "countryCode": {
-                          "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 3,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,3}?$",
-                          "type": "string"
-                        },
-                        "extensionNumber": {
-                          "description": "The extension number.",
-                          "maxLength": 15,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,15}?$",
-                          "type": "string"
-                        },
-                        "nationalNumber": {
-                          "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
-                          "maxLength": 14,
-                          "minLength": 1,
-                          "pattern": "^[0-9]{1,14}?$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode",
-                        "nationalNumber"
-                      ],
-                      "title": "Phone",
-                      "type": "object"
-                    },
-                    "type": {
-                      "default": "APPLICANT",
-                      "description": "Type of applicant",
-                      "enum": [
-                        "APPLICANT",
-                        "OWNER",
-                        "OWNER_APPLICANT"
-                      ],
-                      "type": "string"
-                    },
-                    "userId": {
-                      "description": "Unique User ID",
-                      "maxLength": 64,
-                      "type": "string"
-                    },
-                    "visitorId": {
-                      "description": "The visitor id that was created during an anonymous visit",
-                      "format": "uuid",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "email"
-                  ],
-                  "title": "Individual",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "intent": {
-                "default": "CREATE_BUSINESS",
-                "description": "Identifies the type of onboarding application that is being requested for the commerce account",
-                "enum": [
-                  "CREATE_BUSINESS",
-                  "ADD_STORE",
-                  "ADD_CHANNEL",
-                  "ADD_PRODUCT"
-                ],
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Additional parameters to create a specific type of application",
-                "properties": {
-                  "applicationLevel": {
-                    "description": "Current Application Level — i.e. BASIC, FULL",
-                    "enum": [
-                      "BASIC",
-                      "FULL"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "applicationStatus": {
-                    "description": "The current status of the application",
-                    "enum": [
-                      "INCOMPLETE",
-                      "PENDING_FULL_APPLICATION",
-                      "IN_REVIEW",
-                      "APPROVED",
-                      "DECLINED"
-                    ],
-                    "readOnly": true,
-                    "type": "string"
-                  },
-                  "businessId": {
-                    "description": "Unique ID for the business",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "channelId": {
-                    "description": "Unique ID for the channel",
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "context": {
-                    "description": "Header context",
-                    "maxLength": 1024,
-                    "type": "string"
-                  },
-                  "medium": {
-                    "description": "The page or entity relating to this account. Ex. FacebookLP, Email, My Account",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "referralUrlId": {
-                    "description": "The ID what was setup for a Distributor Merchant URL",
-                    "maxLength": 256,
-                    "type": "string"
-                  },
-                  "source": {
-                    "description": "The point of origin that started this process",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "storeId": {
-                    "description": "Unique ID for the store",
-                    "format": "uuid",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              "products": {
-                "description": "List of GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                "items": {
-                  "$id": "https://godaddy.com/schemas/commerce/onboarding/product.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "GoDaddy product that can be added to the commerce account e.g., e.g., GD Payments, GD Debit card, GD Loans etc.",
-                  "properties": {
-                    "features": {
-                      "description": "Optional capabilities/functionalities associated with GoDaddy offered Product",
-                      "items": {
-                        "default": [],
-                        "enum": [
-                          "TIP_ENABLED"
-                        ],
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "id": {
-                      "description": "Unique ID for the product",
-                      "readOnly": true,
-                      "type": "string"
-                    },
-                    "name": {
-                      "description": "Product name",
-                      "enum": [
-                        "PAYMENTS"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "title": "Product",
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "store": {
-                "$ref": "./Store.yaml"
-              }
-            },
-            "required": [
-              "intent"
-            ],
-            "title": "Onboarding Application",
-            "type": "object"
+            "$ref": "#/$defs/error"
           }
         }
       },
       "scopes": [
         "commerce.onboarding:write"
-      ]
+      ],
+      "summary": "Start onboarding a merchant"
     }
-  ]
+  ],
+  "name": "onboarding",
+  "title": "Commerce Onboarding API",
+  "version": "1.0.0"
 }
