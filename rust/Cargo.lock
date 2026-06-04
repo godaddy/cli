@@ -943,10 +943,12 @@ dependencies = [
  "anyhow",
  "chrono",
  "graphql-parser",
+ "indexmap",
  "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]

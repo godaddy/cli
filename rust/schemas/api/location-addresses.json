@@ -1,160 +1,284 @@
 {
-  "name": "location-addresses",
-  "title": "Addresses API",
-  "description": "This API can be used to verify a given mailing addresses. The result will provide one or many matches back.",
-  "version": "1.1.0",
-  "baseUrl": "https://api.godaddy.com/v1/commerce",
-  "endpoints": [
-    {
-      "operationId": "commerce.location.verify-address",
-      "method": "POST",
-      "path": "/location/address-verifications",
-      "summary": "Verify a Mailing Address",
-      "requestBody": {
-        "required": true,
-        "description": "This is the address to be verified",
-        "contentType": "application/json",
-        "schema": {
-          "$id": "https://godaddy.com/schemas/common/address.v1",
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+  "$defs": {
+    "address": {
+      "$id": "https://godaddy.com/schemas/common/address.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+      "properties": {
+        "addressDetails": {
+          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
           "properties": {
-            "addressDetails": {
-              "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-              "properties": {
-                "addressType": {
-                  "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                  "maxLength": 1,
-                  "type": "string"
-                },
-                "buildingName": {
-                  "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                  "maxLength": 100,
-                  "type": "string"
-                },
-                "deliveryService": {
-                  "description": "The delivery service. Post office box, bag number, or post office name.",
-                  "maxLength": 100,
-                  "type": "string"
-                },
-                "geoCoordinates": {
-                  "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "description": "The geographic latitude and longitude coordinates.",
-                  "properties": {
-                    "latitude": {
-                      "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                      "type": "string"
-                    },
-                    "longitude": {
-                      "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "longitude",
-                    "latitude"
-                  ],
-                  "title": "Geographic Coordinates",
-                  "type": "object"
-                },
-                "streetName": {
-                  "description": "The street name. Just `Drury` in `Drury Lane`.",
-                  "maxLength": 100,
-                  "type": "string"
-                },
-                "streetNumber": {
-                  "description": "The street number.",
-                  "maxLength": 100,
-                  "type": "string"
-                },
-                "streetType": {
-                  "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                  "maxLength": 100,
-                  "type": "string"
-                },
-                "subBuilding": {
-                  "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                  "maxLength": 100,
-                  "type": "string"
-                }
-              },
-              "title": "Address Details",
-              "type": "object"
-            },
-            "addressLine1": {
-              "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-              "maxLength": 300,
+            "addressType": {
+              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+              "maxLength": 1,
               "type": "string"
             },
-            "addressLine2": {
-              "description": "The second line of the address. For example, office suite or apartment number.",
-              "maxLength": 300,
-              "type": "string"
-            },
-            "addressLine3": {
-              "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+            "buildingName": {
+              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
               "maxLength": 100,
               "type": "string"
             },
-            "adminArea1": {
-              "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-              "maxLength": 300,
-              "type": "string"
-            },
-            "adminArea2": {
-              "description": "A city, town, or village. Smaller than `adminArea1`.",
-              "maxLength": 300,
-              "type": "string"
-            },
-            "adminArea3": {
-              "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+            "deliveryService": {
+              "description": "The delivery service. Post office box, bag number, or post office name.",
               "maxLength": 100,
               "type": "string"
             },
-            "adminArea4": {
-              "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+            "geoCoordinates": {
+              "$ref": "#/$defs/geo-coordinates"
+            },
+            "streetName": {
+              "description": "The street name. Just `Drury` in `Drury Lane`.",
               "maxLength": 100,
               "type": "string"
             },
-            "countryCode": {
-              "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-              "$schema": "http://json-schema.org/draft/2020-12/schema",
-              "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-              "maxLength": 2,
-              "minLength": 2,
-              "pattern": "^([A-Z]{2}|C2)$",
+            "streetNumber": {
+              "description": "The street number.",
+              "maxLength": 100,
               "type": "string"
             },
-            "postalCode": {
-              "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-              "maxLength": 60,
+            "streetType": {
+              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+              "maxLength": 100,
+              "type": "string"
+            },
+            "subBuilding": {
+              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+              "maxLength": 100,
               "type": "string"
             }
           },
-          "required": [
-            "countryCode"
-          ],
-          "title": "Postal Address (Medium-Grained)",
+          "title": "Address Details",
           "type": "object"
+        },
+        "addressLine1": {
+          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "addressLine2": {
+          "description": "The second line of the address. For example, office suite or apartment number.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "addressLine3": {
+          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "adminArea1": {
+          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "adminArea2": {
+          "description": "A city, town, or village. Smaller than `adminArea1`.",
+          "maxLength": 300,
+          "type": "string"
+        },
+        "adminArea3": {
+          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "adminArea4": {
+          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+          "maxLength": 100,
+          "type": "string"
+        },
+        "countryCode": {
+          "$ref": "#/$defs/country-code"
+        },
+        "postalCode": {
+          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+          "maxLength": 60,
+          "type": "string"
+        }
+      },
+      "required": [
+        "countryCode"
+      ],
+      "title": "Postal Address (Medium-Grained)",
+      "type": "object"
+    },
+    "country-code": {
+      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+      "$schema": "http://json-schema.org/draft/2020-12/schema",
+      "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+      "maxLength": 2,
+      "minLength": 2,
+      "pattern": "^([A-Z]{2}|C2)$",
+      "type": "string"
+    },
+    "error": {
+      "$id": "https://godaddy.com/schemas/common/error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
+      "description": "The error information.",
+      "properties": {
+        "correlationId": {
+          "description": "Internal identifier used for correlation purposes.",
+          "type": "string"
+        },
+        "details": {
+          "additionalItems": false,
+          "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+          "items": {
+            "$ref": "#/$defs/error-details"
+          },
+          "type": "array"
+        },
+        "informationLink": {
+          "description": "The URI for detailed information related to this error for the developer.",
+          "type": "string"
+        },
+        "links": {
+          "description": "An array of error-related HATEOAS links.",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "message": {
+          "description": "The message that describes the error.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The human-readable, unique name of the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "correlationId",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "error-details": {
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The error details. Required for client-side `4XX` errors.",
+      "properties": {
+        "description": {
+          "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value.",
+          "type": "string"
+        },
+        "field": {
+          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
+          "type": "string"
+        },
+        "issue": {
+          "description": "The unique fine-grained application-level error code.",
+          "type": "string"
+        },
+        "location": {
+          "default": "body",
+          "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the field that caused the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue"
+      ],
+      "title": "Error Details",
+      "type": "object"
+    },
+    "geo-coordinates": {
+      "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The geographic latitude and longitude coordinates.",
+      "properties": {
+        "latitude": {
+          "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+          "type": "string"
+        },
+        "longitude": {
+          "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+          "type": "string"
+        }
+      },
+      "required": [
+        "longitude",
+        "latitude"
+      ],
+      "title": "Geographic Coordinates",
+      "type": "object"
+    },
+    "link-description": {
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+      "properties": {
+        "href": {
+          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+          "format": "uri",
+          "type": "string"
+        },
+        "method": {
+          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+          "type": "string"
+        },
+        "rel": {
+          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+          "type": "string"
+        },
+        "submissionMediaType": {
+          "default": "application/json",
+          "description": "The media type with which to submit data with the request.",
+          "type": "string"
+        },
+        "submissionSchema": {
+          "description": "The schema that describes the request data."
+        },
+        "targetMediaType": {
+          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+          "type": "string"
+        },
+        "targetSchema": {
+          "description": "The schema that describes the link target."
+        },
+        "title": {
+          "description": "The link title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link Description",
+      "type": "object"
+    }
+  },
+  "baseUrl": "https://api.godaddy.com/v1/commerce",
+  "description": "This API can be used to verify a given mailing addresses. The result will provide one or many matches back.",
+  "endpoints": [
+    {
+      "method": "POST",
+      "operationId": "commerce.location.verify-address",
+      "path": "/location/address-verifications",
+      "requestBody": {
+        "contentType": "application/json",
+        "description": "This is the address to be verified",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/address"
         }
       },
       "responses": {
-        "403": {
-          "description": "The error information."
-        },
-        "502": {
-          "description": "The error information."
-        },
-        "503": {
-          "description": "The error information."
-        },
-        "500": {
-          "description": "The error information."
-        },
-        "401": {
-          "description": "The error information."
-        },
         "200": {
           "description": "POST /location/address-verifications Successful response",
           "schema": {
@@ -163,128 +287,7 @@
                 "properties": {
                   "matches": {
                     "items": {
-                      "$id": "https://godaddy.com/schemas/common/address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                      "properties": {
-                        "addressDetails": {
-                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                          "properties": {
-                            "addressType": {
-                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                              "maxLength": 1,
-                              "type": "string"
-                            },
-                            "buildingName": {
-                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "deliveryService": {
-                              "description": "The delivery service. Post office box, bag number, or post office name.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "geoCoordinates": {
-                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                              "$schema": "https://json-schema.org/draft/2020-12/schema",
-                              "description": "The geographic latitude and longitude coordinates.",
-                              "properties": {
-                                "latitude": {
-                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                },
-                                "longitude": {
-                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "longitude",
-                                "latitude"
-                              ],
-                              "title": "Geographic Coordinates",
-                              "type": "object"
-                            },
-                            "streetName": {
-                              "description": "The street name. Just `Drury` in `Drury Lane`.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetNumber": {
-                              "description": "The street number.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetType": {
-                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "subBuilding": {
-                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                              "maxLength": 100,
-                              "type": "string"
-                            }
-                          },
-                          "title": "Address Details",
-                          "type": "object"
-                        },
-                        "addressLine1": {
-                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine2": {
-                          "description": "The second line of the address. For example, office suite or apartment number.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine3": {
-                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea1": {
-                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea2": {
-                          "description": "A city, town, or village. Smaller than `adminArea1`.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea3": {
-                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea4": {
-                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "countryCode": {
-                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                          "$schema": "http://json-schema.org/draft/2020-12/schema",
-                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                          "maxLength": 2,
-                          "minLength": 2,
-                          "pattern": "^([A-Z]{2}|C2)$",
-                          "type": "string"
-                        },
-                        "postalCode": {
-                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                          "maxLength": 60,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode"
-                      ],
-                      "title": "Postal Address (Medium-Grained)",
-                      "type": "object"
+                      "$ref": "#/$defs/address"
                     },
                     "type": "array"
                   }
@@ -305,34 +308,70 @@
             "type": "object"
           }
         },
-        "504": {
-          "description": "The error information."
+        "401": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "404": {
-          "description": "The error information."
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "500": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "502": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "503": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "504": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
         "location.address-verification:execute"
-      ]
+      ],
+      "summary": "Verify a Mailing Address"
     },
     {
-      "operationId": "commerce.location.search-addresses",
-      "method": "GET",
-      "path": "/location/addresses",
-      "summary": "Search addresses for autocomplete",
       "description": "Returns a list of addresses matching the search query for autocomplete functionality",
+      "method": "GET",
+      "operationId": "commerce.location.search-addresses",
       "parameters": [
         {
-          "name": "query",
-          "in": "query",
-          "required": true,
           "description": "The address search query string",
+          "in": "query",
+          "name": "query",
+          "required": true,
           "schema": {
             "type": "string"
           }
         }
       ],
+      "path": "/location/addresses",
       "responses": {
         "200": {
           "description": "GET /location/addresses Successful response",
@@ -342,128 +381,7 @@
                 "properties": {
                   "matches": {
                     "items": {
-                      "$id": "https://godaddy.com/schemas/common/address.v1",
-                      "$schema": "https://json-schema.org/draft/2020-12/schema",
-                      "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
-                      "properties": {
-                        "addressDetails": {
-                          "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
-                          "properties": {
-                            "addressType": {
-                              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
-                              "maxLength": 1,
-                              "type": "string"
-                            },
-                            "buildingName": {
-                              "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "deliveryService": {
-                              "description": "The delivery service. Post office box, bag number, or post office name.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "geoCoordinates": {
-                              "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
-                              "$schema": "https://json-schema.org/draft/2020-12/schema",
-                              "description": "The geographic latitude and longitude coordinates.",
-                              "properties": {
-                                "latitude": {
-                                  "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                },
-                                "longitude": {
-                                  "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "longitude",
-                                "latitude"
-                              ],
-                              "title": "Geographic Coordinates",
-                              "type": "object"
-                            },
-                            "streetName": {
-                              "description": "The street name. Just `Drury` in `Drury Lane`.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetNumber": {
-                              "description": "The street number.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "streetType": {
-                              "description": "The street type. For example, avenue, boulevard, road, or expressway.",
-                              "maxLength": 100,
-                              "type": "string"
-                            },
-                            "subBuilding": {
-                              "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
-                              "maxLength": 100,
-                              "type": "string"
-                            }
-                          },
-                          "title": "Address Details",
-                          "type": "object"
-                        },
-                        "addressLine1": {
-                          "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine2": {
-                          "description": "The second line of the address. For example, office suite or apartment number.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "addressLine3": {
-                          "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea1": {
-                          "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea2": {
-                          "description": "A city, town, or village. Smaller than `adminArea1`.",
-                          "maxLength": 300,
-                          "type": "string"
-                        },
-                        "adminArea3": {
-                          "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "adminArea4": {
-                          "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
-                          "maxLength": 100,
-                          "type": "string"
-                        },
-                        "countryCode": {
-                          "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
-                          "$schema": "http://json-schema.org/draft/2020-12/schema",
-                          "description": "A two-character ISO 3166-1 code that identifies the country or region.",
-                          "maxLength": 2,
-                          "minLength": 2,
-                          "pattern": "^([A-Z]{2}|C2)$",
-                          "type": "string"
-                        },
-                        "postalCode": {
-                          "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
-                          "maxLength": 60,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "countryCode"
-                      ],
-                      "title": "Postal Address (Medium-Grained)",
-                      "type": "object"
+                      "$ref": "#/$defs/address"
                     },
                     "type": "array"
                   }
@@ -484,31 +402,56 @@
             "type": "object"
           }
         },
-        "502": {
-          "description": "The error information."
-        },
-        "504": {
-          "description": "The error information."
-        },
-        "500": {
-          "description": "The error information."
+        "401": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "403": {
-          "description": "The error information."
-        },
-        "503": {
-          "description": "The error information."
-        },
-        "401": {
-          "description": "The error information."
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         },
         "404": {
-          "description": "The error information."
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "500": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "502": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "503": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "504": {
+          "description": "See #/$defs/error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
         "location.address-verification:execute"
-      ]
+      ],
+      "summary": "Search addresses for autocomplete"
     }
-  ]
+  ],
+  "name": "location-addresses",
+  "title": "Addresses API",
+  "version": "1.1.0"
 }

@@ -44,3 +44,12 @@ jobs:
 
       - name: Test
         run: cargo test
+
+      - name: Check API catalog for unresolved external $refs
+        working-directory: .
+        run: |
+          set -o pipefail
+          if grep -r '"[$]ref"[[:space:]]*:[[:space:]]*"[^#]' rust/schemas/api/*.json; then
+            echo "ERROR: unresolved external \$ref(s) in committed API catalog schemas (shown above)"
+            exit 1
+          fi
