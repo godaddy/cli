@@ -45,7 +45,9 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --prefix)   PREFIX="$2"; shift 2 ;;
+    --prefix)
+      if [ $# -lt 2 ]; then echo "Error: --prefix requires a directory argument." >&2; exit 1; fi
+      PREFIX="$2"; shift 2 ;;
     --help|-h)  usage ;;
     *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -113,7 +115,9 @@ curl -fsSL "${BASE_URL}/${CHECKSUMS}" -o "${TMPDIR}/${CHECKSUMS}" \
   || error "Failed to download ${CHECKSUMS}."
 
 info "Verifying checksum..."
-EXPECTED="$(grep "${ARCHIVE}" "${TMPDIR}/${CHECKSUMS}" | awk '{print $1}')"
+# Exact filename match ($2 is the path field from sha256sum/shasum output) so a
+# regex-special character or a substring of another asset name can't mislead us.
+EXPECTED="$(awk -v f="$ARCHIVE" '$2 == f {print $1}' "${TMPDIR}/${CHECKSUMS}")"
 if [ -z "$EXPECTED" ]; then
   error "Checksum for ${ARCHIVE} not found in ${CHECKSUMS}."
 fi
@@ -147,6 +151,12 @@ if [ ! -w "$PREFIX" ]; then
       SUDO="sudo"
     fi
   fi
+fi
+
+# If elevation is required, make sure sudo actually exists before relying on it,
+# so locked-down/minimal hosts get an actionable message instead of "command not found".
+if [ -n "$SUDO" ] && ! command -v sudo >/dev/null 2>&1; then
+  error "Installing to ${PREFIX} requires elevated permissions, but 'sudo' was not found. Re-run with --prefix pointing to a writable directory, e.g. --prefix \"\$HOME/.local/bin\"."
 fi
 
 if [ -n "$SUDO" ]; then

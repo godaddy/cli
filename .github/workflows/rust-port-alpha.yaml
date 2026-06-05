@@ -16,6 +16,13 @@ on:
 permissions:
   contents: write
 
+# The publish job deletes and recreates the single rolling `alpha` release/tag.
+# Serialize runs and cancel superseded ones so two quick pushes can't race and
+# leave the prerelease half-updated; the latest push wins.
+concurrency:
+  group: rust-port-alpha
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test
