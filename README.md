@@ -21,6 +21,8 @@ curl -fsSL https://github.com/godaddy/cli/releases/download/alpha/install.sh | b
 gddy --version
 ```
 
+The installer supports macOS and Linux. On Windows, download the `gddy-x86_64-pc-windows-msvc.zip` asset from the [`alpha` release](https://github.com/godaddy/cli/releases/tag/alpha) and put `gddy.exe` on your `PATH`.
+
 ## Output Contract
 
 All executable commands emit JSON envelopes:
