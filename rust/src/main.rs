@@ -46,10 +46,10 @@ async fn main() -> ExitCode {
             }))
             .with_root_next_actions(Arc::new(|| {
                 vec![
-                    NextAction::new("godaddy auth status", "Check authentication status"),
-                    NextAction::new("godaddy env get", "Get the current active environment"),
-                    NextAction::new("godaddy application list", "List all applications"),
-                    NextAction::new("godaddy tree", "Display the full command tree"),
+                    NextAction::new("auth status", "Check authentication status"),
+                    NextAction::new("env get", "Get the current active environment"),
+                    NextAction::new("application list", "List all applications"),
+                    NextAction::new("tree", "Display the full command tree"),
                 ]
             }))
             .with_module(actions_catalog::module())
