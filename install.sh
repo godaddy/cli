@@ -39,6 +39,8 @@ Examples:
 Prerequisites:
   - curl
   - tar
+  - sha256sum (coreutils) or shasum
+  - install (coreutils)
 EOF
   exit 0
 }
@@ -124,7 +126,9 @@ fi
 
 ACTUAL="$($SHA256_CMD "${TMPDIR}/${ARCHIVE}" | awk '{print $1}')"
 if [ "$EXPECTED" != "$ACTUAL" ]; then
-  error "Checksum mismatch!\n  Expected: ${EXPECTED}\n  Got:      ${ACTUAL}"
+  error "Checksum mismatch!
+  Expected: ${EXPECTED}
+  Got:      ${ACTUAL}"
 fi
 info "Checksum verified."
 
@@ -177,7 +181,7 @@ echo ""
 echo "  Note: this is an experimental Rust-port alpha that installs alongside"
 echo "  the current 'godaddy' CLI."
 echo ""
-if ! printf '%s' ":$PATH:" | grep -q ":${PREFIX}:"; then
+if ! printf '%s' ":$PATH:" | grep -qF ":${PREFIX}:"; then
   warn "${PREFIX} is not on your PATH — add it to use 'gddy' directly."
 fi
 echo "Share this one-liner with your team:"
