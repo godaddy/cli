@@ -13,8 +13,10 @@ on:
     branches: [rust-port]
   workflow_dispatch:
 
+# Least privilege by default; only the publish job needs `contents: write` to
+# roll the `alpha` release/tag.
 permissions:
-  contents: write
+  contents: read
 
 # The publish job deletes and recreates the single rolling `alpha` release/tag.
 # Serialize runs so two quick pushes can't race the single rolling `alpha`
@@ -140,6 +142,8 @@ jobs:
     name: Publish alpha
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
