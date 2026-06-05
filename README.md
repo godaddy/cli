@@ -7,7 +7,18 @@ Agent-first CLI for interacting with GoDaddy Developer Platform.
 Download the latest release binary from the [releases page](https://github.com/godaddy/cli/releases) and place it on your `PATH`.
 
 ```bash
-godaddy --help
+gddy --help
+```
+
+### Alpha (Rust port preview)
+
+The CLI is being rewritten in Rust on the `rust-port` branch with expanded functionality. An experimental **`gddy`** binary is available that can be installed **alongside** the current `godaddy` CLI, so you can try it without disturbing your existing setup. 
+
+To install it, run the following:
+
+```bash
+curl -fsSL https://github.com/godaddy/cli/releases/download/alpha/install.sh | bash
+gddy --version
 ```
 
 ## Output Contract
@@ -15,11 +26,11 @@ godaddy --help
 All executable commands emit JSON envelopes:
 
 ```json
-{"ok":true,"command":"godaddy env get","result":{"environment":"ote"},"next_actions":[...]}
+{"ok":true,"command":"gddy env get","result":{"environment":"ote"},"next_actions":[...]}
 ```
 
 ```json
-{"ok":false,"command":"godaddy application info demo","error":{"message":"Application 'demo' not found","code":"NOT_FOUND"},"fix":"Use discovery commands such as: godaddy application list or godaddy actions list.","next_actions":[...]}
+{"ok":false,"command":"gddy application info demo","error":{"message":"Application 'demo' not found","code":"NOT_FOUND"},"fix":"Use discovery commands such as: gddy application list or gddy actions list.","next_actions":[...]}
 ```
 
 `--help` remains standard CLI help text.
@@ -30,7 +41,7 @@ Long-running operations can stream typed NDJSON events with `--follow`, ending w
 ## Root Discovery
 
 ```bash
-godaddy
+gddy
 ```
 
 Returns environment/auth snapshots and the full command tree.
@@ -45,54 +56,54 @@ Returns environment/auth snapshots and the full command tree.
 
 ### Environment
 
-- `godaddy env`
-- `godaddy env list`
-- `godaddy env get`
-- `godaddy env set <environment>`
-- `godaddy env info [environment]`
+- `gddy env`
+- `gddy env list`
+- `gddy env get`
+- `gddy env set <environment>`
+- `gddy env info [environment]`
 
 ### Authentication
 
-- `godaddy auth`
-- `godaddy auth login`
-- `godaddy auth logout`
-- `godaddy auth status`
+- `gddy auth`
+- `gddy auth login`
+- `gddy auth logout`
+- `gddy auth status`
 
 ### Application
 
-- `godaddy application` (alias: `godaddy app`)
-- `godaddy application list` (alias: `godaddy app ls`)
-- `godaddy application info <name>`
-- `godaddy application validate <name>`
-- `godaddy application update <name> [--label <label>] [--description <description>] [--status <status>]`
-- `godaddy application enable <name> --store-id <storeId>`
-- `godaddy application disable <name> --store-id <storeId>`
-- `godaddy application archive <name>`
-- `godaddy application init [--name <name>] [--description <description>] [--url <url>] [--proxy-url <proxyUrl>] [--scopes <scopes>] [--config <path>] [--environment <env>]`
+- `gddy application` (alias: `gddy app`)
+- `gddy application list` (alias: `gddy app ls`)
+- `gddy application info <name>`
+- `gddy application validate <name>`
+- `gddy application update <name> [--label <label>] [--description <description>] [--status <status>]`
+- `gddy application enable <name> --store-id <storeId>`
+- `gddy application disable <name> --store-id <storeId>`
+- `gddy application archive <name>`
+- `gddy application init [--name <name>] [--description <description>] [--url <url>] [--proxy-url <proxyUrl>] [--scopes <scopes>] [--config <path>] [--environment <env>]`
   - `--url` and `--proxy-url` must be publicly-resolvable `http(s)` URLs. `localhost`, loopback (`127.0.0.1`, `::1`), link-local, and RFC1918 private IPs are rejected. For local development, expose a tunnel (e.g. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [ngrok](https://ngrok.com/)) and register the tunnel hostname.
-- `godaddy application release <name> --release-version <version> [--description <description>] [--config <path>] [--environment <env>]`
-- `godaddy application deploy <name> [--config <path>] [--environment <env>] [--follow]`
+- `gddy application release <name> --release-version <version> [--description <description>] [--config <path>] [--environment <env>]`
+- `gddy application deploy <name> [--config <path>] [--environment <env>] [--follow]`
 
 #### Application Add
 
-- `godaddy application add`
-- `godaddy application add action --name <name> --url <url>`
-- `godaddy application add subscription --name <name> --events <events> --url <url>`
-- `godaddy application add extension`
-- `godaddy application add extension embed --name <name> --handle <handle> --source <source> --target <targets>`
-- `godaddy application add extension checkout --name <name> --handle <handle> --source <source> --target <targets>`
-- `godaddy application add extension blocks --source <source>`
+- `gddy application add`
+- `gddy application add action --name <name> --url <url>`
+- `gddy application add subscription --name <name> --events <events> --url <url>`
+- `gddy application add extension`
+- `gddy application add extension embed --name <name> --handle <handle> --source <source> --target <targets>`
+- `gddy application add extension checkout --name <name> --handle <handle> --source <source> --target <targets>`
+- `gddy application add extension blocks --source <source>`
 
 ### Webhooks
 
-- `godaddy webhook`
-- `godaddy webhook events`
+- `gddy webhook`
+- `gddy webhook events`
 
 ### Actions
 
-- `godaddy actions`
-- `godaddy actions list`
-- `godaddy actions describe <action>`
+- `gddy actions`
+- `gddy actions list`
+- `gddy actions describe <action>`
 
 ## Development
 

@@ -94,7 +94,7 @@ pub fn module() -> Module {
                     .to_owned();
                 let schema = load_action_schema(&name).ok_or_else(|| {
                     cli_engine::CliCoreError::message(format!(
-                        "action {name:?} not found; run `godaddy actions list` to see available actions"
+                        "action {name:?} not found; run `gddy actions list` to see available actions"
                     ))
                 })?;
                 Ok(CommandResult::new(schema))

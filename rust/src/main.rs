@@ -24,7 +24,7 @@ async fn main() -> ExitCode {
     let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
 
     let cli = Cli::new(
-        CliConfig::new("godaddy", "GoDaddy developer CLI", "godaddy")
+        CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
             .with_build(BuildInfo::new(env!("CARGO_PKG_VERSION")))
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)

@@ -17,20 +17,20 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: godaddy
+            artifact: gddy
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: godaddy
+            artifact: gddy
             cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: godaddy
+            artifact: gddy
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: godaddy
+            artifact: gddy
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact: godaddy.exe
+            artifact: gddy.exe
     defaults:
       run:
         working-directory: rust
@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          ARCHIVE="godaddy-${TAG}-${{ matrix.target }}"
+          ARCHIVE="gddy-${TAG}-${{ matrix.target }}"
           mkdir dist
           cp target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/
           cd dist
