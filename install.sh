@@ -108,7 +108,9 @@ info "Installing gddy alpha (${TAG})"
 ARCHIVE="gddy-${PLATFORM}.tar.gz"
 CHECKSUMS="gddy-checksums-sha256.txt"
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-TMPDIR="$(mktemp -d)"
+# GNU mktemp accepts a bare `-d`; BSD/macOS mktemp needs a template, so fall
+# back to `-t` for portability across both.
+TMPDIR="$(mktemp -d 2>/dev/null || mktemp -d -t gddy)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 info "Downloading ${ARCHIVE} and checksums..."

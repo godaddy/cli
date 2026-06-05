@@ -119,7 +119,9 @@ jobs:
           mkdir -p staging
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             cp "target/${TARGET}/release/gddy.exe" "staging/gddy.exe"
-            7z a "${ARCHIVE}.zip" "./staging/gddy.exe"
+            # Zip from inside staging/ so gddy.exe sits at the archive root
+            # (matching the tarballs and release.yaml), not under staging/.
+            (cd staging && 7z a "../${ARCHIVE}.zip" gddy.exe)
             echo "ASSET=rust/${ARCHIVE}.zip" >> "$GITHUB_ENV"
           else
             cp "target/${TARGET}/release/gddy" "staging/gddy"
