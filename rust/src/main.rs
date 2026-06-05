@@ -10,7 +10,7 @@ mod webhook;
 use std::{process::ExitCode, sync::Arc};
 
 use clap::Arg;
-use cli_engine::{BuildInfo, Cli, CliConfig};
+use cli_engine::{BuildInfo, Cli, CliConfig, NextAction};
 
 use crate::env::get_env;
 
@@ -43,6 +43,14 @@ async fn main() -> ExitCode {
                     mw.env = env.clone();
                 }
                 Ok(())
+            }))
+            .with_root_next_actions(Arc::new(|| {
+                vec![
+                    NextAction::new("auth status", "Check authentication status"),
+                    NextAction::new("env get", "Get the current active environment"),
+                    NextAction::new("application list", "List all applications"),
+                    NextAction::new("tree", "Display the full command tree"),
+                ]
             }))
             .with_module(actions_catalog::module())
             .with_module(api_explorer::module())
