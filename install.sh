@@ -61,8 +61,9 @@ info()  { printf "\033[1;34m==>\033[0m %s\n" "$1"; }
 warn()  { printf "\033[1;33mWARN:\033[0m %s\n" "$1"; }
 error() { printf "\033[1;31mERROR:\033[0m %s\n" "$1" >&2; exit 1; }
 
-command -v curl >/dev/null 2>&1 || error "curl is required but not found."
-command -v tar  >/dev/null 2>&1 || error "tar is required but not found."
+command -v curl    >/dev/null 2>&1 || error "curl is required but not found."
+command -v tar     >/dev/null 2>&1 || error "tar is required but not found."
+command -v install >/dev/null 2>&1 || error "install (coreutils) is required but not found."
 
 # Detect SHA-256 tool.
 if command -v sha256sum >/dev/null 2>&1; then
