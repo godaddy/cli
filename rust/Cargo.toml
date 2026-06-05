@@ -9,7 +9,7 @@ license = "Proprietary"
 members = [".", "tools/generate-api-catalog"]
 
 [[bin]]
-name = "godaddy"
+name = "gddy"
 path = "src/main.rs"
 
 [dependencies]

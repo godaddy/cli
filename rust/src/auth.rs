@@ -32,7 +32,7 @@ impl GoDaddyAuthProvider {
             OTE_CLIENT_ID,
             SCOPES,
         )
-        .with_app_id("godaddy")
+        .with_app_id("gddy")
         .with_redirect_uri("http://localhost:7443/callback");
 
         let prod = PkceAuthProvider::new(
@@ -42,7 +42,7 @@ impl GoDaddyAuthProvider {
             PROD_CLIENT_ID,
             SCOPES,
         )
-        .with_app_id("godaddy")
+        .with_app_id("gddy")
         .with_redirect_uri("http://localhost:7443/callback");
 
         Self { ote, prod }

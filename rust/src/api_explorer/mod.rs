@@ -540,7 +540,7 @@ fn call_command() -> RuntimeCommandSpec {
 
             if status == 403 && !scopes.is_empty() {
                 return Err(cli_engine::CliCoreError::message(format!(
-                    "403 Forbidden — your token may be missing scope(s): {}\nRun `godaddy auth login` to re-authenticate.",
+                    "403 Forbidden — your token may be missing scope(s): {}\nRun `gddy auth login` to re-authenticate.",
                     scopes.join(", ")
                 )));
             }

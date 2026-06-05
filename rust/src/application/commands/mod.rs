@@ -627,7 +627,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .map(str::to_owned);
             let Some(release_id) = release_id else {
                 return Err(cli_engine::CliCoreError::message(format!(
-                    "application '{name}' has no releases — create one first with: godaddy application release --application-id {application_id} --version 0.0.1"
+                    "application '{name}' has no releases — create one first with: gddy application release --application-id {application_id} --version 0.0.1"
                 )));
             };
             sender

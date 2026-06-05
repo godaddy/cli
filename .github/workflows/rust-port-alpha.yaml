@@ -1,0 +1,196 @@
+name: rust-port alpha
+
+# Publishes a `gddy` alpha binary on every push to the rust-port feature branch
+# so people can try the Rust port alongside the legacy `godaddy` CLI. The Rust
+# binary is named `gddy` (see rust/Cargo.toml). Output is a single rolling
+# prerelease on the fixed `alpha` tag, overwritten on each push.
+#
+# This repo is PUBLIC, so the install flow uses plain `curl` against the public
+# release assets — no `gh` or auth required (see install.sh).
+
+on:
+  push:
+    branches: [rust-port]
+  workflow_dispatch:
+
+# Least privilege by default; only the publish job needs `contents: write` to
+# roll the `alpha` release/tag.
+permissions:
+  contents: read
+
+# The publish job deletes and recreates the single rolling `alpha` release/tag.
+# Serialize runs so two quick pushes can't race the single rolling `alpha`
+# release. cancel-in-progress is false on purpose: the publish job deletes and
+# recreates the release/tag, so a cancellation mid-window could leave `alpha`
+# missing. Queuing instead lets each publish finish atomically; the last one wins.
+concurrency:
+  group: rust-port-alpha
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-test-
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Test
+        run: cargo test
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Install cross
+        if: matrix.cross == true
+        run: cargo install cross --locked
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package gddy
+        shell: bash
+        run: |
+          TARGET="${{ matrix.target }}"
+          ARCHIVE="gddy-${TARGET}"
+          mkdir -p staging
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "target/${TARGET}/release/gddy.exe" "staging/gddy.exe"
+            # Zip from inside staging/ so gddy.exe sits at the archive root
+            # (matching the tarballs and release.yaml), not under staging/.
+            (cd staging && 7z a "../${ARCHIVE}.zip" gddy.exe)
+            echo "ASSET=rust/${ARCHIVE}.zip" >> "$GITHUB_ENV"
+          else
+            cp "target/${TARGET}/release/gddy" "staging/gddy"
+            chmod 755 "staging/gddy"
+            tar -czf "${ARCHIVE}.tar.gz" -C staging gddy
+            echo "ASSET=rust/${ARCHIVE}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  publish:
+    name: Publish alpha
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum gddy-*.tar.gz gddy-*.zip > gddy-checksums-sha256.txt
+
+      - name: Publish rolling alpha prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          BUILT_ON="$(date -u +%Y-%m-%d)"
+          REPO="${{ github.repository }}"
+
+          # Roll the single alpha release: drop the old tag + release so assets
+          # and notes reflect the latest commit, then recreate.
+          gh release delete alpha --yes --cleanup-tag || true
+
+          {
+            printf '**Experimental alpha of the GoDaddy CLI Rust port.** Built from `%s` on %s.\n\n' "$SHORT_SHA" "$BUILT_ON"
+            printf 'Installs as `gddy` so you can try it alongside the legacy `godaddy` CLI. It tracks the tip of the `rust-port` branch and is overwritten on every push — expect breakage.\n\n'
+            printf 'Install / update (public repo — no auth needed):\n\n'
+            printf '```\n'
+            printf 'curl -fsSL https://github.com/%s/releases/download/alpha/install.sh | bash\n' "$REPO"
+            printf '```\n'
+          } > alpha-notes.md
+
+          gh release create alpha \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "rust-port alpha (${SHORT_SHA})" \
+            --notes-file alpha-notes.md \
+            dist/gddy-x86_64-unknown-linux-gnu.tar.gz \
+            dist/gddy-aarch64-unknown-linux-gnu.tar.gz \
+            dist/gddy-x86_64-apple-darwin.tar.gz \
+            dist/gddy-aarch64-apple-darwin.tar.gz \
+            dist/gddy-x86_64-pc-windows-msvc.zip \
+            dist/gddy-checksums-sha256.txt \
+            install.sh
