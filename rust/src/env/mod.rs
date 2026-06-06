@@ -29,7 +29,10 @@ pub fn get_env() -> Option<String> {
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty())
+        // Ignore empty or unrecognized values (e.g. a hand-edited/corrupted
+        // .gdenv) so callers fall back to DEFAULT_ENV instead of propagating an
+        // unknown environment that helpers would silently treat as prod.
+        .filter(|s| KNOWN_ENVS.contains(&s.as_str()))
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {

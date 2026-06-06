@@ -176,6 +176,7 @@ if [ "$OS" = "windows" ]; then
     error "Need 'unzip' or 'powershell.exe' to extract ${ARCHIVE} on Windows, but neither was found."
   fi
 else
+  command -v tar >/dev/null 2>&1 || error "tar is required to extract ${ARCHIVE} but was not found."
   tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$EXTRACT_DIR"
 fi
 
