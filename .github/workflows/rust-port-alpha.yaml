@@ -177,8 +177,13 @@ jobs:
             printf '**Experimental alpha of the GoDaddy CLI Rust port.** Built from `%s` on %s.\n\n' "$SHORT_SHA" "$BUILT_ON"
             printf 'Installs as `gddy` so you can try it alongside the legacy `godaddy` CLI. It tracks the tip of the `rust-port` branch and is overwritten on every push — expect breakage.\n\n'
             printf 'Install / update (public repo — no auth needed):\n\n'
+            printf 'macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows):\n\n'
             printf '```\n'
             printf 'curl -fsSL https://github.com/%s/releases/download/alpha/install.sh | bash\n' "$REPO"
+            printf '```\n\n'
+            printf 'Windows (PowerShell):\n\n'
+            printf '```\n'
+            printf 'irm https://github.com/%s/releases/download/alpha/install.ps1 | iex\n' "$REPO"
             printf '```\n'
           } > alpha-notes.md
 
