@@ -125,8 +125,10 @@ if [ "$OS" = "windows" ]; then
     if [ -n "${LOCALAPPDATA:-}" ]; then
       lad="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null || printf '%s' "$LOCALAPPDATA")"
       PREFIX="${lad}/Programs/gddy"
-    else
+    elif [ -n "${HOME:-}" ]; then
       PREFIX="${HOME}/bin"
+    else
+      error "Cannot determine a default install directory (LOCALAPPDATA and HOME are unset). Re-run with --prefix <dir>."
     fi
   fi
 else

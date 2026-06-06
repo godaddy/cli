@@ -22,7 +22,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Prefix = (Join-Path $env:LOCALAPPDATA 'Programs\gddy')
+    [string]$Prefix
 )
 
 Set-StrictMode -Version Latest
@@ -36,6 +36,16 @@ function Write-Warn  { param([string]$Message) Write-Host "WARN: $Message" -Fore
 # Use `throw`, not `exit`: the documented invocation is `irm ... | iex`, which
 # runs this script in the caller's session — `exit` would close their terminal.
 function Die         { param([string]$Message) Write-Host "ERROR: $Message" -ForegroundColor Red; throw $Message }
+
+# Resolve the default install dir here (not in the param default) so a missing
+# LOCALAPPDATA can fall back / error cleanly instead of throwing in Join-Path
+# before Die is available.
+if (-not $Prefix) {
+    $base = if ($env:LOCALAPPDATA)   { $env:LOCALAPPDATA }
+            elseif ($env:USERPROFILE) { $env:USERPROFILE }
+            else { Die "Cannot determine a default install directory (LOCALAPPDATA and USERPROFILE are both unset). Re-run with -Prefix <dir>." }
+    $Prefix = Join-Path $base 'Programs\gddy'
+}
 
 # Force TLS 1.2 for older PowerShell / .NET defaults.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch { }
