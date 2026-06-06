@@ -18,6 +18,7 @@ set -euo pipefail
 REPO="godaddy/cli"
 TAG="alpha"
 PREFIX="/usr/local/bin"
+PREFIX_EXPLICIT=0  # set when the user passes --prefix; gates the Windows default
 
 # ── 1. Arg parsing ──────────────────────────────────────────────────────────
 
@@ -45,8 +46,9 @@ Prerequisites:
 
 Windows:
   This script also runs under Git Bash / MSYS2 / Cygwin: it fetches the
-  x86_64-pc-windows-msvc .zip and installs gddy.exe. For a native PowerShell
-  install instead, use install.ps1.
+  x86_64-pc-windows-msvc .zip and installs gddy.exe. On Windows the default
+  prefix is %LOCALAPPDATA%\Programs\gddy (user-writable, no sudo) unless you
+  pass --prefix. For a native PowerShell install instead, use install.ps1.
 EOF
   exit 0
 }
@@ -55,7 +57,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --prefix)
       if [ $# -lt 2 ]; then echo "Error: --prefix requires a directory argument." >&2; exit 1; fi
-      PREFIX="$2"; shift 2 ;;
+      PREFIX="$2"; PREFIX_EXPLICIT=1; shift 2 ;;
     --help|-h)  usage ;;
     *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -116,6 +118,17 @@ esac
 if [ "$OS" = "windows" ]; then
   BIN="gddy.exe"
   ARCHIVE_EXT="zip"
+  # /usr/local/bin is a poor default on Windows shells: there's usually no sudo
+  # and it often isn't user-writable (Git for Windows lives under Program Files).
+  # Default to a user-writable dir matching install.ps1 unless --prefix was given.
+  if [ "$PREFIX_EXPLICIT" = "0" ]; then
+    if [ -n "${LOCALAPPDATA:-}" ]; then
+      lad="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null || printf '%s' "$LOCALAPPDATA")"
+      PREFIX="${lad}/Programs/gddy"
+    else
+      PREFIX="${HOME}/bin"
+    fi
+  fi
 else
   BIN="gddy"
   ARCHIVE_EXT="tar.gz"
