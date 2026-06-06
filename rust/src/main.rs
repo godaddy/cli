@@ -34,7 +34,7 @@ async fn main() -> ExitCode {
                         .long("env")
                         .global(true)
                         .value_name("ENV")
-                        .default_value(get_env().unwrap_or_else(|| "ote".to_owned()))
+                        .default_value(get_env().unwrap_or_else(|| env::DEFAULT_ENV.to_owned()))
                         .help("Target environment (ote|prod)"),
                 )
             }))

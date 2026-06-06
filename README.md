@@ -14,14 +14,25 @@ gddy --help
 
 The CLI is being rewritten in Rust on the `rust-port` branch with expanded functionality. An experimental **`gddy`** binary is available that can be installed **alongside** the current `godaddy` CLI, so you can try it without disturbing your existing setup.
 
-To install it, run the following:
+To install it, run the following.
+
+**macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows):**
 
 ```bash
 curl -fsSL https://github.com/godaddy/cli/releases/download/alpha/install.sh | bash
 gddy --version
 ```
 
-The installer supports macOS and Linux. On Windows, download the `gddy-x86_64-pc-windows-msvc.zip` asset from the [`alpha` release](https://github.com/godaddy/cli/releases/tag/alpha) and put `gddy.exe` on your `PATH`.
+**Windows (PowerShell):**
+
+```powershell
+irm https://github.com/godaddy/cli/releases/download/alpha/install.ps1 | iex
+gddy --version
+```
+
+Both installers download, checksum-verify, and install the binary for your
+platform (`gddy.exe` on Windows). If you'd rather install by hand, download the
+`gddy-x86_64-pc-windows-msvc.zip` asset from the [`alpha` release](https://github.com/godaddy/cli/releases/tag/alpha) and put `gddy.exe` on your `PATH`.
 
 ## Output Contract
 

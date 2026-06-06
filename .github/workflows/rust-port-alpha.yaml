@@ -193,4 +193,5 @@ jobs:
             dist/gddy-aarch64-apple-darwin.tar.gz \
             dist/gddy-x86_64-pc-windows-msvc.zip \
             dist/gddy-checksums-sha256.txt \
-            install.sh
+            install.sh \
+            install.ps1

@@ -6,27 +6,40 @@ use serde_json::json;
 const OTE_API_URL: &str = "https://api.ote-godaddy.com";
 const PROD_API_URL: &str = "https://api.godaddy.com";
 const KNOWN_ENVS: &[&str] = &["ote", "prod"];
+pub const DEFAULT_ENV: &str = "prod";
 
-fn gdenv_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    std::path::PathBuf::from(home).join(".gdenv")
+/// Resolve the path to the `.gdenv` state file in the user's home directory.
+///
+/// Uses `dirs::home_dir()` for cross-platform resolution (`$HOME` on Unix,
+/// `%USERPROFILE%`/known folders on Windows) rather than reading `$HOME`
+/// directly, which is unset on Windows.
+fn gdenv_path() -> std::io::Result<std::path::PathBuf> {
+    dirs::home_dir()
+        .map(|home| home.join(".gdenv"))
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "could not determine home directory",
+            )
+        })
 }
 
 pub fn get_env() -> Option<String> {
-    std::fs::read_to_string(gdenv_path())
+    gdenv_path()
         .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty())
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {
-    std::fs::write(gdenv_path(), env)
+    std::fs::write(gdenv_path()?, env)
 }
 
 fn api_url_for(env: &str) -> &'static str {
     match env {
-        "prod" => PROD_API_URL,
-        _ => OTE_API_URL,
+        "ote" => OTE_API_URL,
+        _ => PROD_API_URL,
     }
 }
 
@@ -38,7 +51,7 @@ pub fn module() -> Module {
                     .with_system("env")
                     .with_tier(Tier::Read),
                 |_cred, _args| async move {
-                    let current = get_env().unwrap_or_else(|| "ote".to_owned());
+                    let current = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     let envs: Vec<_> = KNOWN_ENVS
                         .iter()
                         .map(|&e| {
@@ -57,7 +70,7 @@ pub fn module() -> Module {
                     .with_system("env")
                     .with_tier(Tier::Read),
                 |_cred, _args| async move {
-                    let env = get_env().unwrap_or_else(|| "ote".to_owned());
+                    let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     Ok(CommandResult::new(json!({
                         "env": env,
                         "apiUrl": api_url_for(&env),
@@ -69,7 +82,10 @@ pub fn module() -> Module {
                     .with_system("env")
                     .with_tier(Tier::Mutate)
                     .with_arg(
-                        clap::Arg::new("env")
+                        // Distinct id from the global `--env` flag (also id "env");
+                        // a shared id makes the positional collide with the flag's
+                        // default, so `env set <X>` would ignore <X>.
+                        clap::Arg::new("environment")
                             .value_name("ENV")
                             .required(true)
                             .help("Environment to activate (ote|prod)"),
@@ -77,7 +93,7 @@ pub fn module() -> Module {
                 |ctx| async move {
                     let env = ctx
                         .args
-                        .get("env")
+                        .get("environment")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_owned();
@@ -88,7 +104,9 @@ pub fn module() -> Module {
                         )));
                     }
                     set_env(&env).map_err(|e| {
-                        cli_engine::CliCoreError::message(format!("failed to write ~/.gdenv: {e}"))
+                        cli_engine::CliCoreError::message(format!(
+                            "failed to write .gdenv state file: {e}"
+                        ))
                     })?;
                     Ok(CommandResult::new(json!({
                         "env": env,
@@ -101,7 +119,7 @@ pub fn module() -> Module {
                     .with_system("env")
                     .with_tier(Tier::Read),
                 |_cred, _args| async move {
-                    let env = get_env().unwrap_or_else(|| "ote".to_owned());
+                    let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     Ok(CommandResult::new(json!({
                         "env": env,
                         "apiUrl": api_url_for(&env),

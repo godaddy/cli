@@ -38,9 +38,15 @@ Examples:
 
 Prerequisites:
   - curl
-  - tar
+  - tar                       (macOS/Linux archives)
+  - unzip or powershell.exe   (Windows .zip, e.g. under Git Bash/MSYS)
   - sha256sum (coreutils) or shasum
   - install (coreutils)
+
+Windows:
+  This script also runs under Git Bash / MSYS2 / Cygwin: it fetches the
+  x86_64-pc-windows-msvc .zip and installs gddy.exe. For a native PowerShell
+  install instead, use install.ps1.
 EOF
   exit 0
 }
@@ -62,8 +68,9 @@ warn()  { printf "\033[1;33mWARN:\033[0m %s\n" "$1"; }
 error() { printf "\033[1;31mERROR:\033[0m %s\n" "$1" >&2; exit 1; }
 
 command -v curl    >/dev/null 2>&1 || error "curl is required but not found."
-command -v tar     >/dev/null 2>&1 || error "tar is required but not found."
 command -v install >/dev/null 2>&1 || error "install (coreutils) is required but not found."
+# The extraction tool (tar vs unzip/powershell) is OS-specific and checked after
+# platform detection below.
 
 # Detect SHA-256 tool.
 if command -v sha256sum >/dev/null 2>&1; then
@@ -82,7 +89,10 @@ ARCH="$(uname -m)"
 case "$OS" in
   darwin) ;;
   linux)  ;;
-  *)      error "Unsupported OS: $OS. gddy supports darwin and linux." ;;
+  # Git Bash, MSYS2, and Cygwin report e.g. "mingw64_nt-10.0-26200"; normalize
+  # them all to "windows" and install the native gddy.exe from the .zip asset.
+  mingw*|msys*|cygwin*|windows*) OS="windows" ;;
+  *)      error "Unsupported OS: $OS. gddy supports darwin, linux, and windows (Git Bash/MSYS2/Cygwin)." ;;
 esac
 
 case "$ARCH" in
@@ -98,14 +108,25 @@ case "${OS}-${ARCH}" in
   darwin-aarch64) PLATFORM="aarch64-apple-darwin" ;;
   linux-x86_64)   PLATFORM="x86_64-unknown-linux-gnu" ;;
   linux-aarch64)  PLATFORM="aarch64-unknown-linux-gnu" ;;
+  windows-x86_64) PLATFORM="x86_64-pc-windows-msvc" ;;
   *)              error "Unsupported platform: ${OS}-${ARCH}" ;;
 esac
+
+# Windows ships a .zip with gddy.exe; the unix targets ship a .tar.gz with gddy.
+if [ "$OS" = "windows" ]; then
+  BIN="gddy.exe"
+  ARCHIVE_EXT="zip"
+else
+  BIN="gddy"
+  ARCHIVE_EXT="tar.gz"
+fi
+
 info "Detected platform: ${PLATFORM}"
 info "Installing gddy alpha (${TAG})"
 
 # ── 4. Download + verify ───────────────────────────────────────────────────
 
-ARCHIVE="gddy-${PLATFORM}.tar.gz"
+ARCHIVE="gddy-${PLATFORM}.${ARCHIVE_EXT}"
 CHECKSUMS="gddy-checksums-sha256.txt"
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 # GNU mktemp accepts a bare `-d`; BSD/macOS mktemp needs a template, so fall
@@ -139,10 +160,27 @@ info "Checksum verified."
 
 EXTRACT_DIR="${TMPDIR}/extract"
 mkdir -p "$EXTRACT_DIR"
-tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$EXTRACT_DIR"
+if [ "$OS" = "windows" ]; then
+  # Prefer unzip; fall back to PowerShell's Expand-Archive (always present on
+  # Windows). cygpath converts the MSYS/Cygwin paths to the Windows form that
+  # powershell.exe expects.
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -q "${TMPDIR}/${ARCHIVE}" -d "$EXTRACT_DIR"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    win_src="$(cygpath -w "${TMPDIR}/${ARCHIVE}" 2>/dev/null || printf '%s' "${TMPDIR}/${ARCHIVE}")"
+    win_dst="$(cygpath -w "${EXTRACT_DIR}" 2>/dev/null || printf '%s' "${EXTRACT_DIR}")"
+    powershell.exe -NoProfile -NonInteractive -Command \
+      "Expand-Archive -LiteralPath '${win_src}' -DestinationPath '${win_dst}' -Force" \
+      || error "Failed to extract ${ARCHIVE} with PowerShell Expand-Archive."
+  else
+    error "Need 'unzip' or 'powershell.exe' to extract ${ARCHIVE} on Windows, but neither was found."
+  fi
+else
+  tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$EXTRACT_DIR"
+fi
 
-if [ ! -f "${EXTRACT_DIR}/gddy" ]; then
-  error "Unexpected archive layout — expected a 'gddy' binary at the archive root."
+if [ ! -f "${EXTRACT_DIR}/${BIN}" ]; then
+  error "Unexpected archive layout — expected a '${BIN}' binary at the archive root."
 fi
 
 # Determine if we need sudo for the prefix directory.
@@ -170,15 +208,15 @@ if [ -n "$SUDO" ]; then
   $SUDO mkdir -p "$PREFIX"
 fi
 
-$SUDO install -m 755 "${EXTRACT_DIR}/gddy" "${PREFIX}/gddy"
-info "Binary installed to ${PREFIX}/gddy"
+$SUDO install -m 755 "${EXTRACT_DIR}/${BIN}" "${PREFIX}/${BIN}"
+info "Binary installed to ${PREFIX}/${BIN}"
 
 # ── 6. Success ──────────────────────────────────────────────────────────────
 
 echo ""
 info "gddy alpha (${TAG}) installed successfully!"
 echo ""
-echo "  Binary:    ${PREFIX}/gddy"
+echo "  Binary:    ${PREFIX}/${BIN}"
 echo "  Verify:    gddy --version"
 echo ""
 echo "  Note: this is an experimental Rust-port alpha that installs alongside"
