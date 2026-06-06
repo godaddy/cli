@@ -30,7 +30,9 @@ Usage:
   bash install.sh [OPTIONS]
 
 Options:
-  --prefix  DIR       Binary install directory (default: /usr/local/bin)
+  --prefix  DIR       Binary install directory
+                      (default: /usr/local/bin on macOS/Linux;
+                       %LOCALAPPDATA%\Programs\gddy on Windows)
   --help              Show this help message
 
 Examples:
