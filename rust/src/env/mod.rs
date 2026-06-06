@@ -36,7 +36,12 @@ pub fn get_env() -> Option<String> {
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {
-    std::fs::write(gdenv_path()?, env)
+    let path = gdenv_path()?;
+    std::fs::write(&path, env).map_err(|e| {
+        // Include the resolved (platform-dependent) path so callers can surface
+        // an actionable message — the raw write error omits it.
+        std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
+    })
 }
 
 fn api_url_for(env: &str) -> &'static str {
