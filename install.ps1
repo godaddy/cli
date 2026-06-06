@@ -33,7 +33,9 @@ $Tag  = 'alpha'
 
 function Write-Info  { param([string]$Message) Write-Host "==> $Message" -ForegroundColor Blue }
 function Write-Warn  { param([string]$Message) Write-Host "WARN: $Message" -ForegroundColor Yellow }
-function Die         { param([string]$Message) Write-Host "ERROR: $Message" -ForegroundColor Red; exit 1 }
+# Use `throw`, not `exit`: the documented invocation is `irm ... | iex`, which
+# runs this script in the caller's session — `exit` would close their terminal.
+function Die         { param([string]$Message) Write-Host "ERROR: $Message" -ForegroundColor Red; throw $Message }
 
 # Force TLS 1.2 for older PowerShell / .NET defaults.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch { }

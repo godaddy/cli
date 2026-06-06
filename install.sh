@@ -169,8 +169,12 @@ if [ "$OS" = "windows" ]; then
   elif command -v powershell.exe >/dev/null 2>&1; then
     win_src="$(cygpath -w "${TMPDIR}/${ARCHIVE}" 2>/dev/null || printf '%s' "${TMPDIR}/${ARCHIVE}")"
     win_dst="$(cygpath -w "${EXTRACT_DIR}" 2>/dev/null || printf '%s' "${EXTRACT_DIR}")"
+    # Escape ' as '' so a path containing an apostrophe (legal in Windows
+    # usernames/paths) can't terminate the PowerShell single-quoted literal.
+    ps_src="${win_src//\'/\'\'}"
+    ps_dst="${win_dst//\'/\'\'}"
     powershell.exe -NoProfile -NonInteractive -Command \
-      "Expand-Archive -LiteralPath '${win_src}' -DestinationPath '${win_dst}' -Force" \
+      "Expand-Archive -LiteralPath '${ps_src}' -DestinationPath '${ps_dst}' -Force" \
       || error "Failed to extract ${ARCHIVE} with PowerShell Expand-Archive."
   else
     error "Need 'unzip' or 'powershell.exe' to extract ${ARCHIVE} on Windows, but neither was found."
