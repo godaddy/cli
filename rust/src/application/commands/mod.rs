@@ -1075,11 +1075,12 @@ mod tests {
             .run(["gddy", "application", "list", "--output", "json"])
             .await;
 
-        // Exit code 2 is the engine's auth-failure code, and the rendered error
-        // names the missing provider — proving the command was rejected at
+        // The engine maps auth-resolution failures to exit code 2; together with
+        // the provider-named error below this proves the command was rejected at
         // credential resolution, not by the handler hitting the network.
+        const AUTH_FAILURE_EXIT: i32 = 2;
         assert_eq!(
-            output.exit_code, 2,
+            output.exit_code, AUTH_FAILURE_EXIT,
             "application list must fail closed at auth resolution, got: {}",
             output.rendered
         );

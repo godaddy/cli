@@ -160,7 +160,7 @@ mod tests {
 
         let output = cli.run(["gddy", "env", "list", "--output", "json"]).await;
 
-        assert_eq!(output.exit_code, 0, "stderr: {}", output.rendered);
+        assert_eq!(output.exit_code, 0, "rendered output: {}", output.rendered);
         let json: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json output");
         let envs = json["data"].as_array().expect("data array");
