@@ -6,12 +6,10 @@ use serde_json::json;
 
 use crate::application::client::{ApplicationClient, api_url_for_env};
 
-fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<ApplicationClient> {
-    let token = ctx
-        .credential
-        .as_ref()
-        .map(|c| c.token.clone())
-        .unwrap_or_default();
+async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<ApplicationClient> {
+    // Lazily resolve the credential; this triggers the auth flow only for
+    // commands that actually call the API.
+    let token = ctx.credential().await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env);
     Ok(ApplicationClient::new(base_url, token))
 }
@@ -48,7 +46,7 @@ fn list_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status"),
         |ctx| async move {
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client.list_applications().await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 NextAction::new(
@@ -80,7 +78,7 @@ fn info_command() -> RuntimeCommandSpec {
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client.get_application(&name).await.map_err(client_err)?;
             Ok(
                 CommandResult::new(data["application"].clone()).with_next_actions(vec![
@@ -178,7 +176,7 @@ fn init_command() -> RuntimeCommandSpec {
                 .map(|s| s.split(',').map(|p| p.trim().to_owned()).collect())
                 .unwrap_or_else(|| vec!["apps.app-registry:read".to_owned()]);
 
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client
                 .create_application(json!({
                     "name": name,
@@ -235,6 +233,7 @@ fn validate_command() -> RuntimeCommandSpec {
         CommandSpec::new("validate", "Validate godaddy.toml config")
             .with_system("applications")
             .with_tier(Tier::Read)
+            .no_auth(true)
             .with_arg(
                 clap::Arg::new("config")
                     .long("config")
@@ -294,7 +293,7 @@ fn update_command() -> RuntimeCommandSpec {
             if let Some(desc) = ctx.args.get("description").and_then(|v| v.as_str()) {
                 input.insert("description".to_owned(), json!(desc));
             }
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client
                 .update_application(&id, json!(input))
                 .await
@@ -356,7 +355,7 @@ fn enable_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let store_id = arg_str(&ctx, "store-id").to_owned();
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client
                 .enable_application(json!({ "applicationName": name, "storeId": store_id }))
                 .await
@@ -422,7 +421,7 @@ fn disable_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let store_id = arg_str(&ctx, "store-id").to_owned();
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client
                 .disable_application(json!({ "applicationName": name, "storeId": store_id }))
                 .await
@@ -482,7 +481,7 @@ fn archive_command() -> RuntimeCommandSpec {
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let app_data = client.get_application(&name).await.map_err(client_err)?;
             let app_id = app_data["application"]["id"]
                 .as_str()
@@ -540,7 +539,7 @@ fn release_command() -> RuntimeCommandSpec {
             if let Some(desc) = description {
                 input["description"] = json!(desc);
             }
-            let client = make_client(&ctx)?;
+            let client = make_client(&ctx).await?;
             let data = client.create_release(input).await.map_err(client_err)?;
             Ok(
                 CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
@@ -573,11 +572,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .unwrap_or("")
                 .to_owned();
             let env = ctx.middleware.env.clone();
-            let token = ctx
-                .credential
-                .as_ref()
-                .map(|c| c.token.clone())
-                .unwrap_or_default();
+            let token = ctx.credential().await?.token;
             let base_url = api_url_for_env(&env);
             let client = ApplicationClient::new(base_url, token);
 
@@ -831,6 +826,7 @@ pub fn add_group() -> RuntimeGroupSpec {
             CommandSpec::new("action", "Add an action to godaddy.toml")
                 .with_system("applications")
                 .with_tier(Tier::Mutate)
+                .no_auth(true)
                 .with_arg(
                     clap::Arg::new("name")
                         .long("name")
@@ -862,6 +858,7 @@ pub fn add_group() -> RuntimeGroupSpec {
             CommandSpec::new("subscription", "Add a webhook subscription to godaddy.toml")
                 .with_system("applications")
                 .with_tier(Tier::Mutate)
+                .no_auth(true)
                 .with_arg(
                     clap::Arg::new("name")
                         .long("name")
@@ -925,6 +922,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("embed", "Add an embed extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .no_auth(true)
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
@@ -974,6 +972,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("checkout", "Add a checkout extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .no_auth(true)
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
@@ -1023,6 +1022,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("blocks", "Add a blocks extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .no_auth(true)
             .with_arg(
                 clap::Arg::new("source")
                     .long("source")
@@ -1051,4 +1051,34 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             ))
         },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::{Cli, CliConfig};
+
+    /// API commands must stay fail-closed: `application list` calls the backend,
+    /// so it must require authentication. Built with **no auth provider
+    /// registered**, the engine's default `AuthRequirement::Required` must reject
+    /// it before the handler runs (no network call). This guards against someone
+    /// mistakenly marking an API command `no_auth(true)`, which would let it run
+    /// unauthenticated.
+    #[tokio::test]
+    async fn application_list_requires_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_default_auth_provider("godaddy")
+                .with_module(super::super::module()),
+        );
+
+        let output = cli
+            .run(["gddy", "application", "list", "--output", "json"])
+            .await;
+
+        assert_ne!(
+            output.exit_code, 0,
+            "application list must fail closed without a credential, got: {}",
+            output.rendered
+        );
+    }
 }
