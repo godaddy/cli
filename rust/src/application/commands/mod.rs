@@ -1075,9 +1075,20 @@ mod tests {
             .run(["gddy", "application", "list", "--output", "json"])
             .await;
 
-        assert_ne!(
-            output.exit_code, 0,
-            "application list must fail closed without a credential, got: {}",
+        // Exit code 2 is the engine's auth-failure code, and the rendered error
+        // names the missing provider — proving the command was rejected at
+        // credential resolution, not by the handler hitting the network.
+        assert_eq!(
+            output.exit_code, 2,
+            "application list must fail closed at auth resolution, got: {}",
+            output.rendered
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        let message = json["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("provider"),
+            "expected an auth-provider resolution error, got: {}",
             output.rendered
         );
     }
