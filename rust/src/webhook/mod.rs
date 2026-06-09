@@ -12,11 +12,7 @@ pub fn module() -> Module {
                     .with_system("webhooks")
                     .with_tier(Tier::Read),
                 |ctx| async move {
-                    let token = ctx
-                        .credential
-                        .as_ref()
-                        .map(|c| c.token.clone())
-                        .unwrap_or_default();
+                    let token = ctx.credential().await?.token;
                     let base_url = api_url_for_env(&ctx.middleware.env);
                     let url = format!("{base_url}/v1/apis/webhook-event-types");
                     let resp = crate::application::client::make_http_client()

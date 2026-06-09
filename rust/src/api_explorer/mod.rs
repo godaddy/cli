@@ -182,6 +182,7 @@ fn list_command() -> RuntimeCommandSpec {
         CommandSpec::new("list", "List all API domains")
             .with_system("api")
             .with_tier(Tier::Read)
+            .no_auth(true)
             .with_default_fields("domain,title,endpoints,baseUrl")
             .with_arg(
                 clap::Arg::new("domain")
@@ -253,6 +254,7 @@ fn describe_command() -> RuntimeCommandSpec {
         )
         .with_system("api")
         .with_tier(Tier::Read)
+        .no_auth(true)
         .with_arg(
             clap::Arg::new("endpoint")
                 .value_name("ENDPOINT")
@@ -298,6 +300,7 @@ fn search_command() -> RuntimeCommandSpec {
         CommandSpec::new("search", "Search API endpoints by keyword")
             .with_system("api")
             .with_tier(Tier::Read)
+            .no_auth(true)
             .with_default_fields("domain,method,path,summary")
             .with_arg(
                 clap::Arg::new("query")
@@ -443,11 +446,7 @@ fn call_command() -> RuntimeCommandSpec {
                 .get("method")
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET");
-            let token = ctx
-                .credential
-                .as_ref()
-                .map(|c| c.token.clone())
-                .unwrap_or_default();
+            let token = ctx.credential().await?.token;
             let base_url = crate::application::client::api_url_for_env(&ctx.middleware.env);
             let url = format!("{base_url}{endpoint}");
 

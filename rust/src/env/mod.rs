@@ -57,7 +57,8 @@ pub fn module() -> Module {
             .with_command(RuntimeCommandSpec::new(
                 CommandSpec::new("list", "List available environments")
                     .with_system("env")
-                    .with_tier(Tier::Read),
+                    .with_tier(Tier::Read)
+                    .no_auth(true),
                 |_cred, _args| async move {
                     let current = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     let envs: Vec<_> = KNOWN_ENVS
@@ -76,7 +77,8 @@ pub fn module() -> Module {
             .with_command(RuntimeCommandSpec::new(
                 CommandSpec::new("get", "Get the active environment")
                     .with_system("env")
-                    .with_tier(Tier::Read),
+                    .with_tier(Tier::Read)
+                    .no_auth(true),
                 |_cred, _args| async move {
                     let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     Ok(CommandResult::new(json!({
@@ -89,6 +91,7 @@ pub fn module() -> Module {
                 CommandSpec::new("set", "Set the active environment")
                     .with_system("env")
                     .with_tier(Tier::Mutate)
+                    .no_auth(true)
                     .with_arg(
                         // Distinct id from the global `--env` flag (also id "env");
                         // a shared id makes the positional collide with the flag's
@@ -125,7 +128,8 @@ pub fn module() -> Module {
             .with_command(RuntimeCommandSpec::new(
                 CommandSpec::new("info", "Show details for the active environment")
                     .with_system("env")
-                    .with_tier(Tier::Read),
+                    .with_tier(Tier::Read)
+                    .no_auth(true),
                 |_cred, _args| async move {
                     let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
                     Ok(CommandResult::new(json!({
@@ -136,4 +140,35 @@ pub fn module() -> Module {
                 },
             ))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::{Cli, CliConfig};
+
+    /// `env list` is a local-only command: it must run without any auth flow.
+    ///
+    /// The CLI is built with **no auth provider registered**. Because the engine
+    /// authenticates fail-closed by default (`AuthRequirement::Required`), a
+    /// command that forgot to opt out would fail here with "no provider
+    /// registered". This guards that the `env` commands stay `no_auth(true)`.
+    #[tokio::test]
+    async fn env_list_runs_without_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli.run(["gddy", "env", "list", "--output", "json"]).await;
+
+        assert_eq!(output.exit_code, 0, "rendered output: {}", output.rendered);
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        let envs = json["data"].as_array().expect("data array");
+        assert!(
+            envs.iter()
+                .any(|e| e["name"] == "ote" || e["name"] == "prod"),
+            "expected known environments in output, got: {}",
+            output.rendered
+        );
+    }
 }

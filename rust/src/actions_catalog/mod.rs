@@ -66,7 +66,8 @@ pub fn module() -> Module {
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List all available action contracts")
                 .with_system("actions")
-                .with_tier(Tier::Read),
+                .with_tier(Tier::Read)
+                .no_auth(true),
             |_cred, _args| async move {
                 let actions: Vec<_> = ACTIONS
                     .iter()
@@ -79,6 +80,7 @@ pub fn module() -> Module {
             CommandSpec::new("describe", "Show detailed schema for an action contract")
                 .with_system("actions")
                 .with_tier(Tier::Read)
+                .no_auth(true)
                 .with_arg(
                     clap::Arg::new("action")
                         .value_name("ACTION")
