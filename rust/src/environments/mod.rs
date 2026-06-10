@@ -115,13 +115,13 @@ fn derive_token_url(api_url: &str) -> String {
     format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
 }
 
-/// Validates and normalizes a candidate API base URL: trims surrounding
-/// whitespace and any trailing slash, and requires an `http(s)://` scheme
-/// (reqwest needs an absolute URL). Returns `None` for an empty/whitespace or
-/// schemeless value, so a blank or malformed override never clobbers a built-in
-/// or yields a relative/unusable request URL. This is the single authority for
-/// "is this api_url usable?" — `resolve`, `is_known`, `known_names`, and
-/// `listable` all defer to it.
+/// Validates and normalizes a candidate URL (api/auth/token): trims surrounding
+/// whitespace and any trailing slash, and requires an `http(s)://` scheme with a
+/// non-empty host (reqwest needs an absolute URL). Returns `None` for an
+/// empty/whitespace or schemeless value, so a blank or malformed override never
+/// clobbers a built-in or yields a relative/unusable URL. This is the single
+/// authority for "is this URL usable?" — `resolve`, `is_known`, `known_names`,
+/// and `listable` all defer to it.
 fn clean_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim().trim_end_matches('/');
     // Require an http(s):// scheme followed by a non-empty host.
@@ -200,8 +200,10 @@ fn resolve_with(
         if let Some(cid) = &entry.client_id {
             client_id = cid.clone();
         }
-        auth_url = entry.auth_url.clone().filter(|u| !u.trim().is_empty());
-        token_url = entry.token_url.clone().filter(|u| !u.trim().is_empty());
+        // Validate auth/token overrides the same way as api_url: a schemeless or
+        // empty value is ignored, falling back to the derived endpoints.
+        auth_url = entry.auth_url.as_deref().and_then(clean_url);
+        token_url = entry.token_url.as_deref().and_then(clean_url);
     }
 
     // Layer 3: per-env `<PREFIX>_API_URL` override (highest precedence). Empty
@@ -442,6 +444,27 @@ mod tests {
             &EnvironmentsFile::default(),
             blank_var
         ));
+    }
+
+    #[test]
+    fn schemeless_auth_token_overrides_fall_back_to_derived() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert(
+            "dev".to_owned(),
+            EnvEntry {
+                api_url: "https://dev.example.invalid".to_owned(),
+                client_id: None,
+                auth_url: Some("auth.example.invalid/authorize".to_owned()), // no scheme
+                token_url: Some("   ".to_owned()),                           // blank
+            },
+        );
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        // Invalid/blank overrides are ignored; endpoints derive from api_url.
+        assert_eq!(
+            env.auth_url,
+            "https://dev.example.invalid/v2/oauth2/authorize"
+        );
+        assert_eq!(env.token_url, "https://dev.example.invalid/v2/oauth2/token");
     }
 
     #[test]

@@ -61,8 +61,16 @@ pub fn module() -> Module {
                     .no_auth(true),
                 |_cred, _args| async move {
                     let current = active_env();
-                    let envs: Vec<_> = environments::listable()
-                        .map_err(map_err)?
+                    let mut resolved = environments::listable().map_err(map_err)?;
+                    // If the active env is defined only via `<ENV>_API_URL` (so it's
+                    // excluded from `listable`), still show it — otherwise the list
+                    // has no `active: true` entry and callers can't tell what's active.
+                    if !resolved.iter().any(|e| e.name == current)
+                        && let Ok(active) = environments::resolve(&current)
+                    {
+                        resolved.push(active);
+                    }
+                    let envs: Vec<_> = resolved
                         .into_iter()
                         .map(|e| {
                             json!({
