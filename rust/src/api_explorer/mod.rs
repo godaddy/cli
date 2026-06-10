@@ -444,9 +444,10 @@ fn call_command() -> RuntimeCommandSpec {
                     .long("scope")
                     .short('s')
                     .value_name("SCOPE")
-                    // Require a value per occurrence so a bare `--scope` is
-                    // rejected rather than silently contributing nothing.
-                    .num_args(1..)
+                    // One value per occurrence, repeatable (`--scope a --scope b`).
+                    // Append (vs num_args(1..)) avoids greedily consuming the
+                    // ENDPOINT positional and still rejects a bare `--scope`.
+                    .action(clap::ArgAction::Append)
                     .help("Additional required OAuth scope(s), merged with the endpoint's"),
             ),
         |ctx| async move {

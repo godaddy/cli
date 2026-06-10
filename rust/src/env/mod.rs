@@ -176,10 +176,8 @@ mod tests {
                 "active should be bool: {entry}"
             );
             assert!(
-                entry["apiUrl"]
-                    .as_str()
-                    .is_some_and(|u| u.starts_with("https://")),
-                "apiUrl should be an https URL: {entry}"
+                entry["apiUrl"].as_str().is_some_and(|u| u.contains("://")),
+                "apiUrl should be a URL: {entry}"
             );
         }
     }
