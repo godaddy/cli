@@ -10,9 +10,11 @@
 //!   cli-engine's `<PREFIX>_OAUTH_CLIENT_ID` / `_AUTH_URL` / `_TOKEN_URL` naming,
 //!   which `PkceAuthProvider` reads automatically when a provider is named after
 //!   its environment.
-//! * **Gitignored local config** — `~/.config/gddy/environments.toml` listing
-//!   custom environments. The file lives in the user's home directory, never in
-//!   the repo, so internal hostnames stay on the developer's machine.
+//! * **Gitignored local config** — a `gddy/environments.toml` in the OS config
+//!   directory (`dirs::config_dir()`: `~/.config` on Linux/XDG, `%APPDATA%` on
+//!   Windows, `~/Library/Application Support` on macOS; see [`environments_path`])
+//!   listing custom environments. The file lives outside the repo, so internal
+//!   hostnames stay on the developer's machine.
 //!
 //! Resolution order (later layers win): built-in base → local config entry →
 //! `<PREFIX>_API_URL` env var. Built-ins may be overridden by either layer.
@@ -67,7 +69,7 @@ pub struct ResolvedEnv {
     pub token_url: String,
 }
 
-/// Schema of `~/.config/gddy/environments.toml`.
+/// Schema of the local environments file (see [`environments_path`]).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct EnvironmentsFile {
     #[serde(default)]

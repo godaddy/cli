@@ -14,7 +14,8 @@ use crate::environments::{self, ResolvedEnv};
 /// where `<PREFIX>` is the env name uppercased with `-` replaced by `_`
 /// (e.g. `OTE_OAUTH_CLIENT_ID`, `DEV_OAUTH_AUTH_URL`). The API base URL and the
 /// per-env defaults come from [`crate::environments`], which also resolves
-/// custom DEV/TEST environments from `~/.config/gddy/environments.toml`.
+/// custom DEV/TEST environments from the local config file (see
+/// `crate::environments::environments_path`).
 #[derive(Debug, Default)]
 pub struct GoDaddyAuthProvider;
 
