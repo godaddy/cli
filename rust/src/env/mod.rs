@@ -30,7 +30,9 @@ pub fn get_env() -> Option<String> {
         // .gdenv) so callers fall back to DEFAULT_ENV instead of propagating an
         // unknown environment. `is_known` accepts built-ins plus any env defined
         // via env var or local config, so a persisted custom env (e.g. "dev")
-        // survives.
+        // survives — except a config-only env is dropped if the config file
+        // can't be read, since `is_known` then falls back to built-ins +
+        // `<ENV>_API_URL` only.
         .filter(|s| !s.is_empty() && environments::is_known(s))
 }
 

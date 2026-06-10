@@ -7,9 +7,9 @@
 //! * **Per-env environment variable** — `<PREFIX>_API_URL` overrides (or defines)
 //!   an environment's API base URL, where `<PREFIX>` is the env name uppercased
 //!   with `-` replaced by `_` (e.g. `DEV_API_URL`, `OTE_API_URL`). This mirrors
-//!   cli-engine's `<PREFIX>_OAUTH_CLIENT_ID` / `_AUTH_URL` / `_TOKEN_URL` naming,
-//!   which `PkceAuthProvider` reads automatically when a provider is named after
-//!   its environment.
+//!   cli-engine's `<PREFIX>_OAUTH_CLIENT_ID` / `<PREFIX>_OAUTH_AUTH_URL` /
+//!   `<PREFIX>_OAUTH_TOKEN_URL` naming, which `PkceAuthProvider` reads
+//!   automatically when a provider is named after its environment.
 //! * **Gitignored local config** — a `gddy/environments.toml` in the OS config
 //!   directory (`dirs::config_dir()`: `~/.config` on Linux/XDG, `%APPDATA%` on
 //!   Windows, `~/Library/Application Support` on macOS; see [`environments_path`])
