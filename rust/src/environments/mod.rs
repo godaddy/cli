@@ -124,10 +124,12 @@ fn derive_token_url(api_url: &str) -> String {
 /// and `listable` all defer to it.
 fn clean_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim().trim_end_matches('/');
-    // Require an http(s):// scheme followed by a non-empty host.
-    let host = trimmed
+    // Require an http(s):// scheme followed by a non-empty host (the segment
+    // before the first '/'), so e.g. `https:///path` is rejected.
+    let after_scheme = trimmed
         .strip_prefix("https://")
         .or_else(|| trimmed.strip_prefix("http://"))?;
+    let host = after_scheme.split('/').next().unwrap_or("");
     (!host.is_empty()).then(|| trimmed.to_owned())
 }
 
@@ -289,7 +291,16 @@ pub fn default_api_url() -> &'static str {
 
 /// Environments to show in `env list`: built-ins + local-config entries.
 pub fn listable() -> Result<Vec<ResolvedEnv>, EnvError> {
-    let file = load_file()?;
+    // Consistent with `resolve`/`is_known`: a malformed optional config must not
+    // brick `env list` / credential enumeration for built-ins. Fall back to
+    // built-ins only (warning) rather than failing wholesale.
+    let file = load_file().unwrap_or_else(|err| {
+        tracing::warn!(
+            error = %err,
+            "ignoring unreadable ~/.config/gddy/environments.toml; listing built-ins only"
+        );
+        EnvironmentsFile::default()
+    });
     listable_with(&file, |k| std::env::var(k).ok())
 }
 
@@ -480,6 +491,18 @@ mod tests {
             .insert("local".to_owned(), entry("http://localhost:8080"));
         let env = resolve_with("local", &file, no_vars).expect("http accepted");
         assert_eq!(env.api_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn clean_url_requires_a_non_empty_host() {
+        assert_eq!(
+            clean_url("https://api.example.test/"),
+            Some("https://api.example.test".to_owned())
+        );
+        assert!(clean_url("https:///path").is_none()); // empty host
+        assert!(clean_url("https://").is_none());
+        assert!(clean_url("ftp://x").is_none()); // wrong scheme
+        assert!(clean_url("api.example.test").is_none()); // no scheme
     }
 
     #[test]

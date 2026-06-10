@@ -136,6 +136,21 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
     })
 }
 
+/// Reads a repeatable string argument, handling both shapes cli-engine
+/// produces: a single occurrence is collapsed to a scalar `Value::String`, and
+/// only two-or-more become a `Value::Array`. Matching only the array shape
+/// silently drops a lone `--scope`/`--field` value, so handle both.
+fn string_list(args: &serde_json::Map<String, Value>, key: &str) -> Vec<String> {
+    match args.get(key) {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+        Some(Value::String(s)) => vec![s.clone()],
+        _ => Vec::new(),
+    }
+}
+
 /// Union of user-supplied `--scope` flags and a matched endpoint's declared
 /// scopes, order-preserving and de-duplicated (flags first).
 fn merge_required_scopes(flag_scopes: Vec<String>, endpoint_scopes: &[String]) -> Vec<String> {
@@ -469,16 +484,7 @@ fn call_command() -> RuntimeCommandSpec {
             // endpoint's declared scopes (best-effort: a concrete request path
             // may not match a templated catalog path, in which case only --scope
             // contributes). These drive OAuth scope step-up at credential time.
-            let flag_scopes: Vec<String> = ctx
-                .args
-                .get("scope")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let flag_scopes = string_list(&ctx.args, "scope");
             let endpoint_scopes = find_endpoint(catalog(), endpoint)
                 .map(|(_, ep)| ep.scopes.as_slice())
                 .unwrap_or(&[]);
@@ -506,22 +512,19 @@ fn call_command() -> RuntimeCommandSpec {
                 })?);
             }
 
-            if let Some(fields) = ctx.args.get("field").and_then(|v| v.as_array())
-                && !fields.is_empty()
-            {
+            let fields = string_list(&ctx.args, "field");
+            if !fields.is_empty() {
                 let body = request_body.get_or_insert_with(|| json!({}));
-                for field in fields {
-                    if let Some(s) = field.as_str() {
-                        let eq = s.find('=').ok_or_else(|| {
-                            cli_engine::CliCoreError::message(format!(
-                                "invalid field format '{s}': expected key=value"
-                            ))
-                        })?;
-                        let key = s[..eq].to_owned();
-                        let val = s[eq + 1..].to_owned();
-                        if let Some(obj) = body.as_object_mut() {
-                            obj.insert(key, json!(val));
-                        }
+                for s in &fields {
+                    let eq = s.find('=').ok_or_else(|| {
+                        cli_engine::CliCoreError::message(format!(
+                            "invalid field format '{s}': expected key=value"
+                        ))
+                    })?;
+                    let key = s[..eq].to_owned();
+                    let val = s[eq + 1..].to_owned();
+                    if let Some(obj) = body.as_object_mut() {
+                        obj.insert(key, json!(val));
                     }
                 }
             }
@@ -630,5 +633,19 @@ mod tests {
             merge_required_scopes(v(&["a", "a", "b"]), &v(&["b"])),
             v(&["a", "b"])
         );
+    }
+
+    #[test]
+    fn string_list_handles_scalar_array_and_missing() {
+        use serde_json::json;
+        // A single occurrence serializes to a scalar String (the bug case).
+        let mut args = serde_json::Map::new();
+        args.insert("scope".to_owned(), json!("solo"));
+        assert_eq!(super::string_list(&args, "scope"), v(&["solo"]));
+        // Two-or-more serialize to an array.
+        args.insert("scope".to_owned(), json!(["a", "b"]));
+        assert_eq!(super::string_list(&args, "scope"), v(&["a", "b"]));
+        // Missing key.
+        assert!(super::string_list(&args, "absent").is_empty());
     }
 }
