@@ -155,7 +155,14 @@ fn builtin(name: &str) -> Option<&'static Builtin> {
 
 fn known_names(file: &EnvironmentsFile) -> String {
     let mut names: Vec<&str> = BUILTINS.iter().map(|b| b.name).collect();
-    names.extend(file.environments.keys().map(String::as_str));
+    // Only usable config entries (non-empty api_url) — match `is_known`, so the
+    // "known: …" list never advertises an env that can't actually resolve.
+    names.extend(
+        file.environments
+            .iter()
+            .filter(|(_, e)| !e.api_url.trim().is_empty())
+            .map(|(k, _)| k.as_str()),
+    );
     names.sort_unstable();
     names.dedup();
     names.join(", ")
@@ -221,8 +228,10 @@ fn listable_with(
     var: impl Fn(&str) -> Option<String> + Copy,
 ) -> Result<Vec<ResolvedEnv>, EnvError> {
     let mut names: Vec<String> = BUILTINS.iter().map(|b| b.name.to_owned()).collect();
-    for key in file.environments.keys() {
-        if !names.iter().any(|n| n == key) {
+    for (key, entry) in &file.environments {
+        // Skip unusable entries (empty api_url): including one would make the
+        // whole `env list` / credential enumeration fail on a single bad entry.
+        if !entry.api_url.trim().is_empty() && !names.iter().any(|n| n == key) {
             names.push(key.clone());
         }
     }
