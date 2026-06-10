@@ -296,10 +296,9 @@ pub fn listable() -> Result<Vec<ResolvedEnv>, EnvError> {
     // brick `env list` / credential enumeration for built-ins. Fall back to
     // built-ins only (warning) rather than failing wholesale.
     let file = load_file().unwrap_or_else(|err| {
-        tracing::warn!(
-            error = %err,
-            "ignoring unreadable ~/.config/gddy/environments.toml; listing built-ins only"
-        );
+        // `err` already includes the OS-resolved config path (Io/Parse carry it),
+        // so don't hard-code `~/.config/...` (wrong on Windows/macOS/XDG).
+        tracing::warn!(error = %err, "ignoring unreadable environments config; listing built-ins only");
         EnvironmentsFile::default()
     });
     listable_with(&file, |k| std::env::var(k).ok())
