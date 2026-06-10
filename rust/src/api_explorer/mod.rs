@@ -139,10 +139,14 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
 /// Union of user-supplied `--scope` flags and a matched endpoint's declared
 /// scopes, order-preserving and de-duplicated (flags first).
 fn merge_required_scopes(flag_scopes: Vec<String>, endpoint_scopes: &[String]) -> Vec<String> {
-    let mut required = flag_scopes;
-    for scope in endpoint_scopes {
-        if !required.contains(scope) {
-            required.push(scope.clone());
+    let mut required: Vec<String> = Vec::new();
+    // De-dup across both sources (a user can repeat `--scope`), flags first.
+    for scope in flag_scopes
+        .into_iter()
+        .chain(endpoint_scopes.iter().cloned())
+    {
+        if !required.contains(&scope) {
+            required.push(scope);
         }
     }
     required
@@ -617,6 +621,14 @@ mod tests {
         assert_eq!(
             merge_required_scopes(v(&["a", "b"]), &v(&["b", "c"])),
             v(&["a", "b", "c"])
+        );
+    }
+
+    #[test]
+    fn merge_dedupes_repeated_flag_values() {
+        assert_eq!(
+            merge_required_scopes(v(&["a", "a", "b"]), &v(&["b"])),
+            v(&["a", "b"])
         );
     }
 }

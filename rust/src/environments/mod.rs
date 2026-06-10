@@ -230,8 +230,17 @@ fn is_known_with(
 
 /// Resolve an environment by name (built-ins → local config → env var).
 pub fn resolve(name: &str) -> Result<ResolvedEnv, EnvError> {
-    let file = load_file()?;
-    resolve_with(name, &file, |k| std::env::var(k).ok())
+    match load_file() {
+        Ok(file) => resolve_with(name, &file, |k| std::env::var(k).ok()),
+        // The local config is optional; a malformed/unreadable file must not
+        // brick built-in or `<PREFIX>_API_URL`-defined envs. Retry against an
+        // empty file, and only surface the load error if `name` actually needed
+        // the file to resolve.
+        Err(load_err) => {
+            let empty = EnvironmentsFile::default();
+            resolve_with(name, &empty, |k| std::env::var(k).ok()).map_err(|_| load_err)
+        }
+    }
 }
 
 /// The default environment's built-in API base URL.

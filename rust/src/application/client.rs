@@ -216,6 +216,8 @@ mod tests {
         // Unknown env resolves to the default environment's URL (never empty).
         let url = api_url_for_env("definitely-not-a-real-env-xyz");
         assert!(!url.is_empty());
-        assert!(url.starts_with("https://"));
+        // Don't hard-code the scheme: a built-in's URL is overridable (a dev
+        // may point the default at an http:// local proxy).
+        assert!(url.contains("://"), "{url:?}");
     }
 }
