@@ -115,12 +115,20 @@ fn derive_token_url(api_url: &str) -> String {
     format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
 }
 
-/// Normalizes a candidate API base URL: trims surrounding whitespace and any
-/// trailing slash. Returns `None` for an empty/whitespace value, so a blank
-/// override never clobbers a built-in or yields relative request URLs.
+/// Validates and normalizes a candidate API base URL: trims surrounding
+/// whitespace and any trailing slash, and requires an `http(s)://` scheme
+/// (reqwest needs an absolute URL). Returns `None` for an empty/whitespace or
+/// schemeless value, so a blank or malformed override never clobbers a built-in
+/// or yields a relative/unusable request URL. This is the single authority for
+/// "is this api_url usable?" — `resolve`, `is_known`, `known_names`, and
+/// `listable` all defer to it.
 fn clean_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim().trim_end_matches('/');
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    // Require an http(s):// scheme followed by a non-empty host.
+    let host = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))?;
+    (!host.is_empty()).then(|| trimmed.to_owned())
 }
 
 /// Path to the local environments config file, if a config dir can be resolved.
@@ -160,7 +168,7 @@ fn known_names(file: &EnvironmentsFile) -> String {
     names.extend(
         file.environments
             .iter()
-            .filter(|(_, e)| !e.api_url.trim().is_empty())
+            .filter(|(_, e)| clean_url(&e.api_url).is_some())
             .map(|(k, _)| k.as_str()),
     );
     names.sort_unstable();
@@ -229,9 +237,10 @@ fn listable_with(
 ) -> Result<Vec<ResolvedEnv>, EnvError> {
     let mut names: Vec<String> = BUILTINS.iter().map(|b| b.name.to_owned()).collect();
     for (key, entry) in &file.environments {
-        // Skip unusable entries (empty api_url): including one would make the
-        // whole `env list` / credential enumeration fail on a single bad entry.
-        if !entry.api_url.trim().is_empty() && !names.iter().any(|n| n == key) {
+        // Skip unusable entries (empty or schemeless api_url): including one
+        // would make the whole `env list` / credential enumeration fail on a
+        // single bad entry.
+        if clean_url(&entry.api_url).is_some() && !names.iter().any(|n| n == key) {
             names.push(key.clone());
         }
     }
@@ -247,8 +256,8 @@ fn is_known_with(
         || file
             .environments
             .get(name)
-            .is_some_and(|e| !e.api_url.trim().is_empty())
-        || var(&format!("{}_API_URL", env_prefix(name))).is_some_and(|v| !v.trim().is_empty())
+            .is_some_and(|e| clean_url(&e.api_url).is_some())
+        || var(&format!("{}_API_URL", env_prefix(name))).is_some_and(|v| clean_url(&v).is_some())
 }
 
 /// Resolve an environment by name (built-ins → local config → env var).
@@ -292,7 +301,9 @@ pub fn is_known(name: &str) -> bool {
         Err(_) => {
             builtin(name).is_some()
                 || std::env::var(format!("{}_API_URL", env_prefix(name)))
-                    .is_ok_and(|v| !v.trim().is_empty())
+                    .ok()
+                    .and_then(|v| clean_url(&v))
+                    .is_some()
         }
     }
 }
@@ -431,6 +442,21 @@ mod tests {
             &EnvironmentsFile::default(),
             blank_var
         ));
+    }
+
+    #[test]
+    fn schemeless_api_url_is_rejected_but_http_is_accepted() {
+        let mut file = EnvironmentsFile::default();
+        // No http(s):// scheme -> unusable -> not known, and resolve errors.
+        file.environments
+            .insert("bare".to_owned(), entry("api.dev.invalid"));
+        assert!(!is_known_with("bare", &file, no_vars));
+        assert!(resolve_with("bare", &file, no_vars).is_err());
+        // http:// (e.g. a local proxy) is accepted.
+        file.environments
+            .insert("local".to_owned(), entry("http://localhost:8080"));
+        let env = resolve_with("local", &file, no_vars).expect("http accepted");
+        assert_eq!(env.api_url, "http://localhost:8080");
     }
 
     #[test]
