@@ -571,11 +571,17 @@ fn call_command() -> RuntimeCommandSpec {
             // `required`). A 403 here means the granted token still lacks a
             // required scope — surface it rather than silently returning the body.
             if status == 403 && !required.is_empty() {
+                // `auth login --scope` is append-style (one value per flag), so
+                // repeat the flag rather than space-joining.
+                let login_hint = required
+                    .iter()
+                    .map(|s| format!("--scope {s}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 return Err(cli_engine::CliCoreError::message(format!(
                     "403 Forbidden — the authorized token is missing required scope(s): {}. \
-                     Re-run `gddy auth login --scope {}` and try again.",
+                     Re-run `gddy auth login {login_hint}` and try again.",
                     required.join(", "),
-                    required.join(" ")
                 )));
             }
 
