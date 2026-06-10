@@ -115,6 +115,14 @@ fn derive_token_url(api_url: &str) -> String {
     format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
 }
 
+/// Normalizes a candidate API base URL: trims surrounding whitespace and any
+/// trailing slash. Returns `None` for an empty/whitespace value, so a blank
+/// override never clobbers a built-in or yields relative request URLs.
+fn clean_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
 /// Path to the local environments config file, if a config dir can be resolved.
 ///
 /// Uses `dirs::config_dir()` which honors `XDG_CONFIG_HOME` (→ `~/.config`) on
@@ -168,28 +176,31 @@ fn resolve_with(
     let mut auth_url: Option<String> = None;
     let mut token_url: Option<String> = None;
 
-    // Layer 2: local config entry (overrides/defines).
+    // Layer 2: local config entry (overrides/defines). An empty/whitespace
+    // api_url is ignored so it can't clobber a built-in default.
     if let Some(entry) = file.environments.get(name) {
-        api_url = Some(entry.api_url.clone());
+        if let Some(url) = clean_url(&entry.api_url) {
+            api_url = Some(url);
+        }
         if let Some(cid) = &entry.client_id {
             client_id = cid.clone();
         }
-        auth_url = entry.auth_url.clone();
-        token_url = entry.token_url.clone();
+        auth_url = entry.auth_url.clone().filter(|u| !u.trim().is_empty());
+        token_url = entry.token_url.clone().filter(|u| !u.trim().is_empty());
     }
 
-    // Layer 3: per-env `<PREFIX>_API_URL` override (highest precedence).
-    if let Some(url) = var(&format!("{}_API_URL", env_prefix(name))) {
+    // Layer 3: per-env `<PREFIX>_API_URL` override (highest precedence). Empty
+    // values are ignored (handled by clean_url).
+    if let Some(url) = var(&format!("{}_API_URL", env_prefix(name))).and_then(|v| clean_url(&v)) {
         api_url = Some(url);
     }
 
+    // api_url is already trimmed/normalized by clean_url (and built-ins carry no
+    // trailing slash), so callers concatenating paths never produce `//`.
     let api_url = api_url.ok_or_else(|| EnvError::Unknown {
         name: name.to_owned(),
         known: known_names(file),
     })?;
-    // Normalize once so callers that concatenate (`{api_url}{endpoint}`,
-    // `{api_url}/v1/...`) never produce a `//` path segment.
-    let api_url = api_url.trim_end_matches('/').to_owned();
 
     let auth_url = auth_url.unwrap_or_else(|| derive_auth_url(&api_url));
     let token_url = token_url.unwrap_or_else(|| derive_token_url(&api_url));
@@ -224,8 +235,11 @@ fn is_known_with(
     var: impl Fn(&str) -> Option<String>,
 ) -> bool {
     builtin(name).is_some()
-        || file.environments.contains_key(name)
-        || var(&format!("{}_API_URL", env_prefix(name))).is_some()
+        || file
+            .environments
+            .get(name)
+            .is_some_and(|e| !e.api_url.trim().is_empty())
+        || var(&format!("{}_API_URL", env_prefix(name))).is_some_and(|v| !v.trim().is_empty())
 }
 
 /// Resolve an environment by name (built-ins → local config → env var).
@@ -268,7 +282,8 @@ pub fn is_known(name: &str) -> bool {
         // broken file never hides the public environments.
         Err(_) => {
             builtin(name).is_some()
-                || std::env::var(format!("{}_API_URL", env_prefix(name))).is_ok()
+                || std::env::var(format!("{}_API_URL", env_prefix(name)))
+                    .is_ok_and(|v| !v.trim().is_empty())
         }
     }
 }
@@ -384,6 +399,29 @@ mod tests {
     #[test]
     fn default_api_url_is_the_builtin_prod_url() {
         assert_eq!(default_api_url(), "https://api.godaddy.com");
+    }
+
+    #[test]
+    fn empty_or_whitespace_override_does_not_clobber_builtin() {
+        let file = EnvironmentsFile::default();
+        let var = |k: &str| (k == "PROD_API_URL").then(|| "   ".to_owned());
+        let env = resolve_with("prod", &file, var).expect("prod resolves");
+        assert_eq!(env.api_url, "https://api.godaddy.com");
+    }
+
+    #[test]
+    fn is_known_rejects_empty_api_url_from_config_or_env() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert("blank".to_owned(), entry(""));
+        // Empty config api_url -> not usable -> not known.
+        assert!(!is_known_with("blank", &file, no_vars));
+        // Empty env-var api_url -> not known either.
+        let blank_var = |k: &str| (k == "GHOST_API_URL").then(String::new);
+        assert!(!is_known_with(
+            "ghost",
+            &EnvironmentsFile::default(),
+            blank_var
+        ));
     }
 
     #[test]
