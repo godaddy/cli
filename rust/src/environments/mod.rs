@@ -187,6 +187,9 @@ fn resolve_with(
         name: name.to_owned(),
         known: known_names(file),
     })?;
+    // Normalize once so callers that concatenate (`{api_url}{endpoint}`,
+    // `{api_url}/v1/...`) never produce a `//` path segment.
+    let api_url = api_url.trim_end_matches('/').to_owned();
 
     let auth_url = auth_url.unwrap_or_else(|| derive_auth_url(&api_url));
     let token_url = token_url.unwrap_or_else(|| derive_token_url(&api_url));
@@ -360,7 +363,8 @@ mod tests {
         file.environments
             .insert("dev".to_owned(), entry("https://dev.example.invalid/"));
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
-        assert_eq!(env.api_url, "https://dev.example.invalid/");
+        // api_url is normalized (trailing slash trimmed) so callers don't build `//`.
+        assert_eq!(env.api_url, "https://dev.example.invalid");
         assert_eq!(
             env.auth_url,
             "https://dev.example.invalid/v2/oauth2/authorize"

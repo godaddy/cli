@@ -79,8 +79,12 @@ impl AuthProvider for GoDaddyAuthProvider {
         // Enumerate stored credentials across built-ins + locally-configured
         // envs (env-var-only envs are excluded from `listable`, matching the
         // `env list` contract).
+        // Surface a malformed local config rather than silently reporting zero
+        // environments (which would hide stored credentials, incl. built-ins).
+        let listable =
+            environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
         let mut envs = Vec::new();
-        for resolved in environments::listable().unwrap_or_default() {
+        for resolved in listable {
             let provider = build_provider(&resolved);
             envs.extend(provider.list_environments().await.unwrap_or_default());
         }

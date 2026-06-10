@@ -43,8 +43,14 @@ async fn main() -> ExitCode {
             }))
             .with_apply_flags(Arc::new(|matches, mw| {
                 if let Some(env) = matches.get_one::<String>("env") {
-                    environments::resolve(env)
-                        .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                    // Validate only an explicitly-provided `--env`. The default
+                    // value comes from `.gdenv`/DEFAULT_ENV (already filtered), so
+                    // validating it unconditionally would let a malformed local
+                    // config fail *every* command — even ones not using `--env`.
+                    if matches.value_source("env") == Some(clap::parser::ValueSource::CommandLine) {
+                        environments::resolve(env)
+                            .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                    }
                     mw.env = env.clone();
                 }
                 Ok(())
