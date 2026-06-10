@@ -3,10 +3,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-const OTE_API_URL: &str = "https://api.ote-godaddy.com";
-const PROD_API_URL: &str = "https://api.godaddy.com";
-const KNOWN_ENVS: &[&str] = &["ote", "prod"];
-pub const DEFAULT_ENV: &str = "prod";
+use crate::environments::{self, EnvError};
 
 /// Resolve the path to the `.gdenv` state file in the user's home directory.
 ///
@@ -31,8 +28,10 @@ pub fn get_env() -> Option<String> {
         .map(|s| s.trim().to_owned())
         // Ignore empty or unrecognized values (e.g. a hand-edited/corrupted
         // .gdenv) so callers fall back to DEFAULT_ENV instead of propagating an
-        // unknown environment that helpers would silently treat as prod.
-        .filter(|s| KNOWN_ENVS.contains(&s.as_str()))
+        // unknown environment. `is_known` accepts built-ins plus any env defined
+        // via env var or local config, so a persisted custom env (e.g. "dev")
+        // survives.
+        .filter(|s| !s.is_empty() && environments::is_known(s))
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {
@@ -44,11 +43,12 @@ pub fn set_env(env: &str) -> std::io::Result<()> {
     })
 }
 
-fn api_url_for(env: &str) -> &'static str {
-    match env {
-        "ote" => OTE_API_URL,
-        _ => PROD_API_URL,
-    }
+fn map_err(e: EnvError) -> cli_engine::CliCoreError {
+    cli_engine::CliCoreError::message(e.to_string())
+}
+
+fn active_env() -> String {
+    get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned())
 }
 
 pub fn module() -> Module {
@@ -60,14 +60,15 @@ pub fn module() -> Module {
                     .with_tier(Tier::Read)
                     .no_auth(true),
                 |_cred, _args| async move {
-                    let current = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
-                    let envs: Vec<_> = KNOWN_ENVS
-                        .iter()
-                        .map(|&e| {
+                    let current = active_env();
+                    let envs: Vec<_> = environments::listable()
+                        .map_err(map_err)?
+                        .into_iter()
+                        .map(|e| {
                             json!({
-                                "name": e,
-                                "active": e == current,
-                                "apiUrl": api_url_for(e),
+                                "name": e.name,
+                                "active": e.name == current,
+                                "apiUrl": e.api_url,
                             })
                         })
                         .collect();
@@ -80,10 +81,11 @@ pub fn module() -> Module {
                     .with_tier(Tier::Read)
                     .no_auth(true),
                 |_cred, _args| async move {
-                    let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
+                    let env = active_env();
+                    let resolved = environments::resolve(&env).map_err(map_err)?;
                     Ok(CommandResult::new(json!({
-                        "env": env,
-                        "apiUrl": api_url_for(&env),
+                        "env": resolved.name,
+                        "apiUrl": resolved.api_url,
                     })))
                 },
             ))
@@ -108,20 +110,17 @@ pub fn module() -> Module {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_owned();
-                    if !KNOWN_ENVS.contains(&env.as_str()) {
-                        return Err(cli_engine::CliCoreError::message(format!(
-                            "unknown environment {env:?}; expected one of: {}",
-                            KNOWN_ENVS.join(", ")
-                        )));
-                    }
+                    // Resolve up front: validates the env exists (built-in, env
+                    // var, or local config) and yields its API URL for the reply.
+                    let resolved = environments::resolve(&env).map_err(map_err)?;
                     set_env(&env).map_err(|e| {
                         cli_engine::CliCoreError::message(format!(
                             "failed to write .gdenv state file: {e}"
                         ))
                     })?;
                     Ok(CommandResult::new(json!({
-                        "env": env,
-                        "apiUrl": api_url_for(&env),
+                        "env": resolved.name,
+                        "apiUrl": resolved.api_url,
                     })))
                 },
             ))
@@ -131,11 +130,12 @@ pub fn module() -> Module {
                     .with_tier(Tier::Read)
                     .no_auth(true),
                 |_cred, _args| async move {
-                    let env = get_env().unwrap_or_else(|| DEFAULT_ENV.to_owned());
+                    let env = active_env();
+                    let resolved = environments::resolve(&env).map_err(map_err)?;
                     Ok(CommandResult::new(json!({
-                        "env": env,
-                        "apiUrl": api_url_for(&env),
-                        "graphqlUrl": format!("{}/v1/applications/graphql", api_url_for(&env)),
+                        "env": resolved.name,
+                        "apiUrl": resolved.api_url,
+                        "graphqlUrl": format!("{}/v1/applications/graphql", resolved.api_url),
                     })))
                 },
             ))
@@ -164,11 +164,23 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json output");
         let envs = json["data"].as_array().expect("data array");
-        assert!(
-            envs.iter()
-                .any(|e| e["name"] == "ote" || e["name"] == "prod"),
-            "expected known environments in output, got: {}",
-            output.rendered
-        );
+        // Both built-ins are always listed, regardless of local config / env vars.
+        for name in ["ote", "prod"] {
+            let entry = envs
+                .iter()
+                .find(|e| e["name"] == name)
+                .unwrap_or_else(|| unreachable!("missing env {name} in: {}", output.rendered));
+            // Output-shape contract: each entry carries name/active/apiUrl.
+            assert!(
+                entry["active"].is_boolean(),
+                "active should be bool: {entry}"
+            );
+            assert!(
+                entry["apiUrl"]
+                    .as_str()
+                    .is_some_and(|u| u.starts_with("https://")),
+                "apiUrl should be an https URL: {entry}"
+            );
+        }
     }
 }

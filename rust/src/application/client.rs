@@ -186,9 +186,30 @@ impl ApplicationClient {
     }
 }
 
-pub fn api_url_for_env(env: &str) -> &'static str {
-    match env {
-        "prod" => "https://api.godaddy.com",
-        _ => "https://api.ote-godaddy.com",
+pub fn api_url_for_env(env: &str) -> String {
+    crate::environments::resolve(env)
+        .or_else(|_| crate::environments::resolve(crate::environments::DEFAULT_ENV))
+        .map(|e| e.api_url)
+        // Never return an empty base URL (e.g. if a malformed local config makes
+        // even the default fail to resolve) — fall back to the built-in default.
+        .unwrap_or_else(|_| crate::environments::default_api_url().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::api_url_for_env;
+
+    #[test]
+    fn api_url_for_builtins() {
+        assert_eq!(api_url_for_env("prod"), "https://api.godaddy.com");
+        assert_eq!(api_url_for_env("ote"), "https://api.ote-godaddy.com");
+    }
+
+    #[test]
+    fn api_url_for_unknown_env_falls_back_to_default_and_is_never_empty() {
+        // Unknown env resolves to the default environment's URL (never empty).
+        let url = api_url_for_env("definitely-not-a-real-env-xyz");
+        assert!(!url.is_empty());
+        assert!(url.starts_with("https://"));
     }
 }

@@ -4,6 +4,7 @@ mod application;
 mod auth;
 mod config;
 mod env;
+mod environments;
 mod extension;
 mod webhook;
 
@@ -34,12 +35,16 @@ async fn main() -> ExitCode {
                         .long("env")
                         .global(true)
                         .value_name("ENV")
-                        .default_value(get_env().unwrap_or_else(|| env::DEFAULT_ENV.to_owned()))
+                        .default_value(
+                            get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned()),
+                        )
                         .help("Target environment (ote|prod)"),
                 )
             }))
             .with_apply_flags(Arc::new(|matches, mw| {
                 if let Some(env) = matches.get_one::<String>("env") {
+                    environments::resolve(env)
+                        .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
                     mw.env = env.clone();
                 }
                 Ok(())
