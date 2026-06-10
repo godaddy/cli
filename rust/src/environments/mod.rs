@@ -126,13 +126,22 @@ fn derive_token_url(api_url: &str) -> String {
 /// and `listable` all defer to it.
 fn clean_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim().trim_end_matches('/');
-    // Require an http(s):// scheme and a non-empty host. The host is the segment
-    // before any path/query/fragment, so this rejects `https:///path`,
-    // `https://`, and `https://?x` (which a lenient URL parser would accept).
-    let after_scheme = trimmed
-        .strip_prefix("https://")
-        .or_else(|| trimmed.strip_prefix("http://"))?;
-    let host = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    // Require an http(s):// scheme (case-insensitive per RFC 3986, so `HTTPS://`
+    // is valid) and a non-empty host. The host is the segment before any
+    // path/query/fragment, so this rejects `https:///path`, `https://`, and
+    // `https://?x` (which a lenient URL parser would accept).
+    let lower = trimmed.to_ascii_lowercase();
+    let scheme_len = if lower.starts_with("https://") {
+        "https://".len()
+    } else if lower.starts_with("http://") {
+        "http://".len()
+    } else {
+        return None;
+    };
+    let host = trimmed[scheme_len..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
     (!host.is_empty()).then(|| trimmed.to_owned())
 }
 
@@ -507,6 +516,11 @@ mod tests {
         assert!(clean_url("ftp://x").is_none()); // wrong scheme
         assert!(clean_url("api.example.test").is_none()); // no scheme
         assert!(clean_url("not a url").is_none());
+        // Scheme is case-insensitive (RFC 3986); host case is preserved.
+        assert_eq!(
+            clean_url("HTTPS://api.Example.test"),
+            Some("HTTPS://api.Example.test".to_owned())
+        );
         // A path/port is preserved (trailing slash trimmed).
         assert_eq!(
             clean_url("http://localhost:8080/api/"),
