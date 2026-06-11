@@ -1,62 +1,51 @@
 use async_trait::async_trait;
 use cli_engine::{
-    CliCoreError, Credential, Result,
+    CliCoreError, Credential, CredentialRequest, Result,
     auth::{AuthProvider, pkce::PkceAuthProvider},
 };
 
-const OTE_API_URL: &str = "https://api.ote-godaddy.com";
-const PROD_API_URL: &str = "https://api.godaddy.com";
-
-const OTE_CLIENT_ID: &str = "a502484b-d7b1-4509-aa88-08b391a54c28";
-const PROD_CLIENT_ID: &str = "39489dee-4103-4284-9aab-9f2452142bce";
-
-const SCOPES: &[&str] = &["apps.app-registry:read", "apps.app-registry:write"];
+use crate::environments::{self, ResolvedEnv};
 
 /// Single auth provider that dispatches to env-specific PKCE providers.
 ///
-/// Env var overrides (per-env):
-///   OTE:  OTE_OAUTH_CLIENT_ID, OTE_OAUTH_AUTH_URL, OTE_OAUTH_TOKEN_URL
-///   PROD: PROD_OAUTH_CLIENT_ID, PROD_OAUTH_AUTH_URL, PROD_OAUTH_TOKEN_URL
-#[derive(Debug)]
-pub struct GoDaddyAuthProvider {
-    ote: PkceAuthProvider,
-    prod: PkceAuthProvider,
-}
+/// Each env's provider is named after the env, so cli-engine's
+/// `PkceAuthProvider` picks up its per-env overrides automatically:
+///   `<PREFIX>_OAUTH_CLIENT_ID`, `<PREFIX>_OAUTH_AUTH_URL`, `<PREFIX>_OAUTH_TOKEN_URL`
+/// where `<PREFIX>` is the env name uppercased with `-` replaced by `_`
+/// (e.g. `OTE_OAUTH_CLIENT_ID`, `DEV_OAUTH_AUTH_URL`). The API base URL and the
+/// per-env defaults come from [`crate::environments`], which also resolves
+/// custom DEV/TEST environments from the local config file (see
+/// `crate::environments::environments_path`).
+#[derive(Debug, Default)]
+pub struct GoDaddyAuthProvider;
 
 impl GoDaddyAuthProvider {
     pub fn new() -> Self {
-        let ote = PkceAuthProvider::new(
-            "ote",
-            format!("{OTE_API_URL}/v2/oauth2/authorize"),
-            format!("{OTE_API_URL}/v2/oauth2/token"),
-            OTE_CLIENT_ID,
-            SCOPES,
-        )
-        .with_app_id("gddy")
-        .with_redirect_uri("http://localhost:7443/callback");
-
-        let prod = PkceAuthProvider::new(
-            "prod",
-            format!("{PROD_API_URL}/v2/oauth2/authorize"),
-            format!("{PROD_API_URL}/v2/oauth2/token"),
-            PROD_CLIENT_ID,
-            SCOPES,
-        )
-        .with_app_id("gddy")
-        .with_redirect_uri("http://localhost:7443/callback");
-
-        Self { ote, prod }
+        Self
     }
 
-    fn provider_for(&self, env: &str) -> Result<&PkceAuthProvider> {
-        match env {
-            "ote" => Ok(&self.ote),
-            "prod" => Ok(&self.prod),
-            _ => Err(CliCoreError::message(format!(
-                "unknown environment {env:?}; expected \"ote\" or \"prod\""
-            ))),
-        }
+    /// Build a PKCE provider for the given env by resolving its endpoints.
+    ///
+    /// Providers are constructed on demand (tokens persist in the OS keychain,
+    /// so there is nothing to cache across a one-shot CLI invocation). Works for
+    /// built-ins as well as any custom env defined via env var or local config.
+    fn provider_for(&self, env: &str) -> Result<PkceAuthProvider> {
+        let resolved =
+            environments::resolve(env).map_err(|e| CliCoreError::message(e.to_string()))?;
+        Ok(build_provider(&resolved))
     }
+}
+
+fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
+    PkceAuthProvider::new(
+        env.name.clone(),
+        env.auth_url.clone(),
+        env.token_url.clone(),
+        env.client_id.clone(),
+        environments::DEFAULT_OAUTH_SCOPES,
+    )
+    .with_app_id(environments::APP_ID)
+    .with_redirect_uri(environments::REDIRECT_URI)
 }
 
 #[async_trait]
@@ -66,22 +55,40 @@ impl AuthProvider for GoDaddyAuthProvider {
     }
 
     async fn get_credential(&self, env: &str, command: &str, tier: &str) -> Result<Credential> {
-        self.provider_for(env)?
-            .get_credential(env, command, tier)
-            .await
+        let provider = self.provider_for(env)?;
+        provider.get_credential(env, command, tier).await
+    }
+
+    async fn get_credential_for(&self, req: &CredentialRequest<'_>) -> Result<Credential> {
+        // Forward to the env's PKCE provider, which performs OAuth scope step-up
+        // when the cached token lacks the command's required scopes.
+        let provider = self.provider_for(req.env)?;
+        provider.get_credential_for(req).await
     }
 
     async fn status(&self, env: &str) -> Result<Credential> {
-        self.provider_for(env)?.status(env).await
+        let provider = self.provider_for(env)?;
+        provider.status(env).await
     }
 
     async fn logout(&self, env: &str) -> Result<()> {
-        self.provider_for(env)?.logout(env).await
+        let provider = self.provider_for(env)?;
+        provider.logout(env).await
     }
 
     async fn list_environments(&self) -> Result<Vec<String>> {
-        let mut envs = self.ote.list_environments().await.unwrap_or_default();
-        envs.extend(self.prod.list_environments().await.unwrap_or_default());
+        // Enumerate stored credentials across built-ins + locally-configured
+        // envs (env-var-only envs are excluded from `listable`, matching the
+        // `env list` contract). `listable` falls back to built-ins (logging a
+        // warning) on a malformed local config, so this never fails wholesale.
+        let listable =
+            environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
+        let mut envs = Vec::new();
+        for resolved in listable {
+            let provider = build_provider(&resolved);
+            envs.extend(provider.list_environments().await.unwrap_or_default());
+        }
+        envs.sort();
         envs.dedup();
         Ok(envs)
     }

@@ -136,6 +136,37 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
     })
 }
 
+/// Reads a repeatable string argument, handling both shapes cli-engine
+/// produces: a single occurrence is collapsed to a scalar `Value::String`, and
+/// only two-or-more become a `Value::Array`. Matching only the array shape
+/// silently drops a lone `--scope`/`--field` value, so handle both.
+fn string_list(args: &serde_json::Map<String, Value>, key: &str) -> Vec<String> {
+    match args.get(key) {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+        Some(Value::String(s)) => vec![s.clone()],
+        _ => Vec::new(),
+    }
+}
+
+/// Union of user-supplied `--scope` flags and a matched endpoint's declared
+/// scopes, order-preserving and de-duplicated (flags first).
+fn merge_required_scopes(flag_scopes: Vec<String>, endpoint_scopes: &[String]) -> Vec<String> {
+    let mut required: Vec<String> = Vec::new();
+    // De-dup across both sources (a user can repeat `--scope`), flags first.
+    for scope in flag_scopes
+        .into_iter()
+        .chain(endpoint_scopes.iter().cloned())
+    {
+        if !required.contains(&scope) {
+            required.push(scope);
+        }
+    }
+    required
+}
+
 fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, &'a Endpoint)> {
     let q = query.to_lowercase();
     catalog
@@ -432,8 +463,11 @@ fn call_command() -> RuntimeCommandSpec {
                     .long("scope")
                     .short('s')
                     .value_name("SCOPE")
-                    .num_args(0..)
-                    .help("Required OAuth scope(s); on 403 a re-auth hint is shown"),
+                    // One value per occurrence, repeatable (`--scope a --scope b`).
+                    // Append (vs num_args(1..)) avoids greedily consuming the
+                    // ENDPOINT positional and still rejects a bare `--scope`.
+                    .action(clap::ArgAction::Append)
+                    .help("Additional required OAuth scope(s), merged with the endpoint's"),
             ),
         |ctx| async move {
             let endpoint = ctx
@@ -446,7 +480,17 @@ fn call_command() -> RuntimeCommandSpec {
                 .get("method")
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET");
-            let token = ctx.credential().await?.token;
+            // Required scopes = explicit --scope flags, plus the matched catalog
+            // endpoint's declared scopes (best-effort: a concrete request path
+            // may not match a templated catalog path, in which case only --scope
+            // contributes). These drive OAuth scope step-up at credential time.
+            let flag_scopes = string_list(&ctx.args, "scope");
+            let endpoint_scopes = find_endpoint(catalog(), endpoint)
+                .map(|(_, ep)| ep.scopes.as_slice())
+                .unwrap_or(&[]);
+            let required = merge_required_scopes(flag_scopes, endpoint_scopes);
+
+            let token = ctx.credential_with_scopes(&required).await?.token;
             let base_url = crate::application::client::api_url_for_env(&ctx.middleware.env);
             let url = format!("{base_url}{endpoint}");
 
@@ -468,22 +512,19 @@ fn call_command() -> RuntimeCommandSpec {
                 })?);
             }
 
-            if let Some(fields) = ctx.args.get("field").and_then(|v| v.as_array())
-                && !fields.is_empty()
-            {
+            let fields = string_list(&ctx.args, "field");
+            if !fields.is_empty() {
                 let body = request_body.get_or_insert_with(|| json!({}));
-                for field in fields {
-                    if let Some(s) = field.as_str() {
-                        let eq = s.find('=').ok_or_else(|| {
-                            cli_engine::CliCoreError::message(format!(
-                                "invalid field format '{s}': expected key=value"
-                            ))
-                        })?;
-                        let key = s[..eq].to_owned();
-                        let val = s[eq + 1..].to_owned();
-                        if let Some(obj) = body.as_object_mut() {
-                            obj.insert(key, json!(val));
-                        }
+                for s in &fields {
+                    let eq = s.find('=').ok_or_else(|| {
+                        cli_engine::CliCoreError::message(format!(
+                            "invalid field format '{s}': expected key=value"
+                        ))
+                    })?;
+                    let key = s[..eq].to_owned();
+                    let val = s[eq + 1..].to_owned();
+                    if let Some(obj) = body.as_object_mut() {
+                        obj.insert(key, json!(val));
                     }
                 }
             }
@@ -524,23 +565,23 @@ fn call_command() -> RuntimeCommandSpec {
                 None
             };
 
-            let scopes: Vec<String> = ctx
-                .args
-                .get("scope")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
-
             let body: Value = resp.json().await.unwrap_or(json!(null));
 
-            if status == 403 && !scopes.is_empty() {
+            // Scope step-up already ran up front (the token was requested with
+            // `required`). A 403 here means the granted token still lacks a
+            // required scope — surface it rather than silently returning the body.
+            if status == 403 && !required.is_empty() {
+                // `auth login --scope` is append-style (one value per flag), so
+                // repeat the flag rather than space-joining.
+                let login_hint = required
+                    .iter()
+                    .map(|s| format!("--scope {s}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 return Err(cli_engine::CliCoreError::message(format!(
-                    "403 Forbidden — your token may be missing scope(s): {}\nRun `gddy auth login` to re-authenticate.",
-                    scopes.join(", ")
+                    "403 Forbidden — the authorized token is missing required scope(s): {}. \
+                     Re-run `gddy auth login {login_hint}` and try again.",
+                    required.join(", "),
                 )));
             }
 
@@ -561,4 +602,56 @@ fn call_command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(result))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_required_scopes;
+
+    fn v(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn merge_flags_only_when_no_endpoint_scopes() {
+        assert_eq!(merge_required_scopes(v(&["a", "b"]), &[]), v(&["a", "b"]));
+    }
+
+    #[test]
+    fn merge_endpoint_only_when_no_flags() {
+        assert_eq!(
+            merge_required_scopes(v(&[]), &v(&["x", "y"])),
+            v(&["x", "y"])
+        );
+    }
+
+    #[test]
+    fn merge_unions_and_dedupes_flags_first() {
+        assert_eq!(
+            merge_required_scopes(v(&["a", "b"]), &v(&["b", "c"])),
+            v(&["a", "b", "c"])
+        );
+    }
+
+    #[test]
+    fn merge_dedupes_repeated_flag_values() {
+        assert_eq!(
+            merge_required_scopes(v(&["a", "a", "b"]), &v(&["b"])),
+            v(&["a", "b"])
+        );
+    }
+
+    #[test]
+    fn string_list_handles_scalar_array_and_missing() {
+        use serde_json::json;
+        // A single occurrence serializes to a scalar String (the bug case).
+        let mut args = serde_json::Map::new();
+        args.insert("scope".to_owned(), json!("solo"));
+        assert_eq!(super::string_list(&args, "scope"), v(&["solo"]));
+        // Two-or-more serialize to an array.
+        args.insert("scope".to_owned(), json!(["a", "b"]));
+        assert_eq!(super::string_list(&args, "scope"), v(&["a", "b"]));
+        // Missing key.
+        assert!(super::string_list(&args, "absent").is_empty());
+    }
 }

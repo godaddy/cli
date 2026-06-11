@@ -1,0 +1,564 @@
+//! Single source of truth for environment → endpoint resolution.
+//!
+//! Built-in, public-safe environments (`ote`, `prod`) are compiled in. Internal
+//! DEV/TEST environments are supplied **at runtime** and never committed to this
+//! (OSS) repo, via two override mechanisms:
+//!
+//! * **Per-env environment variable** — `<PREFIX>_API_URL` overrides (or defines)
+//!   an environment's API base URL, where `<PREFIX>` is the env name uppercased
+//!   with `-` replaced by `_` (e.g. `DEV_API_URL`, `OTE_API_URL`). This mirrors
+//!   cli-engine's `<PREFIX>_OAUTH_CLIENT_ID` / `<PREFIX>_OAUTH_AUTH_URL` /
+//!   `<PREFIX>_OAUTH_TOKEN_URL` naming, which `PkceAuthProvider` reads
+//!   automatically when a provider is named after its environment.
+//! * **Gitignored local config** — a `gddy/environments.toml` in the OS config
+//!   directory (`dirs::config_dir()`: `~/.config` on Linux/XDG, `%APPDATA%` on
+//!   Windows, `~/Library/Application Support` on macOS; see [`environments_path`])
+//!   listing custom environments. The file lives outside the repo, so internal
+//!   hostnames stay on the developer's machine.
+//!
+//! Resolution order (later layers win): built-in base → local config entry →
+//! `<PREFIX>_API_URL` env var. Built-ins may be overridden by either layer.
+//!
+//! Security note: because a built-in's `api_url` is overridable (and `auth_url`
+//! /`token_url` derive from it), overriding e.g. `prod` redirects that env's
+//! OAuth and bearer traffic to the new host while still presenting the built-in
+//! client id — i.e. a real prod token could be sent to the overriding host. The
+//! override surface (a process env var or a file under the user's home dir)
+//! already implies local trust, so this is an accepted trade-off; only override
+//! a built-in on a machine you control.
+
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
+
+pub const DEFAULT_ENV: &str = "prod";
+/// Scopes requested at login by default. The authorization server may grant a
+/// subset; commands needing more declare them and the provider steps up.
+pub const DEFAULT_OAUTH_SCOPES: &[&str] = &["apps.app-registry:read", "apps.app-registry:write"];
+pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
+pub const APP_ID: &str = "gddy";
+
+struct Builtin {
+    name: &'static str,
+    api_url: &'static str,
+    client_id: &'static str,
+}
+
+/// Public-safe, compiled-in environments. `api.ote-godaddy.com` is public, and
+/// these client IDs are public OAuth identifiers (not secrets).
+const BUILTINS: &[Builtin] = &[
+    Builtin {
+        name: "ote",
+        api_url: "https://api.ote-godaddy.com",
+        client_id: "a502484b-d7b1-4509-aa88-08b391a54c28",
+    },
+    Builtin {
+        name: "prod",
+        api_url: "https://api.godaddy.com",
+        client_id: "39489dee-4103-4284-9aab-9f2452142bce",
+    },
+];
+
+/// A fully-resolved environment: everything needed to talk to it.
+#[derive(Debug, Clone)]
+pub struct ResolvedEnv {
+    pub name: String,
+    pub api_url: String,
+    pub client_id: String,
+    pub auth_url: String,
+    pub token_url: String,
+}
+
+/// Schema of the local environments file (see [`environments_path`]).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct EnvironmentsFile {
+    #[serde(default)]
+    pub environments: BTreeMap<String, EnvEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnvEntry {
+    pub api_url: String,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub auth_url: Option<String>,
+    #[serde(default)]
+    pub token_url: Option<String>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EnvError {
+    #[error("unknown environment {name:?}; known: {known}")]
+    Unknown { name: String, known: String },
+    #[error("failed to read {path}: {source}")]
+    Io {
+        path: String,
+        source: std::io::Error,
+    },
+    #[error("failed to parse {path}: {source}")]
+    Parse {
+        path: String,
+        source: toml::de::Error,
+    },
+}
+
+/// Environment-variable prefix for an env name, matching cli-engine's
+/// `PkceAuthProvider` derivation (uppercase, `-` → `_`).
+fn env_prefix(name: &str) -> String {
+    name.to_uppercase().replace('-', "_")
+}
+
+fn derive_auth_url(api_url: &str) -> String {
+    format!("{}/v2/oauth2/authorize", api_url.trim_end_matches('/'))
+}
+
+fn derive_token_url(api_url: &str) -> String {
+    format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
+}
+
+/// Validates and normalizes a candidate URL (api/auth/token): trims surrounding
+/// whitespace and any trailing slash, and requires an `http(s)://` scheme with a
+/// non-empty host (reqwest needs an absolute URL). Returns `None` for an
+/// empty/whitespace or schemeless value, so a blank or malformed override never
+/// clobbers a built-in or yields a relative/unusable URL. This is the single
+/// authority for "is this URL usable?" — `resolve`, `is_known`, `known_names`,
+/// and `listable` all defer to it.
+fn clean_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    // Require an http(s):// scheme (case-insensitive per RFC 3986, so `HTTPS://`
+    // is valid) and a non-empty host. The host is the segment before any
+    // path/query/fragment, so this rejects `https:///path`, `https://`, and
+    // `https://?x` (which a lenient URL parser would accept).
+    let lower = trimmed.to_ascii_lowercase();
+    let scheme_len = if lower.starts_with("https://") {
+        "https://".len()
+    } else if lower.starts_with("http://") {
+        "http://".len()
+    } else {
+        return None;
+    };
+    let host = trimmed[scheme_len..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    (!host.is_empty()).then(|| trimmed.to_owned())
+}
+
+/// Path to the local environments config file, if a config dir can be resolved.
+///
+/// Uses `dirs::config_dir()` which honors `XDG_CONFIG_HOME` (→ `~/.config`) on
+/// Linux, matching cli-engine's own credential-store location logic.
+pub fn environments_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("gddy").join("environments.toml"))
+}
+
+/// Load the local environments file. A missing file is not an error.
+fn load_file() -> Result<EnvironmentsFile, EnvError> {
+    let Some(path) = environments_path() else {
+        return Ok(EnvironmentsFile::default());
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => toml::from_str(&contents).map_err(|source| EnvError::Parse {
+            path: path.display().to_string(),
+            source,
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(EnvironmentsFile::default()),
+        Err(source) => Err(EnvError::Io {
+            path: path.display().to_string(),
+            source,
+        }),
+    }
+}
+
+fn builtin(name: &str) -> Option<&'static Builtin> {
+    BUILTINS.iter().find(|b| b.name == name)
+}
+
+fn known_names(file: &EnvironmentsFile) -> String {
+    let mut names: Vec<&str> = BUILTINS.iter().map(|b| b.name).collect();
+    // Only usable config entries (non-empty api_url) — match `is_known`, so the
+    // "known: …" list never advertises an env that can't actually resolve.
+    names.extend(
+        file.environments
+            .iter()
+            .filter(|(_, e)| clean_url(&e.api_url).is_some())
+            .map(|(k, _)| k.as_str()),
+    );
+    names.sort_unstable();
+    names.dedup();
+    names.join(", ")
+}
+
+/// Resolve an environment from an explicit file + env-var getter. Pure: all
+/// inputs are injected, so this is unit-testable without touching process state.
+fn resolve_with(
+    name: &str,
+    file: &EnvironmentsFile,
+    var: impl Fn(&str) -> Option<String>,
+) -> Result<ResolvedEnv, EnvError> {
+    // Layer 1: built-in base.
+    let (mut api_url, mut client_id) = match builtin(name) {
+        Some(b) => (Some(b.api_url.to_owned()), b.client_id.to_owned()),
+        None => (None, String::new()),
+    };
+    let mut auth_url: Option<String> = None;
+    let mut token_url: Option<String> = None;
+
+    // Layer 2: local config entry (overrides/defines). An empty/whitespace
+    // api_url is ignored so it can't clobber a built-in default.
+    if let Some(entry) = file.environments.get(name) {
+        if let Some(url) = clean_url(&entry.api_url) {
+            api_url = Some(url);
+        }
+        if let Some(cid) = &entry.client_id {
+            client_id = cid.clone();
+        }
+        // Validate auth/token overrides the same way as api_url: a schemeless or
+        // empty value is ignored, falling back to the derived endpoints.
+        auth_url = entry.auth_url.as_deref().and_then(clean_url);
+        token_url = entry.token_url.as_deref().and_then(clean_url);
+    }
+
+    // Layer 3: per-env `<PREFIX>_API_URL` override (highest precedence). Empty
+    // values are ignored (handled by clean_url).
+    if let Some(url) = var(&format!("{}_API_URL", env_prefix(name))).and_then(|v| clean_url(&v)) {
+        api_url = Some(url);
+    }
+
+    // api_url is already trimmed/normalized by clean_url (and built-ins carry no
+    // trailing slash), so callers concatenating paths never produce `//`.
+    let api_url = api_url.ok_or_else(|| EnvError::Unknown {
+        name: name.to_owned(),
+        known: known_names(file),
+    })?;
+
+    let auth_url = auth_url.unwrap_or_else(|| derive_auth_url(&api_url));
+    let token_url = token_url.unwrap_or_else(|| derive_token_url(&api_url));
+
+    Ok(ResolvedEnv {
+        name: name.to_owned(),
+        api_url,
+        client_id,
+        auth_url,
+        token_url,
+    })
+}
+
+/// Names listed by `env list`: built-ins + locally-configured entries only
+/// (env-var-only environments are intentionally excluded).
+fn listable_with(
+    file: &EnvironmentsFile,
+    var: impl Fn(&str) -> Option<String> + Copy,
+) -> Result<Vec<ResolvedEnv>, EnvError> {
+    let mut names: Vec<String> = BUILTINS.iter().map(|b| b.name.to_owned()).collect();
+    for (key, entry) in &file.environments {
+        // Skip unusable entries (empty or schemeless api_url): including one
+        // would make the whole `env list` / credential enumeration fail on a
+        // single bad entry.
+        if clean_url(&entry.api_url).is_some() && !names.iter().any(|n| n == key) {
+            names.push(key.clone());
+        }
+    }
+    names.iter().map(|n| resolve_with(n, file, var)).collect()
+}
+
+fn is_known_with(
+    name: &str,
+    file: &EnvironmentsFile,
+    var: impl Fn(&str) -> Option<String>,
+) -> bool {
+    builtin(name).is_some()
+        || file
+            .environments
+            .get(name)
+            .is_some_and(|e| clean_url(&e.api_url).is_some())
+        || var(&format!("{}_API_URL", env_prefix(name))).is_some_and(|v| clean_url(&v).is_some())
+}
+
+/// Resolve an environment by name (built-ins → local config → env var).
+pub fn resolve(name: &str) -> Result<ResolvedEnv, EnvError> {
+    match load_file() {
+        Ok(file) => resolve_with(name, &file, |k| std::env::var(k).ok()),
+        // The local config is optional; a malformed/unreadable file must not
+        // brick built-in or `<PREFIX>_API_URL`-defined envs. Retry against an
+        // empty file, and only surface the load error if `name` actually needed
+        // the file to resolve.
+        Err(load_err) => {
+            let empty = EnvironmentsFile::default();
+            resolve_with(name, &empty, |k| std::env::var(k).ok()).map_err(|_| load_err)
+        }
+    }
+}
+
+/// The default environment's built-in API base URL.
+///
+/// Infallible last-resort value (unlike [`resolve`], which can fail on a
+/// malformed local config), so callers never end up with an empty base URL.
+pub fn default_api_url() -> &'static str {
+    builtin(DEFAULT_ENV)
+        .map(|b| b.api_url)
+        .unwrap_or("https://api.godaddy.com")
+}
+
+/// Environments to show in `env list`: built-ins + local-config entries.
+pub fn listable() -> Result<Vec<ResolvedEnv>, EnvError> {
+    // Consistent with `resolve`/`is_known`: a malformed optional config must not
+    // brick `env list` / credential enumeration for built-ins. Fall back to
+    // built-ins only (warning) rather than failing wholesale.
+    let file = load_file().unwrap_or_else(|err| {
+        // `err` already includes the OS-resolved config path (Io/Parse carry it),
+        // so don't hard-code `~/.config/...` (wrong on Windows/macOS/XDG).
+        tracing::warn!(error = %err, "ignoring unreadable environments config; listing built-ins only");
+        EnvironmentsFile::default()
+    });
+    listable_with(&file, |k| std::env::var(k).ok())
+}
+
+/// Whether `name` is a usable environment (built-in, locally configured, or
+/// defined via a `<PREFIX>_API_URL` env var).
+pub fn is_known(name: &str) -> bool {
+    match load_file() {
+        Ok(file) => is_known_with(name, &file, |k| std::env::var(k).ok()),
+        // If the config can't be read, fall back to built-ins + env vars so a
+        // broken file never hides the public environments.
+        Err(_) => {
+            builtin(name).is_some()
+                || std::env::var(format!("{}_API_URL", env_prefix(name)))
+                    .ok()
+                    .and_then(|v| clean_url(&v))
+                    .is_some()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(api_url: &str) -> EnvEntry {
+        EnvEntry {
+            api_url: api_url.to_owned(),
+            client_id: None,
+            auth_url: None,
+            token_url: None,
+        }
+    }
+
+    fn no_vars(_: &str) -> Option<String> {
+        None
+    }
+
+    #[test]
+    fn builtin_resolves_with_derived_oauth_urls() {
+        let file = EnvironmentsFile::default();
+        let env = resolve_with("prod", &file, no_vars).expect("prod resolves");
+        assert_eq!(env.api_url, "https://api.godaddy.com");
+        assert_eq!(env.client_id, "39489dee-4103-4284-9aab-9f2452142bce");
+        assert_eq!(env.auth_url, "https://api.godaddy.com/v2/oauth2/authorize");
+        assert_eq!(env.token_url, "https://api.godaddy.com/v2/oauth2/token");
+    }
+
+    #[test]
+    fn unknown_env_errors_with_known_list() {
+        let file = EnvironmentsFile::default();
+        let err = resolve_with("nope", &file, no_vars).expect_err("unknown errors");
+        let EnvError::Unknown { name, known } = err else {
+            unreachable!("expected Unknown variant");
+        };
+        assert_eq!(name, "nope");
+        assert!(known.contains("ote") && known.contains("prod"), "{known}");
+    }
+
+    #[test]
+    fn env_var_defines_a_new_env() {
+        let file = EnvironmentsFile::default();
+        let var = |k: &str| (k == "DEV_API_URL").then(|| "https://dev.example.test".to_owned());
+        let env = resolve_with("dev", &file, var).expect("dev resolves from env var");
+        assert_eq!(env.api_url, "https://dev.example.test");
+        assert_eq!(env.auth_url, "https://dev.example.test/v2/oauth2/authorize");
+        assert!(env.client_id.is_empty());
+    }
+
+    #[test]
+    fn env_var_overrides_a_builtin() {
+        let file = EnvironmentsFile::default();
+        let var =
+            |k: &str| (k == "PROD_API_URL").then(|| "https://sandbox.example.test".to_owned());
+        let env = resolve_with("prod", &file, var).expect("prod resolves");
+        assert_eq!(env.api_url, "https://sandbox.example.test");
+        // Client id is retained from the built-in.
+        assert_eq!(env.client_id, "39489dee-4103-4284-9aab-9f2452142bce");
+    }
+
+    #[test]
+    fn local_config_entry_resolves_and_respects_precedence() {
+        let mut file = EnvironmentsFile::default();
+        file.environments
+            .insert("test".to_owned(), entry("https://test.example.invalid"));
+        // No env var: local config wins.
+        let env = resolve_with("test", &file, no_vars).expect("test resolves");
+        assert_eq!(env.api_url, "https://test.example.invalid");
+        // Env var present: overrides the local config api_url.
+        let var =
+            |k: &str| (k == "TEST_API_URL").then(|| "https://override.example.test".to_owned());
+        let env = resolve_with("test", &file, var).expect("test resolves");
+        assert_eq!(env.api_url, "https://override.example.test");
+    }
+
+    #[test]
+    fn explicit_oauth_urls_and_client_id_in_local_config() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert(
+            "dev".to_owned(),
+            EnvEntry {
+                api_url: "https://dev.example.invalid".to_owned(),
+                client_id: Some("custom-client".to_owned()),
+                auth_url: Some("https://auth.example.invalid/authorize".to_owned()),
+                token_url: Some("https://auth.example.invalid/token".to_owned()),
+            },
+        );
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        assert_eq!(env.client_id, "custom-client");
+        assert_eq!(env.auth_url, "https://auth.example.invalid/authorize");
+        assert_eq!(env.token_url, "https://auth.example.invalid/token");
+    }
+
+    #[test]
+    fn oauth_urls_derive_from_custom_api_url_trimming_trailing_slash() {
+        let mut file = EnvironmentsFile::default();
+        // Custom env, no explicit auth/token URLs, api_url has a trailing slash.
+        file.environments
+            .insert("dev".to_owned(), entry("https://dev.example.invalid/"));
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        // api_url is normalized (trailing slash trimmed) so callers don't build `//`.
+        assert_eq!(env.api_url, "https://dev.example.invalid");
+        assert_eq!(
+            env.auth_url,
+            "https://dev.example.invalid/v2/oauth2/authorize"
+        );
+        assert_eq!(env.token_url, "https://dev.example.invalid/v2/oauth2/token");
+    }
+
+    #[test]
+    fn default_api_url_is_the_builtin_prod_url() {
+        assert_eq!(default_api_url(), "https://api.godaddy.com");
+    }
+
+    #[test]
+    fn empty_or_whitespace_override_does_not_clobber_builtin() {
+        let file = EnvironmentsFile::default();
+        let var = |k: &str| (k == "PROD_API_URL").then(|| "   ".to_owned());
+        let env = resolve_with("prod", &file, var).expect("prod resolves");
+        assert_eq!(env.api_url, "https://api.godaddy.com");
+    }
+
+    #[test]
+    fn is_known_rejects_empty_api_url_from_config_or_env() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert("blank".to_owned(), entry(""));
+        // Empty config api_url -> not usable -> not known.
+        assert!(!is_known_with("blank", &file, no_vars));
+        // Empty env-var api_url -> not known either.
+        let blank_var = |k: &str| (k == "GHOST_API_URL").then(String::new);
+        assert!(!is_known_with(
+            "ghost",
+            &EnvironmentsFile::default(),
+            blank_var
+        ));
+    }
+
+    #[test]
+    fn schemeless_auth_token_overrides_fall_back_to_derived() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert(
+            "dev".to_owned(),
+            EnvEntry {
+                api_url: "https://dev.example.invalid".to_owned(),
+                client_id: None,
+                auth_url: Some("auth.example.invalid/authorize".to_owned()), // no scheme
+                token_url: Some("   ".to_owned()),                           // blank
+            },
+        );
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        // Invalid/blank overrides are ignored; endpoints derive from api_url.
+        assert_eq!(
+            env.auth_url,
+            "https://dev.example.invalid/v2/oauth2/authorize"
+        );
+        assert_eq!(env.token_url, "https://dev.example.invalid/v2/oauth2/token");
+    }
+
+    #[test]
+    fn schemeless_api_url_is_rejected_but_http_is_accepted() {
+        let mut file = EnvironmentsFile::default();
+        // No http(s):// scheme -> unusable -> not known, and resolve errors.
+        file.environments
+            .insert("bare".to_owned(), entry("api.dev.invalid"));
+        assert!(!is_known_with("bare", &file, no_vars));
+        assert!(resolve_with("bare", &file, no_vars).is_err());
+        // http:// (e.g. a local proxy) is accepted.
+        file.environments
+            .insert("local".to_owned(), entry("http://localhost:8080"));
+        let env = resolve_with("local", &file, no_vars).expect("http accepted");
+        assert_eq!(env.api_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn clean_url_requires_a_non_empty_host() {
+        assert_eq!(
+            clean_url("https://api.example.test/"),
+            Some("https://api.example.test".to_owned())
+        );
+        assert!(clean_url("https:///path").is_none()); // empty host
+        assert!(clean_url("https://").is_none());
+        assert!(clean_url("https://?x").is_none()); // query, no host
+        assert!(clean_url("ftp://x").is_none()); // wrong scheme
+        assert!(clean_url("api.example.test").is_none()); // no scheme
+        assert!(clean_url("not a url").is_none());
+        // Scheme is case-insensitive (RFC 3986); host case is preserved.
+        assert_eq!(
+            clean_url("HTTPS://api.Example.test"),
+            Some("HTTPS://api.Example.test".to_owned())
+        );
+        // A path/port is preserved (trailing slash trimmed).
+        assert_eq!(
+            clean_url("http://localhost:8080/api/"),
+            Some("http://localhost:8080/api".to_owned())
+        );
+    }
+
+    #[test]
+    fn listable_includes_builtins_and_local_but_not_env_var_only() {
+        let mut file = EnvironmentsFile::default();
+        file.environments
+            .insert("test".to_owned(), entry("https://test.example.invalid"));
+        // `foo` is defined only via an env var and must NOT appear in the list.
+        let var = |k: &str| (k == "FOO_API_URL").then(|| "https://foo.example.test".to_owned());
+        let listed = listable_with(&file, var).expect("listable");
+        let names: Vec<&str> = listed.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"ote"));
+        assert!(names.contains(&"prod"));
+        assert!(names.contains(&"test"));
+        assert!(!names.contains(&"foo"), "env-var-only env leaked into list");
+    }
+
+    #[test]
+    fn is_known_covers_builtin_local_and_env_var() {
+        let mut file = EnvironmentsFile::default();
+        file.environments
+            .insert("test".to_owned(), entry("https://test.example.invalid"));
+        let var = |k: &str| (k == "FOO_API_URL").then(|| "https://foo.example.test".to_owned());
+        assert!(is_known_with("prod", &file, var)); // built-in
+        assert!(is_known_with("test", &file, var)); // local config
+        assert!(is_known_with("foo", &file, var)); // env var
+        assert!(!is_known_with("missing", &file, var));
+    }
+
+    #[test]
+    fn missing_config_file_is_not_an_error() {
+        // load_file resolves a real path; just assert it does not panic and that
+        // a default (empty) file resolves built-ins correctly via the public API.
+        assert!(is_known("prod"));
+    }
+}

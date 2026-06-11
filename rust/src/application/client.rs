@@ -186,9 +186,38 @@ impl ApplicationClient {
     }
 }
 
-pub fn api_url_for_env(env: &str) -> &'static str {
-    match env {
-        "prod" => "https://api.godaddy.com",
-        _ => "https://api.ote-godaddy.com",
+pub fn api_url_for_env(env: &str) -> String {
+    crate::environments::resolve(env)
+        .or_else(|_| crate::environments::resolve(crate::environments::DEFAULT_ENV))
+        .map(|e| e.api_url)
+        // Never return an empty base URL (e.g. if a malformed local config makes
+        // even the default fail to resolve) — fall back to the built-in default.
+        .unwrap_or_else(|_| crate::environments::default_api_url().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::api_url_for_env;
+
+    #[test]
+    fn api_url_for_builtins_resolve_to_a_url() {
+        // The exact host mapping is covered deterministically in
+        // `environments::tests`. Here we only assert the built-ins resolve to a
+        // URL — a dev machine may legitimately override a built-in's URL via
+        // env var / local config, so don't hard-code the host.
+        for env in ["prod", "ote"] {
+            let url = api_url_for_env(env);
+            assert!(url.contains("://"), "{env} -> {url:?}");
+        }
+    }
+
+    #[test]
+    fn api_url_for_unknown_env_falls_back_to_default_and_is_never_empty() {
+        // Unknown env resolves to the default environment's URL (never empty).
+        let url = api_url_for_env("definitely-not-a-real-env-xyz");
+        assert!(!url.is_empty());
+        // Don't hard-code the scheme: a built-in's URL is overridable (a dev
+        // may point the default at an http:// local proxy).
+        assert!(url.contains("://"), "{url:?}");
     }
 }
