@@ -87,6 +87,8 @@ esbuild
       "typescript",
       // pino-pretty uses worker threads and must be external
       "pino-pretty",
+      // esbuild must be external to access its binary executable
+      "esbuild",
     ],
   })
   .catch((e) => {
