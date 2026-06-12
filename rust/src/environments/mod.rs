@@ -50,12 +50,12 @@ const BUILTINS: &[Builtin] = &[
     Builtin {
         name: "ote",
         api_url: "https://api.ote-godaddy.com",
-        client_id: "a502484b-d7b1-4509-aa88-08b391a54c28",
+        client_id: "91660d79-c909-426c-b5c8-e0f575e8fcd2",
     },
     Builtin {
         name: "prod",
         api_url: "https://api.godaddy.com",
-        client_id: "39489dee-4103-4284-9aab-9f2452142bce",
+        client_id: "bc87f347-af82-4892-833f-818f54a0e79e",
     },
 ];
 
@@ -67,6 +67,23 @@ pub struct ResolvedEnv {
     pub client_id: String,
     pub auth_url: String,
     pub token_url: String,
+    /// Base URL for the domain commands. Some endpoints (e.g. domain
+    /// availability) live behind a different host than the OAuth/`api_url`
+    /// service; this defaults to `api_url` when not overridden.
+    pub domains_api_url: String,
+    /// sso-key API key/secret for the domain endpoints, which use
+    /// `Authorization: sso-key <key>:<secret>` rather than OAuth. Optional: when
+    /// absent, domain commands fall back to the OAuth credential.
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
+}
+
+/// The domain-command view of a resolved environment.
+#[derive(Debug, Clone)]
+pub struct ResolvedDomains {
+    pub base_url: String,
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
 }
 
 /// Schema of the local environments file (see [`environments_path`]).
@@ -85,6 +102,14 @@ pub struct EnvEntry {
     pub auth_url: Option<String>,
     #[serde(default)]
     pub token_url: Option<String>,
+    /// Override base URL for domain commands (defaults to `api_url`).
+    #[serde(default)]
+    pub domains_api_url: Option<String>,
+    /// sso-key credentials for domain endpoints (see [`ResolvedEnv::api_key`]).
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_secret: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -143,6 +168,13 @@ fn clean_url(raw: &str) -> Option<String> {
         .next()
         .unwrap_or("");
     (!host.is_empty()).then(|| trimmed.to_owned())
+}
+
+/// Trims a candidate secret/value and returns it only if non-empty. Keeps the
+/// key/secret resolution consistent with `clean_url`'s "blank never clobbers".
+fn non_empty(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 /// Path to the local environments config file, if a config dir can be resolved.
@@ -204,6 +236,9 @@ fn resolve_with(
     };
     let mut auth_url: Option<String> = None;
     let mut token_url: Option<String> = None;
+    let mut domains_api_url: Option<String> = None;
+    let mut api_key: Option<String> = None;
+    let mut api_secret: Option<String> = None;
 
     // Layer 2: local config entry (overrides/defines). An empty/whitespace
     // api_url is ignored so it can't clobber a built-in default.
@@ -218,12 +253,25 @@ fn resolve_with(
         // empty value is ignored, falling back to the derived endpoints.
         auth_url = entry.auth_url.as_deref().and_then(clean_url);
         token_url = entry.token_url.as_deref().and_then(clean_url);
+        domains_api_url = entry.domains_api_url.as_deref().and_then(clean_url);
+        api_key = entry.api_key.as_deref().and_then(non_empty);
+        api_secret = entry.api_secret.as_deref().and_then(non_empty);
     }
 
-    // Layer 3: per-env `<PREFIX>_API_URL` override (highest precedence). Empty
-    // values are ignored (handled by clean_url).
-    if let Some(url) = var(&format!("{}_API_URL", env_prefix(name))).and_then(|v| clean_url(&v)) {
+    // Layer 3: per-env `<PREFIX>_*` overrides (highest precedence). Empty values
+    // are ignored (clean_url for URLs, non_empty for the key/secret).
+    let prefix = env_prefix(name);
+    if let Some(url) = var(&format!("{prefix}_API_URL")).and_then(|v| clean_url(&v)) {
         api_url = Some(url);
+    }
+    if let Some(url) = var(&format!("{prefix}_DOMAINS_API_URL")).and_then(|v| clean_url(&v)) {
+        domains_api_url = Some(url);
+    }
+    if let Some(k) = var(&format!("{prefix}_API_KEY")).and_then(|v| non_empty(&v)) {
+        api_key = Some(k);
+    }
+    if let Some(s) = var(&format!("{prefix}_API_SECRET")).and_then(|v| non_empty(&v)) {
+        api_secret = Some(s);
     }
 
     // api_url is already trimmed/normalized by clean_url (and built-ins carry no
@@ -235,6 +283,8 @@ fn resolve_with(
 
     let auth_url = auth_url.unwrap_or_else(|| derive_auth_url(&api_url));
     let token_url = token_url.unwrap_or_else(|| derive_token_url(&api_url));
+    // Domain endpoints default to the same host as the OAuth/api_url service.
+    let domains_api_url = domains_api_url.unwrap_or_else(|| api_url.clone());
 
     Ok(ResolvedEnv {
         name: name.to_owned(),
@@ -242,6 +292,9 @@ fn resolve_with(
         client_id,
         auth_url,
         token_url,
+        domains_api_url,
+        api_key,
+        api_secret,
     })
 }
 
@@ -289,6 +342,17 @@ pub fn resolve(name: &str) -> Result<ResolvedEnv, EnvError> {
             resolve_with(name, &empty, |k| std::env::var(k).ok()).map_err(|_| load_err)
         }
     }
+}
+
+/// Resolve the domain-command view of an environment: the domains base URL and
+/// any sso-key credentials. Thin wrapper over [`resolve`].
+pub fn resolve_domains(name: &str) -> Result<ResolvedDomains, EnvError> {
+    let env = resolve(name)?;
+    Ok(ResolvedDomains {
+        base_url: env.domains_api_url,
+        api_key: env.api_key,
+        api_secret: env.api_secret,
+    })
 }
 
 /// The default environment's built-in API base URL.
@@ -342,6 +406,9 @@ mod tests {
             client_id: None,
             auth_url: None,
             token_url: None,
+            domains_api_url: None,
+            api_key: None,
+            api_secret: None,
         }
     }
 
@@ -354,7 +421,7 @@ mod tests {
         let file = EnvironmentsFile::default();
         let env = resolve_with("prod", &file, no_vars).expect("prod resolves");
         assert_eq!(env.api_url, "https://api.godaddy.com");
-        assert_eq!(env.client_id, "39489dee-4103-4284-9aab-9f2452142bce");
+        assert_eq!(env.client_id, "bc87f347-af82-4892-833f-818f54a0e79e");
         assert_eq!(env.auth_url, "https://api.godaddy.com/v2/oauth2/authorize");
         assert_eq!(env.token_url, "https://api.godaddy.com/v2/oauth2/token");
     }
@@ -388,7 +455,7 @@ mod tests {
         let env = resolve_with("prod", &file, var).expect("prod resolves");
         assert_eq!(env.api_url, "https://sandbox.example.test");
         // Client id is retained from the built-in.
-        assert_eq!(env.client_id, "39489dee-4103-4284-9aab-9f2452142bce");
+        assert_eq!(env.client_id, "bc87f347-af82-4892-833f-818f54a0e79e");
     }
 
     #[test]
@@ -416,6 +483,9 @@ mod tests {
                 client_id: Some("custom-client".to_owned()),
                 auth_url: Some("https://auth.example.invalid/authorize".to_owned()),
                 token_url: Some("https://auth.example.invalid/token".to_owned()),
+                domains_api_url: None,
+                api_key: None,
+                api_secret: None,
             },
         );
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
@@ -478,6 +548,9 @@ mod tests {
                 client_id: None,
                 auth_url: Some("auth.example.invalid/authorize".to_owned()), // no scheme
                 token_url: Some("   ".to_owned()),                           // blank
+                domains_api_url: None,
+                api_key: None,
+                api_secret: None,
             },
         );
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
@@ -553,6 +626,75 @@ mod tests {
         assert!(is_known_with("test", &file, var)); // local config
         assert!(is_known_with("foo", &file, var)); // env var
         assert!(!is_known_with("missing", &file, var));
+    }
+
+    #[test]
+    fn domains_api_url_defaults_to_api_url() {
+        let file = EnvironmentsFile::default();
+        let env = resolve_with("prod", &file, no_vars).expect("prod resolves");
+        assert_eq!(env.domains_api_url, env.api_url);
+        assert!(env.api_key.is_none() && env.api_secret.is_none());
+    }
+
+    #[test]
+    fn domains_url_and_sso_key_from_local_config() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert(
+            "dev".to_owned(),
+            EnvEntry {
+                api_url: "https://dev.example.invalid".to_owned(),
+                client_id: None,
+                auth_url: None,
+                token_url: None,
+                domains_api_url: Some("https://domains.dev.example.invalid".to_owned()),
+                api_key: Some("KEY".to_owned()),
+                api_secret: Some("SECRET".to_owned()),
+            },
+        );
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        assert_eq!(env.domains_api_url, "https://domains.dev.example.invalid");
+        assert_eq!(env.api_key.as_deref(), Some("KEY"));
+        assert_eq!(env.api_secret.as_deref(), Some("SECRET"));
+        // api_url is unaffected by the domains override.
+        assert_eq!(env.api_url, "https://dev.example.invalid");
+    }
+
+    #[test]
+    fn sso_key_and_domains_url_env_vars_override_config() {
+        let mut file = EnvironmentsFile::default();
+        file.environments.insert(
+            "dev".to_owned(),
+            EnvEntry {
+                api_url: "https://dev.example.invalid".to_owned(),
+                client_id: None,
+                auth_url: None,
+                token_url: None,
+                domains_api_url: Some("https://from-file.example.invalid".to_owned()),
+                api_key: Some("file-key".to_owned()),
+                api_secret: None,
+            },
+        );
+        let var = |k: &str| match k {
+            "DEV_DOMAINS_API_URL" => Some("https://from-env.example.invalid".to_owned()),
+            "DEV_API_KEY" => Some("env-key".to_owned()),
+            "DEV_API_SECRET" => Some("env-secret".to_owned()),
+            _ => None,
+        };
+        let env = resolve_with("dev", &file, var).expect("dev resolves");
+        assert_eq!(env.domains_api_url, "https://from-env.example.invalid");
+        assert_eq!(env.api_key.as_deref(), Some("env-key")); // env beats file
+        assert_eq!(env.api_secret.as_deref(), Some("env-secret"));
+    }
+
+    #[test]
+    fn blank_sso_key_env_var_does_not_clobber_config() {
+        let mut file = EnvironmentsFile::default();
+        let mut e = entry("https://dev.example.invalid");
+        e.api_key = Some("file-key".to_owned());
+        file.environments.insert("dev".to_owned(), e);
+        let var = |k: &str| (k == "DEV_API_KEY").then(|| "   ".to_owned());
+        let env = resolve_with("dev", &file, var).expect("dev resolves");
+        assert_eq!(env.api_key.as_deref(), Some("file-key"));
     }
 
     #[test]

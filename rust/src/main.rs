@@ -3,6 +3,7 @@ mod api_explorer;
 mod application;
 mod auth;
 mod config;
+mod domain;
 mod env;
 mod environments;
 mod extension;
@@ -22,7 +23,7 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
+    let auth_provider = Arc::new(auth::CompositeAuthProvider::new());
 
     let cli = Cli::new(
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
@@ -40,6 +41,20 @@ async fn main() -> ExitCode {
                         )
                         .help("Target environment (ote|prod)"),
                 )
+                .arg(
+                    Arg::new("api-key")
+                        .long("api-key")
+                        .global(true)
+                        .value_name("KEY")
+                        .help("sso-key API key for domain commands (overrides config/env)"),
+                )
+                .arg(
+                    Arg::new("api-secret")
+                        .long("api-secret")
+                        .global(true)
+                        .value_name("SECRET")
+                        .help("sso-key API secret (used with --api-key)"),
+                )
             }))
             .with_apply_flags(Arc::new(|matches, mw| {
                 if let Some(env) = matches.get_one::<String>("env") {
@@ -52,6 +67,15 @@ async fn main() -> ExitCode {
                             .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
                     }
                     mw.env = env.clone();
+                }
+                // Bridge the sso-key flags to the auth layer (the composite
+                // provider reads this for `domain:*` commands). Both are required
+                // together; a lone --api-key/--api-secret is ignored.
+                if let (Some(key), Some(secret)) = (
+                    matches.get_one::<String>("api-key"),
+                    matches.get_one::<String>("api-secret"),
+                ) {
+                    auth::set_api_key_override(key.clone(), secret.clone());
                 }
                 Ok(())
             }))
@@ -66,6 +90,7 @@ async fn main() -> ExitCode {
             .with_module(actions_catalog::module())
             .with_module(api_explorer::module())
             .with_module(application::module())
+            .with_module(domain::module())
             .with_module(env::module())
             .with_module(webhook::module()),
     );
