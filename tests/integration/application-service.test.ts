@@ -132,6 +132,44 @@ describe("Application Service", () => {
     expect(release?.createRelease?.createdAt).toBeTruthy();
   });
 
+  test("creates application release with UI extensions", async () => {
+    const input = {
+      applicationId: "app-1",
+      version: "2.1.0",
+      description: "Release with UI extensions",
+      actions: [],
+      subscriptions: [],
+      uiExtensions: [
+        {
+          name: "product-embed",
+          handle: "product-embed-handle",
+          source: "./extensions/embed/index.tsx",
+          type: "embed",
+          target: "products.view",
+        },
+        {
+          name: "checkout-extension",
+          handle: "checkout-ext-handle",
+          source: "./extensions/checkout/index.tsx",
+          type: "checkout",
+          target: "checkout.summary",
+        },
+      ],
+    };
+
+    const release = await runEffect(
+      createReleaseEffect(input, {
+        accessToken: "test-token-123",
+      }),
+    );
+
+    expect(release?.createRelease?.version).toBe(input.version);
+    expect(release?.createRelease?.description).toBe(input.description);
+    expect(release?.createRelease?.id).toBeTruthy();
+    expect(release?.createRelease?.createdAt).toBeTruthy();
+    expect(release?.createRelease?.uiExtensions).toBeDefined();
+  });
+
   test("enables application", async () => {
     const result = await runEffect(
       enableApplicationEffect(

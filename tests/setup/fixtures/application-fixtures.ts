@@ -71,10 +71,21 @@ export const applicationFixtures = {
     publicKey: "public-key-data",
   }),
 
-  createReleaseResponse: (input: { version: string; description: string }) => ({
+  createReleaseResponse: (input: {
+    version: string;
+    description: string;
+    uiExtensions?: Array<{
+      name: string;
+      handle: string;
+      source: string;
+      type: string;
+      target?: string;
+    }>;
+  }) => ({
     id: `release-${Date.now()}`,
     version: input.version,
     description: input.description,
     createdAt: new Date().toISOString(),
+    uiExtensions: input.uiExtensions || [],
   }),
 };
