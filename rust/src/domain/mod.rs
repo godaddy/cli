@@ -1,10 +1,11 @@
 //! `gddy domain` — domain availability and suggestions.
 //!
-//! These endpoints (the public GoDaddy Domains API) authenticate with an
-//! sso-key, not OAuth. The HTTP layer is the typed, spec-generated
-//! [`domains_client`] crate; auth scheme selection (sso-key vs Bearer) is driven
-//! by the credential the [`CompositeAuthProvider`](crate::auth::CompositeAuthProvider)
-//! returns for `domain:*` commands.
+//! These endpoints (the GoDaddy Domains API) accept either an sso-key API key or
+//! an OAuth bearer token. The HTTP layer is the typed, spec-generated
+//! [`domains_client`] crate; the auth scheme is chosen from the credential the
+//! [`CompositeAuthProvider`](crate::auth::CompositeAuthProvider) returns for
+//! `domain:*` commands — `sso-key` when a key is configured for the environment,
+//! otherwise the OAuth bearer token.
 
 use cli_engine::{
     CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module, NextAction,

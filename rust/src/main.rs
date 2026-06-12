@@ -46,6 +46,7 @@ async fn main() -> ExitCode {
                         .long("api-key")
                         .global(true)
                         .value_name("KEY")
+                        .requires("api-secret")
                         .help("sso-key API key for domain commands (overrides config/env)"),
                 )
                 .arg(
@@ -53,6 +54,7 @@ async fn main() -> ExitCode {
                         .long("api-secret")
                         .global(true)
                         .value_name("SECRET")
+                        .requires("api-key")
                         .help("sso-key API secret (used with --api-key)"),
                 )
             }))
@@ -69,8 +71,9 @@ async fn main() -> ExitCode {
                     mw.env = env.clone();
                 }
                 // Bridge the sso-key flags to the auth layer (the composite
-                // provider reads this for `domain:*` commands). Both are required
-                // together; a lone --api-key/--api-secret is ignored.
+                // provider reads this for `domain:*` commands). clap enforces that
+                // the two flags are supplied together (`requires`), so checking
+                // both here is just defensive.
                 if let (Some(key), Some(secret)) = (
                     matches.get_one::<String>("api-key"),
                     matches.get_one::<String>("api-secret"),

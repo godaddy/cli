@@ -60,7 +60,10 @@ const BUILTINS: &[Builtin] = &[
 ];
 
 /// A fully-resolved environment: everything needed to talk to it.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written (not derived) to redact the sso-key fields — see the
+/// impl below — so a stray `{:?}`/`?env` never leaks credentials.
+#[derive(Clone)]
 pub struct ResolvedEnv {
     pub name: String,
     pub api_url: String,
@@ -79,11 +82,52 @@ pub struct ResolvedEnv {
 }
 
 /// The domain-command view of a resolved environment.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written (see below) to redact the sso-key fields.
+#[derive(Clone)]
 pub struct ResolvedDomains {
     pub base_url: String,
     pub api_key: Option<String>,
     pub api_secret: Option<String>,
+}
+
+/// `Debug` wrapper that never prints a secret's value: shows `Some(<redacted>)`
+/// or `None`, so credential-bearing structs can keep a useful `Debug` without
+/// risking leakage via `{:?}` in logs/errors.
+struct Redacted<'a>(&'a Option<String>);
+
+impl std::fmt::Debug for Redacted<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Some(_) => f.write_str("Some(<redacted>)"),
+            None => f.write_str("None"),
+        }
+    }
+}
+
+impl std::fmt::Debug for ResolvedEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedEnv")
+            .field("name", &self.name)
+            .field("api_url", &self.api_url)
+            .field("client_id", &self.client_id)
+            .field("auth_url", &self.auth_url)
+            .field("token_url", &self.token_url)
+            .field("domains_api_url", &self.domains_api_url)
+            .field("api_key", &Redacted(&self.api_key))
+            .field("api_secret", &Redacted(&self.api_secret))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ResolvedDomains {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedDomains")
+            .field("base_url", &self.base_url)
+            .field("api_key", &Redacted(&self.api_key))
+            .field("api_secret", &Redacted(&self.api_secret))
+            .finish()
+    }
 }
 
 /// Schema of the local environments file (see [`environments_path`]).
@@ -93,7 +137,7 @@ pub struct EnvironmentsFile {
     pub environments: BTreeMap<String, EnvEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EnvEntry {
     pub api_url: String,
     #[serde(default)]
@@ -110,6 +154,22 @@ pub struct EnvEntry {
     pub api_key: Option<String>,
     #[serde(default)]
     pub api_secret: Option<String>,
+}
+
+// Hand-written so the sso-key fields are redacted (keeps `EnvironmentsFile`'s
+// derived `Debug` working without risking credential leakage).
+impl std::fmt::Debug for EnvEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EnvEntry")
+            .field("api_url", &self.api_url)
+            .field("client_id", &self.client_id)
+            .field("auth_url", &self.auth_url)
+            .field("token_url", &self.token_url)
+            .field("domains_api_url", &self.domains_api_url)
+            .field("api_key", &Redacted(&self.api_key))
+            .field("api_secret", &Redacted(&self.api_secret))
+            .finish()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

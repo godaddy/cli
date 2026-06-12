@@ -76,6 +76,7 @@ fn log_resolved_oauth(env: &ResolvedEnv) {
         client_id = %client_id_ovr.as_deref().unwrap_or(&env.client_id),
         client_id_from_env_var = client_id_ovr.is_some(),
         auth_url = %auth_url_ovr.as_deref().unwrap_or(&env.auth_url),
+        auth_url_from_env_var = auth_url_ovr.is_some(),
         token_url = %token_url_ovr.as_deref().unwrap_or(&env.token_url),
         token_url_from_env_var = token_url_ovr.is_some(),
         redirect_uri = environments::REDIRECT_URI,
