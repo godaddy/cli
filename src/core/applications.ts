@@ -123,6 +123,17 @@ export interface ReleaseInfo {
   createdAt: string;
 }
 
+/**
+ * UI extension format for release API (single target instead of array)
+ */
+export interface ReleaseUiExtension {
+  name: string;
+  handle: string;
+  source: string;
+  type: string;
+  target?: string;
+}
+
 export interface ExtensionSecurityReport {
   extensionName: string;
   extensionDir: string;
@@ -848,9 +859,10 @@ export function applicationReleaseEffect(
       );
     }
 
-    // Load configuration to get actions and subscriptions
+    // Load configuration to get actions, subscriptions, and extensions
     let actions: ActionConfig[] = [];
     let subscriptions: SubscriptionConfig[] = [];
+    let uiExtensions: ReleaseUiExtension[] = [];
 
     const configResult = yield* getConfigFileEffect({
       configPath: input.configPath,
@@ -860,6 +872,32 @@ export function applicationReleaseEffect(
     if (configResult && !isConfigValidationErrorResult(configResult)) {
       actions = configResult.actions || [];
       subscriptions = configResult.subscriptions?.webhook || [];
+
+      // Extract UI extensions from config
+      const extensions = yield* getExtensionsFromConfigEffect({
+        configPath: input.configPath,
+        env: input.env as Environment,
+      }).pipe(Effect.orElseSucceed(() => []));
+
+      // Validate that only one target is specified per extension (API limitation)
+      for (const ext of extensions) {
+        if (ext.targets && ext.targets.length > 1) {
+          yield* Effect.fail(
+            new ValidationError({
+              message: `UI extension "${ext.name}" has ${ext.targets.length} targets, but only one target is supported per extension during release`,
+            }),
+          );
+        }
+      }
+
+      // Map extensions to release format
+      uiExtensions = extensions.map((ext) => ({
+        name: ext.name,
+        handle: ext.handle,
+        source: ext.source,
+        type: ext.type,
+        target: ext.targets?.[0]?.target,
+      }));
     }
 
     const releaseData = {
@@ -868,6 +906,7 @@ export function applicationReleaseEffect(
       description: input.description,
       actions,
       subscriptions,
+      uiExtensions,
     };
 
     const result = yield* callCreateRelease(releaseData, { accessToken });

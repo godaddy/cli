@@ -108,6 +108,14 @@ export const CreateReleaseMutation = graphql(`
       version
       description
       createdAt
+      uiExtensions {
+        id
+        name
+        handle
+        type
+        source
+        target
+      }
     }
   }
 `);
@@ -167,12 +175,22 @@ export const subscriptionInput = type({
   url: "string",
 });
 
+export const uiExtensionInput = type({
+  name: "string",
+  handle: "string",
+  source: "string",
+  // Must match ExtensionType from src/core/extension/bundler-config.ts
+  type: '"embed" | "checkout" | "blocks"',
+  target: "string?",
+});
+
 export const releaseInput = type({
   applicationId: "string",
   version: "string",
   description: "string?",
   actions: actionInput.array().optional(),
   subscriptions: subscriptionInput.array().optional(),
+  uiExtensions: uiExtensionInput.array().optional(),
 });
 
 export function createApplicationEffect(
