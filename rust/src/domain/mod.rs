@@ -255,6 +255,7 @@ pub fn module() -> Module {
 #[cfg(test)]
 mod tests {
     use super::format_price;
+    use cli_engine::{Cli, CliConfig};
 
     #[test]
     fn formats_micro_units_to_decimal() {
@@ -262,5 +263,49 @@ mod tests {
         assert_eq!(format_price(Some(1_000_000)).as_deref(), Some("1.00"));
         assert_eq!(format_price(Some(20_500_000)).as_deref(), Some("20.50"));
         assert_eq!(format_price(None), None);
+    }
+
+    /// The `domain` commands call the Domains API, so they must stay fail-closed.
+    /// Built with **no auth provider registered**, the engine's default
+    /// `AuthRequirement::Required` must reject them at credential resolution
+    /// (exit code 2, provider error) before the handler runs — guarding against
+    /// anyone marking them `no_auth(true)` and letting them run unauthenticated.
+    #[tokio::test]
+    async fn domain_commands_require_auth() {
+        const AUTH_FAILURE_EXIT: i32 = 2;
+        // No `--env` flag here: the global flag is registered in main.rs, not in
+        // this minimal test harness, and env is irrelevant since auth resolution
+        // fails before the handler runs.
+        for args in [
+            [
+                "gddy",
+                "domain",
+                "available",
+                "example.com",
+                "--output",
+                "json",
+            ],
+            ["gddy", "domain", "suggest", "coffee", "--output", "json"],
+        ] {
+            let cli = Cli::new(
+                CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                    .with_default_auth_provider("godaddy")
+                    .with_module(super::module()),
+            );
+            let output = cli.run(args).await;
+            assert_eq!(
+                output.exit_code, AUTH_FAILURE_EXIT,
+                "{args:?} must fail closed at auth resolution, got: {}",
+                output.rendered
+            );
+            let json: serde_json::Value =
+                serde_json::from_str(&output.rendered).expect("valid json output");
+            let message = json["error"]["message"].as_str().unwrap_or_default();
+            assert!(
+                message.contains("provider"),
+                "expected an auth-provider resolution error for {args:?}, got: {}",
+                output.rendered
+            );
+        }
     }
 }
