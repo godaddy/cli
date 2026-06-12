@@ -66,7 +66,7 @@ fn log_resolved_oauth(env: &ResolvedEnv) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;
     }
-    let prefix = env.name.to_uppercase().replace('-', "_");
+    let prefix = environments::env_prefix(&env.name);
     let override_var = |suffix: &str| std::env::var(format!("{prefix}_OAUTH_{suffix}")).ok();
     let client_id_ovr = override_var("CLIENT_ID");
     let auth_url_ovr = override_var("AUTH_URL");

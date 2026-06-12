@@ -191,7 +191,7 @@ pub enum EnvError {
 
 /// Environment-variable prefix for an env name, matching cli-engine's
 /// `PkceAuthProvider` derivation (uppercase, `-` → `_`).
-fn env_prefix(name: &str) -> String {
+pub fn env_prefix(name: &str) -> String {
     name.to_uppercase().replace('-', "_")
 }
 
