@@ -1,5 +1,11 @@
 # @godaddy/cli
 
+## 0.5.3
+
+### Patch Changes
+
+- 9d000eb: fix: UI extension release deploy
+
 ## 0.5.2
 
 ### Patch Changes
