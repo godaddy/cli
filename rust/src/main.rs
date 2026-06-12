@@ -41,27 +41,6 @@ async fn main() -> ExitCode {
                         )
                         .help("Target environment (ote|prod)"),
                 )
-                .arg(
-                    Arg::new("api-key")
-                        .long("api-key")
-                        .global(true)
-                        .value_name("KEY")
-                        .requires("api-secret")
-                        .help("sso-key API key for domain commands (overrides config/env)"),
-                )
-                .arg(
-                    Arg::new("api-secret")
-                        .long("api-secret")
-                        .global(true)
-                        .value_name("SECRET")
-                        .requires("api-key")
-                        .help(
-                            "sso-key API secret (used with --api-key). Note: a \
-                             value passed on the command line is visible in the \
-                             process list and shell history; prefer <ENV>_API_SECRET \
-                             or the environments config file",
-                        ),
-                )
             }))
             .with_apply_flags(Arc::new(|matches, mw| {
                 if let Some(env) = matches.get_one::<String>("env") {
@@ -74,16 +53,6 @@ async fn main() -> ExitCode {
                             .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
                     }
                     mw.env = env.clone();
-                }
-                // Bridge the sso-key flags to the auth layer (the composite
-                // provider reads this for `domain:*` commands). clap enforces that
-                // the two flags are supplied together (`requires`), so checking
-                // both here is just defensive.
-                if let (Some(key), Some(secret)) = (
-                    matches.get_one::<String>("api-key"),
-                    matches.get_one::<String>("api-secret"),
-                ) {
-                    auth::set_api_key_override(key.clone(), secret.clone());
                 }
                 Ok(())
             }))
