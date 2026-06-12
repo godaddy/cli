@@ -298,8 +298,6 @@ fn resolve_with(
     let mut auth_url: Option<String> = None;
     let mut token_url: Option<String> = None;
     let mut domains_api_url: Option<String> = None;
-    let mut api_key: Option<String> = None;
-    let mut api_secret: Option<String> = None;
 
     // Layer 2: local config entry (overrides/defines). An empty/whitespace
     // api_url is ignored so it can't clobber a built-in default.
@@ -315,8 +313,6 @@ fn resolve_with(
         auth_url = entry.auth_url.as_deref().and_then(clean_url);
         token_url = entry.token_url.as_deref().and_then(clean_url);
         domains_api_url = entry.domains_api_url.as_deref().and_then(clean_url);
-        api_key = entry.api_key.as_deref().and_then(non_empty);
-        api_secret = entry.api_secret.as_deref().and_then(non_empty);
     }
 
     // Layer 3: per-env `<PREFIX>_*` overrides (highest precedence). Empty values
@@ -328,12 +324,29 @@ fn resolve_with(
     if let Some(url) = var(&format!("{prefix}_DOMAINS_API_URL")).and_then(|v| clean_url(&v)) {
         domains_api_url = Some(url);
     }
-    if let Some(k) = var(&format!("{prefix}_API_KEY")).and_then(|v| non_empty(&v)) {
-        api_key = Some(k);
-    }
-    if let Some(s) = var(&format!("{prefix}_API_SECRET")).and_then(|v| non_empty(&v)) {
-        api_secret = Some(s);
-    }
+
+    // The sso-key is a (key, secret) pair; resolve it atomically from a single
+    // layer — the env-var pair wins over the file pair — so we never mix layers
+    // (e.g. an env-var key with a file-provided secret), which would send a bogus
+    // `sso-key key:secret` and yield confusing 401s. A partial pair (only one of
+    // the two present in a layer) yields no sso-key, so domain commands fall back
+    // to OAuth. The `--api-key`/`--api-secret` flags enforce the same pairing.
+    let entry = file.environments.get(name);
+    let (api_key, api_secret) = match (
+        var(&format!("{prefix}_API_KEY")).and_then(|v| non_empty(&v)),
+        var(&format!("{prefix}_API_SECRET")).and_then(|v| non_empty(&v)),
+    ) {
+        (Some(k), Some(s)) => (Some(k), Some(s)),
+        _ => match (
+            entry.and_then(|e| e.api_key.as_deref()).and_then(non_empty),
+            entry
+                .and_then(|e| e.api_secret.as_deref())
+                .and_then(non_empty),
+        ) {
+            (Some(k), Some(s)) => (Some(k), Some(s)),
+            _ => (None, None),
+        },
+    };
 
     // api_url is already trimmed/normalized by clean_url (and built-ins carry no
     // trailing slash), so callers concatenating paths never produce `//`.
@@ -752,10 +765,38 @@ mod tests {
         let mut file = EnvironmentsFile::default();
         let mut e = entry("https://dev.example.invalid");
         e.api_key = Some("file-key".to_owned());
+        e.api_secret = Some("file-secret".to_owned());
         file.environments.insert("dev".to_owned(), e);
+        // A blank env-var key is ignored, so the complete file pair survives.
         let var = |k: &str| (k == "DEV_API_KEY").then(|| "   ".to_owned());
         let env = resolve_with("dev", &file, var).expect("dev resolves");
         assert_eq!(env.api_key.as_deref(), Some("file-key"));
+        assert_eq!(env.api_secret.as_deref(), Some("file-secret"));
+    }
+
+    #[test]
+    fn sso_key_pair_is_resolved_atomically_per_layer() {
+        // File has a complete pair; env supplies only the key. The env layer is
+        // incomplete, so we must NOT mix (env-key + file-secret) — the complete
+        // file pair is used instead.
+        let mut file = EnvironmentsFile::default();
+        let mut e = entry("https://dev.example.invalid");
+        e.api_key = Some("file-key".to_owned());
+        e.api_secret = Some("file-secret".to_owned());
+        file.environments.insert("dev".to_owned(), e);
+        let key_only = |k: &str| (k == "DEV_API_KEY").then(|| "env-key".to_owned());
+        let env = resolve_with("dev", &file, key_only).expect("dev resolves");
+        assert_eq!(env.api_key.as_deref(), Some("file-key"));
+        assert_eq!(env.api_secret.as_deref(), Some("file-secret"));
+
+        // A partial pair within a single layer (file key, no secret) yields no
+        // sso-key at all, so domain commands fall back to OAuth.
+        let mut file2 = EnvironmentsFile::default();
+        let mut e2 = entry("https://dev.example.invalid");
+        e2.api_key = Some("lonely-key".to_owned());
+        file2.environments.insert("dev".to_owned(), e2);
+        let env2 = resolve_with("dev", &file2, no_vars).expect("dev resolves");
+        assert!(env2.api_key.is_none() && env2.api_secret.is_none());
     }
 
     #[test]
