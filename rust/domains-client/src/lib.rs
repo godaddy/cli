@@ -6,13 +6,21 @@
 //! `reqwest::Client` (the CLI sets the `Authorization: sso-key …`/Bearer header
 //! itself). See `scripts/regenerate-spec.sh` to refresh the spec.
 //!
-//! Generated code is exempt from the workspace's strict style lints.
-#![allow(clippy::all)]
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(rustdoc::all)]
+//! The lint allowances are scoped to the generated module so the hand-written
+//! code below (`client_with_auth`, `BuildError`) is still linted normally.
 
-include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
+/// progenitor-generated client + types. Exempt from the workspace's strict
+/// style/rustdoc lints (it's machine-generated); the rest of the crate is not.
+mod generated {
+    #![allow(clippy::all)]
+    #![allow(dead_code)]
+    #![allow(unused_imports)]
+    #![allow(rustdoc::all)]
+
+    include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
+}
+
+pub use generated::*;
 
 /// Error building the authenticated HTTP client.
 #[derive(Debug, thiserror::Error)]

@@ -102,6 +102,8 @@ print(f"   kept {len(paths)} paths, {len(out['definitions'])} definitions")
 PY
 
 echo "==> Converting Swagger 2.0 -> OpenAPI 3.0"
-npx -y swagger2openapi "$trimmed_v2" -o "$oas3"
+# Pin the converter so regeneration is deterministic across time (an unpinned
+# `npx swagger2openapi` would float to the latest release and can drift/break).
+npx -y swagger2openapi@7.0.8 "$trimmed_v2" -o "$oas3"
 rm -f "$trimmed_v2"
 echo "==> Wrote $oas3"
