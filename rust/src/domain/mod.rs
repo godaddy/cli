@@ -34,7 +34,6 @@ fn map_env_err(e: environments::EnvError) -> CliCoreError {
     CliCoreError::message(e.to_string())
 }
 
-/// Convert a currency micro-unit amount (e.g. 11_990_000) to a decimal string
 /// ("11.99"). Domain prices are returned in micro-units (1 unit = 1_000_000
 /// micros).
 ///
@@ -43,8 +42,19 @@ fn map_env_err(e: environments::EnvError) -> CliCoreError {
 /// output a faithful, surprise-free rendering of the raw value rather than
 /// inventing a rounded figure. See the `formats_micro_units_to_decimal` test for
 /// the defined behavior on a (synthetic) sub-cent input.
+///
+/// The sign is formatted explicitly (and `unsigned_abs` avoids `i64::MIN`
+/// overflow) so sub-unit negatives like `-500_000` render as `-0.50`, not `0.50`.
 fn format_price(micros: Option<i64>) -> Option<String> {
-    micros.map(|m| format!("{}.{:02}", m / 1_000_000, (m.abs() % 1_000_000) / 10_000))
+    micros.map(|m| {
+        let sign = if m < 0 { "-" } else { "" };
+        let abs = m.unsigned_abs();
+        format!(
+            "{sign}{}.{:02}",
+            abs / 1_000_000,
+            (abs % 1_000_000) / 10_000
+        )
+    })
 }
 
 /// Pick the `Authorization` header value for a resolved credential: the `sso-key`
@@ -290,6 +300,9 @@ mod tests {
         assert_eq!(format_price(Some(11_990_000)).as_deref(), Some("11.99"));
         assert_eq!(format_price(Some(1_000_000)).as_deref(), Some("1.00"));
         assert_eq!(format_price(Some(20_500_000)).as_deref(), Some("20.50"));
+        // Negatives keep their sign, including sub-unit amounts.
+        assert_eq!(format_price(Some(-11_990_000)).as_deref(), Some("-11.99"));
+        assert_eq!(format_price(Some(-500_000)).as_deref(), Some("-0.50"));
         assert_eq!(format_price(None), None);
         // Sub-cent micros truncate toward the lower cent (documented behavior):
         // 1_005_000 micros = 1.005 -> "1.00", never "1.01".

@@ -146,16 +146,26 @@ fn api_key_override_cell() -> &'static std::sync::Mutex<Option<(String, String)>
     API_KEY_OVERRIDE.get_or_init(|| std::sync::Mutex::new(None))
 }
 
+/// Lock the override cell, recovering the inner value if the mutex was poisoned
+/// by an unrelated panic. The data is a plain `Option<(String, String)>` that's
+/// always left consistent, so recovery is safe — and dropping the override on a
+/// poisoned lock would silently switch a domain command from sso-key to OAuth,
+/// which is exactly the confusing failure we want to avoid.
+fn lock_api_key_override() -> std::sync::MutexGuard<'static, Option<(String, String)>> {
+    api_key_override_cell().lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("api-key override lock was poisoned; recovering the stored value");
+        poisoned.into_inner()
+    })
+}
+
 /// Record an sso-key from the `--api-key`/`--api-secret` flags. Highest
 /// precedence for domain-command auth (beats `<ENV>_API_KEY` and config).
 pub fn set_api_key_override(key: String, secret: String) {
-    if let Ok(mut guard) = api_key_override_cell().lock() {
-        *guard = Some((key, secret));
-    }
+    *lock_api_key_override() = Some((key, secret));
 }
 
 fn api_key_override() -> Option<(String, String)> {
-    api_key_override_cell().lock().ok().and_then(|g| g.clone())
+    lock_api_key_override().clone()
 }
 
 /// Auth provider that composes [`GoDaddyAuthProvider`] (OAuth/PKCE) but, for
