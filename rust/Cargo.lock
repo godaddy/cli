@@ -542,9 +542,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli-engine"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f4015806946ade71addfa8ae7a869dfd061df2536dac41371efb0489bed9760"
+checksum = "aac2356eabf48d9c8142a70e0da391f065986911dfcc8c49381fa4559795b98f"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -562,6 +562,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.18",
  "tokio",
+ "toml_edit 0.22.27",
  "tracing",
  "url",
  "zeroize",
