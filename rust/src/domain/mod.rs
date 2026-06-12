@@ -125,12 +125,16 @@ pub fn module() -> Module {
                     .filter(|&b| b);
 
                 let client = make_client(&ctx).await?;
-                let resp = client
-                    .available(check_type, &domain, for_transfer)
-                    .await
-                    .map_err(|e| {
-                        CliCoreError::message(format!("domain availability check failed: {e}"))
-                    })?;
+                let mut req = client.available().domain(domain.as_str());
+                if let Some(ct) = check_type {
+                    req = req.check_type(ct);
+                }
+                if let Some(ft) = for_transfer {
+                    req = req.for_transfer(ft);
+                }
+                let resp = req.send().await.map_err(|e| {
+                    CliCoreError::message(format!("domain availability check failed: {e}"))
+                })?;
                 let body = resp.into_inner();
 
                 let mut result = json!({
@@ -223,19 +227,21 @@ pub fn module() -> Module {
                 };
 
                 let client = make_client(&ctx).await?;
-                let resp = client
-                    .suggest(
-                        city,
-                        country,
-                        None,
-                        None,
-                        limit,
-                        Some(&query),
-                        None,
-                        tlds.as_ref(),
-                        None,
-                        None,
-                    )
+                let mut req = client.suggest().query(query.as_str());
+                if let Some(n) = limit {
+                    req = req.limit(n);
+                }
+                if let Some(t) = tlds {
+                    req = req.tlds(t);
+                }
+                if let Some(c) = country {
+                    req = req.country(c);
+                }
+                if let Some(city) = city {
+                    req = req.city(city);
+                }
+                let resp = req
+                    .send()
                     .await
                     .map_err(|e| CliCoreError::message(format!("domain suggestion failed: {e}")))?;
                 let suggestions: Vec<String> =

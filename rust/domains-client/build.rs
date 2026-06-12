@@ -14,7 +14,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let spec_text = fs::read_to_string(spec_path)?;
     let spec: openapiv3::OpenAPI = serde_json::from_str(&spec_text)?;
 
-    let mut generator = progenitor::Generator::default();
+    // Builder interface: each operation gets a fluent builder with named setters
+    // (e.g. `client.suggest().query(..).limit(..).send()`) instead of positional
+    // args, so call sites read clearly without an IDE and unused optional params
+    // are simply omitted rather than passed as `None`.
+    let mut settings = progenitor::GenerationSettings::new();
+    settings.with_interface(progenitor::InterfaceStyle::Builder);
+    let mut generator = progenitor::Generator::new(&settings);
     let tokens = generator.generate_tokens(&spec)?;
     let ast = syn::parse2(tokens)?;
     let formatted = prettyplease::unparse(&ast);
