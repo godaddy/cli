@@ -55,7 +55,12 @@ async fn main() -> ExitCode {
                         .global(true)
                         .value_name("SECRET")
                         .requires("api-key")
-                        .help("sso-key API secret (used with --api-key)"),
+                        .help(
+                            "sso-key API secret (used with --api-key). Note: a \
+                             value passed on the command line is visible in the \
+                             process list and shell history; prefer <ENV>_API_SECRET \
+                             or the environments config file",
+                        ),
                 )
             }))
             .with_apply_flags(Arc::new(|matches, mw| {

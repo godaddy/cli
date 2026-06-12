@@ -755,6 +755,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "futures",
+ "httpmock",
  "openapiv3",
  "prettyplease",
  "progenitor",
@@ -764,6 +765,7 @@ dependencies = [
  "serde_json",
  "syn 2.0.117",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

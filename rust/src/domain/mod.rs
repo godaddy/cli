@@ -35,9 +35,27 @@ fn map_env_err(e: environments::EnvError) -> CliCoreError {
 }
 
 /// Convert a currency micro-unit amount (e.g. 11_990_000) to a decimal string
-/// ("11.99"). Domain prices are returned in micro-units.
+/// ("11.99"). Domain prices are returned in micro-units (1 unit = 1_000_000
+/// micros).
+///
+/// Truncates (does not round) to whole cents: the API returns whole-cent prices
+/// in practice, so the sub-cent digits are always zero; truncating keeps the
+/// output a faithful, surprise-free rendering of the raw value rather than
+/// inventing a rounded figure. See the `formats_micro_units_to_decimal` test for
+/// the defined behavior on a (synthetic) sub-cent input.
 fn format_price(micros: Option<i64>) -> Option<String> {
     micros.map(|m| format!("{}.{:02}", m / 1_000_000, (m.abs() % 1_000_000) / 10_000))
+}
+
+/// Pick the `Authorization` header value for a resolved credential: the `sso-key`
+/// scheme for the [`SSO_KEY_PROVIDER`] bypass path, otherwise an OAuth `Bearer`
+/// token. Pure so the scheme selection is unit-testable without a full context.
+fn authorization_header(provider: &str, token: &str) -> String {
+    if provider == SSO_KEY_PROVIDER {
+        format!("sso-key {token}")
+    } else {
+        format!("Bearer {token}")
+    }
 }
 
 /// Build a Domains API client for the active environment, choosing the auth
@@ -47,11 +65,7 @@ async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
     let env = ctx.middleware.env.clone();
     let domains = environments::resolve_domains(&env).map_err(map_env_err)?;
     let cred = ctx.credential().await?;
-    let authorization = if cred.provider == SSO_KEY_PROVIDER {
-        format!("sso-key {}", cred.token)
-    } else {
-        format!("Bearer {}", cred.token)
-    };
+    let authorization = authorization_header(&cred.provider, &cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
     domains_client::client_with_auth(&domains.base_url, &authorization, USER_AGENT, &request_id)
         .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
@@ -78,6 +92,7 @@ pub fn module() -> Module {
             CommandSpec::new("available", "Check whether a domain is available")
                 .with_system("domain")
                 .with_tier(Tier::Read)
+                .with_default_fields("domain,available,definitive,price,currency")
                 .with_scopes(&[DOMAINS_READ_SCOPE])
                 .with_arg(
                     clap::Arg::new("domain")
@@ -172,6 +187,7 @@ pub fn module() -> Module {
             CommandSpec::new("suggest", "Suggest available domains for a query")
                 .with_system("domain")
                 .with_tier(Tier::Read)
+                .with_default_fields("domain")
                 .with_scopes(&[DOMAINS_READ_SCOPE])
                 .with_arg(
                     clap::Arg::new("query")
@@ -244,8 +260,13 @@ pub fn module() -> Module {
                     .send()
                     .await
                     .map_err(|e| CliCoreError::message(format!("domain suggestion failed: {e}")))?;
-                let suggestions: Vec<String> =
-                    resp.into_inner().into_iter().map(|s| s.domain).collect();
+                // Emit objects (not bare strings) so the list has a projectable
+                // `domain` field for `--fields`/default-field rendering.
+                let suggestions: Vec<serde_json::Value> = resp
+                    .into_inner()
+                    .into_iter()
+                    .map(|s| json!({ "domain": s.domain }))
+                    .collect();
 
                 Ok(
                     CommandResult::new(json!(suggestions)).with_next_actions(vec![
@@ -260,7 +281,8 @@ pub fn module() -> Module {
 
 #[cfg(test)]
 mod tests {
-    use super::format_price;
+    use super::{authorization_header, format_price};
+    use crate::auth::SSO_KEY_PROVIDER;
     use cli_engine::{Cli, CliConfig};
 
     #[test]
@@ -269,6 +291,20 @@ mod tests {
         assert_eq!(format_price(Some(1_000_000)).as_deref(), Some("1.00"));
         assert_eq!(format_price(Some(20_500_000)).as_deref(), Some("20.50"));
         assert_eq!(format_price(None), None);
+        // Sub-cent micros truncate toward the lower cent (documented behavior):
+        // 1_005_000 micros = 1.005 -> "1.00", never "1.01".
+        assert_eq!(format_price(Some(1_005_000)).as_deref(), Some("1.00"));
+    }
+
+    #[test]
+    fn authorization_header_picks_scheme_from_provider() {
+        // sso-key bypass path -> `sso-key KEY:SECRET`.
+        assert_eq!(
+            authorization_header(SSO_KEY_PROVIDER, "KEY:SECRET"),
+            "sso-key KEY:SECRET"
+        );
+        // Any other provider (OAuth/PKCE) -> `Bearer <token>`.
+        assert_eq!(authorization_header("godaddy", "tok123"), "Bearer tok123");
     }
 
     /// The `domain` commands call the Domains API, so they must stay fail-closed.
