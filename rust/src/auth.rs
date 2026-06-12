@@ -162,11 +162,12 @@ fn api_key_override() -> Option<(String, String)> {
 /// `domain:*` commands whose target environment has an sso-key configured,
 /// returns that key instead.
 ///
-/// The GoDaddy Domains API endpoints authenticate with
-/// `Authorization: sso-key <KEY>:<SECRET>`, not OAuth. Every other command — and
-/// any domain command in an environment without a configured key — continues to
-/// use OAuth (including scope step-up). Scoping the bypass to `domain:*` keeps it
-/// from affecting unrelated commands.
+/// The GoDaddy Domains API endpoints accept either an sso-key
+/// (`Authorization: sso-key <KEY>:<SECRET>`) or an OAuth bearer token. This
+/// provider uses the sso-key only when one is configured for a `domain:*`
+/// command's environment; every other command — and any domain command without a
+/// configured key — uses OAuth (including scope step-up). Scoping the bypass to
+/// `domain:*` keeps it from affecting unrelated commands.
 #[derive(Debug, Default)]
 pub struct CompositeAuthProvider {
     oauth: GoDaddyAuthProvider,

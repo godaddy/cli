@@ -74,9 +74,10 @@ pub struct ResolvedEnv {
     /// availability) live behind a different host than the OAuth/`api_url`
     /// service; this defaults to `api_url` when not overridden.
     pub domains_api_url: String,
-    /// sso-key API key/secret for the domain endpoints, which use
-    /// `Authorization: sso-key <key>:<secret>` rather than OAuth. Optional: when
-    /// absent, domain commands fall back to the OAuth credential.
+    /// Optional sso-key for the domain endpoints (which accept either sso-key or
+    /// OAuth). When both are set, `domain:*` commands authenticate with
+    /// `Authorization: sso-key <key>:<secret>`; when absent they use the OAuth
+    /// credential.
     pub api_key: Option<String>,
     pub api_secret: Option<String>,
 }

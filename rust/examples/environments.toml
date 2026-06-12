@@ -12,11 +12,11 @@
 #
 # ── Auth ───────────────────────────────────────────────────────────────────
 # The `domain` commands hit the GoDaddy Domains API, which is OAuth-enabled on
-# all environments (run `gddy auth login --env <env>` first). So no sso-key is
-# needed for the domain commands. If you do need an sso-key for some other,
-# not-yet-OAuth-enabled endpoint, add `api_key`/`api_secret` to the env (or pass
-# `--api-key`/`--api-secret`); the CLI then sends `Authorization: sso-key …` for
-# `domain:*` commands instead of the OAuth bearer.
+# all environments (run `gddy auth login --env <env>` first), so no sso-key is
+# needed. `api_key`/`api_secret` are optional and affect ONLY `domain:*`
+# commands: when set (here, via `<ENV>_API_KEY`/`_API_SECRET`, or
+# `--api-key`/`--api-secret`), those commands send `Authorization: sso-key …`
+# instead of the OAuth bearer. They do not affect any non-domain command.
 #
 # `client_id`: a custom env needs one for PKCE login; the per-env public OAuth
 # client ids are filled in below. Override via DEV_OAUTH_CLIENT_ID /
