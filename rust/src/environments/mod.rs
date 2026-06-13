@@ -330,7 +330,7 @@ fn resolve_with(
     // (e.g. an env-var key with a file-provided secret), which would send a bogus
     // `sso-key key:secret` and yield confusing 401s. A partial pair (only one of
     // the two present in a layer) yields no sso-key, so domain commands fall back
-    // to OAuth. The `--api-key`/`--api-secret` flags enforce the same pairing.
+    // to OAuth.
     let entry = file.environments.get(name);
     let (api_key, api_secret) = match (
         var(&format!("{prefix}_API_KEY")).and_then(|v| non_empty(&v)),
