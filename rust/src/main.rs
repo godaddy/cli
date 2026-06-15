@@ -13,14 +13,27 @@ use std::{process::ExitCode, sync::Arc};
 
 use clap::Arg;
 use cli_engine::{BuildInfo, Cli, CliConfig, NextAction};
+use tracing_subscriber::filter::LevelFilter;
 
 use crate::env::get_env;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    let trace_filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .from_env_lossy()
+        .add_directive(
+            "cli_engine::auth::pkce=info"
+                .parse()
+                .expect("valid cli-engine PKCE tracing directive"),
+        );
+
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(trace_filter)
         .with_writer(std::io::stderr)
+        .without_time()
+        .with_target(false)
+        .with_level(false)
         .init();
 
     let auth_provider = Arc::new(auth::CompositeAuthProvider::new());
