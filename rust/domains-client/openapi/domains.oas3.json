@@ -1,0 +1,511 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "GoDaddy Domains API (availability subset)",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/v1/domains/available": {
+            "get": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "Domain name whose availability is to be checked",
+                        "in": "query",
+                        "name": "domain",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Optimize for time ('FAST') or accuracy ('FULL')",
+                        "in": "query",
+                        "name": "checkType",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "FAST",
+                                "FULL"
+                            ],
+                            "default": "FAST"
+                        }
+                    },
+                    {
+                        "description": "Whether or not to include domains available for transfer. If set to True, checkType is ignored",
+                        "in": "query",
+                        "name": "forTransfer",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DomainAvailableResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "available",
+                "summary": "Determine whether or not the specified domain is available for purchase"
+            }
+        },
+        "/v1/domains/suggest": {
+            "get": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "Shopper ID for which the suggestions are being generated",
+                        "in": "header",
+                        "name": "X-Shopper-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Domain name or set of keywords for which alternative domain names will be suggested",
+                        "in": "query",
+                        "name": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Two-letter ISO country code to be used as a hint for target region<br/><br/>\nNOTE: These are sample values, there are many\n<a href=\"http://www.iso.org/iso/country_codes.htm\">more</a>",
+                        "in": "query",
+                        "name": "country",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "iso-country-code",
+                            "enum": [
+                                "AC",
+                                "AD",
+                                "AE",
+                                "AF",
+                                "AG",
+                                "AI",
+                                "AL",
+                                "AM",
+                                "AO",
+                                "AQ",
+                                "AR",
+                                "AS",
+                                "AT",
+                                "AU",
+                                "AW",
+                                "AX",
+                                "AZ",
+                                "BA",
+                                "BB",
+                                "BD",
+                                "BE",
+                                "BF",
+                                "BG",
+                                "BH",
+                                "BI",
+                                "BJ",
+                                "BM",
+                                "BN",
+                                "BO",
+                                "BQ",
+                                "BR",
+                                "BS",
+                                "BT",
+                                "BV",
+                                "BW",
+                                "BY",
+                                "BZ",
+                                "CA",
+                                "CC",
+                                "CD",
+                                "CF",
+                                "CG",
+                                "CH",
+                                "CI",
+                                "CK",
+                                "CL",
+                                "CM",
+                                "CN",
+                                "CO",
+                                "CR",
+                                "CV",
+                                "CW",
+                                "CX",
+                                "CY",
+                                "CZ",
+                                "DE",
+                                "DJ",
+                                "DK",
+                                "DM",
+                                "DO",
+                                "DZ",
+                                "EC",
+                                "EE",
+                                "EG",
+                                "EH",
+                                "ER",
+                                "ES",
+                                "ET",
+                                "FI",
+                                "FJ",
+                                "FK",
+                                "FM",
+                                "FO",
+                                "FR",
+                                "GA",
+                                "GB",
+                                "GD",
+                                "GE",
+                                "GF",
+                                "GG",
+                                "GH",
+                                "GI",
+                                "GL",
+                                "GM",
+                                "GN",
+                                "GP",
+                                "GQ",
+                                "GR",
+                                "GS",
+                                "GT",
+                                "GU",
+                                "GW",
+                                "GY",
+                                "HK",
+                                "HM",
+                                "HN",
+                                "HR",
+                                "HT",
+                                "HU",
+                                "ID",
+                                "IE",
+                                "IL",
+                                "IM",
+                                "IN",
+                                "IO",
+                                "IQ",
+                                "IS",
+                                "IT",
+                                "JE",
+                                "JM",
+                                "JO",
+                                "JP",
+                                "KE",
+                                "KG",
+                                "KH",
+                                "KI",
+                                "KM",
+                                "KN",
+                                "KR",
+                                "KV",
+                                "KW",
+                                "KY",
+                                "KZ",
+                                "LA",
+                                "LB",
+                                "LC",
+                                "LI",
+                                "LK",
+                                "LR",
+                                "LS",
+                                "LT",
+                                "LU",
+                                "LV",
+                                "LY",
+                                "MA",
+                                "MC",
+                                "MD",
+                                "ME",
+                                "MG",
+                                "MH",
+                                "MK",
+                                "ML",
+                                "MM",
+                                "MN",
+                                "MO",
+                                "MP",
+                                "MQ",
+                                "MR",
+                                "MS",
+                                "MT",
+                                "MU",
+                                "MV",
+                                "MW",
+                                "MX",
+                                "MY",
+                                "MZ",
+                                "NA",
+                                "NC",
+                                "NE",
+                                "NF",
+                                "NG",
+                                "NI",
+                                "NL",
+                                "NO",
+                                "NP",
+                                "NR",
+                                "NU",
+                                "NZ",
+                                "OM",
+                                "PA",
+                                "PE",
+                                "PF",
+                                "PG",
+                                "PH",
+                                "PK",
+                                "PL",
+                                "PM",
+                                "PN",
+                                "PR",
+                                "PS",
+                                "PT",
+                                "PW",
+                                "PY",
+                                "QA",
+                                "RE",
+                                "RO",
+                                "RS",
+                                "RU",
+                                "RW",
+                                "SA",
+                                "SB",
+                                "SC",
+                                "SE",
+                                "SG",
+                                "SH",
+                                "SI",
+                                "SJ",
+                                "SK",
+                                "SL",
+                                "SM",
+                                "SN",
+                                "SO",
+                                "SR",
+                                "ST",
+                                "SV",
+                                "SX",
+                                "SZ",
+                                "TC",
+                                "TD",
+                                "TF",
+                                "TG",
+                                "TH",
+                                "TJ",
+                                "TK",
+                                "TL",
+                                "TM",
+                                "TN",
+                                "TO",
+                                "TP",
+                                "TR",
+                                "TT",
+                                "TV",
+                                "TW",
+                                "TZ",
+                                "UA",
+                                "UG",
+                                "UM",
+                                "US",
+                                "UY",
+                                "UZ",
+                                "VA",
+                                "VC",
+                                "VE",
+                                "VG",
+                                "VI",
+                                "VN",
+                                "VU",
+                                "WF",
+                                "WS",
+                                "YE",
+                                "YT",
+                                "ZA",
+                                "ZM",
+                                "ZW"
+                            ]
+                        }
+                    },
+                    {
+                        "description": "Name of city to be used as a hint for target region",
+                        "in": "query",
+                        "name": "city",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "city-name"
+                        }
+                    },
+                    {
+                        "description": "Sources to be queried<br/><br/><ul>\n<li><strong>CC_TLD</strong> - Varies the TLD using Country Codes</li>\n<li><strong>EXTENSION</strong> - Varies the TLD</li>\n<li><strong>KEYWORD_SPIN</strong> - Identifies keywords and then rotates each one</li>\n<li><strong>PREMIUM</strong> - Includes variations with premium prices</li></ul>",
+                        "in": "query",
+                        "name": "sources",
+                        "required": false,
+                        "style": "form",
+                        "explode": false,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "enum": [
+                                    "CC_TLD",
+                                    "EXTENSION",
+                                    "KEYWORD_SPIN",
+                                    "PREMIUM",
+                                    "cctld",
+                                    "keywordspin"
+                                ],
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "description": "Top-level domains to be included in suggestions<br/><br/>\nNOTE: These are sample values, there are many\n<a href=\"http://www.godaddy.com/tlds/gtld.aspx#domain_search_form\">more</a>",
+                        "in": "query",
+                        "name": "tlds",
+                        "required": false,
+                        "style": "form",
+                        "explode": false,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "description": "Maximum length of second-level domain",
+                        "in": "query",
+                        "name": "lengthMax",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Minimum length of second-level domain",
+                        "in": "query",
+                        "name": "lengthMin",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Maximum number of suggestions to return",
+                        "in": "query",
+                        "name": "limit",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Maximum amount of time, in milliseconds, to wait for responses\nIf elapses, return the results compiled up to that point",
+                        "in": "query",
+                        "name": "waitMs",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "integer-positive",
+                            "default": 1000
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/DomainSuggestion"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "suggest",
+                "summary": "Suggest alternate Domain names based on a seed Domain, a set of keywords, or the shopper's purchase history"
+            }
+        }
+    },
+    "servers": [
+        {
+            "url": "https://api.ote-godaddy.com"
+        }
+    ],
+    "components": {
+        "schemas": {
+            "DomainAvailableResponse": {
+                "properties": {
+                    "available": {
+                        "description": "Whether or not the domain name is available",
+                        "type": "boolean"
+                    },
+                    "currency": {
+                        "default": "USD",
+                        "description": "Currency in which the `price` is listed. Only returned if tld is offered",
+                        "format": "iso-currency-code",
+                        "type": "string"
+                    },
+                    "definitive": {
+                        "description": "Whether or not the `available` answer has been definitively verified with the registry",
+                        "type": "boolean"
+                    },
+                    "domain": {
+                        "description": "Domain name",
+                        "type": "string"
+                    },
+                    "period": {
+                        "description": "Number of years included in the price. Only returned if tld is offered",
+                        "format": "integer-positive",
+                        "type": "integer"
+                    },
+                    "price": {
+                        "description": "Price of the domain excluding taxes or fees. Only returned if tld is offered",
+                        "format": "currency-micro-unit",
+                        "type": "integer"
+                    },
+                    "renewalPrice": {
+                        "description": "Price for renewing the domain excluding taxes or fees. Only returned if tld is offered",
+                        "format": "currency-micro-unit",
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "domain",
+                    "available",
+                    "definitive"
+                ]
+            },
+            "DomainSuggestion": {
+                "properties": {
+                    "domain": {
+                        "description": "Suggested domain name",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "domain"
+                ]
+            }
+        }
+    }
+}

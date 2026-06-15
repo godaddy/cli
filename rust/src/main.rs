@@ -3,6 +3,7 @@ mod api_explorer;
 mod application;
 mod auth;
 mod config;
+mod domain;
 mod env;
 mod environments;
 mod extension;
@@ -22,7 +23,7 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
+    let auth_provider = Arc::new(auth::CompositeAuthProvider::new());
 
     let cli = Cli::new(
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
@@ -66,6 +67,7 @@ async fn main() -> ExitCode {
             .with_module(actions_catalog::module())
             .with_module(api_explorer::module())
             .with_module(application::module())
+            .with_module(domain::module())
             .with_module(env::module())
             .with_module(webhook::module()),
     );
