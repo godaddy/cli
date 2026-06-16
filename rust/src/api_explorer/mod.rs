@@ -7,6 +7,37 @@ use cli_engine::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::output_schema::output_schema;
+
+output_schema!(ApiDomain {
+    "domain": "string";
+    "title": "string";
+    "description": "string", optional;
+    "endpoints": "number";
+    "baseUrl": "string";
+});
+
+output_schema!(ApiEndpoint {
+    "domain": "string";
+    "operationId": "string";
+    "method": "string";
+    "path": "string";
+    "summary": "string", optional;
+});
+
+output_schema!(ApiOperation {
+    "domain": "string";
+    "operationId": "string";
+    "method": "string";
+    "path": "string";
+    "summary": "string", optional;
+    "description": "string", optional;
+    "parameters": "[]object";
+    "requestBody": "object", optional;
+    "responses": "object";
+    "scopes": "[]string";
+});
+
 // ---------------------------------------------------------------------------
 // Catalog types
 // ---------------------------------------------------------------------------
@@ -215,6 +246,7 @@ fn list_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,title,endpoints,baseUrl")
+            .with_output_schema::<ApiDomain>()
             .with_arg(
                 clap::Arg::new("domain")
                     .long("domain")
@@ -286,6 +318,7 @@ fn describe_command() -> RuntimeCommandSpec {
         .with_system("api")
         .with_tier(Tier::Read)
         .no_auth(true)
+        .with_output_schema::<ApiOperation>()
         .with_arg(
             clap::Arg::new("endpoint")
                 .value_name("ENDPOINT")
@@ -333,6 +366,7 @@ fn search_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,method,path,summary")
+            .with_output_schema::<ApiEndpoint>()
             .with_arg(
                 clap::Arg::new("query")
                     .value_name("QUERY")

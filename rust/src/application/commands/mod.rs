@@ -5,6 +5,91 @@ use cli_engine::{
 use serde_json::json;
 
 use crate::application::client::{ApplicationClient, api_url_for_env};
+use crate::output_schema::output_schema;
+
+output_schema!(ApplicationSummary {
+    "id": "string";
+    "name": "string";
+    "label": "string", optional;
+    "description": "string", optional;
+    "status": "string";
+    "url": "string", optional;
+    "proxyUrl": "string", optional;
+});
+
+output_schema!(ApplicationCredentials {
+    "id": "string";
+    "clientId": "string";
+    "clientSecret": "string";
+    "name": "string";
+    "label": "string", optional;
+    "description": "string", optional;
+    "status": "string";
+    "url": "string", optional;
+    "proxyUrl": "string", optional;
+    "authorizationScopes": "[]string";
+    "secret": "string", optional;
+    "publicKey": "string", optional;
+});
+
+output_schema!(ApplicationUpdate {
+    "id": "string";
+    "clientId": "string";
+    "name": "string";
+    "label": "string", optional;
+    "description": "string", optional;
+    "status": "string";
+    "url": "string", optional;
+    "proxyUrl": "string", optional;
+    "authorizationScopes": "[]string";
+});
+
+output_schema!(ApplicationRef {
+    "id": "string";
+});
+
+output_schema!(ApplicationArchive {
+    "id": "string";
+    "name": "string";
+    "label": "string", optional;
+    "status": "string";
+    "createdAt": "string";
+    "archivedAt": "string";
+});
+
+output_schema!(ApplicationRelease {
+    "id": "string";
+    "version": "string";
+    "description": "string", optional;
+    "createdAt": "string";
+});
+
+output_schema!(ValidationResult {
+    "valid": "bool";
+    "path": "string";
+});
+
+output_schema!(ConfigAction {
+    "name": "string";
+    "url": "string";
+});
+
+output_schema!(ConfigSubscription {
+    "name": "string";
+    "url": "string";
+    "events": "[]string";
+});
+
+output_schema!(ExtensionHandle {
+    "name": "string";
+    "handle": "string";
+    "type": "string";
+});
+
+output_schema!(ExtensionBlocks {
+    "source": "string";
+    "type": "string";
+});
 
 async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<ApplicationClient> {
     // Lazily resolve the credential; this triggers the auth flow only for
@@ -44,7 +129,8 @@ fn list_command() -> RuntimeCommandSpec {
         CommandSpec::new("list", "List all applications")
             .with_system("applications")
             .with_tier(Tier::Read)
-            .with_default_fields("name,label,status"),
+            .with_default_fields("name,label,status")
+            .with_output_schema::<ApplicationSummary>(),
         |ctx| async move {
             let client = make_client(&ctx).await?;
             let data = client.list_applications().await.map_err(client_err)?;
@@ -68,6 +154,7 @@ fn info_command() -> RuntimeCommandSpec {
         CommandSpec::new("info", "Get application details")
             .with_system("applications")
             .with_tier(Tier::Read)
+            .with_output_schema::<ApplicationSummary>()
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
@@ -113,6 +200,7 @@ fn init_command() -> RuntimeCommandSpec {
         CommandSpec::new("init", "Create and initialize a new application")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ApplicationCredentials>()
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
@@ -233,6 +321,7 @@ fn validate_command() -> RuntimeCommandSpec {
         CommandSpec::new("validate", "Validate godaddy.toml config")
             .with_system("applications")
             .with_tier(Tier::Read)
+            .with_output_schema::<ValidationResult>()
             .no_auth(true)
             .with_arg(
                 clap::Arg::new("config")
@@ -265,6 +354,7 @@ fn update_command() -> RuntimeCommandSpec {
         CommandSpec::new("update", "Update an application")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ApplicationUpdate>()
             .with_arg(
                 clap::Arg::new("id")
                     .long("id")
@@ -339,6 +429,7 @@ fn enable_command() -> RuntimeCommandSpec {
         CommandSpec::new("enable", "Enable an application on a store")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ApplicationRef>()
             .with_arg(
                 clap::Arg::new("name")
                     .value_name("NAME")
@@ -405,6 +496,7 @@ fn disable_command() -> RuntimeCommandSpec {
         CommandSpec::new("disable", "Disable an application on a store")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ApplicationRef>()
             .with_arg(
                 clap::Arg::new("name")
                     .value_name("NAME")
@@ -473,6 +565,7 @@ fn archive_command() -> RuntimeCommandSpec {
         CommandSpec::new("archive", "Archive an application")
             .with_system("applications")
             .with_tier(Tier::Destructive)
+            .with_output_schema::<ApplicationArchive>()
             .with_arg(
                 clap::Arg::new("name")
                     .value_name("NAME")
@@ -507,6 +600,7 @@ fn release_command() -> RuntimeCommandSpec {
         CommandSpec::new("release", "Create a new application release")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ApplicationRelease>()
             .with_arg(
                 clap::Arg::new("application-id")
                     .long("application-id")
@@ -826,6 +920,7 @@ pub fn add_group() -> RuntimeGroupSpec {
             CommandSpec::new("action", "Add an action to godaddy.toml")
                 .with_system("applications")
                 .with_tier(Tier::Mutate)
+                .with_output_schema::<ConfigAction>()
                 .no_auth(true)
                 .with_arg(
                     clap::Arg::new("name")
@@ -858,6 +953,7 @@ pub fn add_group() -> RuntimeGroupSpec {
             CommandSpec::new("subscription", "Add a webhook subscription to godaddy.toml")
                 .with_system("applications")
                 .with_tier(Tier::Mutate)
+                .with_output_schema::<ConfigSubscription>()
                 .no_auth(true)
                 .with_arg(
                     clap::Arg::new("name")
@@ -922,6 +1018,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("embed", "Add an embed extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ExtensionHandle>()
             .no_auth(true)
             .with_arg(
                 clap::Arg::new("name")
@@ -972,6 +1069,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("checkout", "Add a checkout extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ExtensionHandle>()
             .no_auth(true)
             .with_arg(
                 clap::Arg::new("name")
@@ -1022,6 +1120,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         CommandSpec::new("blocks", "Add a blocks extension")
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_output_schema::<ExtensionBlocks>()
             .no_auth(true)
             .with_arg(
                 clap::Arg::new("source")
