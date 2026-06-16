@@ -74,6 +74,10 @@ pub struct ResolvedEnv {
     /// availability) live behind a different host than the OAuth/`api_url`
     /// service; this defaults to `api_url` when not overridden.
     pub domains_api_url: String,
+    /// Base URL for the account management site (e.g. adding payment methods).
+    /// Defaults to `account.godaddy.com` for prod and `account.{env}-godaddy.com`
+    /// for other environments; overridable via `<PREFIX>_ACCOUNT_URL` or local config.
+    pub account_url: String,
     /// Optional sso-key for the domain endpoints (which accept either sso-key or
     /// OAuth). When both are set, `domain:*` commands authenticate with
     /// `Authorization: sso-key <key>:<secret>`; when absent they use the OAuth
@@ -115,6 +119,7 @@ impl std::fmt::Debug for ResolvedEnv {
             .field("auth_url", &self.auth_url)
             .field("token_url", &self.token_url)
             .field("domains_api_url", &self.domains_api_url)
+            .field("account_url", &self.account_url)
             .field("api_key", &Redacted(&self.api_key))
             .field("api_secret", &Redacted(&self.api_secret))
             .finish()
@@ -150,6 +155,9 @@ pub struct EnvEntry {
     /// Override base URL for domain commands (defaults to `api_url`).
     #[serde(default)]
     pub domains_api_url: Option<String>,
+    /// Override base URL for the account management site (see [`ResolvedEnv::account_url`]).
+    #[serde(default)]
+    pub account_url: Option<String>,
     /// sso-key credentials for domain endpoints (see [`ResolvedEnv::api_key`]).
     #[serde(default)]
     pub api_key: Option<String>,
@@ -167,6 +175,7 @@ impl std::fmt::Debug for EnvEntry {
             .field("auth_url", &self.auth_url)
             .field("token_url", &self.token_url)
             .field("domains_api_url", &self.domains_api_url)
+            .field("account_url", &self.account_url)
             .field("api_key", &Redacted(&self.api_key))
             .field("api_secret", &Redacted(&self.api_secret))
             .finish()
@@ -193,6 +202,15 @@ pub enum EnvError {
 /// `PkceAuthProvider` derivation (uppercase, `-` → `_`).
 pub fn env_prefix(name: &str) -> String {
     name.to_uppercase().replace('-', "_")
+}
+
+fn derive_account_url(env_name: &str) -> String {
+    let host = if env_name == "prod" {
+        "account.godaddy.com".to_owned()
+    } else {
+        format!("account.{env_name}-godaddy.com")
+    };
+    format!("https://{host}")
 }
 
 fn derive_auth_url(api_url: &str) -> String {
@@ -298,6 +316,7 @@ fn resolve_with(
     let mut auth_url: Option<String> = None;
     let mut token_url: Option<String> = None;
     let mut domains_api_url: Option<String> = None;
+    let mut account_url: Option<String> = None;
 
     // Layer 2: local config entry (overrides/defines). An empty/whitespace
     // api_url is ignored so it can't clobber a built-in default.
@@ -313,6 +332,7 @@ fn resolve_with(
         auth_url = entry.auth_url.as_deref().and_then(clean_url);
         token_url = entry.token_url.as_deref().and_then(clean_url);
         domains_api_url = entry.domains_api_url.as_deref().and_then(clean_url);
+        account_url = entry.account_url.as_deref().and_then(clean_url);
     }
 
     // Layer 3: per-env `<PREFIX>_*` overrides (highest precedence). Empty values
@@ -323,6 +343,9 @@ fn resolve_with(
     }
     if let Some(url) = var(&format!("{prefix}_DOMAINS_API_URL")).and_then(|v| clean_url(&v)) {
         domains_api_url = Some(url);
+    }
+    if let Some(url) = var(&format!("{prefix}_ACCOUNT_URL")).and_then(|v| clean_url(&v)) {
+        account_url = Some(url);
     }
 
     // The sso-key is a (key, secret) pair; resolve it atomically from a single
@@ -359,6 +382,7 @@ fn resolve_with(
     let token_url = token_url.unwrap_or_else(|| derive_token_url(&api_url));
     // Domain endpoints default to the same host as the OAuth/api_url service.
     let domains_api_url = domains_api_url.unwrap_or_else(|| api_url.clone());
+    let account_url = account_url.unwrap_or_else(|| derive_account_url(name));
 
     Ok(ResolvedEnv {
         name: name.to_owned(),
@@ -367,6 +391,7 @@ fn resolve_with(
         auth_url,
         token_url,
         domains_api_url,
+        account_url,
         api_key,
         api_secret,
     })
@@ -481,6 +506,7 @@ mod tests {
             auth_url: None,
             token_url: None,
             domains_api_url: None,
+            account_url: None,
             api_key: None,
             api_secret: None,
         }
@@ -558,6 +584,7 @@ mod tests {
                 auth_url: Some("https://auth.example.invalid/authorize".to_owned()),
                 token_url: Some("https://auth.example.invalid/token".to_owned()),
                 domains_api_url: None,
+                account_url: None,
                 api_key: None,
                 api_secret: None,
             },
@@ -623,6 +650,7 @@ mod tests {
                 auth_url: Some("auth.example.invalid/authorize".to_owned()), // no scheme
                 token_url: Some("   ".to_owned()),                           // blank
                 domains_api_url: None,
+                account_url: None,
                 api_key: None,
                 api_secret: None,
             },
@@ -721,6 +749,7 @@ mod tests {
                 auth_url: None,
                 token_url: None,
                 domains_api_url: Some("https://domains.dev.example.invalid".to_owned()),
+                account_url: None,
                 api_key: Some("KEY".to_owned()),
                 api_secret: Some("SECRET".to_owned()),
             },
@@ -744,6 +773,7 @@ mod tests {
                 auth_url: None,
                 token_url: None,
                 domains_api_url: Some("https://from-file.example.invalid".to_owned()),
+                account_url: None,
                 api_key: Some("file-key".to_owned()),
                 api_secret: None,
             },
@@ -804,5 +834,38 @@ mod tests {
         // load_file resolves a real path; just assert it does not panic and that
         // a default (empty) file resolves built-ins correctly via the public API.
         assert!(is_known("prod"));
+    }
+
+    #[test]
+    fn account_url_defaults_to_bare_domain_for_prod() {
+        let file = EnvironmentsFile::default();
+        let env = resolve_with("prod", &file, no_vars).expect("prod resolves");
+        assert_eq!(env.account_url, "https://account.godaddy.com");
+    }
+
+    #[test]
+    fn account_url_defaults_to_prefixed_domain_for_non_prod() {
+        let file = EnvironmentsFile::default();
+        let env = resolve_with("ote", &file, no_vars).expect("ote resolves");
+        assert_eq!(env.account_url, "https://account.ote-godaddy.com");
+    }
+
+    #[test]
+    fn account_url_env_var_overrides_default() {
+        let file = EnvironmentsFile::default();
+        let var =
+            |k: &str| (k == "PROD_ACCOUNT_URL").then(|| "https://account.override.test".to_owned());
+        let env = resolve_with("prod", &file, var).expect("prod resolves");
+        assert_eq!(env.account_url, "https://account.override.test");
+    }
+
+    #[test]
+    fn account_url_local_config_overrides_default() {
+        let mut file = EnvironmentsFile::default();
+        let mut e = entry("https://dev.example.invalid");
+        e.account_url = Some("https://account.dev.example.invalid".to_owned());
+        file.environments.insert("dev".to_owned(), e);
+        let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
+        assert_eq!(env.account_url, "https://account.dev.example.invalid");
     }
 }
