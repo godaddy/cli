@@ -19,8 +19,26 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::domain::{DOMAINS_DNS_UPDATE_SCOPE, DOMAINS_READ_SCOPE, make_client, string_list};
+use crate::output_schema::output_schema;
 
 use domains_client::types;
+
+// Output shapes for the mutating commands (their handlers emit these confirmation
+// objects), registered so `--help`/`--schema` list the fields like the reads do.
+output_schema!(DnsWriteResult {
+    "domain": "string";
+    "type": "string";
+    "name": "string";
+    "records": "number";
+    "action": "string";
+});
+
+output_schema!(DnsDeleteResult {
+    "domain": "string";
+    "type": "string";
+    "name": "string";
+    "deleted": "bool";
+});
 
 /// The eight DNS record types the Domains API accepts, for help text and error
 /// messages. Source of truth for the wire values is the generated
@@ -309,8 +327,11 @@ pub fn module() -> Module {
                     // default-field projection have `type`/`name`/`data`/`ttl`.
                     let out: Vec<Value> = records
                         .iter()
-                        .map(|r| serde_json::to_value(r).unwrap_or_else(|_| json!({})))
-                        .collect();
+                        .map(serde_json::to_value)
+                        .collect::<std::result::Result<_, _>>()
+                        .map_err(|e| {
+                            CliCoreError::message(format!("failed to serialize DNS records: {e}"))
+                        })?;
                     Ok(CommandResult::new(json!(out)))
                 },
             ))
@@ -324,6 +345,7 @@ pub fn module() -> Module {
                     .with_system("domain")
                     .with_tier(Tier::Mutate)
                     .with_default_fields("domain,type,name,records")
+                    .with_output_schema::<DnsWriteResult>()
                     .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
                 ),
                 |ctx| async move {
@@ -366,6 +388,7 @@ pub fn module() -> Module {
                     .with_system("domain")
                     .with_tier(Tier::Destructive)
                     .with_default_fields("domain,type,name,records")
+                    .with_output_schema::<DnsWriteResult>()
                     .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
                 ),
                 |ctx| async move {
@@ -409,6 +432,7 @@ pub fn module() -> Module {
                 .with_system("domain")
                 .with_tier(Tier::Destructive)
                 .with_default_fields("domain,type,name,deleted")
+                .with_output_schema::<DnsDeleteResult>()
                 .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE])
                 .with_arg(
                     clap::Arg::new("domain")

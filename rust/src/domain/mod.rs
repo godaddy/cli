@@ -154,8 +154,11 @@ pub fn module() -> Module {
                 let domains: Vec<serde_json::Value> = resp
                     .into_inner()
                     .iter()
-                    .map(|d| serde_json::to_value(d).unwrap_or_else(|_| json!({})))
-                    .collect();
+                    .map(serde_json::to_value)
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|e| {
+                        CliCoreError::message(format!("failed to serialize domain list: {e}"))
+                    })?;
 
                 Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                     NextAction::new("dns list <domain>", "View a domain's DNS records")
