@@ -13,7 +13,7 @@
 //! global `--reason` flag for audit (`add` only appends, so it is `Mutate`).
 
 use cli_engine::{
-    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module, Result,
+    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module,
     RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::{Value, json};
@@ -52,47 +52,40 @@ fn arg_str(ctx: &CommandContext, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// Validate a user-supplied record type case-insensitively, returning the
-/// canonical upper-case wire string (for the builders' `type_` setters) and the
-/// parsed [`types::DnsRecordType`] (for record bodies).
-fn parse_record_type(raw: &str) -> Result<(String, types::DnsRecordType)> {
-    let upper = raw.to_uppercase();
-    let ty = types::DnsRecordType::try_from(upper.as_str()).map_err(|_| {
-        CliCoreError::message(format!(
-            "invalid --type {raw:?}; expected one of {RECORD_TYPES}"
-        ))
-    })?;
-    Ok((upper, ty))
+/// clap value-parser for `--type`: validate against the record-type set and
+/// return the canonical upper-case wire string.
+///
+/// Validating in clap (rather than the handler) means invalid input is rejected
+/// at parse time — *before* cli-engine's `--dry-run`/auth short-circuits — so
+/// e.g. `dns set … --type BOGUS --dry-run` fails instead of reporting success.
+/// The handlers can then trust the value and feed it straight to the builders.
+fn parse_type_arg(raw: &str) -> Result<String, String> {
+    let upper = raw.to_ascii_uppercase();
+    types::DnsRecordType::try_from(upper.as_str())
+        .map(|_| upper)
+        .map_err(|_| format!("invalid record type {raw:?}; expected one of {RECORD_TYPES}"))
 }
 
-/// Map an upper-cased record type to the delete endpoint's type enum.
-///
-/// `recordDeleteTypeName`'s type set omits NS and SOA — GoDaddy manages those
-/// records, so they can't be deleted through the records API. Surface a clear
-/// error for them instead of the generated client's opaque "conversion to
-/// `RecordDeleteTypeNameType` failed". `upper` is assumed already validated as a
-/// real record type by [`parse_record_type`], so NS/SOA is the only way this
-/// fails.
-fn deletable_record_type(upper: &str) -> Result<types::RecordDeleteTypeNameType> {
-    types::RecordDeleteTypeNameType::try_from(upper).map_err(|_| {
-        CliCoreError::message(format!(
+/// Like [`parse_type_arg`], but for `dns delete`: rejects the registry-managed
+/// NS/SOA types the records API can't delete (`recordDeleteTypeName`'s type set
+/// omits them), with a clear reason — at parse time, so
+/// `dns delete … --type NS --dry-run` fails too.
+fn parse_deletable_type_arg(raw: &str) -> Result<String, String> {
+    let upper = raw.to_ascii_uppercase();
+    if types::RecordDeleteTypeNameType::try_from(upper.as_str()).is_ok() {
+        return Ok(upper);
+    }
+    // Distinguish "valid type, just not deletable" from "not a type at all".
+    if types::DnsRecordType::try_from(upper.as_str()).is_ok() {
+        Err(format!(
             "{upper} records can't be deleted (NS and SOA records are managed by GoDaddy); \
              deletable types: A, AAAA, CNAME, MX, SRV, TXT"
         ))
-    })
-}
-
-/// Why a `list` invocation's flag combination is invalid, or `None` when it is
-/// valid. Pure so the rule is unit-testable without a context.
-///
-/// The API only filters by `name` within a `type` (the record routes are
-/// `/records`, `/records/{type}`, `/records/{type}/{name}`), so `--name`
-/// requires `--type`.
-fn list_flag_error(has_type: bool, has_name: bool) -> Option<&'static str> {
-    if has_name && !has_type {
-        return Some("--name requires --type");
+    } else {
+        Err(format!(
+            "invalid record type {raw:?}; expected one of A, AAAA, CNAME, MX, SRV, TXT"
+        ))
     }
-    None
 }
 
 /// Optional record fields shared by `add` and `set`.
@@ -178,6 +171,7 @@ fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
             .long("type")
             .value_name("TYPE")
             .required(true)
+            .value_parser(parse_type_arg)
             .help("Record type (one of A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)"),
     )
     .with_arg(
@@ -255,14 +249,21 @@ pub fn module() -> Module {
                             .help("Domain whose records to list (e.g. example.com)"),
                     )
                     .with_arg(
-                        clap::Arg::new("type").long("type").value_name("TYPE").help(
-                            "Only records of this type (A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)",
-                        ),
+                        clap::Arg::new("type")
+                            .long("type")
+                            .value_name("TYPE")
+                            .value_parser(parse_type_arg)
+                            .help(
+                                "Only records of this type (A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)",
+                            ),
                     )
                     .with_arg(
                         clap::Arg::new("name")
                             .long("name")
                             .value_name("NAME")
+                            // The API only filters by name within a type, so clap
+                            // enforces `--name` requires `--type` at parse time.
+                            .requires("type")
                             .help("Only records with this name (requires --type)"),
                     ),
                 // Output pagination is the engine's job: the global, client-side
@@ -272,12 +273,10 @@ pub fn module() -> Module {
                 // without them.
                 |ctx| async move {
                     let domain = arg_str(&ctx, "domain").unwrap_or_default();
+                    // `--type` is validated + upper-cased by clap's value parser,
+                    // and `--name` requires `--type`, so these can be used as-is.
                     let type_opt = arg_str(&ctx, "type");
                     let name_opt = arg_str(&ctx, "name");
-
-                    if let Some(err) = list_flag_error(type_opt.is_some(), name_opt.is_some()) {
-                        return Err(CliCoreError::message(err));
-                    }
 
                     let client = make_client(&ctx).await?;
                     let records = match (type_opt.as_deref(), name_opt.as_deref()) {
@@ -290,37 +289,27 @@ pub fn module() -> Module {
                                 CliCoreError::message(format!("listing DNS records failed: {e}"))
                             })?
                             .into_inner(),
-                        (Some(raw_type), None) => {
-                            let (upper, _) = parse_record_type(raw_type)?;
-                            client
-                                .record_get_by_type()
-                                .domain(domain.as_str())
-                                .type_(upper.as_str())
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    CliCoreError::message(format!(
-                                        "listing DNS records failed: {e}"
-                                    ))
-                                })?
-                                .into_inner()
-                        }
-                        (Some(raw_type), Some(name)) => {
-                            let (upper, _) = parse_record_type(raw_type)?;
-                            client
-                                .record_get()
-                                .domain(domain.as_str())
-                                .type_(upper.as_str())
-                                .name(name)
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    CliCoreError::message(format!(
-                                        "listing DNS records failed: {e}"
-                                    ))
-                                })?
-                                .into_inner()
-                        }
+                        (Some(record_type), None) => client
+                            .record_get_by_type()
+                            .domain(domain.as_str())
+                            .type_(record_type)
+                            .send()
+                            .await
+                            .map_err(|e| {
+                                CliCoreError::message(format!("listing DNS records failed: {e}"))
+                            })?
+                            .into_inner(),
+                        (Some(record_type), Some(name)) => client
+                            .record_get()
+                            .domain(domain.as_str())
+                            .type_(record_type)
+                            .name(name)
+                            .send()
+                            .await
+                            .map_err(|e| {
+                                CliCoreError::message(format!("listing DNS records failed: {e}"))
+                            })?
+                            .into_inner(),
                     };
 
                     // Serialize each record to an object so `--fields` and the
@@ -328,7 +317,7 @@ pub fn module() -> Module {
                     let out: Vec<Value> = records
                         .iter()
                         .map(serde_json::to_value)
-                        .collect::<std::result::Result<_, _>>()
+                        .collect::<Result<_, _>>()
                         .map_err(|e| {
                             CliCoreError::message(format!("failed to serialize DNS records: {e}"))
                         })?;
@@ -350,10 +339,12 @@ pub fn module() -> Module {
                 ),
                 |ctx| async move {
                     let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    let raw_type = arg_str(&ctx, "type").unwrap_or_default();
+                    // `--type` is validated + upper-cased by clap's value parser.
+                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
                     let name = arg_str(&ctx, "name").unwrap_or_default();
                     let data = string_list(&ctx, "data");
-                    let (_, ty) = parse_record_type(&raw_type)?;
+                    let ty = types::DnsRecordType::try_from(record_type.as_str())
+                        .expect("--type value parser guarantees a valid record type");
                     let opts = RecordOptions::from_ctx(&ctx);
                     let records = dns_records(&name, ty, &data, &opts);
                     let count = records.len();
@@ -371,7 +362,7 @@ pub fn module() -> Module {
 
                     Ok(CommandResult::new(json!({
                         "domain": domain,
-                        "type": raw_type.to_uppercase(),
+                        "type": record_type,
                         "name": name,
                         "records": count,
                         "action": "add",
@@ -393,10 +384,10 @@ pub fn module() -> Module {
                 ),
                 |ctx| async move {
                     let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    let raw_type = arg_str(&ctx, "type").unwrap_or_default();
+                    // `--type` is validated + upper-cased by clap's value parser.
+                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
                     let name = arg_str(&ctx, "name").unwrap_or_default();
                     let data = string_list(&ctx, "data");
-                    let (upper, _) = parse_record_type(&raw_type)?;
                     let opts = RecordOptions::from_ctx(&ctx);
                     let records = create_type_name_records(&data, &opts);
                     let count = records.len();
@@ -405,7 +396,7 @@ pub fn module() -> Module {
                     client
                         .record_replace_type_name()
                         .domain(domain.as_str())
-                        .type_(upper.as_str())
+                        .type_(record_type.as_str())
                         .name(name.as_str())
                         .body(records)
                         .send()
@@ -416,7 +407,7 @@ pub fn module() -> Module {
 
                     Ok(CommandResult::new(json!({
                         "domain": domain,
-                        "type": upper,
+                        "type": record_type,
                         "name": name,
                         "records": count,
                         "action": "replace",
@@ -445,7 +436,8 @@ pub fn module() -> Module {
                         .long("type")
                         .value_name("TYPE")
                         .required(true)
-                        .help("Record type (one of A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)"),
+                        .value_parser(parse_deletable_type_arg)
+                        .help("Record type (one of A, AAAA, CNAME, MX, SRV, TXT)"),
                 )
                 .with_arg(
                     clap::Arg::new("name")
@@ -456,16 +448,16 @@ pub fn module() -> Module {
                 ),
                 |ctx| async move {
                     let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    let raw_type = arg_str(&ctx, "type").unwrap_or_default();
+                    // `--type` is validated (and NS/SOA rejected) + upper-cased by
+                    // clap's value parser, so it converts to the delete enum cleanly.
+                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
                     let name = arg_str(&ctx, "name").unwrap_or_default();
-                    let (upper, _) = parse_record_type(&raw_type)?;
-                    let delete_type = deletable_record_type(&upper)?;
 
                     let client = make_client(&ctx).await?;
                     client
                         .record_delete_type_name()
                         .domain(domain.as_str())
-                        .type_(delete_type)
+                        .type_(record_type.as_str())
                         .name(name.as_str())
                         .send()
                         .await
@@ -475,7 +467,7 @@ pub fn module() -> Module {
 
                     Ok(CommandResult::new(json!({
                         "domain": domain,
-                        "type": upper,
+                        "type": record_type,
                         "name": name,
                         "deleted": true,
                     })))
@@ -490,50 +482,96 @@ mod tests {
     use cli_engine::{Cli, CliConfig};
 
     #[test]
-    fn parse_record_type_is_case_insensitive_and_canonicalizes() {
-        let (upper, ty) = parse_record_type("aaaa").expect("valid");
-        assert_eq!(upper, "AAAA");
-        assert_eq!(ty, types::DnsRecordType::Aaaa);
-        let (upper, ty) = parse_record_type("Cname").expect("valid");
-        assert_eq!(upper, "CNAME");
-        assert_eq!(ty, types::DnsRecordType::Cname);
+    fn parse_type_arg_validates_and_uppercases() {
+        assert_eq!(parse_type_arg("aaaa").expect("valid"), "AAAA");
+        assert_eq!(parse_type_arg("Cname").expect("valid"), "CNAME");
+        let err = parse_type_arg("bogus").expect_err("should reject");
+        assert!(err.contains("invalid record type"), "got: {err}");
+        assert!(err.contains("AAAA"), "lists valid types: {err}");
     }
 
     #[test]
-    fn deletable_record_type_rejects_ns_and_soa_with_clear_message() {
-        // Deletable types convert successfully.
-        assert!(deletable_record_type("A").is_ok());
-        assert!(deletable_record_type("CNAME").is_ok());
-        assert!(deletable_record_type("TXT").is_ok());
-        // NS/SOA are managed by GoDaddy — rejected with an actionable message
+    fn parse_deletable_type_arg_rejects_ns_and_soa_with_clear_message() {
+        assert_eq!(parse_deletable_type_arg("a").expect("valid"), "A");
+        assert!(parse_deletable_type_arg("TXT").is_ok());
+        // NS/SOA are valid types but GoDaddy-managed — rejected as non-deletable
         // (not the generated client's opaque conversion error).
-        for ty in ["NS", "SOA"] {
-            let err = deletable_record_type(ty).expect_err("should reject");
-            let msg = err.to_string();
-            assert!(msg.contains("managed by GoDaddy"), "got: {msg}");
+        for ty in ["NS", "soa"] {
+            let err = parse_deletable_type_arg(ty).expect_err("should reject");
+            assert!(err.contains("managed by GoDaddy"), "got: {err}");
             assert!(
-                !msg.contains("RecordDeleteTypeNameType"),
-                "leaked type name: {msg}"
+                !err.contains("RecordDeleteTypeNameType"),
+                "leaked type name: {err}"
             );
         }
+        // A non-type is rejected as invalid, not as non-deletable.
+        let err = parse_deletable_type_arg("bogus").expect_err("should reject");
+        assert!(err.contains("invalid record type"), "got: {err}");
     }
 
-    #[test]
-    fn parse_record_type_rejects_unknown() {
-        let err = parse_record_type("bogus").expect_err("should reject");
-        let msg = err.to_string();
-        assert!(msg.contains("invalid --type"), "got: {msg}");
-        assert!(msg.contains("AAAA"), "lists valid types, got: {msg}");
-    }
-
-    #[test]
-    fn list_flag_error_requires_type_for_name() {
-        // Valid combinations.
-        assert_eq!(list_flag_error(false, false), None); // list all
-        assert_eq!(list_flag_error(true, false), None); // by type
-        assert_eq!(list_flag_error(true, true), None); // by type + name
-        // --name without --type is rejected.
-        assert_eq!(list_flag_error(false, true), Some("--name requires --type"));
+    /// Type/flag validation lives in clap value-parsers, so invalid input is
+    /// rejected at parse time — before auth or `--dry-run` can short-circuit.
+    /// (Regression guard: these previously validated only in the handler, so
+    /// `--dry-run` reported success and `--name` without `--type` reached auth.)
+    #[tokio::test]
+    async fn invalid_dns_input_is_rejected_before_auth_or_dry_run() {
+        let cli = || {
+            Cli::new(
+                CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                    .with_default_auth_provider("godaddy")
+                    .with_module(module()),
+            )
+        };
+        let cases: [(&[&str], &str); 3] = [
+            // Undeletable type — rejected with the GoDaddy reason, not an auth error.
+            (
+                &[
+                    "gddy",
+                    "dns",
+                    "delete",
+                    "example.com",
+                    "--type",
+                    "NS",
+                    "--name",
+                    "@",
+                ],
+                "managed by GoDaddy",
+            ),
+            // Bogus type on a mutating command.
+            (
+                &[
+                    "gddy",
+                    "dns",
+                    "set",
+                    "example.com",
+                    "--type",
+                    "BOGUS",
+                    "--name",
+                    "@",
+                    "--data",
+                    "x",
+                ],
+                "invalid record type",
+            ),
+            // `--name` without `--type` on list.
+            (
+                &["gddy", "dns", "list", "example.com", "--name", "www"],
+                "--type",
+            ),
+        ];
+        for (args, needle) in cases {
+            let output = cli().run(args.iter().copied()).await;
+            assert_ne!(
+                output.exit_code, 0,
+                "{args:?} should fail: {}",
+                output.rendered
+            );
+            assert!(
+                output.rendered.contains(needle),
+                "{args:?} expected {needle:?}, got: {}",
+                output.rendered
+            );
+        }
     }
 
     #[test]

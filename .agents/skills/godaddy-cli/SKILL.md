@@ -260,9 +260,9 @@ Release and deploy accept `--config <path>` and `--environment <env>`.
 Use `godaddy api` for endpoint discovery and authenticated API calls:
 
 ```bash
-# List domains and endpoints
-godaddy api list
-godaddy api list --domain commerce
+# List API domains, and endpoints within a domain
+godaddy api domain list
+godaddy api endpoint list --domain commerce
 
 # Describe one endpoint (operation ID or path)
 godaddy api describe commerce.location.verify-address
@@ -283,15 +283,15 @@ godaddy api call /v1/commerce/orders -s commerce.orders:read
 ```
 
 Compatibility behavior:
-- `godaddy api <endpoint>` still works. If the token after `api` is not one of `list`, `describe`, `search`, or `call`, the CLI treats it as an endpoint and executes `api call`.
+- `godaddy api <endpoint>` still works. If the token after `api` is not one of `domain`, `endpoint`, `describe`, `search`, or `call`, the CLI treats it as an endpoint and executes `api call`.
 - This means legacy usage like `godaddy api /v1/commerce/location/addresses` remains supported.
 
-As with other large result sets, `api list` may be truncated in the inline JSON response. When `truncated: true`, read the `full_output` file path for complete results.
+As with other large result sets, `api domain list` / `api endpoint list` may be truncated in the inline JSON response. When `truncated: true`, read the `full_output` file path for complete results.
 
 Address task rule:
 - For requests like "find/search/verify an address", start with:
   `godaddy api search address`
-  `godaddy api list --domain location`
+  `godaddy api endpoint list --domain location`
   `godaddy api describe /location/addresses`
 - Do not use `godaddy actions describe` for generic API endpoint discovery.
 
