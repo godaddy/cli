@@ -7,6 +7,7 @@ mod domain;
 mod env;
 mod environments;
 mod extension;
+mod payments;
 mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
@@ -69,6 +70,7 @@ async fn main() -> ExitCode {
             .with_module(application::module())
             .with_module(domain::module())
             .with_module(env::module())
+            .with_module(payments::module())
             .with_module(webhook::module()),
     );
 

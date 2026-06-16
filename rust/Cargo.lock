@@ -1105,6 +1105,7 @@ dependencies = [
  "domains-client",
  "fancy-regex",
  "httpmock",
+ "open",
  "regex",
  "reqwest",
  "serde",
