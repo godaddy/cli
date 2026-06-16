@@ -888,6 +888,15 @@
                 ],
                 "parameters": [
                     {
+                        "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
+                        "in": "header",
+                        "name": "X-Shopper-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
                         "description": "Domain whose DNS Records are to be retrieved",
                         "in": "path",
                         "name": "domain",
@@ -987,6 +996,15 @@
                     "v1"
                 ],
                 "parameters": [
+                    {
+                        "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
+                        "in": "header",
+                        "name": "X-Shopper-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     {
                         "description": "Domain whose DNS Records are to be retrieved",
                         "in": "path",

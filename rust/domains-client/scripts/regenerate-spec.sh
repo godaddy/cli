@@ -90,9 +90,13 @@ def synth_get(keep_param_names, op_id):
     op = copy.deepcopy(record_get)
     op["operationId"] = op_id
     op["produces"] = ["application/json"]
+    # Keep the named path params plus any header params (e.g. the optional
+    # X-Shopper-Id the record routes accept) so the synthesized ops mirror what
+    # the route supports; drop the query params (offset/limit) that only apply to
+    # the type+name GET.
     op["parameters"] = [
         prm for prm in op.get("parameters", [])
-        if prm.get("name") in keep_param_names
+        if prm.get("in") == "header" or prm.get("name") in keep_param_names
     ]
     return only_2xx(op)
 
