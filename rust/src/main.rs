@@ -3,10 +3,12 @@ mod api_explorer;
 mod application;
 mod auth;
 mod config;
+mod dns;
 mod domain;
 mod env;
 mod environments;
 mod extension;
+mod output_schema;
 mod payments;
 mod webhook;
 
@@ -68,6 +70,7 @@ async fn main() -> ExitCode {
             .with_module(actions_catalog::module())
             .with_module(api_explorer::module())
             .with_module(application::module())
+            .with_module(dns::module())
             .with_module(domain::module())
             .with_module(env::module())
             .with_module(payments::module())

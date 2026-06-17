@@ -7,6 +7,46 @@ use cli_engine::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::output_schema::output_schema;
+
+output_schema!(ApiDomain {
+    "domain": "string";
+    "title": "string";
+    "description": "string", optional;
+    "endpoints": "number";
+    "baseUrl": "string";
+});
+
+output_schema!(ApiEndpoint {
+    "domain": "string";
+    "operationId": "string";
+    "method": "string";
+    "path": "string";
+    "summary": "string", optional;
+});
+
+// `api endpoint list --domain X` lists endpoints within one domain, so each row
+// omits the (redundant) domain field that the cross-domain `api search` emits.
+output_schema!(ApiDomainEndpoint {
+    "operationId": "string";
+    "method": "string";
+    "path": "string";
+    "summary": "string", optional;
+});
+
+output_schema!(ApiOperation {
+    "domain": "string";
+    "operationId": "string";
+    "method": "string";
+    "path": "string";
+    "summary": "string", optional;
+    "description": "string", optional;
+    "parameters": "[]object";
+    "requestBody": "object", optional;
+    "responses": "object";
+    "scopes": "[]string";
+});
+
 // ---------------------------------------------------------------------------
 // Catalog types
 // ---------------------------------------------------------------------------
@@ -201,58 +241,30 @@ pub fn module() -> Module {
             "api",
             "Explore and call GoDaddy API endpoints",
         ))
-        .with_command(list_command())
+        .with_group(
+            RuntimeGroupSpec::new(GroupSpec::new("domain", "Browse API domains"))
+                .with_command(domain_list_command()),
+        )
+        .with_group(
+            RuntimeGroupSpec::new(GroupSpec::new("endpoint", "Browse API endpoints"))
+                .with_command(endpoint_list_command()),
+        )
         .with_command(describe_command())
         .with_command(search_command())
         .with_command(call_command())
     })
 }
 
-fn list_command() -> RuntimeCommandSpec {
+fn domain_list_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List all API domains")
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,title,endpoints,baseUrl")
-            .with_arg(
-                clap::Arg::new("domain")
-                    .long("domain")
-                    .value_name("DOMAIN")
-                    .help("Show endpoints within a specific domain"),
-            ),
-        |ctx| async move {
+            .with_output_schema::<ApiDomain>(),
+        |_ctx| async move {
             let catalog = catalog();
-            if let Some(domain_filter) = ctx.args.get("domain").and_then(|v| v.as_str()) {
-                let domain = catalog
-                    .iter()
-                    .find(|d| d.name == domain_filter)
-                    .ok_or_else(|| {
-                        cli_engine::CliCoreError::message(format!(
-                            "domain '{domain_filter}' not found"
-                        ))
-                    })?;
-                let endpoints: Vec<Value> = domain
-                    .endpoints
-                    .iter()
-                    .map(|ep| {
-                        json!({
-                            "operationId": ep.operation_id,
-                            "method": ep.method,
-                            "path": ep.path,
-                            "summary": ep.summary,
-                        })
-                    })
-                    .collect();
-                return Ok(CommandResult::new(json!(endpoints)).with_next_actions(vec![
-                    NextAction::new(
-                        "api describe <operationId>",
-                        "Get full details for an endpoint",
-                    )
-                    .with_param("operationId", NextActionParam::required()),
-                ]));
-            }
-
             let domains: Vec<Value> = catalog
                 .iter()
                 .map(|d| {
@@ -267,11 +279,62 @@ fn list_command() -> RuntimeCommandSpec {
                 .collect();
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                 NextAction::new(
-                    "api list --domain <domain>",
+                    "api endpoint list --domain <domain>",
                     "List endpoints in a specific domain",
                 )
                 .with_param("domain", NextActionParam::required()),
                 NextAction::new("api search <query>", "Search across all endpoints"),
+            ]))
+        },
+    )
+}
+
+fn endpoint_list_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("list", "List endpoints within an API domain")
+            .with_system("api")
+            .with_tier(Tier::Read)
+            .no_auth(true)
+            .with_default_fields("operationId,method,path,summary")
+            .with_output_schema::<ApiDomainEndpoint>()
+            .with_arg(
+                clap::Arg::new("domain")
+                    .long("domain")
+                    .value_name("DOMAIN")
+                    .required(true)
+                    .help("API domain whose endpoints to list (see `api domain list`)"),
+            ),
+        |ctx| async move {
+            let catalog = catalog();
+            let domain_filter = ctx
+                .args
+                .get("domain")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let domain = catalog
+                .iter()
+                .find(|d| d.name == domain_filter)
+                .ok_or_else(|| {
+                    cli_engine::CliCoreError::message(format!("domain '{domain_filter}' not found"))
+                })?;
+            let endpoints: Vec<Value> = domain
+                .endpoints
+                .iter()
+                .map(|ep| {
+                    json!({
+                        "operationId": ep.operation_id,
+                        "method": ep.method,
+                        "path": ep.path,
+                        "summary": ep.summary,
+                    })
+                })
+                .collect();
+            Ok(CommandResult::new(json!(endpoints)).with_next_actions(vec![
+                NextAction::new(
+                    "api describe <operationId>",
+                    "Get full details for an endpoint",
+                )
+                .with_param("operationId", NextActionParam::required()),
             ]))
         },
     )
@@ -286,6 +349,7 @@ fn describe_command() -> RuntimeCommandSpec {
         .with_system("api")
         .with_tier(Tier::Read)
         .no_auth(true)
+        .with_output_schema::<ApiOperation>()
         .with_arg(
             clap::Arg::new("endpoint")
                 .value_name("ENDPOINT")
@@ -333,6 +397,7 @@ fn search_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,method,path,summary")
+            .with_output_schema::<ApiEndpoint>()
             .with_arg(
                 clap::Arg::new("query")
                     .value_name("QUERY")

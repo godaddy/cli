@@ -1,8 +1,9 @@
 //! Generates the typed Domains API client from the vendored OpenAPI 3.0 spec.
 //!
 //! The spec (`openapi/domains.oas3.json`) is committed and trimmed to the
-//! availability + suggest operations (see `scripts/regenerate-spec.sh`); this
-//! build step is hermetic and never touches the network.
+//! domains-list + availability + suggest + DNS-record operations (see
+//! `scripts/regenerate-spec.sh`); this build step is hermetic and never touches
+//! the network.
 
 use std::{env, fs, path::Path};
 
@@ -20,6 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // are simply omitted rather than passed as `None`.
     let mut settings = progenitor::GenerationSettings::new();
     settings.with_interface(progenitor::InterfaceStyle::Builder);
+    // Derive `schemars::JsonSchema` on the generated response/request types so
+    // the CLI can register them via `CommandSpec::with_json_schema::<T>()` and
+    // surface their fields through `--schema`.
+    settings.with_derive("schemars::JsonSchema");
     let mut generator = progenitor::Generator::new(&settings);
     let tokens = generator.generate_tokens(&spec)?;
     let ast = syn::parse2(tokens)?;

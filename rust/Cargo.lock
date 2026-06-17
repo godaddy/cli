@@ -542,9 +542,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli-engine"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aac2356eabf48d9c8142a70e0da391f065986911dfcc8c49381fa4559795b98f"
+checksum = "5d52e2b73598b7c6dbbaf3946a476a888d0cda6a36d2d98c1f477f8d7a8034c1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -761,6 +761,7 @@ dependencies = [
  "progenitor",
  "progenitor-client",
  "reqwest",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "syn 2.0.117",
@@ -1362,7 +1363,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -2169,7 +2170,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2206,7 +2207,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]

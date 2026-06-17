@@ -28,7 +28,19 @@ const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 /// Declared on the commands via [`CommandSpec::with_scopes`] so cli-engine's
 /// OAuth scope step-up mints a token carrying it. Ignored on the sso-key path
 /// (sso-key auth is unscoped).
-const DOMAINS_READ_SCOPE: &str = "domains.domain:read";
+///
+/// Shared with the `dns` module: DNS record *reads* live under this same scope.
+pub(crate) const DOMAINS_READ_SCOPE: &str = "domains.domain:read";
+
+/// OAuth scope the DNS record *mutation* endpoints (PATCH/PUT/DELETE under
+/// `/v1/domains/{domain}/records`) require.
+///
+/// Source of truth (undocumented in the published Swagger spec): the same
+/// `gdcorp-domains/api-domain-data` `api/oauthscopewhitelist.json` whitelist —
+/// every `PATCH`/`PUT`/`DELETE` on `v1_domains__records*` is listed under
+/// `domains.dns:update` (reads stay under [`DOMAINS_READ_SCOPE`]). Consumed by
+/// the `dns` add/set/delete commands.
+pub(crate) const DOMAINS_DNS_UPDATE_SCOPE: &str = "domains.dns:update";
 
 fn map_env_err(e: environments::EnvError) -> CliCoreError {
     CliCoreError::message(e.to_string())
@@ -71,7 +83,7 @@ fn authorization_header(provider: &str, token: &str) -> String {
 /// Build a Domains API client for the active environment, choosing the auth
 /// scheme from the resolved credential (sso-key for the bypass path, else
 /// Bearer). The credential is resolved through the registered composite provider.
-async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
+pub(crate) async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
     let env = ctx.middleware.env.clone();
     let domains = environments::resolve_domains(&env).map_err(map_env_err)?;
     let cred = ctx.credential().await?;
@@ -81,7 +93,7 @@ async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
         .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
 }
 
-fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
+pub(crate) fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
     match ctx.args.get(key) {
         Some(serde_json::Value::Array(arr)) => arr
             .iter()
@@ -92,17 +104,74 @@ fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
     }
 }
 
+/// Validate `--status` values case-insensitively against the generated
+/// `ListStatusesItem` enum (the API's `DomainStatus` set, e.g. `ACTIVE`),
+/// returning the typed list the `list` builder expects.
+fn parse_statuses(raw: &[String]) -> Result<Vec<domains_client::types::ListStatusesItem>> {
+    raw.iter()
+        .map(|s| {
+            domains_client::types::ListStatusesItem::try_from(s.to_uppercase().as_str())
+                .map_err(|_| CliCoreError::message(format!("invalid --status {s:?}")))
+        })
+        .collect()
+}
+
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {
         RuntimeGroupSpec::new(GroupSpec::new(
             "domain",
-            "Domain availability and suggestions",
+            "List your domains, check availability, and get suggestions",
+        ))
+        .with_command(RuntimeCommandSpec::new_with_context(
+            CommandSpec::new("list", "List the domains in your account")
+                .with_system("domain")
+                .with_tier(Tier::Read)
+                .with_default_fields("domain,status,expires,renewAuto")
+                .with_json_schema::<domains_client::types::DomainSummary>()
+                .with_scopes(&[DOMAINS_READ_SCOPE])
+                .with_arg(
+                    clap::Arg::new("status")
+                        .long("status")
+                        .value_name("STATUS")
+                        .action(clap::ArgAction::Append)
+                        .help("Only domains with this status, e.g. ACTIVE (repeatable)"),
+                ),
+            |ctx| async move {
+                let statuses = parse_statuses(&string_list(&ctx, "status"))?;
+
+                let client = make_client(&ctx).await?;
+                let mut req = client.list();
+                if !statuses.is_empty() {
+                    req = req.statuses(statuses);
+                }
+                let resp = req
+                    .send()
+                    .await
+                    .map_err(|e| CliCoreError::message(format!("listing domains failed: {e}")))?;
+
+                // Emit each summary as an object so `--fields`/default-field
+                // projection works (default shows domain/status/expires/renewAuto).
+                let domains: Vec<serde_json::Value> = resp
+                    .into_inner()
+                    .iter()
+                    .map(serde_json::to_value)
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|e| {
+                        CliCoreError::message(format!("failed to serialize domain list: {e}"))
+                    })?;
+
+                Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
+                    NextAction::new("dns list <domain>", "View a domain's DNS records")
+                        .with_param("domain", NextActionParam::required()),
+                ]))
+            },
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("available", "Check whether a domain is available")
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("domain,available,definitive,price,currency")
+                .with_json_schema::<domains_client::types::DomainAvailableResponse>()
                 .with_scopes(&[DOMAINS_READ_SCOPE])
                 .with_arg(
                     clap::Arg::new("domain")
@@ -198,6 +267,7 @@ pub fn module() -> Module {
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("domain")
+                .with_json_schema::<domains_client::types::DomainSuggestion>()
                 .with_scopes(&[DOMAINS_READ_SCOPE])
                 .with_arg(
                     clap::Arg::new("query")
@@ -291,7 +361,7 @@ pub fn module() -> Module {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorization_header, format_price};
+    use super::{authorization_header, format_price, parse_statuses};
     use crate::auth::SSO_KEY_PROVIDER;
     use cli_engine::{Cli, CliConfig};
 
@@ -320,6 +390,22 @@ mod tests {
         assert_eq!(authorization_header("godaddy", "tok123"), "Bearer tok123");
     }
 
+    #[test]
+    fn parse_statuses_is_case_insensitive_and_validates() {
+        use domains_client::types::ListStatusesItem;
+        let parsed = parse_statuses(&["active".to_string(), "CANCELLED".to_string()])
+            .expect("valid statuses");
+        assert_eq!(
+            parsed,
+            vec![ListStatusesItem::Active, ListStatusesItem::Cancelled]
+        );
+        // Empty input is valid (no filter).
+        assert!(parse_statuses(&[]).expect("empty ok").is_empty());
+        // Unknown status is rejected with a helpful message.
+        let err = parse_statuses(&["bogus".to_string()]).expect_err("should reject");
+        assert!(err.to_string().contains("invalid --status"), "{err}");
+    }
+
     /// The `domain` commands call the Domains API, so they must stay fail-closed.
     /// Built with **no auth provider registered**, the engine's default
     /// `AuthRequirement::Required` must reject them at credential resolution
@@ -331,8 +417,9 @@ mod tests {
         // No `--env` flag here: the global flag is registered in main.rs, not in
         // this minimal test harness, and env is irrelevant since auth resolution
         // fails before the handler runs.
-        for args in [
-            [
+        let cases: [&[&str]; 3] = [
+            &["gddy", "domain", "list", "--output", "json"],
+            &[
                 "gddy",
                 "domain",
                 "available",
@@ -340,14 +427,15 @@ mod tests {
                 "--output",
                 "json",
             ],
-            ["gddy", "domain", "suggest", "coffee", "--output", "json"],
-        ] {
+            &["gddy", "domain", "suggest", "coffee", "--output", "json"],
+        ];
+        for args in cases {
             let cli = Cli::new(
                 CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                     .with_default_auth_provider("godaddy")
                     .with_module(super::module()),
             );
-            let output = cli.run(args).await;
+            let output = cli.run(args.iter().copied()).await;
             assert_eq!(
                 output.exit_code, AUTH_FAILURE_EXIT,
                 "{args:?} must fail closed at auth resolution, got: {}",

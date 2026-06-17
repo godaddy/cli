@@ -4,6 +4,24 @@ use cli_engine::{
 use serde_json::json;
 
 use crate::environments::{self, EnvError};
+use crate::output_schema::output_schema;
+
+output_schema!(EnvSummary {
+    "name": "string";
+    "active": "bool";
+    "apiUrl": "string";
+});
+
+output_schema!(EnvActive {
+    "env": "string";
+    "apiUrl": "string";
+});
+
+output_schema!(EnvInfo {
+    "env": "string";
+    "apiUrl": "string";
+    "graphqlUrl": "string";
+});
 
 /// Resolve the path to the `.gdenv` state file in the user's home directory.
 ///
@@ -60,6 +78,7 @@ pub fn module() -> Module {
                 CommandSpec::new("list", "List available environments")
                     .with_system("env")
                     .with_tier(Tier::Read)
+                    .with_output_schema::<EnvSummary>()
                     .no_auth(true),
                 |_cred, _args| async move {
                     let current = active_env();
@@ -89,6 +108,7 @@ pub fn module() -> Module {
                 CommandSpec::new("get", "Get the active environment")
                     .with_system("env")
                     .with_tier(Tier::Read)
+                    .with_output_schema::<EnvActive>()
                     .no_auth(true),
                 |_cred, _args| async move {
                     let env = active_env();
@@ -103,6 +123,7 @@ pub fn module() -> Module {
                 CommandSpec::new("set", "Set the active environment")
                     .with_system("env")
                     .with_tier(Tier::Mutate)
+                    .with_output_schema::<EnvActive>()
                     .no_auth(true)
                     .with_arg(
                         // Distinct id from the global `--env` flag (also id "env");
@@ -138,6 +159,7 @@ pub fn module() -> Module {
                 CommandSpec::new("info", "Show details for the active environment")
                     .with_system("env")
                     .with_tier(Tier::Read)
+                    .with_output_schema::<EnvInfo>()
                     .no_auth(true),
                 |_cred, _args| async move {
                     let env = active_env();

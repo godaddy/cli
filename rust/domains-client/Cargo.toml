@@ -3,7 +3,7 @@ name = "domains-client"
 version = "0.1.0"
 edition = "2024"
 license = "Proprietary"
-description = "Generated GoDaddy Domains API client (availability + suggest), produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
+description = "Generated GoDaddy Domains API client (domains list + availability + suggest + DNS records), produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
 
 [dependencies]
 # Pinned to 0.11 (the latest progenitor on reqwest 0.12): keeps the whole
@@ -12,6 +12,10 @@ description = "Generated GoDaddy Domains API client (availability + suggest), pr
 # the Windows-msvc cross-build clean.
 progenitor-client = "0.11"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# Pinned to match cli-engine's schemars so the generated types' derived
+# `JsonSchema` impls satisfy `CommandSpec::with_json_schema::<T>()` (a different
+# schemars major would be a distinct, incompatible trait).
+schemars = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures = "0.3"
