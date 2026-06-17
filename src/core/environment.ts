@@ -13,6 +13,7 @@ import {
 } from "../services/config";
 
 export type Environment = "ote" | "prod";
+export const DEFAULT_ENVIRONMENT: Environment = "prod";
 
 export interface EnvironmentDisplay {
   color: string;
@@ -68,11 +69,9 @@ function getEnvironmentOverride(): Effect.Effect<
  * Get the current active environment (internal helper).
  * Reads override from CliConfig service, then falls back to persisted file.
  */
-function getActiveEnvironmentInternalEffect(): Effect.Effect<
-  Environment,
-  never,
-  FileSystem
-> {
+function getActiveEnvironmentInternalEffect(
+  defaultEnvironment: Environment = DEFAULT_ENVIRONMENT,
+): Effect.Effect<Environment, never, FileSystem> {
   return Effect.gen(function* () {
     const override = yield* getEnvironmentOverride();
     if (override) {
@@ -87,11 +86,11 @@ function getActiveEnvironmentInternalEffect(): Effect.Effect<
         .pipe(Effect.orElseSucceed(() => ""));
       if (file.trim()) {
         return yield* Effect.try(() => validateEnvironment(file.trim())).pipe(
-          Effect.orElseSucceed(() => "ote" as Environment),
+          Effect.orElseSucceed(() => defaultEnvironment),
         );
       }
     }
-    return "ote" as Environment;
+    return defaultEnvironment;
   });
 }
 

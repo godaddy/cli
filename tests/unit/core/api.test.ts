@@ -57,7 +57,7 @@ describe("API Core Functions", () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    test("makes authenticated request and returns parsed JSON", async () => {
+    test("makes authenticated request to production by default", async () => {
       vi.mocked(fetch).mockResolvedValueOnce(
         new Response(JSON.stringify({ shopperId: "12345" }), {
           status: 200,
@@ -76,7 +76,7 @@ describe("API Core Functions", () => {
       expect(result.data).toEqual({ shopperId: "12345" });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(fetch).toHaveBeenCalledWith(
-        "https://api.ote-godaddy.com/v1/shoppers/me",
+        "https://api.godaddy.com/v1/shoppers/me",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({

@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { ConfigurationError } from "../effect/errors";
 import { Keychain, type KeychainCredential } from "../effect/services/keychain";
 import {
+  DEFAULT_ENVIRONMENT,
   type Environment,
   envGetEffect,
   getApiUrl,
@@ -51,7 +52,7 @@ function getCurrentEnvironmentEffect(): Effect.Effect<
   never,
   FileSystem
 > {
-  return envGetEffect().pipe(Effect.orElseSucceed(() => "ote" as Environment));
+  return envGetEffect().pipe(Effect.orElseSucceed(() => DEFAULT_ENVIRONMENT));
 }
 
 function getTokenEndpoint(environment: Environment): string {

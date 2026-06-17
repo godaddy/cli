@@ -14,7 +14,7 @@ import type { Keychain } from "../effect/services/keychain";
 import { loggedFetch } from "../services/logger";
 import { cliTraceHeaders } from "../shared/cli-trace";
 import {
-  type Environment,
+  DEFAULT_ENVIRONMENT,
   envGetEffect,
   getApiUrl,
   getClientId,
@@ -82,7 +82,7 @@ function getOauthAuthUrlEffect(): Effect.Effect<string, never, FileSystem> {
       return process.env.OAUTH_AUTH_URL;
     }
     const env = yield* envGetEffect().pipe(
-      Effect.orElseSucceed(() => "ote" as Environment),
+      Effect.orElseSucceed(() => DEFAULT_ENVIRONMENT),
     );
     return `${getApiUrl(env)}/v2/oauth2/authorize`;
   });
@@ -94,7 +94,7 @@ function getOauthTokenUrlEffect(): Effect.Effect<string, never, FileSystem> {
       return process.env.OAUTH_TOKEN_URL;
     }
     const env = yield* envGetEffect().pipe(
-      Effect.orElseSucceed(() => "ote" as Environment),
+      Effect.orElseSucceed(() => DEFAULT_ENVIRONMENT),
     );
     return `${getApiUrl(env)}/v2/oauth2/token`;
   });
@@ -106,7 +106,7 @@ function getOauthClientIdEffect(): Effect.Effect<string, never, FileSystem> {
       return process.env.GODADDY_OAUTH_CLIENT_ID;
     }
     const env = yield* envGetEffect().pipe(
-      Effect.orElseSucceed(() => "ote" as Environment),
+      Effect.orElseSucceed(() => DEFAULT_ENVIRONMENT),
     );
     return getClientId(env);
   });
@@ -345,7 +345,7 @@ export function authStatusEffect(): Effect.Effect<
 > {
   return Effect.gen(function* () {
     const environment = yield* envGetEffect().pipe(
-      Effect.orElseSucceed(() => "ote" as Environment),
+      Effect.orElseSucceed(() => DEFAULT_ENVIRONMENT),
     );
     const tokenInfo = yield* getTokenInfoEffect().pipe(
       Effect.catchAll(() => Effect.succeed(null)),

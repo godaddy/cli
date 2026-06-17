@@ -3,6 +3,7 @@ import * as Command from "@effect/cli/Command";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import {
+  DEFAULT_ENVIRONMENT,
   envGetEffect,
   envInfoEffect,
   envListEffect,
@@ -26,7 +27,7 @@ const envGroupActions: NextAction[] = [
       environment: {
         description: "Environment name",
         enum: ["ote", "prod"],
-        default: "ote",
+        default: DEFAULT_ENVIRONMENT,
         required: true,
       },
     },
@@ -42,7 +43,9 @@ const envGetActions: NextAction[] = [
   {
     command: "godaddy env info [environment]",
     description: "Show environment details",
-    params: { environment: { enum: ["ote", "prod"], default: "ote" } },
+    params: {
+      environment: { enum: ["ote", "prod"], default: DEFAULT_ENVIRONMENT },
+    },
   },
 ];
 
@@ -60,13 +63,19 @@ const envListActions: NextAction[] = [
     command: "godaddy env set <environment>",
     description: "Set active environment",
     params: {
-      environment: { enum: ["ote", "prod"], default: "ote", required: true },
+      environment: {
+        enum: ["ote", "prod"],
+        default: DEFAULT_ENVIRONMENT,
+        required: true,
+      },
     },
   },
   {
     command: "godaddy env info [environment]",
     description: "Show environment details",
-    params: { environment: { enum: ["ote", "prod"], default: "ote" } },
+    params: {
+      environment: { enum: ["ote", "prod"], default: DEFAULT_ENVIRONMENT },
+    },
   },
 ];
 
@@ -78,7 +87,7 @@ function envInfoActions(environment?: string): NextAction[] {
       params: {
         environment: {
           enum: ["ote", "prod"],
-          value: environment ?? "ote",
+          value: environment ?? DEFAULT_ENVIRONMENT,
           required: true,
         },
       },

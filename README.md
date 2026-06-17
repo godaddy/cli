@@ -14,7 +14,7 @@ godaddy --help
 All executable commands emit JSON envelopes:
 
 ```json
-{"ok":true,"command":"godaddy env get","result":{"environment":"ote"},"next_actions":[...]}
+{"ok":true,"command":"godaddy env get","result":{"environment":"prod"},"next_actions":[...]}
 ```
 
 ```json
@@ -49,6 +49,10 @@ Returns environment/auth snapshots and the full command tree.
 - `godaddy env get`
 - `godaddy env set <environment>`
 - `godaddy env info [environment]`
+
+When no environment has been selected, commands default to `prod`. Use
+`--env ote` for a single command or `godaddy env set ote` to persist OTE/test
+environment usage.
 
 ### Authentication
 
