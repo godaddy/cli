@@ -919,8 +919,10 @@ pub fn module() -> Module {
                 let customer_id = customer_id(&cred)?;
 
                 // Resolve default contacts from local config (still before any
-                // network call). Absent roles stay None and the API uses the
-                // account-default contact.
+                // network call). An absent role is omitted from the request; the
+                // API uses the account default for roles the TLD doesn't require
+                // (the preflight below already blocks a missing *required* role,
+                // since those don't reliably fall back — e.g. `.fun`).
                 let contacts =
                     contacts::load().map_err(|e| CliCoreError::message(e.to_string()))?;
                 let contact_registrant = contacts
