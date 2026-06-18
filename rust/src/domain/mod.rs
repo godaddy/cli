@@ -856,9 +856,26 @@ pub fn module() -> Module {
                     .unwrap_or("127.0.0.1")
                     .to_owned();
 
-                // Resolve default contacts from local config first, so a malformed
-                // contacts.toml fails before any network call. Absent roles stay
-                // None and the API uses the account-default contact.
+                let debug = !ctx.middleware.debug.is_empty();
+
+                // Validate auth before anything else: purchase goes through the v2
+                // register API, which (unlike v1) authorizes card payments for OAuth
+                // users and needs the customerId from the OAuth token. sso-key auth
+                // can never succeed here, so fail with that clear message *before*
+                // touching contacts.toml (whose parse errors would otherwise mask it).
+                let cred = ctx.credential().await?;
+                if cred.provider == SSO_KEY_PROVIDER {
+                    return Err(CliCoreError::message(
+                        "`domain purchase` uses the v2 registration API, which requires OAuth \
+                         authentication; this environment is configured for an sso-key. Re-run \
+                         against an OAuth environment.",
+                    ));
+                }
+                let customer_id = customer_id(&cred)?;
+
+                // Resolve default contacts from local config (still before any
+                // network call). Absent roles stay None and the API uses the
+                // account-default contact.
                 let contacts =
                     contacts::load().map_err(|e| CliCoreError::message(e.to_string()))?;
                 let contact_registrant = contacts
@@ -871,21 +888,6 @@ pub fn module() -> Module {
                     .to_api(Role::Billing)
                     .map_err(CliCoreError::message)?;
                 let contact_tech = contacts.to_api(Role::Tech).map_err(CliCoreError::message)?;
-
-                let debug = !ctx.middleware.debug.is_empty();
-
-                // Purchase goes through the v2 register API, which (unlike v1)
-                // authorizes card payments for OAuth users. v2 needs the customerId
-                // from the OAuth token; sso-key auth carries no such token.
-                let cred = ctx.credential().await?;
-                if cred.provider == SSO_KEY_PROVIDER {
-                    return Err(CliCoreError::message(
-                        "`domain purchase` uses the v2 registration API, which requires OAuth \
-                         authentication; this environment is configured for an sso-key. Re-run \
-                         against an OAuth environment.",
-                    ));
-                }
-                let customer_id = customer_id(&cred)?;
 
                 let client = make_client(&ctx).await?;
 
@@ -1052,7 +1054,8 @@ pub fn module() -> Module {
                         .get("force")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
-                    if path.exists() && !force {
+                    let existed = path.exists();
+                    if existed && !force {
                         return Err(CliCoreError::message(format!(
                             "{} already exists; pass --force to overwrite",
                             path.display()
@@ -1062,7 +1065,9 @@ pub fn module() -> Module {
 
                     Ok(CommandResult::new(json!({
                         "path": path.display().to_string(),
-                        "action": if force { "overwritten" } else { "created" },
+                        // Base on prior existence, not the flag: `--force` on a
+                        // missing file still creates rather than overwrites.
+                        "action": if existed { "overwritten" } else { "created" },
                     }))
                     .with_next_actions(vec![NextAction::new(
                         "guide domain-purchase",

@@ -269,7 +269,7 @@ country = "US"
         assert_eq!(registrant.name_first, "Ada");
         assert_eq!(registrant.name_last, "Lovelace");
         assert_eq!(registrant.address_mailing.city, "Tempe");
-        // "us" in the file resolves to the AZ-uppercased ISO enum variant.
+        // Lower-case "us" in the file resolves to the uppercased ISO enum variant.
         assert_eq!(registrant.address_mailing.country, api::AddressCountry::Us);
         // An absent role resolves to None (→ account default).
         assert!(file.to_api(Role::Admin).expect("ok").is_none());
