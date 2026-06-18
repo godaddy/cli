@@ -102,8 +102,8 @@ impl Contact {
     /// code. `encoding` is `ASCII` (the API default) — contacts.toml is plain
     /// ASCII in practice.
     pub fn to_api(&self, role: Role) -> Result<api::ContactDomainCreate, String> {
-        let country =
-            api::AddressCountry::try_from(self.country.to_uppercase().as_str()).map_err(|_| {
+        let country = api::AddressCountry::try_from(self.country.to_ascii_uppercase().as_str())
+            .map_err(|_| {
                 format!(
                     "{} contact in contacts.toml has invalid country {:?} \
                      (expected a two-letter ISO code, e.g. US)",
