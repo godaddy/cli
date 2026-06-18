@@ -931,9 +931,18 @@ pub fn module() -> Module {
                         return Err(api_error("checking domain availability", debug, e).await);
                     }
                 };
+                // Fail fast on a taken domain: availability can carry a price even
+                // when `available` is false, so without this the command would
+                // proceed to a guaranteed-failing paid register.
+                if !availability.available {
+                    return Err(CliCoreError::message(format!(
+                        "{domain} is not available for registration"
+                    )));
+                }
                 let price = availability.price.ok_or_else(|| {
                     CliCoreError::message(format!(
-                        "could not determine a price for {domain}; it may be unavailable or premium"
+                        "could not determine a price for {domain}; it may be premium or \
+                         not offered for registration"
                     ))
                 })?;
                 let currency = availability.currency;
