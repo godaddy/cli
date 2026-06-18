@@ -69,7 +69,7 @@ STRICT_DEFS = {
     "DomainPurchase",           # `domain purchase` request body
     "Consent",                  # required sub-object of DomainPurchase
     "Contact",                  # optional contacts; keep required fields strict
-    "Address",                  # contact mailing address (no required fields)
+    "Address",                  # contact mailing address (constructed for v2 contacts)
     "DomainPurchaseV2",         # v2 `domain purchase` request body (OAuth path)
     "ConsentV2",                # required sub-object of DomainPurchaseV2
     "DomainContactsCreateV2",   # v2 contacts wrapper

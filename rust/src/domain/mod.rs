@@ -33,10 +33,10 @@ output_schema!(DomainDetailResult {
     "domain": "string";
     "status": "string";
     "expires": "string";
-    "renewAuto": "boolean";
-    "nameServers": "array";
-    "privacy": "boolean";
-    "locked": "boolean";
+    "renewAuto": "bool";
+    "nameServers": "[]string";
+    "privacy": "bool";
+    "locked": "bool";
     "createdAt": "string";
 });
 
@@ -155,9 +155,12 @@ fn parse_statuses(raw: &[String]) -> Result<Vec<domains_client::types::ListStatu
 
 /// The registrable TLD of a domain: everything after the first label
 /// (`example.com` → `com`, `example.co.uk` → `co.uk`). `None` when there is no
-/// dot (not a registrable domain).
+/// dot, or when either the first label or the TLD is empty (`.com`, `example.`)
+/// — those aren't registrable domains and would otherwise produce invalid
+/// downstream lookups (e.g. an empty-TLD schema fetch).
 fn registrable_tld(domain: &str) -> Option<&str> {
-    domain.split_once('.').map(|(_, tld)| tld)
+    let (label, tld) = domain.split_once('.')?;
+    (!label.is_empty() && !tld.is_empty()).then_some(tld)
 }
 
 /// Format a UTC instant as the Domains API's `iso-datetime` for purchase consent
@@ -1134,8 +1137,10 @@ mod tests {
     fn registrable_tld_takes_everything_after_first_label() {
         assert_eq!(registrable_tld("example.com"), Some("com"));
         assert_eq!(registrable_tld("example.co.uk"), Some("co.uk"));
-        // No dot -> not a registrable domain.
+        // No dot, or an empty label/TLD -> not a registrable domain.
         assert_eq!(registrable_tld("localhost"), None);
+        assert_eq!(registrable_tld(".com"), None);
+        assert_eq!(registrable_tld("example."), None);
     }
 
     fn agreement(

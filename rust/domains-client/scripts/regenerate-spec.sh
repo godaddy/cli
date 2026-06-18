@@ -3,11 +3,13 @@
 #
 # Pipeline:
 #   1. Download the upstream GoDaddy Domains API spec (Swagger 2.0).
-#   2. Trim to the GET /v1/domains (list owned domains), GET /v1/domains/available
-#      + GET /v1/domains/suggest operations, GET /v1/domains/agreements, the
-#      POST /v1/domains/purchase operation, the /v1/domains/{domain}/records
-#      DNS-record operations, and the transitive closure of definitions they
-#      reference.
+#   2. Trim (via trim-spec.py) to the GET /v1/domains (list owned domains) and
+#      GET /v1/domains/{domain} (get) operations, GET /v1/domains/available +
+#      GET /v1/domains/suggest, GET /v1/domains/agreements, POST
+#      /v1/domains/purchase + its GET /v1/domains/purchase/schema/{tld}, the v2
+#      POST /v2/customers/{customerId}/domains/register operation, the
+#      /v1/domains/{domain}/records DNS-record operations, and the transitive
+#      closure of definitions they reference.
 #   3. Convert Swagger 2.0 -> OpenAPI 3.0 with `swagger2openapi` (Node, via npx).
 #
 # Run this ONLY when the upstream spec changes; the committed domains.oas3.json
@@ -24,7 +26,7 @@ oas3="$openapi_dir/domains.oas3.json"
 echo "==> Downloading upstream Swagger 2.0 spec"
 curl -fsSL "https://developer.godaddy.com/swagger/swagger_domains.json" -o "$v2"
 
-echo "==> Trimming to domains list + available + suggest + agreements + purchase + DNS records and their definition closure"
+echo "==> Trimming to domains list + get + available + suggest + agreements + purchase (+ schema) + v2 register + DNS records and their definition closure"
 python3 "$here/scripts/trim-spec.py" "$v2" "$trimmed_v2"
 
 echo "==> Converting Swagger 2.0 -> OpenAPI 3.0"
