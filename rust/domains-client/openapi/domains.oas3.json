@@ -1,7 +1,7 @@
 {
     "openapi": "3.0.0",
     "info": {
-        "title": "GoDaddy Domains API (domains list + availability + DNS records subset)",
+        "title": "GoDaddy Domains API (domains list + get + availability + agreements + purchase + v2 register + DNS records subset)",
         "version": "1.0.0"
     },
     "paths": {
@@ -792,6 +792,246 @@
                 "summary": "Suggest alternate Domain names based on a seed Domain, a set of keywords, or the shopper's purchase history"
             }
         },
+        "/v1/domains/agreements": {
+            "get": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "Unique identifier of the Market used to retrieve/translate Legal Agreements",
+                        "in": "header",
+                        "name": "X-Market-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "bcp-47",
+                            "default": "en-US"
+                        }
+                    },
+                    {
+                        "description": "list of TLDs whose legal agreements are to be retrieved",
+                        "in": "query",
+                        "name": "tlds",
+                        "required": true,
+                        "style": "form",
+                        "explode": false,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "description": "Whether or not privacy has been requested",
+                        "in": "query",
+                        "name": "privacy",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "description": "Whether or not domain tranfer has been requested",
+                        "in": "query",
+                        "name": "forTransfer",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/LegalAgreement"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "agreements",
+                "summary": "Retrieve the legal agreement(s) required to purchase the specified TLD and add-ons"
+            }
+        },
+        "/v1/domains/purchase": {
+            "post": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "The Shopper for whom the domain should be purchased",
+                        "in": "header",
+                        "name": "X-Shopper-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DomainPurchase"
+                            }
+                        }
+                    },
+                    "description": "An instance document expected to match the JSON schema returned by `./schema/{tld}`",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DomainPurchaseResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "purchase",
+                "summary": "Purchase and register the specified Domain"
+            }
+        },
+        "/v1/domains/purchase/schema/{tld}": {
+            "get": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "The Top-Level Domain whose schema should be retrieved",
+                        "in": "path",
+                        "name": "tld",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "schema",
+                "summary": "Retrieve the schema to be submitted when registering a Domain for the specified TLD"
+            }
+        },
+        "/v1/domains/{domain}": {
+            "get": {
+                "tags": [
+                    "v1"
+                ],
+                "parameters": [
+                    {
+                        "description": "Shopper ID expected to own the specified domain",
+                        "in": "header",
+                        "name": "X-Shopper-Id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Domain name whose details are to be retrieved",
+                        "in": "path",
+                        "name": "domain",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request was successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "203": {
+                        "description": "Request was partially successful, see verifications.status for further detail",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "operationId": "get",
+                "summary": "Retrieve details for the specified Domain"
+            }
+        },
+        "/v2/customers/{customerId}/domains/register": {
+            "post": {
+                "tags": [
+                    "Domains"
+                ],
+                "summary": "Purchase and register the specified Domain",
+                "parameters": [
+                    {
+                        "name": "X-Request-Id",
+                        "required": false,
+                        "in": "header",
+                        "description": "A client provided identifier for tracking this request.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "The Customer identifier<br/> Note: For API Resellers, performing actions on behalf of your customers, you need to specify the Subaccount you're operating on behalf of; otherwise use your shopper id.",
+                        "in": "path",
+                        "name": "customerId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DomainPurchaseV2"
+                            }
+                        }
+                    },
+                    "description": "An instance document expected to match the JSON schema returned by `./schema/{tld}`",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "description": "Request Accepted. You may use GET /v2/customers/{customerId}/domains/{domain}/actions/REGISTER to poll status"
+                    }
+                },
+                "operationId": "register"
+            }
+        },
         "/v1/domains/{domain}/records": {
             "patch": {
                 "tags": [
@@ -1559,13 +1799,93 @@
                         "format": "state-province-territory",
                         "type": "string"
                     }
-                }
+                },
+                "required": [
+                    "address1",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "country"
+                ]
             },
             "ArrayOfDNSRecord": {
                 "type": "array",
                 "items": {
                     "$ref": "#/components/schemas/DNSRecord"
                 }
+            },
+            "Consent": {
+                "properties": {
+                    "agreedAt": {
+                        "description": "Timestamp indicating when the end-user consented to these legal agreements",
+                        "format": "iso-datetime",
+                        "type": "string"
+                    },
+                    "agreedBy": {
+                        "description": "Originating client IP address of the end-user's computer when they consented to these legal agreements",
+                        "type": "string"
+                    },
+                    "agreementKeys": {
+                        "description": "Unique identifiers of the legal agreements to which the end-user has agreed, as returned from the/domains/agreements endpoint",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "agreementKeys",
+                    "agreedBy",
+                    "agreedAt"
+                ]
+            },
+            "ConsentV2": {
+                "additionalProperties": false,
+                "properties": {
+                    "agreementKeys": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Unique identifiers of the legal agreements to which the end-user has agreed, as returned from the/domains/agreements endpoint"
+                    },
+                    "price": {
+                        "type": "integer",
+                        "format": "currency-micro-unit",
+                        "description": "Price of the domain excluding taxes or fees. Please use GET /v1/domains/available to retrieve the price and currency for the domain"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "format": "iso-currency-code",
+                        "default": "USD",
+                        "pattern": "^[A-Z][A-Z][A-Z]$",
+                        "description": "Currency in which the `price` is listed"
+                    },
+                    "registryPremiumPricing": {
+                        "type": "boolean",
+                        "description": "Only required for hosted registrar if domain is premium. If true indicates that the `price` and `currency` listed are the registry premium price and currency for the domain"
+                    },
+                    "agreedBy": {
+                        "type": "string",
+                        "description": "Originating client IP address of the end-user's computer when they consented to these legal agreements"
+                    },
+                    "agreedAt": {
+                        "type": "string",
+                        "format": "iso-datetime",
+                        "description": "Timestamp indicating when the end-user consented to these legal agreements"
+                    },
+                    "claimToken": {
+                        "description": "The trademark claim token, only needed if the domain has an active trademark claim",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "agreementKeys",
+                    "price",
+                    "currency",
+                    "agreedBy",
+                    "agreedAt"
+                ]
             },
             "Contact": {
                 "properties": {
@@ -1602,7 +1922,79 @@
                         "format": "phone",
                         "type": "string"
                     }
-                }
+                },
+                "required": [
+                    "nameFirst",
+                    "nameLast",
+                    "email",
+                    "phone",
+                    "addressMailing"
+                ]
+            },
+            "ContactDomainCreate": {
+                "additionalProperties": false,
+                "properties": {
+                    "encoding": {
+                        "type": "string",
+                        "default": "ASCII",
+                        "enum": [
+                            "ASCII",
+                            "UTF-8"
+                        ],
+                        "description": "The encoding of the contact data<br/><ul><li><strong style='margin-left: 12px;'>ASCII</strong> - Data contains only ASCII characters that are not region or language specific</li><li><strong style='margin-left: 12px;'>UTF-8</strong> - Data contains characters that are specific to a region or language</li></ul>"
+                    },
+                    "nameFirst": {
+                        "type": "string",
+                        "format": "person-name",
+                        "maxLength": 30
+                    },
+                    "nameMiddle": {
+                        "type": "string"
+                    },
+                    "nameLast": {
+                        "type": "string",
+                        "format": "person-name",
+                        "maxLength": 30
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "organization-name",
+                        "maxLength": 100
+                    },
+                    "jobTitle": {
+                        "type": "string"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 80
+                    },
+                    "phone": {
+                        "type": "string",
+                        "format": "phone",
+                        "maxLength": 17
+                    },
+                    "fax": {
+                        "type": "string",
+                        "format": "phone",
+                        "maxLength": 17
+                    },
+                    "addressMailing": {
+                        "$ref": "#/components/schemas/Address"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "The contact eligibility data fields as specified by GET /v2/customers/{customerId}/domains/contacts/schema/{tld}"
+                    }
+                },
+                "required": [
+                    "encoding",
+                    "nameFirst",
+                    "nameLast",
+                    "email",
+                    "phone",
+                    "addressMailing"
+                ]
             },
             "DNSRecord": {
                 "properties": {
@@ -1784,6 +2176,164 @@
                     "definitive"
                 ]
             },
+            "DomainContactsCreateV2": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                    "admin": {
+                        "$ref": "#/components/schemas/ContactDomainCreate"
+                    },
+                    "adminId": {
+                        "description": "Unique identifier of the contact that the user wants to use for the domain admin contact. This can be specified instead of the `admin` property.\n",
+                        "type": "string"
+                    },
+                    "billing": {
+                        "$ref": "#/components/schemas/ContactDomainCreate"
+                    },
+                    "billingId": {
+                        "description": "Unique identifier of the contact that the user wants to use for the domain billing contact. This can be specified instead of the `billing` property.\n",
+                        "type": "string"
+                    },
+                    "registrant": {
+                        "$ref": "#/components/schemas/ContactDomainCreate"
+                    },
+                    "registrantId": {
+                        "description": "Unique identifier of the contact that the user wants to use for the domain registrant contact. This can be specified instead of the `registrant` property.\n",
+                        "type": "string"
+                    },
+                    "tech": {
+                        "$ref": "#/components/schemas/ContactDomainCreate"
+                    },
+                    "techId": {
+                        "description": "Unique identifier of the contact that the user wants to use for the domain tech contact. This can be specified instead of the `tech` property.\n",
+                        "type": "string"
+                    }
+                }
+            },
+            "DomainPurchase": {
+                "properties": {
+                    "consent": {
+                        "$ref": "#/components/schemas/Consent"
+                    },
+                    "contactAdmin": {
+                        "$ref": "#/components/schemas/Contact"
+                    },
+                    "contactBilling": {
+                        "$ref": "#/components/schemas/Contact"
+                    },
+                    "contactRegistrant": {
+                        "$ref": "#/components/schemas/Contact"
+                    },
+                    "contactTech": {
+                        "$ref": "#/components/schemas/Contact"
+                    },
+                    "domain": {
+                        "description": "For internationalized domain names with non-ascii characters, the domain name is converted to punycode before format and pattern validation rules are checked",
+                        "format": "domain",
+                        "type": "string"
+                    },
+                    "nameServers": {
+                        "items": {
+                            "format": "host-name",
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "period": {
+                        "default": 1,
+                        "format": "integer-positive",
+                        "maximum": 10,
+                        "minimum": 1,
+                        "type": "integer"
+                    },
+                    "privacy": {
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "renewAuto": {
+                        "default": true,
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "domain",
+                    "consent"
+                ]
+            },
+            "DomainPurchaseResponse": {
+                "properties": {
+                    "currency": {
+                        "default": "USD",
+                        "description": "Currency in which the `total` is listed",
+                        "format": "iso-currency-code",
+                        "type": "string"
+                    },
+                    "itemCount": {
+                        "description": "Number items included in the order",
+                        "format": "integer-positive",
+                        "type": "integer"
+                    },
+                    "orderId": {
+                        "description": "Unique identifier of the order processed to purchase the domain",
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "total": {
+                        "description": "Total cost of the domain and any selected add-ons",
+                        "format": "currency-micro-unit",
+                        "type": "integer"
+                    }
+                }
+            },
+            "DomainPurchaseV2": {
+                "additionalProperties": false,
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "format": "domain",
+                        "pattern": "^[^.]{1,63}.[^.]{2,}$",
+                        "description": "For internationalized domain names with non-ascii characters, the domain name is converted to punycode before format and pattern validation rules are checked"
+                    },
+                    "consent": {
+                        "$ref": "#/components/schemas/ConsentV2"
+                    },
+                    "period": {
+                        "type": "integer",
+                        "format": "integer-positive",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 10,
+                        "pattern": "^[0-9]+$"
+                    },
+                    "nameServers": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "host-name"
+                        },
+                        "maxItems": 2
+                    },
+                    "renewAuto": {
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "privacy": {
+                        "type": "boolean",
+                        "default": false
+                    },
+                    "contacts": {
+                        "$ref": "#/components/schemas/DomainContactsCreateV2"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "The domain eligibility data fields as specified by GET /v2/customers/{customerId}/domains/register/schema/{tld}"
+                    }
+                },
+                "required": [
+                    "domain",
+                    "consent"
+                ]
+            },
             "DomainSuggestion": {
                 "properties": {
                     "domain": {
@@ -1891,6 +2441,27 @@
                     "transferProtected": {
                         "description": "Whether or not the domain is protected from transfer",
                         "type": "boolean"
+                    }
+                }
+            },
+            "LegalAgreement": {
+                "properties": {
+                    "agreementKey": {
+                        "description": "Unique identifier for the legal agreement",
+                        "type": "string"
+                    },
+                    "content": {
+                        "description": "Contents of the legal agreement, suitable for embedding",
+                        "type": "string"
+                    },
+                    "title": {
+                        "description": "Title of the legal agreement",
+                        "type": "string"
+                    },
+                    "url": {
+                        "description": "URL to a page containing the legal agreement",
+                        "format": "url",
+                        "type": "string"
                     }
                 }
             }

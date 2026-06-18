@@ -1,4 +1,5 @@
-//! GoDaddy Domains API client (domains list + availability + suggest + DNS records).
+//! GoDaddy Domains API client (domains list + get + availability + suggest +
+//! agreements + purchase + per-TLD purchase schema + v2 register + DNS records).
 //!
 //! The contents of this crate are **generated** by `progenitor` at build time
 //! from the vendored OpenAPI 3.0 spec (`openapi/domains.oas3.json`). Construct
@@ -439,5 +440,290 @@ mod tests {
             .expect("request succeeds");
 
         mock.assert_async().await;
+    }
+
+    // --- agreements + purchase ----------------------------------------------
+    //
+    // The legal-agreements GET (the consent prerequisite) and the purchase POST.
+    // These guard the agreements query-param names, the JSON request body the
+    // purchase builder serializes (domain + consent + the always-present period/
+    // privacy/renewAuto, contacts omitted), and response parsing. Offline.
+
+    #[tokio::test]
+    async fn agreements_sends_query_params_and_parses_list() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/domains/agreements")
+                    .query_param("tlds", "com")
+                    .query_param("privacy", "false")
+                    .query_param("forTransfer", "false");
+                then.status(200).json_body(json!([
+                    {
+                        "agreementKey": "DNRA",
+                        "title": "Domain Name Registration Agreement",
+                        "url": "https://www.godaddy.com/agreements/showdoc?id=reg_sa",
+                        "content": "full text"
+                    }
+                ]));
+            })
+            .await;
+
+        let agreements = client_for(&server)
+            .agreements()
+            .tlds(vec!["com".to_string()])
+            .privacy(false)
+            .for_transfer(false)
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(agreements.len(), 1);
+        assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
+        assert_eq!(
+            agreements[0].title.as_deref(),
+            Some("Domain Name Registration Agreement")
+        );
+    }
+
+    #[tokio::test]
+    async fn purchase_serializes_body_and_parses_order() {
+        let server = MockServer::start_async().await;
+        // Contacts are omitted (account defaults) so they don't appear in the
+        // body; period/privacy/renewAuto always serialize (serde defaults, no
+        // skip), which guards their wire names (`period`/`privacy`/`renewAuto`).
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/domains/purchase")
+                    .json_body(json!({
+                        "domain": "example.com",
+                        "consent": {
+                            "agreedAt": "2026-06-17T00:00:00Z",
+                            "agreedBy": "203.0.113.7",
+                            "agreementKeys": ["DNRA"]
+                        },
+                        "period": 1,
+                        "privacy": false,
+                        "renewAuto": true
+                    }));
+                then.status(200).json_body(json!({
+                    "orderId": 1_234_567,
+                    "itemCount": 1,
+                    "total": 11_990_000,
+                    "currency": "USD"
+                }));
+            })
+            .await;
+
+        let body = client_for(&server)
+            .purchase()
+            .body(types::DomainPurchase {
+                domain: "example.com".to_string(),
+                consent: types::Consent {
+                    agreed_at: "2026-06-17T00:00:00Z".to_string(),
+                    agreed_by: "203.0.113.7".to_string(),
+                    agreement_keys: vec!["DNRA".to_string()],
+                },
+                contact_registrant: None,
+                contact_admin: None,
+                contact_billing: None,
+                contact_tech: None,
+                name_servers: vec![],
+                period: std::num::NonZeroU64::new(1).expect("nonzero period"),
+                privacy: false,
+                renew_auto: true,
+            })
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(body.order_id, Some(1_234_567));
+        assert_eq!(body.item_count, Some(1));
+        assert_eq!(body.total, Some(11_990_000));
+        assert_eq!(body.currency, "USD");
+    }
+
+    #[tokio::test]
+    async fn schema_fetches_per_tld_requirements_as_free_form_json() {
+        // The per-TLD purchase schema is returned untyped (a serde_json map), so
+        // `domain purchase` can read just the top-level `required` array. This
+        // guards the `{tld}` path param and the free-form response decode.
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/domains/purchase/schema/fun");
+                then.status(200).json_body(json!({
+                    "id": "fun",
+                    "required": ["domain", "consent", "contactRegistrant"],
+                    "properties": {},
+                    "models": {}
+                }));
+            })
+            .await;
+
+        let schema = client_for(&server)
+            .schema()
+            .tld("fun")
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        let required: Vec<&str> = schema
+            .get("required")
+            .and_then(|v| v.as_array())
+            .expect("required array")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(required.contains(&"contactRegistrant"));
+    }
+
+    #[tokio::test]
+    async fn register_v2_posts_to_customer_path_and_accepts_202() {
+        // The OAuth purchase path: POST to the customer-scoped v2 register with a
+        // DomainPurchaseV2 body, returning a bodyless 202. This guards the
+        // `{customerId}` path segment, the serialized request shape the domains
+        // API receives (consent with price/currency, the v2 contact with its
+        // ASCII encoding), and the no-body 2xx decode.
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v2/customers/cust-123/domains/register")
+                    .json_body(json!({
+                        "domain": "example.fun",
+                        "consent": {
+                            "agreedAt": "2026-06-18T00:00:00Z",
+                            "agreedBy": "127.0.0.1",
+                            "agreementKeys": ["DNRA"],
+                            "currency": "USD",
+                            "price": 11_990_000
+                        },
+                        "period": 1,
+                        "privacy": false,
+                        "renewAuto": true,
+                        "contacts": {
+                            "registrant": {
+                                "addressMailing": {
+                                    "address1": "1 A St",
+                                    "city": "Tempe",
+                                    "country": "US",
+                                    "postalCode": "85281",
+                                    "state": "AZ"
+                                },
+                                "email": "a@example.com",
+                                "encoding": "ASCII",
+                                "nameFirst": "Ada",
+                                "nameLast": "Lovelace",
+                                "phone": "+1.4805551212"
+                            }
+                        }
+                    }));
+                then.status(202);
+            })
+            .await;
+
+        client_for(&server)
+            .register()
+            .customer_id("cust-123")
+            .body(types::DomainPurchaseV2 {
+                domain: "example.fun".to_string(),
+                consent: types::ConsentV2 {
+                    agreed_at: "2026-06-18T00:00:00Z".to_string(),
+                    agreed_by: "127.0.0.1".to_string(),
+                    agreement_keys: vec!["DNRA".to_string()],
+                    claim_token: None,
+                    currency: "USD".to_string(),
+                    price: 11_990_000,
+                    registry_premium_pricing: None,
+                },
+                contacts: Some(types::DomainContactsCreateV2 {
+                    registrant: Some(types::ContactDomainCreate {
+                        address_mailing: types::Address {
+                            address1: "1 A St".to_string(),
+                            address2: None,
+                            city: "Tempe".to_string(),
+                            country: types::AddressCountry::Us,
+                            postal_code: "85281".to_string(),
+                            state: "AZ".to_string(),
+                        },
+                        email: "a@example.com".to_string(),
+                        encoding: types::ContactDomainCreateEncoding::Ascii,
+                        fax: None,
+                        job_title: None,
+                        metadata: Default::default(),
+                        name_first: "Ada".to_string(),
+                        name_last: "Lovelace".to_string(),
+                        name_middle: None,
+                        organization: None,
+                        phone: "+1.4805551212".to_string(),
+                    }),
+                    registrant_id: None,
+                    admin: None,
+                    admin_id: None,
+                    billing: None,
+                    billing_id: None,
+                    tech: None,
+                    tech_id: None,
+                }),
+                metadata: Default::default(),
+                name_servers: vec![],
+                period: std::num::NonZeroU64::new(1).expect("nonzero period"),
+                privacy: false,
+                renew_auto: true,
+            })
+            .send()
+            .await
+            .expect("202 accepted");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_returns_domain_detail_as_free_form_json() {
+        // `domain get` reads one domain's details. The response is decoded
+        // free-form (a serde_json map) so it tolerates sparse/privacy-masked
+        // contacts the typed DomainDetail would reject; the command emits it
+        // as-is. Guards the `{domain}` path segment and the free-form decode.
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/domains/example.com");
+                then.status(200).json_body(json!({
+                    "domain": "example.com",
+                    "domainId": 12345,
+                    "status": "ACTIVE",
+                    "expires": "2027-06-18T00:00:00.000Z",
+                    "renewAuto": true,
+                    "nameServers": ["ns1.example.net", "ns2.example.net"]
+                }));
+            })
+            .await;
+
+        let detail = client_for(&server)
+            .get()
+            .domain("example.com")
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(
+            detail.get("domain").and_then(|v| v.as_str()),
+            Some("example.com")
+        );
+        assert_eq!(
+            detail.get("status").and_then(|v| v.as_str()),
+            Some("ACTIVE")
+        );
     }
 }

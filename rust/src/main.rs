@@ -3,6 +3,7 @@ mod api_explorer;
 mod application;
 mod auth;
 mod config;
+mod contacts;
 mod dns;
 mod domain;
 mod env;
