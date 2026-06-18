@@ -40,6 +40,12 @@ output_schema!(DomainDetailResult {
     "createdAt": "string";
 });
 
+// `domain schema` emits the free-form per-TLD schema; the projected/default
+// field is the `required` list of field names.
+output_schema!(DomainSchemaResult {
+    "required": "[]string";
+});
+
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 
 /// OAuth scope the domain availability + suggest endpoints require.
@@ -121,9 +127,18 @@ fn authorization_header(provider: &str, token: &str) -> String {
 /// scheme from the resolved credential (sso-key for the bypass path, else
 /// Bearer). The credential is resolved through the registered composite provider.
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
-    let env = ctx.middleware.env.clone();
-    let domains = environments::resolve_domains(&env).map_err(map_env_err)?;
     let cred = ctx.credential().await?;
+    make_client_with_cred(&ctx.middleware.env, &cred)
+}
+
+/// Build the Domains API client from an already-resolved credential, so callers
+/// that need the credential themselves (e.g. `domain purchase`, for the
+/// customerId) resolve it once and use the same token for the request.
+pub(crate) fn make_client_with_cred(
+    env: &str,
+    cred: &Credential,
+) -> Result<domains_client::Client> {
+    let domains = environments::resolve_domains(env).map_err(map_env_err)?;
     let authorization = authorization_header(&cred.provider, &cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
     domains_client::client_with_auth(&domains.base_url, &authorization, USER_AGENT, &request_id)
@@ -322,6 +337,11 @@ fn format_api_error(
 /// contacts, which are checked separately), named as the per-TLD schema names
 /// them. A `required` field outside this set + the contacts is something we
 /// can't supply yet.
+/// Non-contact `required`-field names the purchase can satisfy. Spans both the
+/// v1 `DomainPurchase` and v2 `DomainPurchaseV2` bodies (the preflight reads the
+/// v1 purchase schema, but we tolerate v2 naming too — see
+/// [`check_tld_requirements`]). `contacts` is the v2 wrapper object; `metadata`
+/// is the v2 free-form eligibility object.
 const SENDABLE_PURCHASE_FIELDS: &[&str] = &[
     "domain",
     "consent",
@@ -329,27 +349,49 @@ const SENDABLE_PURCHASE_FIELDS: &[&str] = &[
     "privacy",
     "renewAuto",
     "nameServers",
+    "contacts",
+    "metadata",
 ];
+
+/// Map a schema `required` field name to a contact role, tolerating both the v1
+/// flat naming (`contactRegistrant`) and the v2 nested naming
+/// (`contacts.registrant`, or a bare `registrant`). Case-insensitive.
+fn contact_role_for(field: &str) -> Option<Role> {
+    let lower = field.to_ascii_lowercase();
+    let role = lower
+        .strip_prefix("contacts.")
+        .or_else(|| lower.strip_prefix("contact"))
+        .unwrap_or(lower.as_str())
+        .trim_matches(['.', '_']);
+    match role {
+        "registrant" => Some(Role::Registrant),
+        "admin" => Some(Role::Admin),
+        "billing" => Some(Role::Billing),
+        "tech" => Some(Role::Tech),
+        _ => None,
+    }
+}
 
 /// Preflight a purchase against the TLD's required fields (the top-level
 /// `required` array from `GET /v1/domains/purchase/schema/{tld}`).
 ///
+/// We deliberately read the **v1** purchase schema even though the request is v2
+/// register: it expresses contact requirements in flat per-role names that map
+/// directly to roles (the v2 register schema nests them under `contacts`, which
+/// is coarser), and it's a reliable proxy for the v2 TLD requirements. To stay
+/// correct if the naming ever shifts to v2 conventions, [`contact_role_for`]
+/// accepts both, and [`SENDABLE_PURCHASE_FIELDS`] covers the v2 body fields.
+///
 /// Pure (no I/O) so it's unit-testable. `present_contacts` are the roles we will
-/// actually send (resolved from contacts.toml); the always-sent fields
-/// (domain/consent/period/privacy/renewAuto) never block. Blocks *before* the
-/// paid call when a required contact isn't being sent, or when a required field
-/// falls outside what this CLI can supply — per the "block with a clear error"
-/// decision, so a doomed purchase is never attempted.
+/// actually send (resolved from contacts.toml). Blocks *before* the paid call
+/// when a required contact isn't being sent, or when a required field falls
+/// outside what this CLI can supply — per the "block with a clear error"
+/// decision, so a doomed purchase is never attempted. (Omitting a contact does
+/// **not** reliably fall back to account defaults — e.g. `.fun` rejects a
+/// missing registrant — which is why a missing required contact is a hard fail.)
 fn check_tld_requirements(tld: &str, required: &[String], present_contacts: &[Role]) -> Result<()> {
     for field in required {
-        let contact_role = match field.as_str() {
-            "contactRegistrant" => Some(Role::Registrant),
-            "contactAdmin" => Some(Role::Admin),
-            "contactBilling" => Some(Role::Billing),
-            "contactTech" => Some(Role::Tech),
-            _ => None,
-        };
-        if let Some(role) = contact_role {
+        if let Some(role) = contact_role_for(field) {
             if !present_contacts.contains(&role) {
                 let label = role.label();
                 return Err(CliCoreError::message(format!(
@@ -728,6 +770,7 @@ pub fn module() -> Module {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("required")
+            .with_output_schema::<DomainSchemaResult>()
             .with_scopes(&[DOMAINS_READ_SCOPE])
             .with_arg(
                 clap::Arg::new("tld")
@@ -891,7 +934,9 @@ pub fn module() -> Module {
                     .map_err(CliCoreError::message)?;
                 let contact_tech = contacts.to_api(Role::Tech).map_err(CliCoreError::message)?;
 
-                let client = make_client(&ctx).await?;
+                // Reuse the credential we already resolved (and validated for
+                // customerId) — a single resolution, same token for the requests.
+                let client = make_client_with_cred(&ctx.middleware.env, &cred)?;
 
                 // Preflight: the TLD's purchase schema lists which fields it
                 // requires. Block before the paid call when a required contact
@@ -1346,6 +1391,30 @@ mod tests {
         // Sending a registrant satisfies it.
         check_tld_requirements("fun", &required, &[Role::Registrant])
             .expect("registrant present satisfies the requirement");
+    }
+
+    #[test]
+    fn tld_preflight_recognizes_v1_and_v2_contact_naming() {
+        // The same role is recognized whether the schema names it flat (v1) or
+        // nested (v2), so a v1→v2 requirement-naming shift still blocks correctly.
+        for name in ["contactRegistrant", "contacts.registrant", "registrant"] {
+            let required = vec!["domain".to_string(), name.to_string()];
+            assert!(
+                check_tld_requirements("fun", &required, &[]).is_err(),
+                "{name} should require a registrant"
+            );
+            assert!(
+                check_tld_requirements("fun", &required, &[Role::Registrant]).is_ok(),
+                "{name} should be satisfied by a registrant"
+            );
+        }
+        // v2 body fields (the `contacts` wrapper, `metadata`) never block.
+        let v2 = vec![
+            "domain".to_string(),
+            "contacts".to_string(),
+            "metadata".to_string(),
+        ];
+        check_tld_requirements("com", &v2, &[]).expect("v2 body fields are sendable");
     }
 
     #[test]
