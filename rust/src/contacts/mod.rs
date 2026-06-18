@@ -99,8 +99,8 @@ impl Contact {
     /// Convert to the v2 API contact (`ContactDomainCreate`), validating the
     /// country code. Returns a human-readable error (surfaced by
     /// `domain purchase`) when the country is not a recognized two-letter ISO
-    /// code. `encoding` is `ASCII` (the API default) — contacts.toml is plain
-    /// ASCII in practice.
+    /// code. `encoding` is reported honestly: `ASCII` when every field is ASCII,
+    /// else `UTF-8`, so accented names/addresses aren't mislabeled.
     pub fn to_api(&self, role: Role) -> Result<api::ContactDomainCreate, String> {
         let country = api::AddressCountry::try_from(self.country.to_ascii_uppercase().as_str())
             .map_err(|_| {
@@ -111,6 +111,11 @@ impl Contact {
                     self.country,
                 )
             })?;
+        let encoding = if self.is_all_ascii() {
+            api::ContactDomainCreateEncoding::Ascii
+        } else {
+            api::ContactDomainCreateEncoding::Utf8
+        };
         Ok(api::ContactDomainCreate {
             address_mailing: api::Address {
                 address1: self.address1.clone(),
@@ -121,7 +126,7 @@ impl Contact {
                 state: self.state.clone(),
             },
             email: self.email.clone(),
-            encoding: api::ContactDomainCreateEncoding::Ascii,
+            encoding,
             fax: self.fax.clone(),
             job_title: self.job_title.clone(),
             metadata: Default::default(),
@@ -131,6 +136,32 @@ impl Contact {
             organization: self.organization.clone(),
             phone: self.phone.clone(),
         })
+    }
+
+    /// Whether every populated field is ASCII (drives the `encoding` we report).
+    fn is_all_ascii(&self) -> bool {
+        let required = [
+            &self.name_first,
+            &self.name_last,
+            &self.email,
+            &self.phone,
+            &self.address1,
+            &self.city,
+            &self.state,
+            &self.postal_code,
+            &self.country,
+        ];
+        let optional = [
+            &self.name_middle,
+            &self.organization,
+            &self.job_title,
+            &self.fax,
+            &self.address2,
+        ];
+        required.iter().all(|s| s.is_ascii())
+            && optional
+                .iter()
+                .all(|o| o.as_deref().is_none_or(str::is_ascii))
     }
 }
 
@@ -273,6 +304,30 @@ country = "US"
         assert_eq!(registrant.address_mailing.country, api::AddressCountry::Us);
         // An absent role resolves to None (→ account default).
         assert!(file.to_api(Role::Admin).expect("ok").is_none());
+        // All-ASCII contact data is reported as ASCII encoding.
+        assert_eq!(registrant.encoding, api::ContactDomainCreateEncoding::Ascii);
+    }
+
+    #[test]
+    fn to_api_reports_utf8_encoding_for_non_ascii_fields() {
+        let toml = r#"
+[registrant]
+name_first = "José"
+name_last = "Núñez"
+email = "jose@example.com"
+phone = "+34.911111111"
+address1 = "1 Calle"
+city = "Madrid"
+state = "M"
+postal_code = "28001"
+country = "ES"
+"#;
+        let file: ContactsFile = toml::from_str(toml).expect("parses");
+        let c = file
+            .to_api(Role::Registrant)
+            .expect("valid country")
+            .expect("present");
+        assert_eq!(c.encoding, api::ContactDomainCreateEncoding::Utf8);
     }
 
     #[test]

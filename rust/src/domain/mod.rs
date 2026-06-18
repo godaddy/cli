@@ -845,7 +845,7 @@ pub fn module() -> Module {
                         .action(clap::ArgAction::SetTrue)
                         .help(
                             "Consent to the TLD's legal agreements (review with \
-                         `domain agreements` or `gddy guide domain-purchase`)",
+                         `gddy domain agreements` or `gddy guide domain-purchase`)",
                         ),
                 )
                 .with_arg(
