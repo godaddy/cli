@@ -690,14 +690,16 @@ pub fn module() -> Module {
                     .and_then(|v| v.as_bool())
                     .filter(|&b| b);
 
+                let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
                 let mut req = client.agreements().tlds(tlds).privacy(privacy);
                 if let Some(ft) = for_transfer {
                     req = req.for_transfer(ft);
                 }
-                let resp = req.send().await.map_err(|e| {
-                    CliCoreError::message(format!("retrieving legal agreements failed: {e}"))
-                })?;
+                let resp = match req.send().await {
+                    Ok(r) => r,
+                    Err(e) => return Err(api_error("retrieving legal agreements", debug, e).await),
+                };
 
                 // Emit objects with a projectable shape; `content` (the full
                 // agreement text) is carried through for `--fields content` but
