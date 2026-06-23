@@ -17,6 +17,7 @@ This directory contains all security rules enforced by the GoDaddy CLI security 
 | [SEC009](#sec009-module-loading) | `block` | Dynamic Module Loading |
 | [SEC010](#sec010-path-traversal) | `block` | Path Traversal |
 | [SEC011](#sec011-suspicious-scripts) | `warn` | Suspicious Package Scripts |
+| [SEC012](#sec012-dom-escape-operation) | `block` | DOM Escape Operation |
 
 ## Rule Details
 
@@ -312,6 +313,66 @@ Remove suspicious commands or use legitimate build tools (tsc, webpack, etc.).
 
 ---
 
+### SEC012: DOM Escape Operation
+
+**File:** `SEC012-dom-escape.ts`  
+**Severity:** `block`  
+**Default:** Enabled
+
+Prevents Phase 1 checkout/embed UI extension source from accessing page-level DOM, storage, or navigation APIs outside the host-provided extension container.
+
+Phase 1 DOM bundle extensions are trusted in-page code and can access browser globals. They must render only inside the `container` passed to `mount()`. True DOM isolation is provided by the future Worker/SDK runtime, not by the Phase 1 DOM bundle runtime.
+
+**Detects:**
+- Page DOM access: `document.body`, `document.documentElement`, `document.head`, `document.cookie`, `window.document`, `globalThis.document`
+- Page DOM querying/writing: `document.write()`, `document.querySelector()`, `document.querySelectorAll()`, `document.getElementById()`, `document.getElementsBy*()`
+- Page DOM creation/evaluation: `document.createElement()`, `document.createRange()`, `document.evaluate()`
+- Navigation APIs: `window.location`, `location.href`, `location.assign()`, `location.replace()`, `window.open()`, `open()`, `history.pushState()`, `history.replaceState()`
+- Frame/window escape APIs: `top.document`, `top.location`, `parent.document`, `parent.location`
+- Page-global storage: `localStorage`, `sessionStorage`
+- Prototype mutation: `Element.prototype`, `Node.prototype`
+- Container escape paths: `container.ownerDocument`, `container.parentElement`, `container.parentNode`, `container.closest()`
+
+**Example Violations:**
+```typescript
+document.body.innerHTML = '';                      // BLOCKED
+document.querySelector('#checkout-root')?.remove(); // BLOCKED
+window.location.href = 'https://example.com';       // BLOCKED
+window.open('https://example.com');                 // BLOCKED
+localStorage.setItem('token', value);               // BLOCKED
+Element.prototype.remove = function () {};          // BLOCKED
+container.ownerDocument.body.innerHTML = '';        // BLOCKED
+container.closest('#checkout-root')?.remove();      // BLOCKED
+```
+
+**Allowed Pattern:**
+```typescript
+export function mount({ container }) {
+  container.innerHTML = '<div>Extension UI</div>';
+}
+```
+
+**Remediation:**
+Render only inside the host-provided `container`. Do not query, mutate, navigate, or otherwise interact with checkout page DOM directly.
+
+---
+
+## Bundle Rules
+
+Post-bundle scanning runs against the deployable artifact after bundling. These checks are defense-in-depth for generated output, dependencies, custom build steps, or older templates.
+
+### SEC112: DOM Escape Operation in Bundle
+
+**File:** `bundle/SEC112-dom-escape.ts`  
+**Severity:** `block`  
+**Source Rule:** `SEC012`
+
+Bundle-level counterpart to `SEC012`. Blocks deployable checkout/embed UI extension artifacts that contain obvious page-level DOM, storage, or navigation escape APIs.
+
+The bundle rule intentionally focuses on high-risk direct patterns that should not be present in Phase 1 UI extension bundles. It is not a sandbox; it complements source scanning and the runtime container boundary.
+
+---
+
 ## Rule Implementation
 
 All rules follow this structure:
@@ -405,5 +466,5 @@ Target: <1ms per rule per file
 
 ---
 
-**Last Updated**: 2025-01-27  
-**Rule Count**: 11 (SEC001-SEC011)
+**Last Updated**: 2026-06-23  
+**Rule Count**: 12 source/package rules (SEC001-SEC012), plus bundle rules through SEC112

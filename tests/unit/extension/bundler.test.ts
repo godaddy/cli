@@ -15,7 +15,9 @@ import {
   bundleExtensionEffect,
   cleanupTempDirectoryEffect,
   createTempDirectory,
+  createUiExtensionRuntimeWrapper,
   resolveTsConfig,
+  shouldUseUiExtensionRuntimeWrapper,
 } from "@/services/extension/bundler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEffect } from "../../../tests/setup/effect-test-utils";
@@ -37,6 +39,52 @@ describe("bundler service", () => {
   });
 
   describe("bundleExtension", () => {
+    it("should create UI extension runtime wrapper", () => {
+      const wrapper = createUiExtensionRuntimeWrapper(
+        "/path/to/extension/src/index.ts",
+      );
+
+      expect(wrapper).toContain("import * as userModule from");
+      expect(wrapper).toContain("globalThis.GoDaddyUiExtensions?.register");
+      expect(wrapper).toContain('typeof candidate.mount !== "function"');
+    });
+
+    it("should use runtime wrapper only for checkout and embed extensions", () => {
+      expect(shouldUseUiExtensionRuntimeWrapper("checkout")).toBe(true);
+      expect(shouldUseUiExtensionRuntimeWrapper("embed")).toBe(true);
+      expect(shouldUseUiExtensionRuntimeWrapper("blocks")).toBe(false);
+      expect(shouldUseUiExtensionRuntimeWrapper()).toBe(false);
+    });
+
+    it("should bundle checkout extension with runtime registration wrapper", async () => {
+      const fixtureDir = join(tempTestDir, "checkout-extension");
+      const srcDir = join(fixtureDir, "src");
+      await mkdir(srcDir, { recursive: true });
+      const entryPath = join(srcDir, "index.ts");
+      await writeFile(
+        entryPath,
+        `export function mount({ container }) { container.innerHTML = "Extension rendered successfully"; }`,
+      );
+
+      const result = await runEffect(
+        bundleExtensionEffect(
+          { name: "checkout-extension", version: "1.0.0" },
+          entryPath,
+          {
+            repoRoot: fixtureDir,
+            timestamp: "20250128143022",
+            extensionDir: fixtureDir,
+            extensionType: "checkout",
+          },
+        ),
+      );
+
+      const bundleContent = await readFile(result.artifactPath, "utf-8");
+      expect(bundleContent).toContain("GoDaddyUiExtensions");
+      expect(bundleContent).toContain("register");
+      expect(bundleContent).toContain("Extension rendered successfully");
+    });
+
     it("should bundle simple TypeScript extension successfully", async () => {
       const fixtureDir = join(
         process.cwd(),
