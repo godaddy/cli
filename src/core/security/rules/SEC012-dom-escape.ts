@@ -5,6 +5,11 @@ type StaticMemberAccess =
   | ts.PropertyAccessExpression
   | ts.ElementAccessExpression;
 
+interface AliasInfo {
+  rootName: string;
+  declarationName: ts.Identifier;
+}
+
 const BLOCKED_GLOBAL_PROPERTIES: ReadonlyArray<[string, string]> = [
   ["document", "body"],
   ["document", "documentElement"],
@@ -88,6 +93,8 @@ const STORAGE_ROOTS = new Set(["localStorage", "sessionStorage"]);
 const BLOCKED_GLOBAL_FUNCTIONS = new Set(["open"]);
 
 const ALIASABLE_GLOBAL_ROOTS = new Set([
+  "window",
+  "globalThis",
   "document",
   "location",
   "history",
@@ -151,6 +158,25 @@ function nodeContains(parent: ts.Node, child: ts.Node): boolean {
   return false;
 }
 
+function getBindingElementPropertyName(
+  element: ts.BindingElement,
+): string | undefined {
+  const { propertyName, name } = element;
+
+  if (propertyName) {
+    if (
+      ts.isIdentifier(propertyName) ||
+      ts.isStringLiteral(propertyName) ||
+      ts.isNumericLiteral(propertyName)
+    ) {
+      return propertyName.text;
+    }
+    return undefined;
+  }
+
+  return ts.isIdentifier(name) ? name.text : undefined;
+}
+
 function isIdentifierDeclarationName(node: ts.Identifier): boolean {
   const { parent } = node;
 
@@ -196,10 +222,12 @@ function statementDeclaresName(
   statement: ts.Statement,
   targetName: string,
   reference: ts.Node,
+  ignoredDeclaration?: ts.Node,
 ): boolean {
   if (ts.isVariableStatement(statement)) {
     return statement.declarationList.declarations.some(
       (declaration) =>
+        declaration.name !== ignoredDeclaration &&
         bindingNameContains(declaration.name, targetName) &&
         !nodeContains(declaration.name, reference),
     );
@@ -208,6 +236,7 @@ function statementDeclaresName(
   if (
     ts.isFunctionDeclaration(statement) &&
     statement.name?.text === targetName &&
+    statement.name !== ignoredDeclaration &&
     !nodeContains(statement.name, reference)
   ) {
     return true;
@@ -216,6 +245,7 @@ function statementDeclaresName(
   if (
     ts.isClassDeclaration(statement) &&
     statement.name?.text === targetName &&
+    statement.name !== ignoredDeclaration &&
     !nodeContains(statement.name, reference)
   ) {
     return true;
@@ -232,6 +262,7 @@ function scopeDeclaresName(
   scope: ts.Node,
   targetName: string,
   reference: ts.Node,
+  ignoredDeclaration?: ts.Node,
 ): boolean {
   if (
     ts.isFunctionDeclaration(scope) ||
@@ -245,6 +276,7 @@ function scopeDeclaresName(
     if (
       scope.parameters.some(
         (parameter) =>
+          parameter.name !== ignoredDeclaration &&
           bindingNameContains(parameter.name, targetName) &&
           !nodeContains(parameter.name, reference),
       )
@@ -255,17 +287,32 @@ function scopeDeclaresName(
 
   if (ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)) {
     return scope.statements.some((statement) =>
-      statementDeclaresName(statement, targetName, reference),
+      statementDeclaresName(
+        statement,
+        targetName,
+        reference,
+        ignoredDeclaration,
+      ),
     );
   }
 
   return false;
 }
 
-function isShadowedGlobalReference(identifier: ts.Identifier): boolean {
+function isShadowedGlobalReference(
+  identifier: ts.Identifier,
+  ignoredDeclaration?: ts.Node,
+): boolean {
   let current: ts.Node | undefined = identifier.parent;
   while (current) {
-    if (scopeDeclaresName(current, identifier.text, identifier)) {
+    if (
+      scopeDeclaresName(
+        current,
+        identifier.text,
+        identifier,
+        ignoredDeclaration,
+      )
+    ) {
       return true;
     }
     current = current.parent;
@@ -284,15 +331,17 @@ function isMemberObjectIdentifier(node: ts.Identifier): boolean {
 
 function resolveIdentifierRoot(
   node: ts.Identifier,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): string | undefined {
   if (isIdentifierDeclarationName(node)) {
     return undefined;
   }
 
-  const aliasRoot = aliases.get(node.text);
-  if (aliasRoot) {
-    return aliasRoot;
+  const aliasInfo = aliases.get(node.text);
+  if (aliasInfo) {
+    return isShadowedGlobalReference(node, aliasInfo.declarationName)
+      ? undefined
+      : aliasInfo.rootName;
   }
 
   if (node.text === "container") {
@@ -308,7 +357,7 @@ function resolveIdentifierRoot(
 
 function resolveExpressionRoot(
   node: ts.Node,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): string | undefined {
   if (ts.isIdentifier(node)) {
     return resolveIdentifierRoot(node, aliases);
@@ -336,7 +385,7 @@ function isMemberAccess(
   node: ts.Node,
   objectName: string,
   propertyName: string,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): boolean {
   return (
     isStaticMemberAccess(node) &&
@@ -350,7 +399,7 @@ function isNestedMemberAccess(
   objectName: string,
   firstPropertyName: string,
   secondPropertyName: string,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): boolean {
   if (
     !isStaticMemberAccess(node) ||
@@ -369,7 +418,7 @@ function isNestedMemberAccess(
 
 function isBlockedPropertyAccess(
   node: ts.Node,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): boolean {
   if (!isStaticMemberAccess(node)) {
     return false;
@@ -387,7 +436,7 @@ function isBlockedPropertyAccess(
 
 function isBlockedCallExpression(
   node: ts.CallExpression,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): boolean {
   const { expression } = node;
 
@@ -417,7 +466,7 @@ function isBlockedCallExpression(
 
 function isBlockedStorageIdentifier(
   node: ts.Node,
-  aliases: ReadonlyMap<string, string>,
+  aliases: ReadonlyMap<string, AliasInfo>,
 ): boolean {
   if (!ts.isIdentifier(node) || isMemberObjectIdentifier(node)) {
     return false;
@@ -425,6 +474,34 @@ function isBlockedStorageIdentifier(
 
   const rootName = resolveIdentifierRoot(node, aliases);
   return STORAGE_ROOTS.has(rootName ?? "");
+}
+
+function isBlockedDestructuringProperty(
+  rootName: string,
+  propertyName: string,
+): boolean {
+  return (
+    BLOCKED_GLOBAL_PROPERTIES.some(
+      ([objectName, blockedPropertyName]) =>
+        objectName === rootName && blockedPropertyName === propertyName,
+    ) ||
+    BLOCKED_GLOBAL_CALLS.some(
+      ([objectName, blockedPropertyName]) =>
+        objectName === rootName && blockedPropertyName === propertyName,
+    )
+  );
+}
+
+function destructuresBlockedProperty(
+  bindingPattern: ts.ObjectBindingPattern,
+  rootName: string,
+): boolean {
+  return bindingPattern.elements.some((element) => {
+    const propertyName = getBindingElementPropertyName(element);
+    return propertyName
+      ? isBlockedDestructuringProperty(rootName, propertyName)
+      : false;
+  });
 }
 
 /**
@@ -444,21 +521,36 @@ export const SEC012: Rule = {
       "Render only inside the container passed to mount(). Do not query or mutate checkout page DOM directly.",
   },
   create: (ctx) => {
-    const aliases = new Map<string, string>();
+    const aliases = new Map<string, AliasInfo>();
 
     return {
       [ts.SyntaxKind.VariableDeclaration]: (node: ts.Node) => {
-        if (
-          !ts.isVariableDeclaration(node) ||
-          !ts.isIdentifier(node.name) ||
-          !node.initializer
-        ) {
+        if (!ts.isVariableDeclaration(node) || !node.initializer) {
           return;
         }
 
         const rootName = resolveExpressionRoot(node.initializer, aliases);
+        if (
+          rootName &&
+          ts.isObjectBindingPattern(node.name) &&
+          destructuresBlockedProperty(node.name, rootName)
+        ) {
+          ctx.report(
+            "Blocked: UI extensions must not destructure page-level DOM, storage, or navigation APIs outside the host-provided container.",
+            node,
+          );
+          return;
+        }
+
+        if (!ts.isIdentifier(node.name)) {
+          return;
+        }
+
         if (rootName && ALIASABLE_GLOBAL_ROOTS.has(rootName)) {
-          aliases.set(node.name.text, rootName);
+          aliases.set(node.name.text, {
+            rootName,
+            declarationName: node.name,
+          });
         }
       },
       [ts.SyntaxKind.Identifier]: (node: ts.Node) => {

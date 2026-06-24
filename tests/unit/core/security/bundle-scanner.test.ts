@@ -195,6 +195,8 @@ describe("scanBundleContent", () => {
       const doc = document;
       doc.body.innerHTML = "unsafe";
       document["body"].innerHTML = "unsafe";
+      const win = window;
+      win.location.href = "https://example.com";
       window["location"].href = "https://example.com";
     `;
     const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
@@ -202,6 +204,21 @@ describe("scanBundleContent", () => {
       (finding) => finding.ruleId === "SEC112",
     );
 
-    expect(domFindings.length).toBeGreaterThanOrEqual(3);
+    expect(domFindings.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("blocks destructured DOM access in UI extension bundles", () => {
+    const code = `
+      const { body } = document;
+      body.innerHTML = "unsafe";
+      const { location } = window;
+      location.href = "https://example.com";
+    `;
+    const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
+    const domFindings = findings.filter(
+      (finding) => finding.ruleId === "SEC112",
+    );
+
+    expect(domFindings.length).toBeGreaterThanOrEqual(2);
   });
 });

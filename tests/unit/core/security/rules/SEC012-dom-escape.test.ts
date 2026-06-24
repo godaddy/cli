@@ -95,12 +95,26 @@ describe("SEC012: DOM escape operation in UI extension source", () => {
       const doc = document;
       doc.body.innerHTML = "unsafe";
       document["body"].innerHTML = "unsafe";
+      const win = window;
+      win.location.href = "https://example.com";
       window["location"].href = "https://example.com";
       const globalDoc = window["document"];
       globalDoc["querySelector"]("#checkout-root");
     `);
 
-    expect(findings.length).toBeGreaterThanOrEqual(5);
+    expect(findings.length).toBeGreaterThanOrEqual(6);
+    expect(findings.every((finding) => finding.ruleId === "SEC012")).toBe(true);
+  });
+
+  it("blocks destructured page DOM escape paths", () => {
+    const findings = scan(`
+      const { body } = document;
+      body.innerHTML = "unsafe";
+      const { location } = window;
+      location.href = "https://example.com";
+    `);
+
+    expect(findings.length).toBeGreaterThanOrEqual(2);
     expect(findings.every((finding) => finding.ruleId === "SEC012")).toBe(true);
   });
 
@@ -116,6 +130,18 @@ describe("SEC012: DOM escape operation in UI extension source", () => {
 
       const localStorage = new Map<string, string>();
       localStorage.set("token", "safe");
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("allows local aliases that shadow a previous DOM alias", () => {
+    const findings = scan(`
+      const doc = document;
+
+      function render(doc: { body: string }) {
+        return doc.body;
+      }
     `);
 
     expect(findings).toEqual([]);
