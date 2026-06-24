@@ -1,5 +1,6 @@
-# Rust build artifacts
+# Build artifacts
 rust/target/
+__pycache__
 
 # Environment files
 .env
