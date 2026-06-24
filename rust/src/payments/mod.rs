@@ -1,7 +1,5 @@
 //! `gddy payments` — payment method management.
 
-use std::io::Write as _;
-
 use cli_engine::{
     CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
@@ -37,19 +35,15 @@ fn add_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let env = environments::resolve(&ctx.middleware.env).map_err(map_env_err)?;
             let url = format!("{}/payment-methods/add-payment?plid=1", env.account_url);
-            if let Err(e) = open::that(&url) {
-                let mut stderr = std::io::stderr().lock();
-                drop(writeln!(
-                    stderr,
-                    "Failed to open browser. Visit manually:\n  {url}"
-                ));
-                return Err(CliCoreError::message(format!(
-                    "failed to open browser: {e}"
-                )));
-            }
+            let opened = open::that(&url).is_ok();
             Ok(CommandResult::new(json!({
-                "info": "Browser opened to the payment methods management page. \
-                         Only credit card or Good-as-Gold can be used for domain purchases."
+                "url": url,
+                "info": if opened {
+                    "Browser opened. Only credit card or Good-as-Gold can be used for domain purchases."
+                } else {
+                    "Could not open browser. Visit the URL above to add a payment method. \
+                     Only credit card or Good-as-Gold can be used for domain purchases."
+                }
             })))
         },
     )
