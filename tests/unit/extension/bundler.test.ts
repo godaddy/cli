@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   type BundleOptions,
   type BundleResult,
@@ -32,11 +33,30 @@ describe("bundler service", () => {
   });
 
   afterEach(async () => {
+    Reflect.deleteProperty(globalThis, "GoDaddyUiExtensions");
+
     // Clean up test directory
     if (existsSync(tempTestDir)) {
       await rm(tempTestDir, { recursive: true, force: true });
     }
   });
+
+  async function bundleCheckoutFixture(name: string, source: string) {
+    const fixtureDir = join(tempTestDir, name);
+    const srcDir = join(fixtureDir, "src");
+    await mkdir(srcDir, { recursive: true });
+    const entryPath = join(srcDir, "index.ts");
+    await writeFile(entryPath, source);
+
+    return runEffect(
+      bundleExtensionEffect({ name, version: "1.0.0" }, entryPath, {
+        repoRoot: fixtureDir,
+        timestamp: `20250128143022-${name}`,
+        extensionDir: fixtureDir,
+        extensionType: "checkout",
+      }),
+    );
+  }
 
   describe("bundleExtension", () => {
     it("should create UI extension runtime wrapper", () => {
@@ -45,7 +65,8 @@ describe("bundler service", () => {
       );
 
       expect(wrapper).toContain("import * as userModule from");
-      expect(wrapper).toContain("globalThis.GoDaddyUiExtensions?.register");
+      expect(wrapper).toContain("registry.register(contract)");
+      expect(wrapper).not.toContain("?.register");
       expect(wrapper).toContain('typeof candidate.mount !== "function"');
     });
 
@@ -83,6 +104,46 @@ describe("bundler service", () => {
       expect(bundleContent).toContain("GoDaddyUiExtensions");
       expect(bundleContent).toContain("register");
       expect(bundleContent).toContain("Extension rendered successfully");
+    });
+
+    it("should prefer named mount over a default function export", async () => {
+      const result = await bundleCheckoutFixture(
+        "checkout-named-mount",
+        `
+          export function mount({ container }) {
+            container.innerHTML = "Extension rendered successfully";
+          }
+
+          export default function Component() {
+            return null;
+          }
+        `,
+      );
+      let registeredContract: unknown;
+      Object.assign(globalThis, {
+        GoDaddyUiExtensions: {
+          register(contract: unknown) {
+            registeredContract = contract;
+          },
+        },
+      });
+
+      await import(`${pathToFileURL(result.artifactPath).href}?named-mount`);
+
+      expect(registeredContract).toMatchObject({
+        mount: expect.any(Function),
+      });
+    });
+
+    it("should fail when the UI extension runtime registry is unavailable", async () => {
+      const result = await bundleCheckoutFixture(
+        "checkout-missing-registry",
+        `export function mount({ container }) { container.innerHTML = "Extension rendered successfully"; }`,
+      );
+
+      await expect(
+        import(`${pathToFileURL(result.artifactPath).href}?missing-registry`),
+      ).rejects.toThrow("UI extension runtime registry is not available");
     });
 
     it("should bundle simple TypeScript extension successfully", async () => {

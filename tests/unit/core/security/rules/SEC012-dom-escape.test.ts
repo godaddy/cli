@@ -90,6 +90,37 @@ describe("SEC012: DOM escape operation in UI extension source", () => {
     expect(findings.length).toBeGreaterThanOrEqual(4);
   });
 
+  it("blocks aliased and bracketed DOM escape paths", () => {
+    const findings = scan(`
+      const doc = document;
+      doc.body.innerHTML = "unsafe";
+      document["body"].innerHTML = "unsafe";
+      window["location"].href = "https://example.com";
+      const globalDoc = window["document"];
+      globalDoc["querySelector"]("#checkout-root");
+    `);
+
+    expect(findings.length).toBeGreaterThanOrEqual(5);
+    expect(findings.every((finding) => finding.ruleId === "SEC012")).toBe(true);
+  });
+
+  it("allows local storage identifiers that shadow browser globals", () => {
+    const findings = scan(`
+      function render(
+        localStorage: Map<string, string>,
+        sessionStorage: Map<string, string>,
+      ) {
+        localStorage.set("token", "safe");
+        sessionStorage.set("token", "safe");
+      }
+
+      const localStorage = new Map<string, string>();
+      localStorage.set("token", "safe");
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
   it("allows rendering through the provided container", () => {
     const findings = scan(`
       export function mount({ container }) {

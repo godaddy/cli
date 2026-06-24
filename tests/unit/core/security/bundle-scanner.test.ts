@@ -189,4 +189,19 @@ describe("scanBundleContent", () => {
       true,
     );
   });
+
+  it("blocks aliased and bracketed DOM access in UI extension bundles", () => {
+    const code = `
+      const doc = document;
+      doc.body.innerHTML = "unsafe";
+      document["body"].innerHTML = "unsafe";
+      window["location"].href = "https://example.com";
+    `;
+    const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
+    const domFindings = findings.filter(
+      (finding) => finding.ruleId === "SEC112",
+    );
+
+    expect(domFindings.length).toBeGreaterThanOrEqual(3);
+  });
 });

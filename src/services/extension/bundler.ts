@@ -96,9 +96,14 @@ export function createUiExtensionRuntimeWrapper(entryPath: string): string {
   return `import * as userModule from ${JSON.stringify(entryPath)};
 
 function resolveContract() {
-  const candidate = typeof userModule.default === "function"
-    ? userModule.default()
-    : userModule.default ?? userModule;
+  if (typeof userModule.mount === "function") {
+    return userModule;
+  }
+
+  const defaultExport = userModule.default;
+  const candidate = typeof defaultExport === "function"
+    ? defaultExport()
+    : defaultExport;
 
   if (!candidate || typeof candidate.mount !== "function") {
     throw new Error("UI extension must export mount or a default contract/factory.");
@@ -107,7 +112,14 @@ function resolveContract() {
   return candidate;
 }
 
-globalThis.GoDaddyUiExtensions?.register(resolveContract());
+const contract = resolveContract();
+const registry = globalThis.GoDaddyUiExtensions;
+
+if (!registry || typeof registry.register !== "function") {
+  throw new Error("UI extension runtime registry is not available.");
+}
+
+registry.register(contract);
 `;
 }
 
