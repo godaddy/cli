@@ -1,5 +1,5 @@
 /**
- * Bundle security rules (SEC101-SEC110).
+ * Bundle security rules (SEC101-SEC112).
  * Exported as array for scanner consumption.
  */
 export { SEC101_EVAL } from "./SEC101-eval.ts";
@@ -12,6 +12,7 @@ export { SEC107_INSPECTOR } from "./SEC107-inspector.ts";
 export { SEC108_EXTERNAL_URL } from "./SEC108-external-url.ts";
 export { SEC109_ENCODED_BLOB } from "./SEC109-encoded-blob.ts";
 export { SEC110_SENSITIVE_OPS } from "./SEC110-sensitive-ops.ts";
+export { SEC112_DOM_ESCAPE } from "./SEC112-dom-escape.ts";
 
 import { SEC101_EVAL } from "./SEC101-eval.ts";
 import { SEC102_CHILD_PROCESS } from "./SEC102-child-process.ts";
@@ -23,6 +24,7 @@ import { SEC107_INSPECTOR } from "./SEC107-inspector.ts";
 import { SEC108_EXTERNAL_URL } from "./SEC108-external-url.ts";
 import { SEC109_ENCODED_BLOB } from "./SEC109-encoded-blob.ts";
 import { SEC110_SENSITIVE_OPS } from "./SEC110-sensitive-ops.ts";
+import { SEC112_DOM_ESCAPE } from "./SEC112-dom-escape.ts";
 
 import type { BundleRule } from "../../types.ts";
 
@@ -37,4 +39,5 @@ export const BUNDLE_RULES: BundleRule[] = [
   SEC108_EXTERNAL_URL,
   SEC109_ENCODED_BLOB,
   SEC110_SENSITIVE_OPS,
+  SEC112_DOM_ESCAPE,
 ];

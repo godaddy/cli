@@ -160,4 +160,65 @@ describe("scanBundleContent", () => {
     const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
     expect(findings.length).toBeGreaterThan(1);
   });
+
+  it("blocks page-level DOM access in UI extension bundles", () => {
+    const code = `
+      document.body.innerHTML = "unsafe";
+      document.cookie = "unsafe=true";
+      document.querySelector("#checkout-root");
+      document.getElementsByClassName("checkout");
+      window.location.href = "https://example.com";
+      location.replace("https://example.com");
+      history.pushState({}, "", "/unsafe");
+      window.open("https://example.com");
+      localStorage.setItem("token", "unsafe");
+      sessionStorage.setItem("token", "unsafe");
+      top.document.body.innerHTML = "unsafe";
+      parent.location.href = "https://example.com";
+      container.ownerDocument.body.innerHTML = "unsafe";
+      container.closest("#checkout-root")?.remove();
+      Element.prototype.remove = function () {};
+    `;
+    const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
+    const domFindings = findings.filter(
+      (finding) => finding.ruleId === "SEC112",
+    );
+
+    expect(domFindings.length).toBeGreaterThanOrEqual(15);
+    expect(domFindings.every((finding) => finding.severity === "block")).toBe(
+      true,
+    );
+  });
+
+  it("blocks aliased and bracketed DOM access in UI extension bundles", () => {
+    const code = `
+      const doc = document;
+      doc.body.innerHTML = "unsafe";
+      document["body"].innerHTML = "unsafe";
+      const win = window;
+      win.location.href = "https://example.com";
+      window["location"].href = "https://example.com";
+    `;
+    const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
+    const domFindings = findings.filter(
+      (finding) => finding.ruleId === "SEC112",
+    );
+
+    expect(domFindings.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("blocks destructured DOM access in UI extension bundles", () => {
+    const code = `
+      const { body } = document;
+      body.innerHTML = "unsafe";
+      const { location } = window;
+      location.href = "https://example.com";
+    `;
+    const findings = scanBundleContent(code, BUNDLE_RULES, "test.mjs");
+    const domFindings = findings.filter(
+      (finding) => finding.ruleId === "SEC112",
+    );
+
+    expect(domFindings.length).toBeGreaterThanOrEqual(2);
+  });
 });

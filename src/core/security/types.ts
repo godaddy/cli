@@ -15,6 +15,7 @@ export type RuleId =
   | "SEC009"
   | "SEC010"
   | "SEC011" // package.json scripts
+  | "SEC012"
   | "SEC101" // bundled rules
   | "SEC102"
   | "SEC103"
@@ -24,7 +25,8 @@ export type RuleId =
   | "SEC107"
   | "SEC108"
   | "SEC109"
-  | "SEC110";
+  | "SEC110"
+  | "SEC112";
 
 /**
  * Severity level for security findings

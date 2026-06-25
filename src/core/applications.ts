@@ -25,6 +25,7 @@ import {
   type ActionConfig,
   type Config,
   type ConfigExtensionInfo,
+  type ExtensionType,
   type SubscriptionConfig,
   createConfigFileEffect,
   createEnvFileEffect,
@@ -32,13 +33,13 @@ import {
   getExtensionsFromConfigEffect,
 } from "../services/config";
 import { bundleExtensionEffect as bundleExtServiceEffect } from "../services/extension/bundler";
-import { publicHttpUrl } from "../services/public-url";
 import { getUploadTargetEffect } from "../services/extension/presigned-url";
 import {
   scanBundleEffect,
   scanExtensionEffect,
 } from "../services/extension/security-scan";
 import { uploadArtifactEffect } from "../services/extension/upload";
+import { publicHttpUrl } from "../services/public-url";
 import { getFromKeychainEffect } from "./auth";
 import type { Environment } from "./environment";
 import type { ScanReport } from "./security/types";
@@ -130,7 +131,7 @@ export interface ReleaseUiExtension {
   name: string;
   handle: string;
   source: string;
-  type: string;
+  type: ExtensionType;
   target?: string;
 }
 
@@ -885,6 +886,7 @@ export function applicationReleaseEffect(
           yield* Effect.fail(
             new ValidationError({
               message: `UI extension "${ext.name}" has ${ext.targets.length} targets, but only one target is supported per extension during release`,
+              userMessage: `UI extension "${ext.name}" has too many targets. Only one target is supported per extension during release.`,
             }),
           );
         }

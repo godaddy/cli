@@ -9,6 +9,7 @@ import { SEC007 } from "./SEC007-inspector.ts";
 import { SEC008 } from "./SEC008-external-urls.ts";
 import { SEC009 } from "./SEC009-large-blobs.ts";
 import { SEC010 } from "./SEC010-sensitive-paths.ts";
+import { SEC012 } from "./SEC012-dom-escape.ts";
 
 /**
  * All security rules for extension scanning
@@ -27,6 +28,7 @@ export const RULES: Rule[] = [
   SEC008, // external URLs (warn)
   SEC009, // large encoded blobs (warn)
   SEC010, // sensitive paths (warn)
+  SEC012, // DOM escape operations (block)
 ];
 
 /**
