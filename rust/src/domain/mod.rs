@@ -315,10 +315,15 @@ fn format_api_error(
     debug: bool,
 ) -> String {
     let body = body.trim();
-    let mut msg = if body.is_empty() {
-        format!("{action} failed (HTTP {status_display})")
-    } else {
-        format!("{action} failed (HTTP {status_display}): {body}")
+    // When the body is a structured validation error (`INVALID_BODY` with a
+    // `fields` array), translate each field into plain English rather than pasting
+    // the raw JSON — whose per-field `message` strings embed the failing regex
+    // (e.g. a full UK-postcode pattern), which is noise to a user.
+    let friendly = friendly_field_errors(body);
+    let mut msg = match &friendly {
+        Some(detail) => format!("{action} failed (HTTP {status_display}):\n{detail}"),
+        None if body.is_empty() => format!("{action} failed (HTTP {status_display})"),
+        None => format!("{action} failed (HTTP {status_display}): {body}"),
     };
     if status == 402 {
         msg.push_str(
@@ -327,10 +332,142 @@ fn format_api_error(
              purchases), then try again.",
         );
     }
-    if debug && let Some(id) = request_id.map(str::trim).filter(|s| !s.is_empty()) {
-        msg.push_str(&format!("\n\nRequest ID: {id}"));
+    if debug {
+        // When we replaced the raw body with a friendly summary, the original JSON
+        // is still useful for debugging — surface it (only) here.
+        if friendly.is_some() && !body.is_empty() {
+            msg.push_str(&format!("\n\nResponse body: {body}"));
+        }
+        if let Some(id) = request_id.map(str::trim).filter(|s| !s.is_empty()) {
+            msg.push_str(&format!("\n\nRequest ID: {id}"));
+        }
     }
     msg
+}
+
+/// A Domains API validation error body: `{"code":..., "message":..., "fields":[...]}`.
+/// Only `fields` is needed to build friendly output; the rest is ignored.
+#[derive(serde::Deserialize)]
+struct ApiErrorBody {
+    #[serde(default)]
+    fields: Vec<ApiFieldError>,
+}
+
+/// One entry in a validation error's `fields` array. The API's `message` is
+/// deliberately not surfaced to users — it embeds raw regex — but is captured so
+/// the shape deserializes cleanly.
+#[derive(serde::Deserialize)]
+struct ApiFieldError {
+    #[serde(default)]
+    code: String,
+    #[serde(default)]
+    path: String,
+}
+
+/// Render a structured validation error as a plain-English bullet list, or `None`
+/// when `body` isn't a field-level validation error (so the caller falls back to
+/// the raw body). `None` also covers non-JSON bodies and JSON without `fields`.
+fn friendly_field_errors(body: &str) -> Option<String> {
+    let parsed = serde_json::from_str::<ApiErrorBody>(body).ok()?;
+    if parsed.fields.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = parsed
+        .fields
+        .iter()
+        .map(|f| format!("  • {}", describe_field_error(f)))
+        .collect();
+    Some(format!("some fields are invalid:\n{}", lines.join("\n")))
+}
+
+/// One readable line for a field error, e.g.
+/// `registrant mailing address line 2 is too short (leave it blank to omit it)`.
+fn describe_field_error(f: &ApiFieldError) -> String {
+    let name = friendly_field_name(&f.path);
+    let problem = match f.code.as_str() {
+        "LENGTH_UNDER" | "MIN_LENGTH" | "TOO_SHORT" => "is too short",
+        "LENGTH_OVER" | "MAX_LENGTH" | "TOO_LONG" => "is too long",
+        "PATTERN" | "INVALID_FORMAT" | "INVALID_PATTERN" => "is not in the required format",
+        "REQUIRED" | "MISSING" | "MISSING_REQUIRED_FIELD" => "is required",
+        _ => "is invalid",
+    };
+    match field_hint(&f.path, &f.code) {
+        Some(hint) => format!("{name} {problem} ({hint})"),
+        None => format!("{name} {problem}"),
+    }
+}
+
+/// A field-specific hint keyed on the path's leaf and the error code, or `None`.
+fn field_hint(path: &str, code: &str) -> Option<&'static str> {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    match (leaf, code) {
+        ("phone", _) | ("fax", _) => Some("expected a format like +1.4805551212"),
+        ("postalCode", "PATTERN" | "INVALID_FORMAT" | "INVALID_PATTERN") => {
+            Some("some countries require a specific format, e.g. UK SW1A 2AA")
+        }
+        ("address2", "LENGTH_UNDER" | "MIN_LENGTH" | "TOO_SHORT") => {
+            Some("leave it blank to omit it")
+        }
+        _ => None,
+    }
+}
+
+/// Turn an API field path (`body.contacts.registrant.addressMailing.address2`)
+/// into a human phrase (`registrant mailing address line 2`). Falls back to a
+/// space-joined, camelCase-split rendering for unrecognized paths.
+fn friendly_field_name(path: &str) -> String {
+    let trimmed = path.strip_prefix("body.").unwrap_or(path);
+    let segments: Vec<&str> = trimmed.split('.').filter(|s| !s.is_empty()).collect();
+    // contacts.<role>.<rest...> — lead with the role so the user knows which
+    // contact (registrant/admin/billing/tech) the error is about.
+    if let ["contacts", role, rest @ ..] = segments.as_slice() {
+        let mut parts = vec![humanize_segment(role)];
+        parts.extend(rest.iter().map(|s| humanize_segment(s)));
+        return parts.join(" ");
+    }
+    if segments.is_empty() {
+        return path.to_string();
+    }
+    segments
+        .iter()
+        .map(|s| humanize_segment(s))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Humanize a single path segment, mapping the API's contact/address field names
+/// to friendly words and otherwise splitting camelCase into lowercase words.
+fn humanize_segment(seg: &str) -> String {
+    match seg {
+        "addressMailing" => "mailing address".to_string(),
+        "addressBilling" => "billing address".to_string(),
+        "address1" => "line 1".to_string(),
+        "address2" => "line 2".to_string(),
+        "postalCode" => "postal code".to_string(),
+        "nameFirst" => "first name".to_string(),
+        "nameLast" => "last name".to_string(),
+        "nameMiddle" => "middle name".to_string(),
+        "jobTitle" => "job title".to_string(),
+        "agreedAt" => "agreed-at timestamp".to_string(),
+        other => split_camel_case(other),
+    }
+}
+
+/// Split a camelCase identifier into space-separated lowercase words
+/// (`nationalNumber` → `national number`). Leaves already-lowercase words as-is.
+fn split_camel_case(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, ch) in s.char_indices() {
+        if ch.is_ascii_uppercase() {
+            if i != 0 {
+                out.push(' ');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// `DomainPurchase` request fields this CLI can populate (other than the four
@@ -418,9 +555,24 @@ pub fn module() -> Module {
         RuntimeGroupSpec::new(GroupSpec::new(
             "domain",
             "List your domains, check availability, and get suggestions",
+        ).with_long(
+            "Work with domains on your GoDaddy account and the public registry.\n\
+             \n\
+             • list / get        — your existing domains and their details\n\
+             • available / suggest — find a name to register\n\
+             • agreements / schema — see what a TLD requires before you buy\n\
+             • purchase          — register a new domain (charges your account)\n\
+             \n\
+             Reads need the `domains.domain:read` scope; purchase also needs\n\
+             `domains.domain:create`. Manage a domain's DNS with `gddy dns`.",
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("list", "List the domains in your account")
+                .with_long(
+                    "List the domains registered to your account. Shows domain, status, \
+                     expiry, and auto-renew by default; use --fields to pick columns and \
+                     --status to filter (repeatable).",
+                )
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("domain,status,expires,renewAuto")
@@ -465,6 +617,11 @@ pub fn module() -> Module {
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("get", "Show full details for one of your domains")
+                .with_long(
+                    "Show every detail for a single domain in your account (status, \
+                     expiry, contacts, nameservers, and more). Unlike `list`, this shows \
+                     all fields by default. The domain must be one you own.",
+                )
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 // No default fields: `get` is a single-domain deep-dive, so show
@@ -501,6 +658,12 @@ pub fn module() -> Module {
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("available", "Check whether a domain is available")
+                .with_long(
+                    "Check whether a domain can be registered, and at what price. \
+                     --check-type fast trades accuracy for speed; full is authoritative \
+                     (the `definitive` field tells you which you got). Pass --for-transfer \
+                     to also report names available to transfer in.",
+                )
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("domain,available,definitive,price,currency")
@@ -597,6 +760,12 @@ pub fn module() -> Module {
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("suggest", "Suggest available domains for a query")
+                .with_long(
+                    "Suggest available domains from a seed word, phrase, or domain. \
+                     Narrow results with --tlds (repeatable), cap them with --limit, and \
+                     bias toward a region with --country/--city. Feed a promising result \
+                     straight into `gddy domain available`.",
+                )
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("domain")
@@ -694,6 +863,11 @@ pub fn module() -> Module {
                 "agreements",
                 "Show the legal agreements required to register a TLD",
             )
+            .with_long(
+                "List the legal agreements you must consent to before registering under \
+                 a TLD. Review these before running `gddy domain purchase --agree`, which \
+                 records consent to exactly these agreements on your behalf.",
+            )
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("agreementKey,title,url")
@@ -767,6 +941,12 @@ pub fn module() -> Module {
                 "schema",
                 "Show a TLD's requirements for registering a domain",
             )
+            .with_long(
+                "Show what a TLD requires to register under it — which contact roles are \
+                 mandatory and any TLD-specific fields (e.g. eligibility for some \
+                 country-code TLDs). Check this before `gddy domain purchase` so you know \
+                 which contacts to populate in contacts.toml.",
+            )
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("required")
@@ -798,6 +978,24 @@ pub fn module() -> Module {
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("purchase", "Register a domain (paid; charges your account)")
+                .with_long(
+                    "Register a domain. This charges your GoDaddy account and cannot be \
+                     undone, so it is gated behind --confirm.\n\
+                     \n\
+                     Before it charges, the command checks the TLD's requirements and the \
+                     domain's availability, then records your consent to the TLD's legal \
+                     agreements (--agree). Contacts come from your account by default; to \
+                     override them, define registrant/admin/billing/tech in contacts.toml \
+                     (scaffold one with `gddy domain contacts init`). A usable payment \
+                     method must be on file — add one with `gddy payments add`.\n\
+                     \n\
+                     Typical flow:\n  \
+                     1. gddy domain available example.com\n  \
+                     2. gddy domain agreements --tld com   # review what --agree consents to\n  \
+                     3. gddy domain purchase example.com --agree --confirm\n\
+                     \n\
+                     See `gddy guide domain-purchase` for the full walkthrough.",
+                )
                 .with_system("domain")
                 .with_tier(Tier::Destructive)
                 .with_default_fields("domain,status,price,currency")
@@ -1086,9 +1284,20 @@ pub fn module() -> Module {
             RuntimeGroupSpec::new(GroupSpec::new(
                 "contacts",
                 "Manage saved default contacts for domain purchases",
+            ).with_long(
+                "Manage the optional contacts.toml that supplies registrant/admin/billing/\
+                 tech contacts for `gddy domain purchase`. When a role is absent the \
+                 purchase falls back to your account's default contact for that role.",
             ))
             .with_command(RuntimeCommandSpec::new_with_context(
                 CommandSpec::new("init", "Write a starter contacts.toml you can edit")
+                    .with_long(
+                        "Scaffold a starter contacts.toml in your config directory with \
+                         every role commented out (so it's inert until you edit it). Fill \
+                         in any roles you want to override the account defaults for. Pass \
+                         --force to overwrite an existing file. Phone numbers are \
+                         normalized automatically, so common formats are accepted.",
+                    )
                     .with_system("domain")
                     // Local file write, no API call: dry-run aware, no auth.
                     .with_tier(Tier::Mutate)
@@ -1287,6 +1496,84 @@ mod tests {
         // Empty body omits the trailing colon.
         let empty = format_api_error("domain schema", 404, "404 Not Found", "", None, false);
         assert!(empty.ends_with("(HTTP 404 Not Found)"), "{empty}");
+    }
+
+    #[test]
+    fn validation_fields_render_as_plain_english_without_regex() {
+        // The #14 / #33 regression: an INVALID_BODY with a `fields` array must be
+        // translated, not pasted raw — and the raw per-field regex/message must not
+        // leak into the default (non-debug) output.
+        let body = r#"{"code":"INVALID_BODY","fields":[{"code":"LENGTH_UNDER","message":"does not meet minimum length of 1","path":"body.contacts.registrant.addressMailing.address2"}],"message":"Request body doesn't fulfill schema, see details in `fields`"}"#;
+        let msg = format_api_error(
+            "domain purchase",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(msg.contains("registrant mailing address line 2"), "{msg}");
+        assert!(msg.contains("is too short"), "{msg}");
+        assert!(msg.contains("leave it blank to omit"), "{msg}");
+        // Raw path and the schema boilerplate message are suppressed.
+        assert!(!msg.contains("body.contacts"), "{msg}");
+        assert!(!msg.contains("minimum length of 1"), "{msg}");
+        assert!(!msg.contains("fulfill schema"), "{msg}");
+    }
+
+    #[test]
+    fn pattern_failure_gives_guidance_not_regex() {
+        // A postcode PATTERN failure: the API message would carry the full regex;
+        // we surface guidance instead.
+        let body = r#"{"code":"INVALID_BODY","fields":[{"code":"PATTERN","message":"must match ^([A-Z]{1,2}\\d[A-Z\\d]? ?\\d[A-Z]{2})$","path":"body.contacts.registrant.addressMailing.postalCode"}]}"#;
+        let msg = format_api_error(
+            "domain purchase",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(
+            msg.contains("registrant mailing address postal code"),
+            "{msg}"
+        );
+        assert!(msg.contains("is not in the required format"), "{msg}");
+        assert!(msg.contains("SW1A 2AA"), "{msg}");
+        assert!(!msg.contains("[A-Z]"), "{msg}"); // no regex leaked
+    }
+
+    #[test]
+    fn phone_field_error_gives_dotted_example() {
+        let body = r#"{"fields":[{"code":"PATTERN","path":"body.contacts.registrant.phone"}]}"#;
+        let msg = format_api_error("domain purchase", 422, "422", body, None, false);
+        assert!(msg.contains("registrant phone"), "{msg}");
+        assert!(msg.contains("+1.4805551212"), "{msg}");
+    }
+
+    #[test]
+    fn raw_body_recoverable_under_debug_for_field_errors() {
+        let body = r#"{"fields":[{"code":"LENGTH_UNDER","path":"body.contacts.registrant.addressMailing.address2"}]}"#;
+        let debug = format_api_error("domain purchase", 422, "422", body, None, true);
+        assert!(debug.contains("Response body:"), "{debug}");
+        assert!(debug.contains("address2"), "{debug}"); // raw json present under --debug
+    }
+
+    #[test]
+    fn fieldless_json_body_is_passed_through() {
+        // No `fields` array -> keep the raw body (existing behavior relied on by the
+        // 402 path and any non-validation JSON error).
+        let body = r#"{"code":"INVALID_PAYMENT_INFO","message":"Unable to authorize credit"}"#;
+        let msg = format_api_error(
+            "domain purchase",
+            402,
+            "402 Payment Required",
+            body,
+            None,
+            false,
+        );
+        assert!(msg.contains("INVALID_PAYMENT_INFO"), "{msg}");
+        assert!(!msg.contains("some fields are invalid"), "{msg}");
     }
 
     #[test]

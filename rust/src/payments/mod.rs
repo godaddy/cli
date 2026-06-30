@@ -16,8 +16,16 @@ fn map_env_err(e: environments::EnvError) -> CliCoreError {
 
 pub fn module() -> Module {
     Module::new("Payments", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new("payments", "Manage payment methods"))
-            .with_command(add_command())
+        RuntimeGroupSpec::new(
+            GroupSpec::new("payments", "Manage payment methods").with_long(
+                "Manage the payment methods on your GoDaddy account.\n\
+                     A saved payment method is required before you can run \
+                     `gddy domain purchase`.\n\
+                     Use `gddy payments add` to open the GoDaddy payment methods \
+                     page in your browser.",
+            ),
+        )
+        .with_command(add_command())
     })
 }
 

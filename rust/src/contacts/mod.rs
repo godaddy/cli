@@ -102,24 +102,32 @@ impl Contact {
     /// code. `encoding` is reported honestly: `ASCII` when every field is ASCII,
     /// else `UTF-8`, so accented names/addresses aren't mislabeled.
     pub fn to_api(&self, role: Role) -> Result<api::ContactDomainCreate, String> {
-        let country = api::AddressCountry::try_from(self.country.to_ascii_uppercase().as_str())
-            .map_err(|_| {
-                format!(
-                    "{} contact in contacts.toml has invalid country {:?} \
-                     (expected a two-letter ISO code, e.g. US)",
-                    role.label(),
-                    self.country,
-                )
-            })?;
+        let country_upper = self.country.to_ascii_uppercase();
+        let country = api::AddressCountry::try_from(country_upper.as_str()).map_err(|_| {
+            format!(
+                "{} contact in contacts.toml has invalid country {:?} \
+                 (expected a two-letter ISO code, e.g. US)",
+                role.label(),
+                self.country,
+            )
+        })?;
         let encoding = if self.is_all_ascii() {
             api::ContactDomainCreateEncoding::Ascii
         } else {
             api::ContactDomainCreateEncoding::Utf8
         };
+        // Normalize phone (required) and fax (optional, only when present) to the
+        // API's `+<code>.<number>` format so common inputs aren't rejected with a
+        // cryptic 422.
+        let phone = normalize_phone(&self.phone, &country_upper, "phone", role)?;
+        let fax = match empty_to_none(&self.fax) {
+            Some(f) => Some(normalize_phone(&f, &country_upper, "fax", role)?),
+            None => None,
+        };
         Ok(api::ContactDomainCreate {
             address_mailing: api::Address {
                 address1: self.address1.clone(),
-                address2: self.address2.clone(),
+                address2: empty_to_none(&self.address2),
                 city: self.city.clone(),
                 country,
                 postal_code: self.postal_code.clone(),
@@ -127,14 +135,14 @@ impl Contact {
             },
             email: self.email.clone(),
             encoding,
-            fax: self.fax.clone(),
-            job_title: self.job_title.clone(),
+            fax,
+            job_title: empty_to_none(&self.job_title),
             metadata: Default::default(),
             name_first: self.name_first.clone(),
             name_last: self.name_last.clone(),
-            name_middle: self.name_middle.clone(),
-            organization: self.organization.clone(),
-            phone: self.phone.clone(),
+            name_middle: empty_to_none(&self.name_middle),
+            organization: empty_to_none(&self.organization),
+            phone,
         })
     }
 
@@ -163,6 +171,46 @@ impl Contact {
                 .iter()
                 .all(|o| o.as_deref().is_none_or(str::is_ascii))
     }
+}
+
+/// Trim an optional string and treat an empty value as absent. A blank optional
+/// field in `contacts.toml` (e.g. `address2 = ""`) would otherwise deserialize to
+/// `Some("")` and be sent as `"address2": ""`; the Domains API enforces a minimum
+/// length of 1 on these optional fields when present, so an empty string is
+/// rejected with a `LENGTH_UNDER` 422. Returning `None` lets serde omit the field
+/// entirely (the generated types `skip_serializing_if = Option::is_none`).
+fn empty_to_none(value: &Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+/// Normalize a user-entered phone or fax number to the Domains API format
+/// `+<country-calling-code>.<national-number>` (e.g. `+1.4805551212`), matching the
+/// API's required pattern `^\+([0-9]){1,3}\.([0-9] ?){5,14}$`.
+///
+/// `region` is the contact's two-letter ISO country, used as the default region so
+/// a number typed without a `+` country prefix (e.g. a local `07793 601890`) still
+/// parses. Returns a human-readable error (surfaced by `domain purchase`, like the
+/// invalid-country error) when the value can't be parsed as a phone number, rather
+/// than forwarding it and letting the API reject it opaquely.
+fn normalize_phone(raw: &str, region: &str, field: &str, role: Role) -> Result<String, String> {
+    let region_id = region.parse::<phonenumber::country::Id>().ok();
+    let number = phonenumber::parse(region_id, raw).map_err(|_| {
+        format!(
+            "{} contact in contacts.toml has an unrecognized {} {:?} \
+             (expected a phone number like +1.4805551212)",
+            role.label(),
+            field,
+            raw,
+        )
+    })?;
+    // `NationalNumber`'s Display preserves significant leading zeros (e.g. Italy),
+    // so this is correct for every region, not just those whose national number is
+    // a plain integer.
+    Ok(format!("+{}.{}", number.code().value(), number.national()))
 }
 
 impl ContactsFile {
@@ -350,6 +398,107 @@ country = "ZZ"
             .expect_err("ZZ is not a valid ISO country");
         assert!(err.contains("invalid country"));
         assert!(err.contains("registrant"));
+    }
+
+    /// Build a single-registrant `ContactsFile` from a `[registrant]` TOML body.
+    fn registrant(body: &str) -> api::ContactDomainCreate {
+        let toml = format!("[registrant]\n{body}");
+        let file: ContactsFile = toml::from_str(&toml).expect("parses");
+        file.to_api(Role::Registrant)
+            .expect("valid")
+            .expect("present")
+    }
+
+    const GB_BASE: &str = r#"name_first = "Jane"
+name_last = "Doe"
+email = "jane@example.com"
+address1 = "10 Downing St"
+city = "London"
+state = "London"
+postal_code = "SW1A 2AA"
+country = "GB"
+"#;
+
+    #[test]
+    fn gb_phone_common_formats_normalize_to_dotted() {
+        // International (no separator), international (spaced), and bare local —
+        // all the same UK number — normalize to the API's `+44.7793601890`.
+        for input in ["+447793601890", "+44 7793 601890", "07793 601890"] {
+            let c = registrant(&format!("{GB_BASE}phone = \"{input}\"\n"));
+            assert_eq!(c.phone, "+44.7793601890", "input {input:?}");
+        }
+    }
+
+    #[test]
+    fn us_phone_normalizes_to_dotted() {
+        let body = r#"name_first = "Ada"
+name_last = "Lovelace"
+email = "ada@example.com"
+phone = "(480) 555-1212"
+address1 = "1 Main"
+city = "Tempe"
+state = "AZ"
+postal_code = "85281"
+country = "US"
+"#;
+        assert_eq!(registrant(body).phone, "+1.4805551212");
+    }
+
+    #[test]
+    fn already_dotted_phone_is_preserved() {
+        let c = registrant(&format!("{GB_BASE}phone = \"+1.4805551212\"\n"));
+        assert_eq!(c.phone, "+1.4805551212");
+    }
+
+    #[test]
+    fn unparseable_phone_errors_with_role_and_example() {
+        let toml = format!("[registrant]\n{GB_BASE}phone = \"not-a-phone\"\n");
+        let file: ContactsFile = toml::from_str(&toml).expect("parses");
+        let err = file
+            .to_api(Role::Registrant)
+            .expect_err("garbage phone is rejected");
+        assert!(err.contains("registrant"), "got: {err}");
+        assert!(err.contains("phone"), "got: {err}");
+        assert!(err.contains("+1.4805551212"), "got: {err}");
+    }
+
+    #[test]
+    fn blank_address2_is_omitted() {
+        // The #33 regression: `address2 = ""` must not be sent (would 422 with
+        // LENGTH_UNDER). A whitespace-only value is likewise omitted.
+        for blank in ["\"\"", "\"   \""] {
+            let c = registrant(&format!(
+                "{GB_BASE}phone = \"+44.7793601890\"\naddress2 = {blank}\n"
+            ));
+            assert_eq!(c.address_mailing.address2, None, "blank {blank}");
+        }
+    }
+
+    #[test]
+    fn non_empty_address2_is_preserved() {
+        let c = registrant(&format!(
+            "{GB_BASE}phone = \"+44.7793601890\"\naddress2 = \"Flat 2\"\n"
+        ));
+        assert_eq!(c.address_mailing.address2.as_deref(), Some("Flat 2"));
+    }
+
+    #[test]
+    fn blank_optional_text_fields_are_omitted() {
+        let c = registrant(&format!(
+            "{GB_BASE}phone = \"+44.7793601890\"\norganization = \"\"\njob_title = \"\"\nname_middle = \"\"\nfax = \"\"\n"
+        ));
+        assert_eq!(c.organization, None);
+        assert_eq!(c.job_title, None);
+        assert_eq!(c.name_middle, None);
+        assert_eq!(c.fax, None);
+    }
+
+    #[test]
+    fn present_fax_is_normalized() {
+        let c = registrant(&format!(
+            "{GB_BASE}phone = \"+44.7793601890\"\nfax = \"07793 601891\"\n"
+        ));
+        assert_eq!(c.fax.as_deref(), Some("+44.7793601891"));
     }
 
     #[test]

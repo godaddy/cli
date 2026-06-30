@@ -109,7 +109,14 @@ fn arg_str<'a>(ctx: &'a cli_engine::CommandContext, key: &str) -> &'a str {
 
 pub fn application_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("application", "Manage GoDaddy applications").with_alias("app"),
+        GroupSpec::new("application", "Manage GoDaddy applications")
+            .with_long(
+                "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
+                developer-platform app described by a godaddy.toml manifest in your working \
+                directory. Use `application init` to create one, `application validate` to \
+                check it, and `application deploy` to publish it.",
+            )
+            .with_alias("app"),
     )
     .with_command(list_command())
     .with_command(info_command())
@@ -127,6 +134,11 @@ pub fn application_group() -> RuntimeGroupSpec {
 fn list_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List all applications")
+            .with_long(
+                "List all GoDaddy developer-platform applications visible to the current \
+                account. Use `application info --name <name>` to fetch full details for a \
+                single application.",
+            )
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status")
@@ -152,6 +164,11 @@ fn list_command() -> RuntimeCommandSpec {
 fn info_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("info", "Get application details")
+            .with_long(
+                "Fetch full details for a single GoDaddy developer-platform application by \
+                name, including status, URLs, and authorization scopes. Use `application list` \
+                to find available names.",
+            )
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_output_schema::<ApplicationSummary>()
@@ -198,6 +215,13 @@ fn info_command() -> RuntimeCommandSpec {
 fn init_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("init", "Create and initialize a new application")
+            .with_long(
+                "Register a new GoDaddy developer-platform application and write a \
+                godaddy.toml manifest to the current directory. The manifest captures the \
+                application name, URL, authorization scopes, and any actions or extensions \
+                added later. Run `application validate` to confirm the manifest is valid, \
+                then `application release` to create a versioned release.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ApplicationCredentials>()
@@ -319,6 +343,11 @@ fn init_command() -> RuntimeCommandSpec {
 fn validate_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("validate", "Validate godaddy.toml config")
+            .with_long(
+                "Parse and validate the godaddy.toml manifest in the current directory \
+                (or the path given by --config). Exits non-zero and prints a diagnostic if \
+                the file is missing or malformed. Does not require authentication.",
+            )
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_output_schema::<ValidationResult>()
@@ -352,6 +381,11 @@ fn validate_command() -> RuntimeCommandSpec {
 fn update_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("update", "Update an application")
+            .with_long(
+                "Update the label or description of a GoDaddy developer-platform application \
+                by its ID. At least one of --label or --description must be provided. \
+                Use `application info --name <name>` to retrieve the application ID.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ApplicationUpdate>()
@@ -427,6 +461,11 @@ fn update_command() -> RuntimeCommandSpec {
 fn enable_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("enable", "Enable an application on a store")
+            .with_long(
+                "Make a GoDaddy developer-platform application available on a specific \
+                store. Use `application disable` to reverse this. Both the application name \
+                and a store ID are required.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ApplicationRef>()
@@ -494,6 +533,11 @@ fn enable_command() -> RuntimeCommandSpec {
 fn disable_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("disable", "Disable an application on a store")
+            .with_long(
+                "Remove a GoDaddy developer-platform application from a specific store, \
+                making it unavailable there. Use `application enable` to re-enable it. \
+                Both the application name and a store ID are required.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ApplicationRef>()
@@ -563,6 +607,11 @@ fn disable_command() -> RuntimeCommandSpec {
 fn archive_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("archive", "Archive an application")
+            .with_long(
+                "Archive a GoDaddy developer-platform application by name. Archiving is \
+                irreversible via this CLI; the application will no longer be active. \
+                Use `application list` to confirm the application name before archiving.",
+            )
             .with_system("applications")
             .with_tier(Tier::Destructive)
             .with_output_schema::<ApplicationArchive>()
@@ -598,6 +647,12 @@ fn archive_command() -> RuntimeCommandSpec {
 fn release_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("release", "Create a new application release")
+            .with_long(
+                "Tag a new versioned release for a GoDaddy developer-platform application. \
+                The version must follow semver (e.g. 1.2.3). A release is required before \
+                running `application deploy`. Use `application info --name <name>` to \
+                retrieve the application ID.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ApplicationRelease>()
@@ -648,6 +703,13 @@ fn release_command() -> RuntimeCommandSpec {
 fn deploy_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_streaming(
         CommandSpec::new("deploy", "Deploy an application, streaming progress events")
+            .with_long(
+                "Read godaddy.toml from the current directory, bundle all declared extensions \
+                with esbuild, run the security scanner (rules SEC101–SEC115) on each bundle, \
+                then upload the artifacts to the latest release of the named application. \
+                Progress is streamed as JSON events. A release must exist before deploying; \
+                create one with `application release`.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_arg(
@@ -915,107 +977,141 @@ async fn deploy_extension(
 }
 
 pub fn add_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new("add", "Add components to an application"))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("action", "Add an action to godaddy.toml")
-                .with_system("applications")
-                .with_tier(Tier::Mutate)
-                .with_output_schema::<ConfigAction>()
-                .no_auth(true)
-                .with_arg(
-                    clap::Arg::new("name")
-                        .long("name")
-                        .required(true)
-                        .help("Action name"),
-                )
-                .with_arg(
-                    clap::Arg::new("url")
-                        .long("url")
-                        .required(true)
-                        .help("Action URL"),
-                ),
-            |ctx| async move {
-                let name = arg_str(&ctx, "name").to_owned();
-                let url = arg_str(&ctx, "url").to_owned();
-                let path = crate::config::config_path(Some(&ctx.middleware.env));
-                let mut config = crate::config::read_config(&path)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                config.actions.push(crate::config::ActionConfig {
-                    name: name.clone(),
-                    url: url.clone(),
-                });
-                crate::config::write_config(&path, &config)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(json!({ "name": name, "url": url })))
-            },
-        ))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("subscription", "Add a webhook subscription to godaddy.toml")
-                .with_system("applications")
-                .with_tier(Tier::Mutate)
-                .with_output_schema::<ConfigSubscription>()
-                .no_auth(true)
-                .with_arg(
-                    clap::Arg::new("name")
-                        .long("name")
-                        .required(true)
-                        .help("Subscription name"),
-                )
-                .with_arg(
-                    clap::Arg::new("url")
-                        .long("url")
-                        .required(true)
-                        .help("Webhook URL"),
-                )
-                .with_arg(
-                    clap::Arg::new("events")
-                        .long("events")
-                        .num_args(1..)
-                        .value_name("EVENT")
-                        .required(true)
-                        .help("Webhook event types"),
-                ),
-            |ctx| async move {
-                let name = arg_str(&ctx, "name").to_owned();
-                let url = arg_str(&ctx, "url").to_owned();
-                let events: Vec<String> = ctx
-                    .args
-                    .get("events")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(str::to_owned))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let path = crate::config::config_path(Some(&ctx.middleware.env));
-                let mut config = crate::config::read_config(&path)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                let subs = config
-                    .subscriptions
-                    .get_or_insert_with(|| crate::config::SubscriptionsConfig { webhook: vec![] });
-                subs.webhook.push(crate::config::SubscriptionConfig {
-                    name: name.clone(),
-                    events: events.clone(),
-                    url: url.clone(),
-                });
-                crate::config::write_config(&path, &config)
-                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                Ok(CommandResult::new(
-                    json!({ "name": name, "url": url, "events": events }),
-                ))
-            },
-        ))
-        .with_group(add_extension_group())
+    RuntimeGroupSpec::new(
+        GroupSpec::new("add", "Add components to an application").with_long(
+            "Append actions, webhook subscriptions, or UI extensions to the \
+                godaddy.toml manifest in the current directory. These commands do not \
+                require authentication and do not contact the API; run \
+                `application deploy` to publish the updated manifest.",
+        ),
+    )
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("action", "Add an action to godaddy.toml")
+            .with_long(
+                "Append an action entry to the godaddy.toml manifest in the current \
+                    directory. An action is an HTTP endpoint that the platform calls on \
+                    behalf of the application; it is identified by a name and a public \
+                    HTTPS URL. The manifest is updated in place; run `application validate` \
+                    to confirm the result.",
+            )
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_output_schema::<ConfigAction>()
+            .no_auth(true)
+            .with_arg(
+                clap::Arg::new("name")
+                    .long("name")
+                    .required(true)
+                    .help("Unique action name written into godaddy.toml"),
+            )
+            .with_arg(
+                clap::Arg::new("url")
+                    .long("url")
+                    .required(true)
+                    .help("Public HTTPS URL the platform will invoke for this action"),
+            ),
+        |ctx| async move {
+            let name = arg_str(&ctx, "name").to_owned();
+            let url = arg_str(&ctx, "url").to_owned();
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            config.actions.push(crate::config::ActionConfig {
+                name: name.clone(),
+                url: url.clone(),
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            Ok(CommandResult::new(json!({ "name": name, "url": url })))
+        },
+    ))
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("subscription", "Add a webhook subscription to godaddy.toml")
+            .with_long(
+                "Append a webhook subscription entry to the godaddy.toml manifest in \
+                    the current directory. A subscription routes platform events to an HTTPS \
+                    endpoint. Provide one or more event types with --events; run \
+                    `gddy webhook events` to discover the full list of valid event types.",
+            )
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_output_schema::<ConfigSubscription>()
+            .no_auth(true)
+            .with_arg(
+                clap::Arg::new("name")
+                    .long("name")
+                    .required(true)
+                    .help("Unique subscription name written into godaddy.toml"),
+            )
+            .with_arg(
+                clap::Arg::new("url")
+                    .long("url")
+                    .required(true)
+                    .help("Public HTTPS URL that will receive webhook POST requests"),
+            )
+            .with_arg(
+                clap::Arg::new("events")
+                    .long("events")
+                    .num_args(1..)
+                    .value_name("EVENT")
+                    .required(true)
+                    .help(
+                        "One or more event types to subscribe to \
+                            (run `gddy webhook events` to list valid values)",
+                    ),
+            ),
+        |ctx| async move {
+            let name = arg_str(&ctx, "name").to_owned();
+            let url = arg_str(&ctx, "url").to_owned();
+            let events: Vec<String> = ctx
+                .args
+                .get("events")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let subs = config
+                .subscriptions
+                .get_or_insert_with(|| crate::config::SubscriptionsConfig { webhook: vec![] });
+            subs.webhook.push(crate::config::SubscriptionConfig {
+                name: name.clone(),
+                events: events.clone(),
+                url: url.clone(),
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            Ok(CommandResult::new(
+                json!({ "name": name, "url": url, "events": events }),
+            ))
+        },
+    ))
+    .with_group(add_extension_group())
 }
 
 pub fn add_extension_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "extension",
-        "Add an extension to godaddy.toml",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new("extension", "Add an extension to godaddy.toml").with_long(
+            "Append a UI extension entry to the godaddy.toml manifest in the current \
+                directory. Extensions are JavaScript bundles that the platform renders \
+                inside store surfaces. Three types are supported: embed (inline widget), \
+                checkout (checkout-flow widget), and blocks (content blocks). Run \
+                `application deploy` to bundle and upload the registered extensions.",
+        ),
+    )
     .with_command(RuntimeCommandSpec::new_with_context(
         CommandSpec::new("embed", "Add an embed extension")
+            .with_long(
+                "Register an embed UI extension in godaddy.toml. An embed extension is a \
+                JavaScript bundle rendered as an inline widget inside a store surface. \
+                Provide a unique name, a platform handle, and the path to the source \
+                entry-point file. Run `application deploy` to bundle and upload.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionHandle>()
@@ -1024,19 +1120,19 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 clap::Arg::new("name")
                     .long("name")
                     .required(true)
-                    .help("Extension name"),
+                    .help("Unique extension name written into godaddy.toml"),
             )
             .with_arg(
                 clap::Arg::new("handle")
                     .long("handle")
                     .required(true)
-                    .help("Unique handle"),
+                    .help("Platform handle used to identify this extension surface"),
             )
             .with_arg(
                 clap::Arg::new("source")
                     .long("source")
                     .required(true)
-                    .help("Source file path"),
+                    .help("Path to the JavaScript entry-point file for this extension"),
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
@@ -1067,6 +1163,12 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
     ))
     .with_command(RuntimeCommandSpec::new_with_context(
         CommandSpec::new("checkout", "Add a checkout extension")
+            .with_long(
+                "Register a checkout UI extension in godaddy.toml. A checkout extension is \
+                a JavaScript bundle rendered during the store checkout flow. Provide a \
+                unique name, a platform handle, and the path to the source entry-point \
+                file. Run `application deploy` to bundle and upload.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionHandle>()
@@ -1075,19 +1177,19 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 clap::Arg::new("name")
                     .long("name")
                     .required(true)
-                    .help("Extension name"),
+                    .help("Unique extension name written into godaddy.toml"),
             )
             .with_arg(
                 clap::Arg::new("handle")
                     .long("handle")
                     .required(true)
-                    .help("Unique handle"),
+                    .help("Platform handle used to identify this extension surface"),
             )
             .with_arg(
                 clap::Arg::new("source")
                     .long("source")
                     .required(true)
-                    .help("Source file path"),
+                    .help("Path to the JavaScript entry-point file for this extension"),
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
@@ -1118,6 +1220,13 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
     ))
     .with_command(RuntimeCommandSpec::new_with_context(
         CommandSpec::new("blocks", "Add a blocks extension")
+            .with_long(
+                "Register a blocks UI extension in godaddy.toml. A blocks extension is a \
+                JavaScript bundle that provides content blocks within a store. Only one \
+                blocks extension is supported per application; running this command again \
+                will overwrite the existing entry. Run `application deploy` to bundle and \
+                upload.",
+            )
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionBlocks>()
@@ -1126,7 +1235,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 clap::Arg::new("source")
                     .long("source")
                     .required(true)
-                    .help("Source file path"),
+                    .help("Path to the JavaScript entry-point file for the blocks extension"),
             ),
         |ctx| async move {
             let source = arg_str(&ctx, "source").to_owned();

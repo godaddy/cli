@@ -237,17 +237,33 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
 
 pub fn module() -> Module {
     Module::new("Contracts", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new(
-            "api",
-            "Explore and call GoDaddy API endpoints",
-        ))
-        .with_group(
-            RuntimeGroupSpec::new(GroupSpec::new("domain", "Browse API domains"))
-                .with_command(domain_list_command()),
+        RuntimeGroupSpec::new(
+            GroupSpec::new("api", "Explore and call GoDaddy API endpoints").with_long(
+                "Browse the GoDaddy API catalog and make authenticated requests \
+                     against any endpoint. Use `api domain list` / `api endpoint list` to \
+                     discover available operations, `api describe` to inspect parameters, \
+                     and `api call` to execute a request with automatic OAuth scope handling.",
+            ),
         )
         .with_group(
-            RuntimeGroupSpec::new(GroupSpec::new("endpoint", "Browse API endpoints"))
-                .with_command(endpoint_list_command()),
+            RuntimeGroupSpec::new(GroupSpec::new("domain", "Browse API domains").with_long(
+                "Browse the top-level API domains available in the embedded catalog. \
+                     Each domain groups a related set of endpoints under a shared base URL. \
+                     Use `api endpoint list --domain <domain>` to see the endpoints \
+                     within a specific domain.",
+            ))
+            .with_command(domain_list_command()),
+        )
+        .with_group(
+            RuntimeGroupSpec::new(
+                GroupSpec::new("endpoint", "Browse API endpoints").with_long(
+                    "Browse the endpoints within a single API domain. \
+                     Use `api domain list` first to find available domain names, \
+                     then `api describe <operationId>` to inspect full parameter \
+                     and schema details for an individual endpoint.",
+                ),
+            )
+            .with_command(endpoint_list_command()),
         )
         .with_command(describe_command())
         .with_command(search_command())
@@ -258,6 +274,12 @@ pub fn module() -> Module {
 fn domain_list_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List all API domains")
+            .with_long(
+                "Lists every API domain in the embedded catalog, together with the number \
+                 of endpoints and base URL for each. No authentication is required. \
+                 Use `api endpoint list --domain <domain>` to drill into a specific domain, \
+                 or `api search <query>` to find endpoints across all domains at once.",
+            )
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
@@ -292,6 +314,12 @@ fn domain_list_command() -> RuntimeCommandSpec {
 fn endpoint_list_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List endpoints within an API domain")
+            .with_long(
+                "Lists every endpoint in one API domain, showing the operation ID, HTTP \
+                 method, path, and summary. Use `api domain list` to find available domain \
+                 names, `api describe <operationId>` to view full parameter details, and \
+                 `api call <path>` to execute a request.",
+            )
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
@@ -346,6 +374,12 @@ fn describe_command() -> RuntimeCommandSpec {
             "describe",
             "Show schema and parameters for an endpoint",
         )
+        .with_long(
+            "Shows the full details of one API endpoint: HTTP method, path, required and \
+             optional parameters, request body schema, response shapes, and declared OAuth \
+             scopes. Accepts an operation ID (e.g. createOrder) or a path fragment \
+             (e.g. /v1/commerce/orders). No authentication is required.",
+        )
         .with_system("api")
         .with_tier(Tier::Read)
         .no_auth(true)
@@ -393,6 +427,12 @@ fn describe_command() -> RuntimeCommandSpec {
 fn search_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("search", "Search API endpoints by keyword")
+            .with_long(
+                "Full-text searches across all API domains, matching against operation IDs, \
+                 paths, summaries, and descriptions. Returns matching endpoints with domain, \
+                 method, path, and summary. No authentication is required. Use \
+                 `api describe <operationId>` to inspect a result in full detail.",
+            )
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
@@ -463,6 +503,19 @@ fn extract_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 fn call_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("call", "Make an authenticated API request")
+            .with_long(
+                "Executes an authenticated HTTP request against any GoDaddy API endpoint. \
+                 Required OAuth scopes are resolved automatically: the catalog is searched \
+                 for the endpoint path and its declared scopes are merged with any explicit \
+                 `--scope` flags, then a credential with exactly those scopes is obtained \
+                 before the request is sent. Supply the request body as raw JSON (`--body \
+                 '{...}'`), as individual fields (`--field key=value`, repeatable), or \
+                 from a JSON file (`--file body.json`); `--file` takes precedence over \
+                 `--body`, and `--field` values are merged on top of either. Use `--query \
+                 .path[0].field` to extract a value from the response JSON, and `--include` \
+                 to see response headers alongside the body. Use `api describe <endpoint>` \
+                 first to inspect required parameters and scopes.",
+            )
             .with_system("api")
             .with_tier(Tier::Mutate)
             .with_arg(
