@@ -353,9 +353,10 @@ struct ApiErrorBody {
     fields: Vec<ApiFieldError>,
 }
 
-/// One entry in a validation error's `fields` array. The API's `message` is
-/// deliberately not surfaced to users — it embeds raw regex — but is captured so
-/// the shape deserializes cleanly.
+/// One entry in a validation error's `fields` array. Only `code` and `path` are
+/// deserialized; the API's per-field `message` is intentionally dropped (it embeds
+/// raw regex we don't want to surface), and serde tolerates that and any other
+/// unknown fields.
 #[derive(serde::Deserialize)]
 struct ApiFieldError {
     #[serde(default)]
