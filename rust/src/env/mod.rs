@@ -73,104 +73,134 @@ fn active_env() -> String {
 
 pub fn module() -> Module {
     Module::new("Admin", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new("env", "Manage active GoDaddy environment"))
-            .with_command(RuntimeCommandSpec::new(
-                CommandSpec::new("list", "List available environments")
-                    .with_system("env")
-                    .with_tier(Tier::Read)
-                    .with_output_schema::<EnvSummary>()
-                    .no_auth(true),
-                |_cred, _args| async move {
-                    let current = active_env();
-                    let mut resolved = environments::listable().map_err(map_err)?;
-                    // If the active env is defined only via `<ENV>_API_URL` (so it's
-                    // excluded from `listable`), still show it — otherwise the list
-                    // has no `active: true` entry and callers can't tell what's active.
-                    if !resolved.iter().any(|e| e.name == current)
-                        && let Ok(active) = environments::resolve(&current)
-                    {
-                        resolved.push(active);
-                    }
-                    let envs: Vec<_> = resolved
-                        .into_iter()
-                        .map(|e| {
-                            json!({
-                                "name": e.name,
-                                "active": e.name == current,
-                                "apiUrl": e.api_url,
-                            })
+        RuntimeGroupSpec::new(
+            GroupSpec::new("env", "Manage active GoDaddy environment").with_long(
+                "Control which GoDaddy environment (e.g. prod, ote) all commands talk to.\n\
+                     The active environment determines the API endpoints used for \
+                     every request.\n\
+                     Use `gddy env set` to switch environments; the selection is \
+                     persisted to ~/.gdenv and survives new shell sessions.",
+            ),
+        )
+        .with_command(RuntimeCommandSpec::new(
+            CommandSpec::new("list", "List available environments")
+                .with_long(
+                    "Lists the environments the CLI can target (prod, ote). \
+                         The currently active environment is marked `active: true`.",
+                )
+                .with_system("env")
+                .with_tier(Tier::Read)
+                .with_output_schema::<EnvSummary>()
+                .no_auth(true),
+            |_cred, _args| async move {
+                let current = active_env();
+                let mut resolved = environments::listable().map_err(map_err)?;
+                // If the active env is defined only via `<ENV>_API_URL` (so it's
+                // excluded from `listable`), still show it — otherwise the list
+                // has no `active: true` entry and callers can't tell what's active.
+                if !resolved.iter().any(|e| e.name == current)
+                    && let Ok(active) = environments::resolve(&current)
+                {
+                    resolved.push(active);
+                }
+                let envs: Vec<_> = resolved
+                    .into_iter()
+                    .map(|e| {
+                        json!({
+                            "name": e.name,
+                            "active": e.name == current,
+                            "apiUrl": e.api_url,
                         })
-                        .collect();
-                    Ok(CommandResult::new(json!(envs)))
-                },
-            ))
-            .with_command(RuntimeCommandSpec::new(
-                CommandSpec::new("get", "Get the active environment")
-                    .with_system("env")
-                    .with_tier(Tier::Read)
-                    .with_output_schema::<EnvActive>()
-                    .no_auth(true),
-                |_cred, _args| async move {
-                    let env = active_env();
-                    let resolved = environments::resolve(&env).map_err(map_err)?;
-                    Ok(CommandResult::new(json!({
-                        "env": resolved.name,
-                        "apiUrl": resolved.api_url,
-                    })))
-                },
-            ))
-            .with_command(RuntimeCommandSpec::new_with_context(
-                CommandSpec::new("set", "Set the active environment")
-                    .with_system("env")
-                    .with_tier(Tier::Mutate)
-                    .with_output_schema::<EnvActive>()
-                    .no_auth(true)
-                    .with_arg(
-                        // Distinct id from the global `--env` flag (also id "env");
-                        // a shared id makes the positional collide with the flag's
-                        // default, so `env set <X>` would ignore <X>.
-                        clap::Arg::new("environment")
-                            .value_name("ENV")
-                            .required(true)
-                            .help("Environment to activate (ote|prod)"),
-                    ),
-                |ctx| async move {
-                    let env = ctx
-                        .args
-                        .get("environment")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_owned();
-                    // Resolve up front: validates the env exists (built-in, env
-                    // var, or local config) and yields its API URL for the reply.
-                    let resolved = environments::resolve(&env).map_err(map_err)?;
-                    set_env(&env).map_err(|e| {
-                        cli_engine::CliCoreError::message(format!(
-                            "failed to write .gdenv state file: {e}"
-                        ))
-                    })?;
-                    Ok(CommandResult::new(json!({
-                        "env": resolved.name,
-                        "apiUrl": resolved.api_url,
-                    })))
-                },
-            ))
-            .with_command(RuntimeCommandSpec::new(
-                CommandSpec::new("info", "Show details for the active environment")
-                    .with_system("env")
-                    .with_tier(Tier::Read)
-                    .with_output_schema::<EnvInfo>()
-                    .no_auth(true),
-                |_cred, _args| async move {
-                    let env = active_env();
-                    let resolved = environments::resolve(&env).map_err(map_err)?;
-                    Ok(CommandResult::new(json!({
-                        "env": resolved.name,
-                        "apiUrl": resolved.api_url,
-                        "graphqlUrl": format!("{}/v1/applications/graphql", resolved.api_url),
-                    })))
-                },
-            ))
+                    })
+                    .collect();
+                Ok(CommandResult::new(json!(envs)))
+            },
+        ))
+        .with_command(RuntimeCommandSpec::new(
+            CommandSpec::new("get", "Get the active environment")
+                .with_long(
+                    "Prints the name and API base URL of the currently active \
+                         environment.\n\
+                         If no environment has been set with `gddy env set`, \
+                         the default environment is used.",
+                )
+                .with_system("env")
+                .with_tier(Tier::Read)
+                .with_output_schema::<EnvActive>()
+                .no_auth(true),
+            |_cred, _args| async move {
+                let env = active_env();
+                let resolved = environments::resolve(&env).map_err(map_err)?;
+                Ok(CommandResult::new(json!({
+                    "env": resolved.name,
+                    "apiUrl": resolved.api_url,
+                })))
+            },
+        ))
+        .with_command(RuntimeCommandSpec::new_with_context(
+            CommandSpec::new("set", "Set the active environment")
+                .with_long(
+                    "Switches the active environment and persists the choice to \
+                         ~/.gdenv so all subsequent commands use the new environment \
+                         without needing `--env`.\n\
+                         The value must be a known environment name (prod or ote).",
+                )
+                .with_system("env")
+                .with_tier(Tier::Mutate)
+                .with_output_schema::<EnvActive>()
+                .no_auth(true)
+                .with_arg(
+                    // Distinct id from the global `--env` flag (also id "env");
+                    // a shared id makes the positional collide with the flag's
+                    // default, so `env set <X>` would ignore <X>.
+                    clap::Arg::new("environment")
+                        .value_name("ENV")
+                        .required(true)
+                        .help("Environment name to activate (prod or ote)"),
+                ),
+            |ctx| async move {
+                let env = ctx
+                    .args
+                    .get("environment")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_owned();
+                // Resolve up front: validates the env exists (built-in, env
+                // var, or local config) and yields its API URL for the reply.
+                let resolved = environments::resolve(&env).map_err(map_err)?;
+                set_env(&env).map_err(|e| {
+                    cli_engine::CliCoreError::message(format!(
+                        "failed to write .gdenv state file: {e}"
+                    ))
+                })?;
+                Ok(CommandResult::new(json!({
+                    "env": resolved.name,
+                    "apiUrl": resolved.api_url,
+                })))
+            },
+        ))
+        .with_command(RuntimeCommandSpec::new(
+            CommandSpec::new("info", "Show details for the active environment")
+                .with_long(
+                    "Prints extended details for the active environment, \
+                         including both the REST API base URL and the GraphQL \
+                         endpoint used by application commands.\n\
+                         Use `gddy env get` for a shorter summary.",
+                )
+                .with_system("env")
+                .with_tier(Tier::Read)
+                .with_output_schema::<EnvInfo>()
+                .no_auth(true),
+            |_cred, _args| async move {
+                let env = active_env();
+                let resolved = environments::resolve(&env).map_err(map_err)?;
+                Ok(CommandResult::new(json!({
+                    "env": resolved.name,
+                    "apiUrl": resolved.api_url,
+                    "graphqlUrl": format!("{}/v1/applications/graphql", resolved.api_url),
+                })))
+            },
+        ))
     })
 }
 

@@ -59,12 +59,24 @@ fn load_action_schema(name: &str) -> Option<serde_json::Value> {
 
 pub fn module() -> Module {
     Module::new("Contracts", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new(
-            "actions",
-            "Discover available GoDaddy action contracts",
-        ))
+        RuntimeGroupSpec::new(
+            GroupSpec::new("actions", "Discover available GoDaddy action contracts")
+                .with_long(
+                    "Browse the catalog of GoDaddy actions your application can declare.\n\
+                     An action contract defines the name, and the input/output schema, \
+                     of a capability your app exposes to the GoDaddy platform.\n\
+                     Use `gddy actions list` to see all available actions, and \
+                     `gddy actions describe` to inspect a specific action's schema.",
+                ),
+        )
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List all available action contracts")
+                .with_long(
+                    "Prints the name and short description of every action your \
+                     application can declare.\n\
+                     Run `gddy actions describe <ACTION>` to see the full \
+                     input/output schema for a specific action.",
+                )
                 .with_system("actions")
                 .with_tier(Tier::Read)
                 .no_auth(true),
@@ -77,7 +89,12 @@ pub fn module() -> Module {
             },
         ))
         .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("describe", "Show detailed schema for an action contract")
+            CommandSpec::new("describe", "Show the input/output schema for an action")
+                .with_long(
+                    "Prints the full JSON schema for the named action contract, \
+                     including its expected input fields and the shape of its output.\n\
+                     Run `gddy actions list` for the list of valid action names.",
+                )
                 .with_system("actions")
                 .with_tier(Tier::Read)
                 .no_auth(true)
@@ -85,7 +102,10 @@ pub fn module() -> Module {
                     clap::Arg::new("action")
                         .value_name("ACTION")
                         .required(true)
-                        .help("Action name (e.g. location.address.verify)"),
+                        .help(
+                            "Name of the action to describe \
+                             (e.g. location.address.verify)",
+                        ),
                 ),
             |ctx| async move {
                 let name = ctx

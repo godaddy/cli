@@ -233,246 +233,280 @@ fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
 
 pub fn module() -> Module {
     Module::new("DNS", |_ctx| {
-        RuntimeGroupSpec::new(GroupSpec::new("dns", "Manage a domain's DNS records"))
-            // --- list -------------------------------------------------------
-            .with_command(RuntimeCommandSpec::new_with_context(
-                CommandSpec::new("list", "List DNS records for a domain")
-                    .with_system("domain")
-                    .with_tier(Tier::Read)
-                    .with_default_fields("type,name,data,ttl")
-                    .with_json_schema::<types::DnsRecord>()
-                    .with_scopes(&[DOMAINS_READ_SCOPE])
-                    .with_arg(
-                        clap::Arg::new("domain")
-                            .value_name("DOMAIN")
-                            .required(true)
-                            .help("Domain whose records to list (e.g. example.com)"),
-                    )
-                    .with_arg(
-                        clap::Arg::new("type")
-                            .long("type")
-                            .value_name("TYPE")
-                            .value_parser(parse_type_arg)
-                            .help(
-                                "Only records of this type (A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)",
-                            ),
-                    )
-                    .with_arg(
-                        clap::Arg::new("name")
-                            .long("name")
-                            .value_name("NAME")
-                            // The API only filters by name within a type, so clap
-                            // enforces `--name` requires `--type` at parse time.
-                            .requires("type")
-                            .help("Only records with this name (requires --type)"),
-                    ),
-                // Output pagination is the engine's job: the global, client-side
-                // `--limit`/`--offset` flags slice the returned list. We don't
-                // expose the API's server-side offset/limit (it would double-skip
-                // against the client-side `--offset`), so `record_get` is called
-                // without them.
-                |ctx| async move {
-                    let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    // `--type` is validated + upper-cased by clap's value parser,
-                    // and `--name` requires `--type`, so these can be used as-is.
-                    let type_opt = arg_str(&ctx, "type");
-                    let name_opt = arg_str(&ctx, "name");
-
-                    let client = make_client(&ctx).await?;
-                    let records = match (type_opt.as_deref(), name_opt.as_deref()) {
-                        (None, _) => client
-                            .record_get_all()
-                            .domain(domain.as_str())
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                CliCoreError::message(format!("listing DNS records failed: {e}"))
-                            })?
-                            .into_inner(),
-                        (Some(record_type), None) => client
-                            .record_get_by_type()
-                            .domain(domain.as_str())
-                            .type_(record_type)
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                CliCoreError::message(format!("listing DNS records failed: {e}"))
-                            })?
-                            .into_inner(),
-                        (Some(record_type), Some(name)) => client
-                            .record_get()
-                            .domain(domain.as_str())
-                            .type_(record_type)
-                            .name(name)
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                CliCoreError::message(format!("listing DNS records failed: {e}"))
-                            })?
-                            .into_inner(),
-                    };
-
-                    // Serialize each record to an object so `--fields` and the
-                    // default-field projection have `type`/`name`/`data`/`ttl`.
-                    let out: Vec<Value> = records
-                        .iter()
-                        .map(serde_json::to_value)
-                        .collect::<Result<_, _>>()
-                        .map_err(|e| {
-                            CliCoreError::message(format!("failed to serialize DNS records: {e}"))
-                        })?;
-                    Ok(CommandResult::new(json!(out)))
-                },
-            ))
-            // --- add --------------------------------------------------------
-            .with_command(RuntimeCommandSpec::new_with_context(
-                with_record_write_args(
-                    CommandSpec::new(
-                        "add",
-                        "Add DNS records to a domain (appends; non-destructive)",
-                    )
-                    .with_system("domain")
-                    .with_tier(Tier::Mutate)
-                    .with_default_fields("domain,type,name,records")
-                    .with_output_schema::<DnsWriteResult>()
-                    .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
-                ),
-                |ctx| async move {
-                    let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    // `--type` is validated + upper-cased by clap's value parser.
-                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
-                    let name = arg_str(&ctx, "name").unwrap_or_default();
-                    let data = string_list(&ctx, "data");
-                    let ty = types::DnsRecordType::try_from(record_type.as_str())
-                        .expect("--type value parser guarantees a valid record type");
-                    let opts = RecordOptions::from_ctx(&ctx);
-                    let records = dns_records(&name, ty, &data, &opts);
-                    let count = records.len();
-
-                    let client = make_client(&ctx).await?;
-                    client
-                        .record_add()
-                        .domain(domain.as_str())
-                        .body(records)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("adding DNS records failed: {e}"))
-                        })?;
-
-                    Ok(CommandResult::new(json!({
-                        "domain": domain,
-                        "type": record_type,
-                        "name": name,
-                        "records": count,
-                        "action": "add",
-                    })))
-                },
-            ))
-            // --- set --------------------------------------------------------
-            .with_command(RuntimeCommandSpec::new_with_context(
-                with_record_write_args(
-                    CommandSpec::new(
-                        "set",
-                        "Replace all records for a type+name (destructive: overwrites existing)",
-                    )
-                    .with_system("domain")
-                    .with_tier(Tier::Destructive)
-                    .with_default_fields("domain,type,name,records")
-                    .with_output_schema::<DnsWriteResult>()
-                    .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
-                ),
-                |ctx| async move {
-                    let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    // `--type` is validated + upper-cased by clap's value parser.
-                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
-                    let name = arg_str(&ctx, "name").unwrap_or_default();
-                    let data = string_list(&ctx, "data");
-                    let opts = RecordOptions::from_ctx(&ctx);
-                    let records = create_type_name_records(&data, &opts);
-                    let count = records.len();
-
-                    let client = make_client(&ctx).await?;
-                    client
-                        .record_replace_type_name()
-                        .domain(domain.as_str())
-                        .type_(record_type.as_str())
-                        .name(name.as_str())
-                        .body(records)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("replacing DNS records failed: {e}"))
-                        })?;
-
-                    Ok(CommandResult::new(json!({
-                        "domain": domain,
-                        "type": record_type,
-                        "name": name,
-                        "records": count,
-                        "action": "replace",
-                    })))
-                },
-            ))
-            // --- delete -----------------------------------------------------
-            .with_command(RuntimeCommandSpec::new_with_context(
-                CommandSpec::new(
-                    "delete",
-                    "Delete all records for a type+name (destructive: removes existing)",
+        RuntimeGroupSpec::new(
+            GroupSpec::new("dns", "Manage a domain's DNS records").with_long(
+                "Create, read, and delete DNS records for a GoDaddy-managed domain. \
+                 `add` appends new records without touching existing ones; `set` replaces \
+                 every record for a given type+name pair; `delete` removes all records for \
+                 a type+name pair. `set` and `delete` are destructive; pass `--dry-run` to \
+                 preview the change without writing it.",
+            ),
+        )
+        // --- list -------------------------------------------------------
+        .with_command(RuntimeCommandSpec::new_with_context(
+            CommandSpec::new("list", "List DNS records for a domain")
+                .with_long(
+                    "Retrieves DNS records for a domain. Without filters, returns all \
+                         record types. Use `--type` to narrow to one record type, and \
+                         `--name` (requires `--type`) to further narrow to a specific name. \
+                         Requires the `domains.domain:read` scope.",
                 )
                 .with_system("domain")
-                .with_tier(Tier::Destructive)
-                .with_default_fields("domain,type,name,deleted")
-                .with_output_schema::<DnsDeleteResult>()
-                .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE])
+                .with_tier(Tier::Read)
+                .with_default_fields("type,name,data,ttl")
+                .with_json_schema::<types::DnsRecord>()
+                .with_scopes(&[DOMAINS_READ_SCOPE])
                 .with_arg(
                     clap::Arg::new("domain")
                         .value_name("DOMAIN")
                         .required(true)
-                        .help("Domain whose records to delete (e.g. example.com)"),
+                        .help("Domain whose records to list (e.g. example.com)"),
                 )
                 .with_arg(
                     clap::Arg::new("type")
                         .long("type")
                         .value_name("TYPE")
-                        .required(true)
-                        .value_parser(parse_deletable_type_arg)
-                        .help("Record type (one of A, AAAA, CNAME, MX, SRV, TXT)"),
+                        .value_parser(parse_type_arg)
+                        .help("Only records of this type (A, AAAA, CNAME, MX, NS, SOA, SRV, TXT)"),
                 )
                 .with_arg(
                     clap::Arg::new("name")
                         .long("name")
                         .value_name("NAME")
-                        .required(true)
-                        .help("Record name relative to the domain (e.g. www)"),
+                        // The API only filters by name within a type, so clap
+                        // enforces `--name` requires `--type` at parse time.
+                        .requires("type")
+                        .help("Only records with this name (requires --type)"),
                 ),
-                |ctx| async move {
-                    let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                    // `--type` is validated (and NS/SOA rejected) + upper-cased by
-                    // clap's value parser, so it converts to the delete enum cleanly.
-                    let record_type = arg_str(&ctx, "type").unwrap_or_default();
-                    let name = arg_str(&ctx, "name").unwrap_or_default();
+            // Output pagination is the engine's job: the global, client-side
+            // `--limit`/`--offset` flags slice the returned list. We don't
+            // expose the API's server-side offset/limit (it would double-skip
+            // against the client-side `--offset`), so `record_get` is called
+            // without them.
+            |ctx| async move {
+                let domain = arg_str(&ctx, "domain").unwrap_or_default();
+                // `--type` is validated + upper-cased by clap's value parser,
+                // and `--name` requires `--type`, so these can be used as-is.
+                let type_opt = arg_str(&ctx, "type");
+                let name_opt = arg_str(&ctx, "name");
 
-                    let client = make_client(&ctx).await?;
-                    client
-                        .record_delete_type_name()
+                let client = make_client(&ctx).await?;
+                let records = match (type_opt.as_deref(), name_opt.as_deref()) {
+                    (None, _) => client
+                        .record_get_all()
                         .domain(domain.as_str())
-                        .type_(record_type.as_str())
-                        .name(name.as_str())
                         .send()
                         .await
                         .map_err(|e| {
-                            CliCoreError::message(format!("deleting DNS records failed: {e}"))
-                        })?;
+                            CliCoreError::message(format!("listing DNS records failed: {e}"))
+                        })?
+                        .into_inner(),
+                    (Some(record_type), None) => client
+                        .record_get_by_type()
+                        .domain(domain.as_str())
+                        .type_(record_type)
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            CliCoreError::message(format!("listing DNS records failed: {e}"))
+                        })?
+                        .into_inner(),
+                    (Some(record_type), Some(name)) => client
+                        .record_get()
+                        .domain(domain.as_str())
+                        .type_(record_type)
+                        .name(name)
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            CliCoreError::message(format!("listing DNS records failed: {e}"))
+                        })?
+                        .into_inner(),
+                };
 
-                    Ok(CommandResult::new(json!({
-                        "domain": domain,
-                        "type": record_type,
-                        "name": name,
-                        "deleted": true,
-                    })))
-                },
-            ))
+                // Serialize each record to an object so `--fields` and the
+                // default-field projection have `type`/`name`/`data`/`ttl`.
+                let out: Vec<Value> = records
+                    .iter()
+                    .map(serde_json::to_value)
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| {
+                        CliCoreError::message(format!("failed to serialize DNS records: {e}"))
+                    })?;
+                Ok(CommandResult::new(json!(out)))
+            },
+        ))
+        // --- add --------------------------------------------------------
+        .with_command(RuntimeCommandSpec::new_with_context(
+            with_record_write_args(
+                CommandSpec::new(
+                    "add",
+                    "Add DNS records to a domain (appends; non-destructive)",
+                )
+                .with_long(
+                    "Appends one or more DNS records to a domain without modifying any \
+                         existing records. Pass `--data` once per record value to add \
+                         multiple records for the same type+name in a single call. \
+                         Use `dns set` instead if you need to replace the full record \
+                         set for a type+name.",
+                )
+                .with_system("domain")
+                .with_tier(Tier::Mutate)
+                .with_default_fields("domain,type,name,records")
+                .with_output_schema::<DnsWriteResult>()
+                .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
+            ),
+            |ctx| async move {
+                let domain = arg_str(&ctx, "domain").unwrap_or_default();
+                // `--type` is validated + upper-cased by clap's value parser.
+                let record_type = arg_str(&ctx, "type").unwrap_or_default();
+                let name = arg_str(&ctx, "name").unwrap_or_default();
+                let data = string_list(&ctx, "data");
+                let ty = types::DnsRecordType::try_from(record_type.as_str())
+                    .expect("--type value parser guarantees a valid record type");
+                let opts = RecordOptions::from_ctx(&ctx);
+                let records = dns_records(&name, ty, &data, &opts);
+                let count = records.len();
+
+                let client = make_client(&ctx).await?;
+                client
+                    .record_add()
+                    .domain(domain.as_str())
+                    .body(records)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        CliCoreError::message(format!("adding DNS records failed: {e}"))
+                    })?;
+
+                Ok(CommandResult::new(json!({
+                    "domain": domain,
+                    "type": record_type,
+                    "name": name,
+                    "records": count,
+                    "action": "add",
+                })))
+            },
+        ))
+        // --- set --------------------------------------------------------
+        .with_command(RuntimeCommandSpec::new_with_context(
+            with_record_write_args(
+                CommandSpec::new(
+                    "set",
+                    "Replace all records for a type+name (destructive: overwrites existing)",
+                )
+                .with_long(
+                    "Replaces every DNS record for the given type+name pair with the \
+                         values supplied via `--data`, discarding any records that were \
+                         there before. This operation is destructive and irreversible — \
+                         use `dns list --type <type> --name <name>` to review the current \
+                         state first. Use `dns add` to append records without removing \
+                         existing ones.",
+                )
+                .with_system("domain")
+                .with_tier(Tier::Destructive)
+                .with_default_fields("domain,type,name,records")
+                .with_output_schema::<DnsWriteResult>()
+                .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
+            ),
+            |ctx| async move {
+                let domain = arg_str(&ctx, "domain").unwrap_or_default();
+                // `--type` is validated + upper-cased by clap's value parser.
+                let record_type = arg_str(&ctx, "type").unwrap_or_default();
+                let name = arg_str(&ctx, "name").unwrap_or_default();
+                let data = string_list(&ctx, "data");
+                let opts = RecordOptions::from_ctx(&ctx);
+                let records = create_type_name_records(&data, &opts);
+                let count = records.len();
+
+                let client = make_client(&ctx).await?;
+                client
+                    .record_replace_type_name()
+                    .domain(domain.as_str())
+                    .type_(record_type.as_str())
+                    .name(name.as_str())
+                    .body(records)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        CliCoreError::message(format!("replacing DNS records failed: {e}"))
+                    })?;
+
+                Ok(CommandResult::new(json!({
+                    "domain": domain,
+                    "type": record_type,
+                    "name": name,
+                    "records": count,
+                    "action": "replace",
+                })))
+            },
+        ))
+        // --- delete -----------------------------------------------------
+        .with_command(RuntimeCommandSpec::new_with_context(
+            CommandSpec::new(
+                "delete",
+                "Delete all records for a type+name (destructive: removes existing)",
+            )
+            .with_long(
+                "Removes every DNS record matching the given type+name pair. This \
+                     operation is destructive and irreversible — all matching records are \
+                     deleted in one call. NS and SOA records are GoDaddy-managed and \
+                     cannot be deleted. Use `dns list` to confirm what will be removed \
+                     before running this command.",
+            )
+            .with_system("domain")
+            .with_tier(Tier::Destructive)
+            .with_default_fields("domain,type,name,deleted")
+            .with_output_schema::<DnsDeleteResult>()
+            .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE])
+            .with_arg(
+                clap::Arg::new("domain")
+                    .value_name("DOMAIN")
+                    .required(true)
+                    .help("Domain whose records to delete (e.g. example.com)"),
+            )
+            .with_arg(
+                clap::Arg::new("type")
+                    .long("type")
+                    .value_name("TYPE")
+                    .required(true)
+                    .value_parser(parse_deletable_type_arg)
+                    .help("Record type (one of A, AAAA, CNAME, MX, SRV, TXT)"),
+            )
+            .with_arg(
+                clap::Arg::new("name")
+                    .long("name")
+                    .value_name("NAME")
+                    .required(true)
+                    .help("Record name relative to the domain (e.g. www)"),
+            ),
+            |ctx| async move {
+                let domain = arg_str(&ctx, "domain").unwrap_or_default();
+                // `--type` is validated (and NS/SOA rejected) + upper-cased by
+                // clap's value parser, so it converts to the delete enum cleanly.
+                let record_type = arg_str(&ctx, "type").unwrap_or_default();
+                let name = arg_str(&ctx, "name").unwrap_or_default();
+
+                let client = make_client(&ctx).await?;
+                client
+                    .record_delete_type_name()
+                    .domain(domain.as_str())
+                    .type_(record_type.as_str())
+                    .name(name.as_str())
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        CliCoreError::message(format!("deleting DNS records failed: {e}"))
+                    })?;
+
+                Ok(CommandResult::new(json!({
+                    "domain": domain,
+                    "type": record_type,
+                    "name": name,
+                    "deleted": true,
+                })))
+            },
+        ))
     })
 }
 
