@@ -136,7 +136,8 @@ mod tests {
                     "domain": "example.com",
                     "available": true,
                     "definitive": true,
-                    "prices": [{ "period": 1, "price": { "currencyCode": "USD", "value": 11_990_000 } }]
+                    // v3 money is ISO-4217 minor units: USD 11.99 -> 1199 (not v1 micro-units).
+                    "prices": [{ "period": 1, "price": { "currencyCode": "USD", "value": 1199 } }]
                 }));
             })
             .await;
@@ -153,10 +154,7 @@ mod tests {
         assert_eq!(body.domain.as_deref(), Some("example.com"));
         assert_eq!(body.available, Some(true));
         let prices = body.prices.expect("prices present");
-        assert_eq!(
-            prices[0].price.as_ref().and_then(|m| m.value),
-            Some(11_990_000)
-        );
+        assert_eq!(prices[0].price.as_ref().and_then(|m| m.value), Some(1199));
     }
 
     #[tokio::test]
@@ -208,7 +206,8 @@ mod tests {
                     "available": true,
                     "quoteToken": "tok-abc",
                     "period": 2,
-                    "price": { "currencyCode": "USD", "value": 23_980_000 },
+                    // v3 money is ISO-4217 minor units: USD 23.98 (2yr) -> 2398.
+                    "price": { "currencyCode": "USD", "value": 2398 },
                     "requiredAgreements": [
                         { "agreementType": "REGISTRATION", "title": "Registration Agreement",
                           "url": "https://x/agr" }

@@ -119,7 +119,8 @@ impl RecordOptions {
 
 /// Build a v3 `DnsRecord` (for `add`) — one per `--data` value. `ttl` is required
 /// by v3, so an omitted `--ttl` uses [`DEFAULT_TTL`]. The numeric SRV/MX fields are
-/// clamped into the v3 `u16` domain (the clap parsers already bound them).
+/// converted into the v3 `u16` domain via `u16::try_from` (any out-of-range value
+/// becomes `None`); in practice the clap parsers already bound them to `u16`.
 fn v3_records(
     name: &str,
     ty: &str,

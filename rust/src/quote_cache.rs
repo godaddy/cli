@@ -9,7 +9,9 @@
 //! back — reuniting the token with the data the register body must echo, and
 //! letting `purchase` charge the exact price that was reviewed.
 //!
-//! Entries are single-use (removed on a successful `take`) and expire with the
+//! Entries are single-use: [`get`] reads a quote without consuming it (so the
+//! `--agree` gate can show its terms before the user confirms), and [`remove`]
+//! deletes it only after the registration succeeds. They also expire with the
 //! token (~10 min), so the file only ever holds a few short-lived records. It
 //! lives beside `contacts.toml`/`environments.toml`
 //! (`dirs::config_dir()/gddy/quotes.json`); a quote token is a short-lived,
@@ -56,7 +58,8 @@ pub struct CachedQuote {
 
 /// The result of looking a token up in the cache.
 pub enum Lookup {
-    /// The quote was found and removed (single-use).
+    /// The quote was found. Not consumed here — [`get`] is read-only; the entry
+    /// is removed (via [`remove`]) only once the registration succeeds.
     Found(Box<CachedQuote>),
     /// The token was present but its quote had expired.
     Expired,
