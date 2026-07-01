@@ -33,8 +33,12 @@ use serde::Deserialize;
 
 pub const DEFAULT_ENV: &str = "prod";
 /// Scopes requested at login by default. The authorization server may grant a
-/// subset; commands needing more declare them and the provider steps up.
-pub const DEFAULT_OAUTH_SCOPES: &[&str] = &["apps.app-registry:read", "apps.app-registry:write"];
+/// subset; commands needing more declare them and the provider steps up. Drawn
+/// from the central [`crate::scopes`] registry (which the OAuth client mirrors).
+pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
+    crate::scopes::APP_REGISTRY_READ,
+    crate::scopes::DOMAINS_READ,
+];
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
 

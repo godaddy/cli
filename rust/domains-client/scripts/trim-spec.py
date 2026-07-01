@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Trim the upstream GoDaddy Domains Swagger 2.0 spec to the subset the
-domains-client build needs.
+"""Trim the upstream GoDaddy Domains Swagger 2.0 spec to the **retained v1**
+subset the domains-client build still needs after the v3 migration.
 
 Invoked by `regenerate-spec.sh` as:
 
     python3 trim-spec.py <upstream-swagger.json> <trimmed-output.json>
 
-Keeps the domains list + get + availability + suggest + agreements + purchase
-(+ its per-TLD schema) + v2 register + DNS record operations and the transitive closure
-of definitions they reference,
-normalizes content types, and relaxes read-only response definitions (see the
-inline comments). The output is still Swagger 2.0; the shell script then runs
-`swagger2openapi` to produce the OpenAPI 3.0 spec progenitor consumes.
+v3 (the Domain Lifecycle Management API) now serves availability, suggestions,
+domain get, registration (quote → register), and single DNS-record creation.
+The operations v3 does NOT yet cover stay on v1 and are the only ones kept here:
+
+  * `GET /v1/domains`                       — list the shopper's domains
+  * `GET /v1/domains/agreements`            — legal agreements for a TLD
+  * `GET  /v1/domains/{domain}/records*`    — list DNS records (all/by-type/by-name)
+  * `PUT  /v1/domains/{domain}/records/{type}/{name}` — replace a record set (dns set)
+  * `DELETE /v1/domains/{domain}/records/{type}/{name}` — delete a record set (dns delete)
+
+Everything kept here is a *read* or a record mutation; the transitive closure of
+definitions they reference is kept too. The output is still Swagger 2.0; the
+shell script then converts it to OpenAPI 3.0 and `merge-spec.py` folds it into
+the v3 spec (prefixing these v1 definitions with `V1` to avoid name clashes).
 """
 
 import copy
@@ -19,22 +27,17 @@ import json
 import sys
 
 # GET-only operations kept as-is (operationId pinned). `list` retrieves the
-# Domains owned by the authenticated shopper; available/suggest are the
-# availability endpoints; agreements retrieves the legal agreements a TLD
-# requires before purchase (upstream operationId `getAgreement`, pinned here to
+# domains owned by the authenticated shopper; `agreements` retrieves the legal
+# agreements a TLD requires (upstream operationId `getAgreement`, pinned here to
 # `agreements` so the generated builder reads `client.agreements()`).
 AVAIL_OPS = {
     "/v1/domains": "list",
-    "/v1/domains/available": "available",
-    "/v1/domains/suggest": "suggest",
     "/v1/domains/agreements": "agreements",
 }
 
-# DNS record operations: keep every method these paths expose. The upstream
-# Swagger documents `recordGet` only on the {type}/{name} path even though the
-# gateway also routes GET on the bare and {type} paths (see the OAuth scope
-# whitelist in gdcorp-domains/api-domain-data, api/oauthscopewhitelist.json);
-# we synthesize those two GETs below so the CLI can list all / by-type records.
+# DNS record operations. v3 only creates single records, so the read (list) and
+# the type+name replace/delete stay on v1. We keep every documented method on
+# these paths and synthesize the GET-all / GET-by-type reads below.
 RECORD_PATHS = [
     "/v1/domains/{domain}/records",
     "/v1/domains/{domain}/records/{type}",
@@ -43,9 +46,9 @@ RECORD_PATHS = [
 
 # String `format`s that typify maps to *external* crates (date-time/date ->
 # chrono, uuid -> uuid). We don't depend on those (and deliberately keep this
-# crate's dependency stack lean — see Cargo.toml), and the CLI only passes these
-# values straight through to JSON output, so drop the format and let them
-# generate as plain `String` (the RFC 3339 / UUID text is unchanged on the wire).
+# crate's dependency stack lean), and the CLI only passes these values straight
+# through to JSON output, so drop the format and let them generate as plain
+# `String` (the RFC 3339 / UUID text is unchanged on the wire).
 EXTERNAL_FORMATS = {"date", "date-time", "uuid", "partial-date-time"}
 
 # Read-only response definitions the CLI only deserializes-and-reprints. The
@@ -54,26 +57,12 @@ EXTERNAL_FORMATS = {"date", "date-time", "uuid", "partial-date-time"}
 # cancelled/pending domains) and types `nameServers` as a non-null array while
 # the API returns JSON `null`. Relax these to tolerant readers.
 #
-# The complement — types the CLI *constructs* (request bodies) or reads via
-# non-optional fields (e.g. `if available { … }`) — must stay strict, or call
-# sites break. Everything not listed here is relaxed.
+# The complement — types the CLI *constructs* (record request bodies) — must stay
+# strict, or call sites break. Everything not listed here is relaxed.
 # NB: these are the *spec* definition names (upper-case `DNS…`), not the
 # camel-cased Rust type names progenitor emits (`DnsRecord`).
 STRICT_DEFS = {
-    "DomainAvailableResponse",  # `available`/`suggest` read non-optional fields
-    "DomainSuggestion",
-    "DNSRecord",                # built by `dns add`
-    "DNSRecordCreateType",
     "DNSRecordCreateTypeName",  # built by `dns set`
-    "ArrayOfDNSRecord",         # `dns add` request body
-    "DomainPurchase",           # `domain purchase` request body
-    "Consent",                  # required sub-object of DomainPurchase
-    "Contact",                  # optional contacts; keep required fields strict
-    "Address",                  # contact mailing address (constructed for v2 contacts)
-    "DomainPurchaseV2",         # v2 `domain purchase` request body (OAuth path)
-    "ConsentV2",                # required sub-object of DomainPurchaseV2
-    "DomainContactsCreateV2",   # v2 contacts wrapper
-    "ContactDomainCreate",      # v2 per-role contact (reuses Address)
 }
 
 
@@ -152,62 +141,12 @@ def main(src, dst):
 
     paths = {}
 
-    # Availability + suggest + agreements (GET only).
+    # Reads kept verbatim (GET only): list + agreements.
     for p, op_id in AVAIL_OPS.items():
         get = d["paths"][p]["get"]
         get["operationId"] = op_id
         get["produces"] = ["application/json"]      # drop xml/js variants
         paths[p] = {"get": only_2xx(get)}
-
-    # Purchase (POST with JSON body). The body ($ref DomainPurchase) and its
-    # transitive closure (Consent/Contact/Address) are kept strict below so the
-    # generated request types keep their required fields.
-    purchase = d["paths"]["/v1/domains/purchase"]["post"]
-    purchase["operationId"] = "purchase"
-    purchase["produces"] = ["application/json"]
-    purchase["consumes"] = ["application/json"]
-    paths["/v1/domains/purchase"] = {"post": only_2xx(purchase)}
-
-    # Per-TLD purchase schema (GET). `domain purchase` reads its top-level
-    # `required` array to preflight-validate requirements before the paid call.
-    # The upstream JsonSchema/JsonProperty/JsonDataType definitions are loosely
-    # typed (`"type": "object"` *with* `items`), so instead of pulling them into
-    # the closure we replace the response with a free-form object — progenitor
-    # then emits `serde_json::Value`, and we parse only the fields we need.
-    schema_op = d["paths"]["/v1/domains/purchase/schema/{tld}"]["get"]
-    schema_op["operationId"] = "schema"
-    schema_op["produces"] = ["application/json"]
-    only_2xx(schema_op)
-    schema_op["responses"]["200"]["schema"] = {"type": "object"}
-    paths["/v1/domains/purchase/schema/{tld}"] = {"get": schema_op}
-
-    # Get one domain's details (GET). `DomainDetail` embeds the Contact/Address
-    # types we keep strict for v2 request construction, but as a *read* the API
-    # can return them sparsely (e.g. privacy-protected domains). Rather than fight
-    # that strict/relax conflict, take the response as a free-form object —
-    # progenitor emits `serde_json::Map` — and emit it directly (the command just
-    # dumps the domain's details).
-    get_op = d["paths"]["/v1/domains/{domain}"]["get"]
-    get_op["operationId"] = "get"
-    get_op["produces"] = ["application/json"]
-    only_2xx(get_op)
-    # `get` has two success responses (200 and 203), both DomainDetail; free-form
-    # every kept 2xx so progenitor sees a single response type (and no DomainDetail
-    # closure is pulled in).
-    for resp in get_op["responses"].values():
-        resp["schema"] = {"type": "object"}
-    paths["/v1/domains/{domain}"] = {"get": get_op}
-
-    # v2 register (POST). The OAuth-friendly purchase path: unlike v1 purchase,
-    # v2 authorizes credit-card payments for OAuth bearer users. Body
-    # ($ref DomainPurchaseV2) + closure (ConsentV2/DomainContactsCreateV2/
-    # ContactDomainCreate, reusing Address) are kept strict below. Upstream has
-    # no operationId, so pin `register`. The 2xx is a bodyless 202 (async).
-    register = d["paths"]["/v2/customers/{customerId}/domains/register"]["post"]
-    register["operationId"] = "register"
-    register["produces"] = ["application/json"]
-    register["consumes"] = ["application/json"]
-    paths["/v2/customers/{customerId}/domains/register"] = {"post": only_2xx(register)}
 
     # DNS record ops: keep all documented methods, success responses only, and
     # normalize content types (drop xml/js variants; request bodies stay JSON).
@@ -259,7 +198,7 @@ def main(src, dst):
     out = {
         "swagger": "2.0",
         "info": {
-            "title": "GoDaddy Domains API (domains list + get + availability + agreements + purchase + v2 register + DNS records subset)",
+            "title": "GoDaddy Domains API (retained v1 subset: list + agreements + DNS record list/set/delete)",
             "version": d.get("info", {}).get("version", "1.0.0"),
         },
         "host": d.get("host", "api.ote-godaddy.com"),

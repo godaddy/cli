@@ -11,6 +11,8 @@ mod environments;
 mod extension;
 mod output_schema;
 mod payments;
+mod quote_cache;
+mod scopes;
 mod webhook;
 
 use std::{process::ExitCode, sync::Arc};

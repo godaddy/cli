@@ -1,11 +1,20 @@
-//! GoDaddy Domains API client (domains list + get + availability + suggest +
-//! agreements + purchase + per-TLD purchase schema + v2 register + DNS records).
+//! GoDaddy Domains API client, spanning two API generations behind one host:
+//!
+//! * **v3** — the Domain Lifecycle Management API (`/v3/domains/…`): suggestions,
+//!   availability (single + batch), domain get, registration (quote → register),
+//!   async operation polling, single DNS-record create, and nameserver replace.
+//! * **v1** — the operations v3 does not yet serve (`/v1/domains/…`): list the
+//!   shopper's domains, TLD legal agreements, and DNS record list/replace/delete.
+//!   Their generated types are `V1`-prefixed to avoid clashing with the v3 ones.
 //!
 //! The contents of this crate are **generated** by `progenitor` at build time
-//! from the vendored OpenAPI 3.0 spec (`openapi/domains.oas3.json`). Construct
-//! [`Client`] with [`Client::new_with_client`] to supply a pre-authenticated
-//! `reqwest::Client` (the CLI sets the `Authorization: sso-key …`/Bearer header
-//! itself). See `scripts/regenerate-spec.sh` to refresh the spec.
+//! from the vendored, merged OpenAPI 3.0 spec (`openapi/domains.oas3.json`).
+//! Construct [`Client`] with [`Client::new_with_client`] to supply a
+//! pre-authenticated `reqwest::Client` (the CLI sets the `Authorization:
+//! sso-key …`/Bearer header itself). The v3 operations live under the
+//! `/v3/domains` base path, baked into the spec's absolute paths so one host
+//! `base_url` serves both generations. See `scripts/regenerate-spec.sh` to
+//! refresh and re-merge the spec.
 //!
 //! The lint allowances are scoped to the generated module so the hand-written
 //! code below (`client_with_auth`, `BuildError`) is still linted normally.
@@ -63,145 +72,47 @@ pub fn client_with_auth(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::Method::PATCH; // not re-exported by the prelude (unlike GET/PUT/DELETE)
     use httpmock::prelude::*;
     use serde_json::json;
 
     // These tests exercise the generated request/response wiring against a mock
-    // server: the query-parameter names (which guard the builder setters →
-    // wire-parameter mapping at the call sites), the `Authorization`/
-    // `x-request-id`/`api-version` headers set by `client_with_auth`, and response
-    // deserialization. They run entirely offline.
+    // server: HTTP method + path (v3 lives under /v3/domains/…, v1 under
+    // /v1/domains/…), the query-parameter / body field names that map the builder
+    // setters to the wire, the `Authorization` / `x-request-id` / `Idempotency-Key`
+    // headers, and response deserialization. They run entirely offline.
 
-    #[tokio::test]
-    async fn available_sends_correct_request_and_parses_response() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/v1/domains/available")
-                    .query_param("domain", "example.com")
-                    .query_param("checkType", "FULL")
-                    .query_param("forTransfer", "true")
-                    .header("authorization", "sso-key KEY:SECRET")
-                    .header("x-request-id", "req-123")
-                    .header("api-version", "1.0.0");
-                then.status(200).json_body(json!({
-                    "domain": "example.com",
-                    "available": false,
-                    "definitive": true,
-                    "price": 11_990_000,
-                    "currency": "USD",
-                    "renewalPrice": 21_990_000,
-                    "period": 1
-                }));
-            })
-            .await;
-
-        let client = client_with_auth(
-            &server.base_url(),
-            "sso-key KEY:SECRET",
-            "godaddy-cli/test",
-            "req-123",
-        )
-        .expect("build client");
-
-        let body = client
-            .available()
-            .domain("example.com")
-            .check_type(types::AvailableCheckType::Full)
-            .for_transfer(true)
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(body.domain, "example.com");
-        assert!(!body.available);
-        assert!(body.definitive);
-        assert_eq!(body.price, Some(11_990_000));
-        assert_eq!(body.currency, "USD");
-        assert_eq!(body.renewal_price, Some(21_990_000));
-        assert_eq!(body.period, Some(1));
-    }
-
-    #[tokio::test]
-    async fn available_with_bearer_scheme_sets_header() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/v1/domains/available")
-                    .query_param("domain", "open.dev")
-                    .header("authorization", "Bearer tok-abc");
-                then.status(200).json_body(json!({
-                    "domain": "open.dev",
-                    "available": true,
-                    "definitive": true
-                }));
-            })
-            .await;
-
-        let client = client_with_auth(
-            &server.base_url(),
-            "Bearer tok-abc",
-            "godaddy-cli/test",
-            "req-1",
-        )
-        .expect("build client");
-
-        let body = client
-            .available()
-            .domain("open.dev")
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert!(body.available);
-        // Optional fields absent in the response deserialize to None.
-        assert_eq!(body.price, None);
-        assert_eq!(body.currency, "USD"); // serde default
-    }
-
-    #[tokio::test]
-    async fn suggest_maps_positional_args_to_named_query_params() {
-        let server = MockServer::start_async().await;
-        // Asserting each value lands in the correctly *named* query param guards
-        // the builder setter -> wire-parameter mapping (e.g. that `.city(..)`
-        // really sends `city=`, not some other param) across spec regenerations.
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/v1/domains/suggest")
-                    .query_param("query", "coffee")
-                    .query_param("city", "Phoenix")
-                    .query_param("country", "US")
-                    .query_param("limit", "5")
-                    .query_param("tlds", "com");
-                then.status(200).json_body(json!([
-                    { "domain": "coffeehouse.com" },
-                    { "domain": "bestcoffee.com" }
-                ]));
-            })
-            .await;
-
-        let client = client_with_auth(
+    fn client_for(server: &MockServer) -> Client {
+        client_with_auth(
             &server.base_url(),
             "Bearer tok",
             "godaddy-cli/test",
-            "req-2",
+            "req-1",
         )
-        .expect("build client");
+        .expect("build client")
+    }
 
-        let suggestions = client
-            .suggest()
+    // --- v3: discovery ------------------------------------------------------
+
+    #[tokio::test]
+    async fn suggest_domains_maps_setters_to_named_query_params() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/suggestions")
+                    .query_param("query", "coffee")
+                    .query_param("pageSize", "5")
+                    .query_param("tlds", "com")
+                    .header("authorization", "Bearer tok");
+                then.status(200)
+                    .json_body(json!({ "items": [{ "domain": "coffeehouse.com" }] }));
+            })
+            .await;
+
+        let resp = client_for(&server)
+            .suggest_domains()
             .query("coffee")
-            .city("Phoenix")
-            .country(types::SuggestCountry::Us)
-            .limit(5)
+            .page_size(5)
             .tlds(vec!["com".to_string()])
             .send()
             .await
@@ -209,54 +120,343 @@ mod tests {
             .into_inner();
 
         mock.assert_async().await;
-        let domains: Vec<&str> = suggestions.iter().map(|s| s.domain.as_str()).collect();
-        assert_eq!(domains, ["coffeehouse.com", "bestcoffee.com"]);
+        assert_eq!(resp.items.len(), 1);
+        assert_eq!(resp.items[0].domain.as_deref(), Some("coffeehouse.com"));
     }
 
     #[tokio::test]
-    async fn list_tolerates_sparse_payloads() {
-        // The published spec marks fields like `contactRegistrant`/`renewDeadline`
-        // required and types `nameServers` as a non-null array, but the live API
-        // omits the former and returns `nameServers: null` for many domains
-        // (cancelled/pending). The generated `DomainSummary` must read these
-        // without erroring. Payload mirrors a real `GET /v1/domains` response.
+    async fn get_domain_availability_single_parses_prices() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/check-availability")
+                    .query_param("domain", "example.com");
+                then.status(200).json_body(json!({
+                    "domain": "example.com",
+                    "available": true,
+                    "definitive": true,
+                    "prices": [{ "period": 1, "price": { "currencyCode": "USD", "value": 11_990_000 } }]
+                }));
+            })
+            .await;
+
+        let body = client_for(&server)
+            .get_domain_availability()
+            .domain("example.com")
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(body.domain.as_deref(), Some("example.com"));
+        assert_eq!(body.available, Some(true));
+        let prices = body.prices.expect("prices present");
+        assert_eq!(
+            prices[0].price.as_ref().and_then(|m| m.value),
+            Some(11_990_000)
+        );
+    }
+
+    #[tokio::test]
+    async fn check_availability_batch_posts_domains_array() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/check-availability")
+                    .json_body(json!({ "domains": ["a.com", "b.com"], "optimizeFor": "SPEED" }));
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "domain": "a.com", "available": true },
+                        { "domain": "b.com", "available": false }
+                    ]
+                }));
+            })
+            .await;
+
+        let body = client_for(&server)
+            .check_availability()
+            .body(types::AvailabilityCheckCriteria {
+                domains: vec!["a.com".to_string(), "b.com".to_string()],
+                optimize_for: types::OptimizationTarget::Speed,
+                isc_code: None,
+            })
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(body.items.len(), 2);
+        assert_eq!(body.items[1].available, Some(false));
+    }
+
+    // --- v3: registration (quote → register → poll) -------------------------
+
+    #[tokio::test]
+    async fn quote_registration_posts_body_and_parses_token_and_agreements() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/registration-quotes")
+                    .json_body(json!({ "domain": "example.com", "period": 2 }));
+                then.status(200).json_body(json!({
+                    "domain": "example.com",
+                    "available": true,
+                    "quoteToken": "tok-abc",
+                    "period": 2,
+                    "price": { "currencyCode": "USD", "value": 23_980_000 },
+                    "requiredAgreements": [
+                        { "agreementType": "REGISTRATION", "title": "Registration Agreement",
+                          "url": "https://x/agr" }
+                    ]
+                }));
+            })
+            .await;
+
+        let quote = client_for(&server)
+            .quote_domain_registration()
+            .body(types::QuoteDomainRegistrationBody {
+                domain: "example.com".to_string(),
+                period: std::num::NonZeroU64::new(2).expect("nonzero"),
+                profile: None,
+                profile_id: None,
+            })
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(quote.available, Some(true));
+        assert_eq!(
+            quote.quote_token.as_ref().map(|t| t.as_str()),
+            Some("tok-abc")
+        );
+        let agreements = quote.required_agreements.expect("agreements");
+        assert_eq!(
+            agreements[0].agreement_type.as_ref().map(|a| a.as_str()),
+            Some("REGISTRATION")
+        );
+    }
+
+    #[tokio::test]
+    async fn register_sends_idempotency_key_and_consent_then_accepts_202() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/registrations")
+                    .header("Idempotency-Key", "idem-123")
+                    .json_body(json!({
+                        "domain": "example.com",
+                        "period": 1,
+                        "quoteToken": "tok-abc",
+                        "consent": {
+                            "agreedAt": "2026-06-30T00:00:00Z",
+                            "agreedBy": { "type": "SHOPPER", "principal": "shopper-42", "ip": "127.0.0.1" },
+                            "agreementTypes": ["REGISTRATION"]
+                        }
+                    }));
+                // The register response does NOT echo `quoteToken` (the token is
+                // single-use and consumed); the client's `Registration` type must
+                // parse it anyway — quote_token is optional for exactly this reason.
+                then.status(202).json_body(json!({
+                    "domain": "example.com",
+                    "period": 1,
+                    "consent": {
+                        "agreedAt": "2026-06-30T00:00:00Z",
+                        "agreedBy": { "type": "SHOPPER", "principal": "shopper-42" },
+                        "agreementTypes": ["REGISTRATION"]
+                    },
+                    "registrationId": "reg-1",
+                    "operationId": "op-1",
+                    "status": "PENDING"
+                }));
+            })
+            .await;
+
+        let reg = client_for(&server)
+            .register_domain()
+            .idempotency_key("idem-123")
+            .body(types::Registration {
+                consent: types::Consent {
+                    agreed_at: types::DateTime("2026-06-30T00:00:00Z".to_string()),
+                    agreed_by: types::ConsentActor {
+                        actor: None,
+                        ip: Some("127.0.0.1".to_string()),
+                        principal: "shopper-42".to_string(),
+                        type_: types::ConsentActorType("SHOPPER".to_string()),
+                    },
+                    agreement_types: vec![types::AgreementType("REGISTRATION".to_string())],
+                },
+                created_at: None,
+                domain: "example.com".to_string(),
+                expires_at: None,
+                links: vec![],
+                operation_id: None,
+                period: std::num::NonZeroU64::new(1).expect("nonzero"),
+                profile: None,
+                profile_id: None,
+                quote_token: Some(types::Uuid("tok-abc".to_string())),
+                registration_id: None,
+                status: None,
+                updated_at: None,
+            })
+            .send()
+            .await
+            .expect("202 accepted")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(reg.operation_id.as_ref().map(|o| o.as_str()), Some("op-1"));
+    }
+
+    #[tokio::test]
+    async fn get_operation_polls_status() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v3/domains/operations/op-1");
+                then.status(200).json_body(json!({
+                    "operationId": "op-1",
+                    "type": "REGISTER",
+                    "domain": "example.com",
+                    "status": "COMPLETED"
+                }));
+            })
+            .await;
+
+        let op = client_for(&server)
+            .get_operation()
+            .operation_id(types::Uuid("op-1".to_string()))
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(op.status.as_ref().map(|s| s.as_str()), Some("COMPLETED"));
+    }
+
+    // --- v3: domain get + nameservers + dns create --------------------------
+
+    #[tokio::test]
+    async fn get_domain_reads_v3_path() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/domain-names/example.com");
+                then.status(200).json_body(json!({
+                    "domain": "example.com",
+                    "status": "ACTIVE",
+                    "autoRenew": true
+                }));
+            })
+            .await;
+
+        let detail = client_for(&server)
+            .get_domain()
+            .domain_name("example.com")
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(detail.domain.as_deref(), Some("example.com"));
+        assert_eq!(detail.auto_renew, Some(true));
+    }
+
+    #[tokio::test]
+    async fn create_dns_record_posts_single_record_to_zone() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .json_body(
+                        json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600 }),
+                    );
+                then.status(201).json_body(
+                    json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600 }),
+                );
+            })
+            .await;
+
+        let rec = client_for(&server)
+            .create_dns_record()
+            .zone("example.com")
+            .body(types::DnsRecord {
+                data: "1.2.3.4".to_string(),
+                flag: None,
+                name: "www".to_string(),
+                port: None,
+                priority: None,
+                protocol: None,
+                record_id: None,
+                service: None,
+                tag: None,
+                ttl: 600,
+                type_: types::DnsRecordType("A".to_string()),
+                weight: None,
+            })
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(rec.name, "www");
+        assert_eq!(rec.ttl, 600);
+    }
+
+    #[tokio::test]
+    async fn update_nameservers_puts_hostname_array() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v3/domains/domain-names/example.com/nameservers")
+                    .header("Idempotency-Key", "idem-9")
+                    .json_body(json!(["ns1.example.net", "ns2.example.net"]));
+                then.status(202)
+                    .json_body(json!({ "operationId": "op-2", "type": "UPDATE_NAMESERVERS" }));
+            })
+            .await;
+
+        let op = client_for(&server)
+            .update_nameservers()
+            .domain_name("example.com")
+            .idempotency_key("idem-9")
+            .body(types::NameServers(vec![
+                types::NameserverHostname("ns1.example.net".to_string()),
+                types::NameserverHostname("ns2.example.net".to_string()),
+            ]))
+            .send()
+            .await
+            .expect("202 accepted")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(op.operation_id.as_ref().map(|o| o.as_str()), Some("op-2"));
+    }
+
+    // --- retained v1: list + agreements + DNS list/set/delete ---------------
+
+    #[tokio::test]
+    async fn v1_list_tolerates_sparse_payloads() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET).path("/v1/domains");
                 then.status(200).json_body(json!([
-                    {
-                        "createdAt": "2021-09-24T15:08:06.000Z",
-                        "deletedAt": "2024-11-05T02:30:31.000Z",
-                        "domain": "blahblahblah253.com",
-                        "domainId": 21605119,
-                        "expirationProtected": true,
-                        "expires": "2024-09-24T15:08:06.000Z",
-                        "exposeWhois": false,
-                        "holdRegistrar": false,
-                        "locked": true,
-                        "nameServers": null,
-                        "privacy": true,
-                        "renewAuto": false,
-                        "renewable": false,
-                        "status": "CANCELLED",
-                        "transferProtected": true
-                    },
-                    {
-                        "createdAt": "2020-10-27T13:40:15.463Z",
-                        "domain": "dullreferenceexception.me",
-                        "domainId": 21507912,
-                        "expirationProtected": false,
-                        "exposeWhois": false,
-                        "holdRegistrar": false,
-                        "locked": false,
-                        "nameServers": null,
-                        "privacy": false,
-                        "renewAuto": false,
-                        "renewable": false,
-                        "status": "PENDING_DNS_ACTIVE",
-                        "transferProtected": false
-                    }
+                    { "domain": "a.com", "status": "ACTIVE", "nameServers": null },
+                    { "domain": "b.me", "status": "PENDING_DNS_ACTIVE", "nameServers": null }
                 ]));
             })
             .await;
@@ -265,43 +465,51 @@ mod tests {
             .list()
             .send()
             .await
-            .expect("sparse list payload parses")
+            .expect("sparse list parses")
             .into_inner();
 
         mock.assert_async().await;
         assert_eq!(body.len(), 2);
-    }
-
-    // --- DNS records ---------------------------------------------------------
-    //
-    // These guard the spec-generated record operations: the HTTP method + path
-    // (including the `{domain}`/`{type}`/`{name}` path segments and the
-    // synthesized list-all GET), the JSON request bodies the builder serializes,
-    // and response parsing. They run entirely offline against a mock server.
-
-    fn client_for(server: &MockServer) -> Client {
-        client_with_auth(
-            &server.base_url(),
-            "Bearer tok",
-            "godaddy-cli/test",
-            "req-rec",
-        )
-        .expect("build client")
+        assert_eq!(body[0].domain.as_deref(), Some("a.com"));
     }
 
     #[tokio::test]
-    async fn record_get_all_lists_every_record() {
-        // No type/name -> the synthesized GET on the bare `/records` path.
+    async fn v1_agreements_sends_query_params_and_parses_list() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v1/domains/example.com/records")
-                    .header("authorization", "Bearer tok");
+                    .path("/v1/domains/agreements")
+                    .query_param("tlds", "com")
+                    .query_param("privacy", "false");
                 then.status(200).json_body(json!([
-                    { "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600 },
-                    { "type": "TXT", "name": "@", "data": "v=spf1 -all" }
+                    { "agreementKey": "DNRA", "title": "Registration Agreement", "url": "https://x" }
                 ]));
+            })
+            .await;
+
+        let agreements = client_for(&server)
+            .agreements()
+            .tlds(vec!["com".to_string()])
+            .privacy(false)
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
+    }
+
+    #[tokio::test]
+    async fn v1_record_get_all_lists_records() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/domains/example.com/records");
+                then.status(200).json_body(
+                    json!([{ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600 }]),
+                );
             })
             .await;
 
@@ -314,80 +522,12 @@ mod tests {
             .into_inner();
 
         mock.assert_async().await;
-        assert_eq!(records.len(), 2);
-        assert_eq!(records[0].type_, types::DnsRecordType::A);
-        assert_eq!(records[0].name, "www");
-        assert_eq!(records[0].data, "1.2.3.4");
-        assert_eq!(records[0].ttl, Some(600));
-        assert_eq!(records[1].type_, types::DnsRecordType::Txt);
-    }
-
-    #[tokio::test]
-    async fn record_get_sends_type_name_and_pagination() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/v1/domains/example.com/records/A/www")
-                    .query_param("limit", "10")
-                    .query_param("offset", "5");
-                then.status(200)
-                    .json_body(json!([{ "type": "A", "name": "www", "data": "1.2.3.4" }]));
-            })
-            .await;
-
-        let records = client_for(&server)
-            .record_get()
-            .domain("example.com")
-            .type_("A")
-            .name("www")
-            .limit(10)
-            .offset(5)
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].data, "1.2.3.4");
+        assert_eq!(records[0].data.as_deref(), Some("1.2.3.4"));
     }
 
     #[tokio::test]
-    async fn record_add_patches_a_record_array() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(PATCH)
-                    .path("/v1/domains/example.com/records")
-                    .json_body(json!([{ "data": "1.2.3.4", "name": "www", "type": "A" }]));
-                then.status(200);
-            })
-            .await;
-
-        client_for(&server)
-            .record_add()
-            .domain("example.com")
-            .body(vec![types::DnsRecord {
-                data: "1.2.3.4".to_string(),
-                name: "www".to_string(),
-                type_: types::DnsRecordType::A,
-                ttl: None,
-                priority: None,
-                port: None,
-                weight: None,
-                protocol: None,
-                service: None,
-            }])
-            .send()
-            .await
-            .expect("request succeeds");
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn record_replace_type_name_puts_the_record_set() {
+    async fn v1_record_replace_type_name_puts_record_set() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -403,14 +543,14 @@ mod tests {
             .domain("example.com")
             .type_("A")
             .name("www")
-            .body(vec![types::DnsRecordCreateTypeName {
+            .body(vec![types::V1dnsRecordCreateTypeName {
                 data: "5.6.7.8".to_string(),
-                ttl: Some(600),
-                priority: None,
                 port: None,
-                weight: None,
+                priority: None,
                 protocol: None,
                 service: None,
+                ttl: Some(600),
+                weight: None,
             }])
             .send()
             .await
@@ -420,7 +560,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn record_delete_type_name_issues_delete_and_accepts_204() {
+    async fn v1_record_delete_type_name_issues_delete() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -442,288 +582,33 @@ mod tests {
         mock.assert_async().await;
     }
 
-    // --- agreements + purchase ----------------------------------------------
-    //
-    // The legal-agreements GET (the consent prerequisite) and the purchase POST.
-    // These guard the agreements query-param names, the JSON request body the
-    // purchase builder serializes (domain + consent + the always-present period/
-    // privacy/renewAuto, contacts omitted), and response parsing. Offline.
-
+    // Guard the auth-scheme selection retained from the hand-written helper.
     #[tokio::test]
-    async fn agreements_sends_query_params_and_parses_list() {
+    async fn sso_key_scheme_sets_authorization_header() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v1/domains/agreements")
-                    .query_param("tlds", "com")
-                    .query_param("privacy", "false")
-                    .query_param("forTransfer", "false");
-                then.status(200).json_body(json!([
-                    {
-                        "agreementKey": "DNRA",
-                        "title": "Domain Name Registration Agreement",
-                        "url": "https://www.godaddy.com/agreements/showdoc?id=reg_sa",
-                        "content": "full text"
-                    }
-                ]));
+                    .path("/v3/domains/check-availability")
+                    .header("authorization", "sso-key KEY:SECRET");
+                then.status(200)
+                    .json_body(json!({ "domain": "x.com", "available": true }));
             })
             .await;
 
-        let agreements = client_for(&server)
-            .agreements()
-            .tlds(vec!["com".to_string()])
-            .privacy(false)
-            .for_transfer(false)
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
+        client_with_auth(
+            &server.base_url(),
+            "sso-key KEY:SECRET",
+            "godaddy-cli/test",
+            "req-1",
+        )
+        .expect("build client")
+        .get_domain_availability()
+        .domain("x.com")
+        .send()
+        .await
+        .expect("request succeeds");
 
         mock.assert_async().await;
-        assert_eq!(agreements.len(), 1);
-        assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
-        assert_eq!(
-            agreements[0].title.as_deref(),
-            Some("Domain Name Registration Agreement")
-        );
-    }
-
-    #[tokio::test]
-    async fn purchase_serializes_body_and_parses_order() {
-        let server = MockServer::start_async().await;
-        // Contacts are omitted (account defaults) so they don't appear in the
-        // body; period/privacy/renewAuto always serialize (serde defaults, no
-        // skip), which guards their wire names (`period`/`privacy`/`renewAuto`).
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path("/v1/domains/purchase")
-                    .json_body(json!({
-                        "domain": "example.com",
-                        "consent": {
-                            "agreedAt": "2026-06-17T00:00:00Z",
-                            "agreedBy": "203.0.113.7",
-                            "agreementKeys": ["DNRA"]
-                        },
-                        "period": 1,
-                        "privacy": false,
-                        "renewAuto": true
-                    }));
-                then.status(200).json_body(json!({
-                    "orderId": 1_234_567,
-                    "itemCount": 1,
-                    "total": 11_990_000,
-                    "currency": "USD"
-                }));
-            })
-            .await;
-
-        let body = client_for(&server)
-            .purchase()
-            .body(types::DomainPurchase {
-                domain: "example.com".to_string(),
-                consent: types::Consent {
-                    agreed_at: "2026-06-17T00:00:00Z".to_string(),
-                    agreed_by: "203.0.113.7".to_string(),
-                    agreement_keys: vec!["DNRA".to_string()],
-                },
-                contact_registrant: None,
-                contact_admin: None,
-                contact_billing: None,
-                contact_tech: None,
-                name_servers: vec![],
-                period: std::num::NonZeroU64::new(1).expect("nonzero period"),
-                privacy: false,
-                renew_auto: true,
-            })
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(body.order_id, Some(1_234_567));
-        assert_eq!(body.item_count, Some(1));
-        assert_eq!(body.total, Some(11_990_000));
-        assert_eq!(body.currency, "USD");
-    }
-
-    #[tokio::test]
-    async fn schema_fetches_per_tld_requirements_as_free_form_json() {
-        // The per-TLD purchase schema is returned untyped (a serde_json map), so
-        // `domain purchase` can read just the top-level `required` array. This
-        // guards the `{tld}` path param and the free-form response decode.
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET).path("/v1/domains/purchase/schema/fun");
-                then.status(200).json_body(json!({
-                    "id": "fun",
-                    "required": ["domain", "consent", "contactRegistrant"],
-                    "properties": {},
-                    "models": {}
-                }));
-            })
-            .await;
-
-        let schema = client_for(&server)
-            .schema()
-            .tld("fun")
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        let required: Vec<&str> = schema
-            .get("required")
-            .and_then(|v| v.as_array())
-            .expect("required array")
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
-        assert!(required.contains(&"contactRegistrant"));
-    }
-
-    #[tokio::test]
-    async fn register_v2_posts_to_customer_path_and_accepts_202() {
-        // The OAuth purchase path: POST to the customer-scoped v2 register with a
-        // DomainPurchaseV2 body, returning a bodyless 202. This guards the
-        // `{customerId}` path segment, the serialized request shape the domains
-        // API receives (consent with price/currency, the v2 contact with its
-        // ASCII encoding), and the no-body 2xx decode.
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path("/v2/customers/cust-123/domains/register")
-                    .json_body(json!({
-                        "domain": "example.fun",
-                        "consent": {
-                            "agreedAt": "2026-06-18T00:00:00Z",
-                            "agreedBy": "127.0.0.1",
-                            "agreementKeys": ["DNRA"],
-                            "currency": "USD",
-                            "price": 11_990_000
-                        },
-                        "period": 1,
-                        "privacy": false,
-                        "renewAuto": true,
-                        "contacts": {
-                            "registrant": {
-                                "addressMailing": {
-                                    "address1": "1 A St",
-                                    "city": "Tempe",
-                                    "country": "US",
-                                    "postalCode": "85281",
-                                    "state": "AZ"
-                                },
-                                "email": "a@example.com",
-                                "encoding": "ASCII",
-                                "nameFirst": "Ada",
-                                "nameLast": "Lovelace",
-                                "phone": "+1.4805551212"
-                            }
-                        }
-                    }));
-                then.status(202);
-            })
-            .await;
-
-        client_for(&server)
-            .register()
-            .customer_id("cust-123")
-            .body(types::DomainPurchaseV2 {
-                domain: "example.fun".to_string(),
-                consent: types::ConsentV2 {
-                    agreed_at: "2026-06-18T00:00:00Z".to_string(),
-                    agreed_by: "127.0.0.1".to_string(),
-                    agreement_keys: vec!["DNRA".to_string()],
-                    claim_token: None,
-                    currency: "USD".to_string(),
-                    price: 11_990_000,
-                    registry_premium_pricing: None,
-                },
-                contacts: Some(types::DomainContactsCreateV2 {
-                    registrant: Some(types::ContactDomainCreate {
-                        address_mailing: types::Address {
-                            address1: "1 A St".to_string(),
-                            address2: None,
-                            city: "Tempe".to_string(),
-                            country: types::AddressCountry::Us,
-                            postal_code: "85281".to_string(),
-                            state: "AZ".to_string(),
-                        },
-                        email: "a@example.com".to_string(),
-                        encoding: types::ContactDomainCreateEncoding::Ascii,
-                        fax: None,
-                        job_title: None,
-                        metadata: Default::default(),
-                        name_first: "Ada".to_string(),
-                        name_last: "Lovelace".to_string(),
-                        name_middle: None,
-                        organization: None,
-                        phone: "+1.4805551212".to_string(),
-                    }),
-                    registrant_id: None,
-                    admin: None,
-                    admin_id: None,
-                    billing: None,
-                    billing_id: None,
-                    tech: None,
-                    tech_id: None,
-                }),
-                metadata: Default::default(),
-                name_servers: vec![],
-                period: std::num::NonZeroU64::new(1).expect("nonzero period"),
-                privacy: false,
-                renew_auto: true,
-            })
-            .send()
-            .await
-            .expect("202 accepted");
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn get_returns_domain_detail_as_free_form_json() {
-        // `domain get` reads one domain's details. The response is decoded
-        // free-form (a serde_json map) so it tolerates sparse/privacy-masked
-        // contacts the typed DomainDetail would reject; the command emits it
-        // as-is. Guards the `{domain}` path segment and the free-form decode.
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET).path("/v1/domains/example.com");
-                then.status(200).json_body(json!({
-                    "domain": "example.com",
-                    "domainId": 12345,
-                    "status": "ACTIVE",
-                    "expires": "2027-06-18T00:00:00.000Z",
-                    "renewAuto": true,
-                    "nameServers": ["ns1.example.net", "ns2.example.net"]
-                }));
-            })
-            .await;
-
-        let detail = client_for(&server)
-            .get()
-            .domain("example.com")
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(
-            detail.get("domain").and_then(|v| v.as_str()),
-            Some("example.com")
-        );
-        assert_eq!(
-            detail.get("status").and_then(|v| v.as_str()),
-            Some("ACTIVE")
-        );
     }
 }

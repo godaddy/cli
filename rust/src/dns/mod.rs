@@ -1,16 +1,19 @@
 //! `gddy dns` — manage a domain's DNS records (A, AAAA, CNAME, MX, TXT, …).
 //!
-//! These are the record operations of the same GoDaddy Domains API the
-//! [`crate::domain`] commands use (paths under `/v1/domains/{domain}/records`),
-//! served by the typed, spec-generated [`domains_client`] crate. Auth, the
-//! base-URL/environment resolution, and the sso-key/Bearer scheme selection are
-//! shared with `domain` via [`crate::domain::make_client`].
+//! These records span two API generations of the Domains API (see the
+//! [`domains_client`] crate), sharing auth/env resolution with `domain` via
+//! [`crate::domain::make_client`]:
+//!
+//! * **`add`** creates a single record via the v3 endpoint
+//!   (`POST /v3/domains/zones/{zone}/dns-records`); one API call per `--data`
+//!   value, and `ttl` is required (defaults to 3600 when omitted).
+//! * **`list` / `set` / `delete`** use the retained v1 record endpoints
+//!   (`/v1/domains/{domain}/records…`), which v3 does not yet serve.
 //!
 //! Reads (`list`) require the `domains.domain:read` scope; mutations (`add`,
 //! `set`, `delete`) require `domains.dns:update`. `set` and `delete` are
 //! [`Tier::Destructive`] — they overwrite or remove existing records — so
-//! `--dry-run` short-circuits them with a preview, and they carry the engine's
-//! global `--reason` flag for audit (`add` only appends, so it is `Mutate`).
+//! `--dry-run` short-circuits them with a preview.
 
 use cli_engine::{
     CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module,
@@ -18,13 +21,12 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::domain::{DOMAINS_DNS_UPDATE_SCOPE, DOMAINS_READ_SCOPE, make_client, string_list};
+use crate::domain::{make_client, string_list};
 use crate::output_schema::output_schema;
+use crate::scopes::{DOMAINS_DNS_UPDATE, DOMAINS_READ};
 
 use domains_client::types;
 
-// Output shapes for the mutating commands (their handlers emit these confirmation
-// objects), registered so `--help`/`--schema` list the fields like the reads do.
 output_schema!(DnsWriteResult {
     "domain": "string";
     "type": "string";
@@ -40,10 +42,12 @@ output_schema!(DnsDeleteResult {
     "deleted": "bool";
 });
 
-/// The eight DNS record types the Domains API accepts, for help text and error
-/// messages. Source of truth for the wire values is the generated
-/// [`types::DnsRecordType`].
-const RECORD_TYPES: &str = "A, AAAA, CNAME, MX, NS, SOA, SRV, TXT";
+/// The DNS record types the Domains API accepts.
+const RECORD_TYPES: &[&str] = &["A", "AAAA", "CNAME", "MX", "NS", "SOA", "SRV", "TXT"];
+/// Record types `dns delete` can remove — NS/SOA are GoDaddy-managed.
+const DELETABLE_TYPES: &[&str] = &["A", "AAAA", "CNAME", "MX", "SRV", "TXT"];
+/// Default TTL (seconds) for `dns add` when `--ttl` is omitted (v3 requires a ttl).
+const DEFAULT_TTL: i64 = 3600;
 
 fn arg_str(ctx: &CommandContext, key: &str) -> Option<String> {
     ctx.args
@@ -53,37 +57,38 @@ fn arg_str(ctx: &CommandContext, key: &str) -> Option<String> {
 }
 
 /// clap value-parser for `--type`: validate against the record-type set and
-/// return the canonical upper-case wire string.
-///
-/// Validating in clap (rather than the handler) means invalid input is rejected
-/// at parse time — *before* cli-engine's `--dry-run`/auth short-circuits — so
-/// e.g. `dns set … --type BOGUS --dry-run` fails instead of reporting success.
-/// The handlers can then trust the value and feed it straight to the builders.
+/// return the canonical upper-case wire string. Validating in clap (rather than
+/// the handler) rejects invalid input at parse time — before `--dry-run`/auth
+/// short-circuits.
 fn parse_type_arg(raw: &str) -> Result<String, String> {
     let upper = raw.to_ascii_uppercase();
-    types::DnsRecordType::try_from(upper.as_str())
-        .map(|_| upper)
-        .map_err(|_| format!("invalid record type {raw:?}; expected one of {RECORD_TYPES}"))
+    if RECORD_TYPES.contains(&upper.as_str()) {
+        Ok(upper)
+    } else {
+        Err(format!(
+            "invalid record type {raw:?}; expected one of {}",
+            RECORD_TYPES.join(", ")
+        ))
+    }
 }
 
 /// Like [`parse_type_arg`], but for `dns delete`: rejects the registry-managed
-/// NS/SOA types the records API can't delete (`recordDeleteTypeName`'s type set
-/// omits them), with a clear reason — at parse time, so
-/// `dns delete … --type NS --dry-run` fails too.
+/// NS/SOA types with a clear reason (at parse time).
 fn parse_deletable_type_arg(raw: &str) -> Result<String, String> {
     let upper = raw.to_ascii_uppercase();
-    if types::RecordDeleteTypeNameType::try_from(upper.as_str()).is_ok() {
+    if DELETABLE_TYPES.contains(&upper.as_str()) {
         return Ok(upper);
     }
-    // Distinguish "valid type, just not deletable" from "not a type at all".
-    if types::DnsRecordType::try_from(upper.as_str()).is_ok() {
+    if RECORD_TYPES.contains(&upper.as_str()) {
         Err(format!(
             "{upper} records can't be deleted (NS and SOA records are managed by GoDaddy); \
-             deletable types: A, AAAA, CNAME, MX, SRV, TXT"
+             deletable types: {}",
+            DELETABLE_TYPES.join(", ")
         ))
     } else {
         Err(format!(
-            "invalid record type {raw:?}; expected one of A, AAAA, CNAME, MX, SRV, TXT"
+            "invalid record type {raw:?}; expected one of {}",
+            DELETABLE_TYPES.join(", ")
         ))
     }
 }
@@ -92,7 +97,7 @@ fn parse_deletable_type_arg(raw: &str) -> Result<String, String> {
 struct RecordOptions {
     ttl: Option<i64>,
     priority: Option<i64>,
-    port: Option<std::num::NonZeroU64>,
+    port: Option<i64>,
     weight: Option<i64>,
     protocol: Option<String>,
     service: Option<String>,
@@ -104,11 +109,7 @@ impl RecordOptions {
         RecordOptions {
             ttl: as_i64("ttl"),
             priority: as_i64("priority"),
-            // The parser bounds --port to 1..=65535, so a non-zero value always
-            // fits NonZeroU64; `new` keeps it total without an unwrap.
-            port: as_i64("port")
-                .and_then(|p| u64::try_from(p).ok())
-                .and_then(std::num::NonZeroU64::new),
+            port: as_i64("port"),
             weight: as_i64("weight"),
             protocol: arg_str(ctx, "protocol"),
             service: arg_str(ctx, "service"),
@@ -116,43 +117,49 @@ impl RecordOptions {
     }
 }
 
-/// Build full `DnsRecord`s (type + name + data) for `add` — one per `--data`.
-fn dns_records(
+/// Build a v3 `DnsRecord` (for `add`) — one per `--data` value. `ttl` is required
+/// by v3, so an omitted `--ttl` uses [`DEFAULT_TTL`]. The numeric SRV/MX fields are
+/// clamped into the v3 `u16` domain (the clap parsers already bound them).
+fn v3_records(
     name: &str,
-    ty: types::DnsRecordType,
+    ty: &str,
     data: &[String],
     opts: &RecordOptions,
 ) -> Vec<types::DnsRecord> {
+    let to_u16 = |v: Option<i64>| v.and_then(|n| u16::try_from(n).ok());
     data.iter()
         .map(|d| types::DnsRecord {
             data: d.clone(),
+            flag: None,
             name: name.to_owned(),
-            type_: ty,
-            ttl: opts.ttl,
-            priority: opts.priority,
-            port: opts.port,
-            weight: opts.weight,
+            port: to_u16(opts.port),
+            priority: to_u16(opts.priority),
             protocol: opts.protocol.clone(),
+            record_id: None,
             service: opts.service.clone(),
+            tag: None,
+            ttl: opts.ttl.unwrap_or(DEFAULT_TTL),
+            type_: types::DnsRecordType(ty.to_owned()),
+            weight: to_u16(opts.weight),
         })
         .collect()
 }
 
-/// Build the type+name-relative record bodies for `set` (the type and name come
-/// from the URL path, so they are omitted here) — one per `--data`.
-fn create_type_name_records(
-    data: &[String],
-    opts: &RecordOptions,
-) -> Vec<types::DnsRecordCreateTypeName> {
+/// Build the v1 type+name-relative record bodies for `set` (the type and name
+/// come from the URL path) — one per `--data`.
+fn v1_set_records(data: &[String], opts: &RecordOptions) -> Vec<types::V1dnsRecordCreateTypeName> {
     data.iter()
-        .map(|d| types::DnsRecordCreateTypeName {
+        .map(|d| types::V1dnsRecordCreateTypeName {
             data: d.clone(),
-            ttl: opts.ttl,
+            port: opts
+                .port
+                .and_then(|p| u64::try_from(p).ok())
+                .and_then(std::num::NonZeroU64::new),
             priority: opts.priority,
-            port: opts.port,
-            weight: opts.weight,
             protocol: opts.protocol.clone(),
             service: opts.service.clone(),
+            ttl: opts.ttl,
+            weight: opts.weight,
         })
         .collect()
 }
@@ -194,13 +201,13 @@ fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
             .long("ttl")
             .value_name("SECONDS")
             .value_parser(clap::value_parser!(i64).range(1..))
-            .help("Time-to-live in seconds"),
+            .help("Time-to-live in seconds (add: defaults to 3600)"),
     )
     .with_arg(
         clap::Arg::new("priority")
             .long("priority")
             .value_name("N")
-            .value_parser(clap::value_parser!(i64).range(0..))
+            .value_parser(clap::value_parser!(i64).range(0..=65535))
             .help("Record priority (MX and SRV only)"),
     )
     .with_arg(
@@ -214,7 +221,7 @@ fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
         clap::Arg::new("weight")
             .long("weight")
             .value_name("N")
-            .value_parser(clap::value_parser!(i64).range(0..))
+            .value_parser(clap::value_parser!(i64).range(0..=65535))
             .help("Record weight (SRV only)"),
     )
     .with_arg(
@@ -242,20 +249,19 @@ pub fn module() -> Module {
                  preview the change without writing it.",
             ),
         )
-        // --- list -------------------------------------------------------
+        // --- list (v1) --------------------------------------------------
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("list", "List DNS records for a domain")
                 .with_long(
                     "Retrieves DNS records for a domain. Without filters, returns all \
-                         record types. Use `--type` to narrow to one record type, and \
-                         `--name` (requires `--type`) to further narrow to a specific name. \
-                         Requires the `domains.domain:read` scope.",
+                     record types. Use `--type` to narrow to one record type, and \
+                     `--name` (requires `--type`) to further narrow to a specific name.",
                 )
                 .with_system("domain")
                 .with_tier(Tier::Read)
                 .with_default_fields("type,name,data,ttl")
-                .with_json_schema::<types::DnsRecord>()
-                .with_scopes(&[DOMAINS_READ_SCOPE])
+                .with_json_schema::<types::V1dnsRecord>()
+                .with_scopes(&[DOMAINS_READ])
                 .with_arg(
                     clap::Arg::new("domain")
                         .value_name("DOMAIN")
@@ -273,20 +279,11 @@ pub fn module() -> Module {
                     clap::Arg::new("name")
                         .long("name")
                         .value_name("NAME")
-                        // The API only filters by name within a type, so clap
-                        // enforces `--name` requires `--type` at parse time.
                         .requires("type")
                         .help("Only records with this name (requires --type)"),
                 ),
-            // Output pagination is the engine's job: the global, client-side
-            // `--limit`/`--offset` flags slice the returned list. We don't
-            // expose the API's server-side offset/limit (it would double-skip
-            // against the client-side `--offset`), so `record_get` is called
-            // without them.
             |ctx| async move {
                 let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                // `--type` is validated + upper-cased by clap's value parser,
-                // and `--name` requires `--type`, so these can be used as-is.
                 let type_opt = arg_str(&ctx, "type");
                 let name_opt = arg_str(&ctx, "name");
 
@@ -324,8 +321,6 @@ pub fn module() -> Module {
                         .into_inner(),
                 };
 
-                // Serialize each record to an object so `--fields` and the
-                // default-field projection have `type`/`name`/`data`/`ttl`.
                 let out: Vec<Value> = records
                     .iter()
                     .map(serde_json::to_value)
@@ -336,7 +331,7 @@ pub fn module() -> Module {
                 Ok(CommandResult::new(json!(out)))
             },
         ))
-        // --- add --------------------------------------------------------
+        // --- add (v3) ---------------------------------------------------
         .with_command(RuntimeCommandSpec::new_with_context(
             with_record_write_args(
                 CommandSpec::new(
@@ -346,38 +341,38 @@ pub fn module() -> Module {
                 .with_long(
                     "Appends one or more DNS records to a domain without modifying any \
                          existing records. Pass `--data` once per record value to add \
-                         multiple records for the same type+name in a single call. \
-                         Use `dns set` instead if you need to replace the full record \
-                         set for a type+name.",
+                         multiple records for the same type+name (each is a separate v3 \
+                         create call). `--ttl` defaults to 3600 when omitted. Use `dns set` \
+                         to replace the full record set for a type+name.",
                 )
                 .with_system("domain")
                 .with_tier(Tier::Mutate)
                 .with_default_fields("domain,type,name,records")
                 .with_output_schema::<DnsWriteResult>()
-                .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
+                .with_scopes(&[DOMAINS_DNS_UPDATE]),
             ),
             |ctx| async move {
                 let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                // `--type` is validated + upper-cased by clap's value parser.
                 let record_type = arg_str(&ctx, "type").unwrap_or_default();
                 let name = arg_str(&ctx, "name").unwrap_or_default();
                 let data = string_list(&ctx, "data");
-                let ty = types::DnsRecordType::try_from(record_type.as_str())
-                    .expect("--type value parser guarantees a valid record type");
                 let opts = RecordOptions::from_ctx(&ctx);
-                let records = dns_records(&name, ty, &data, &opts);
+                let records = v3_records(&name, &record_type, &data, &opts);
                 let count = records.len();
 
                 let client = make_client(&ctx).await?;
-                client
-                    .record_add()
-                    .domain(domain.as_str())
-                    .body(records)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        CliCoreError::message(format!("adding DNS records failed: {e}"))
-                    })?;
+                // v3 creates a single record per call; add each in turn.
+                for record in records {
+                    client
+                        .create_dns_record()
+                        .zone(domain.as_str())
+                        .body(record)
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            CliCoreError::message(format!("adding DNS record failed: {e}"))
+                        })?;
+                }
 
                 Ok(CommandResult::new(json!({
                     "domain": domain,
@@ -388,7 +383,7 @@ pub fn module() -> Module {
                 })))
             },
         ))
-        // --- set --------------------------------------------------------
+        // --- set (v1) ---------------------------------------------------
         .with_command(RuntimeCommandSpec::new_with_context(
             with_record_write_args(
                 CommandSpec::new(
@@ -397,26 +392,25 @@ pub fn module() -> Module {
                 )
                 .with_long(
                     "Replaces every DNS record for the given type+name pair with the \
-                         values supplied via `--data`, discarding any records that were \
-                         there before. This operation is destructive and irreversible — \
-                         use `dns list --type <type> --name <name>` to review the current \
-                         state first. Use `dns add` to append records without removing \
-                         existing ones.",
+                     values supplied via `--data`, discarding any records that were \
+                     there before. This operation is destructive and irreversible — \
+                     use `dns list --type <type> --name <name>` to review the current \
+                     state first. Use `dns add` to append records without removing \
+                     existing ones.",
                 )
                 .with_system("domain")
                 .with_tier(Tier::Destructive)
                 .with_default_fields("domain,type,name,records")
                 .with_output_schema::<DnsWriteResult>()
-                .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE]),
+                .with_scopes(&[DOMAINS_DNS_UPDATE]),
             ),
             |ctx| async move {
                 let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                // `--type` is validated + upper-cased by clap's value parser.
                 let record_type = arg_str(&ctx, "type").unwrap_or_default();
                 let name = arg_str(&ctx, "name").unwrap_or_default();
                 let data = string_list(&ctx, "data");
                 let opts = RecordOptions::from_ctx(&ctx);
-                let records = create_type_name_records(&data, &opts);
+                let records = v1_set_records(&data, &opts);
                 let count = records.len();
 
                 let client = make_client(&ctx).await?;
@@ -441,7 +435,7 @@ pub fn module() -> Module {
                 })))
             },
         ))
-        // --- delete -----------------------------------------------------
+        // --- delete (v1) ------------------------------------------------
         .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new(
                 "delete",
@@ -449,16 +443,16 @@ pub fn module() -> Module {
             )
             .with_long(
                 "Removes every DNS record matching the given type+name pair. This \
-                     operation is destructive and irreversible — all matching records are \
-                     deleted in one call. NS and SOA records are GoDaddy-managed and \
-                     cannot be deleted. Use `dns list` to confirm what will be removed \
-                     before running this command.",
+                 operation is destructive and irreversible — all matching records are \
+                 deleted in one call. NS and SOA records are GoDaddy-managed and \
+                 cannot be deleted. Use `dns list` to confirm what will be removed \
+                 before running this command.",
             )
             .with_system("domain")
             .with_tier(Tier::Destructive)
             .with_default_fields("domain,type,name,deleted")
             .with_output_schema::<DnsDeleteResult>()
-            .with_scopes(&[DOMAINS_DNS_UPDATE_SCOPE])
+            .with_scopes(&[DOMAINS_DNS_UPDATE])
             .with_arg(
                 clap::Arg::new("domain")
                     .value_name("DOMAIN")
@@ -482,8 +476,6 @@ pub fn module() -> Module {
             ),
             |ctx| async move {
                 let domain = arg_str(&ctx, "domain").unwrap_or_default();
-                // `--type` is validated (and NS/SOA rejected) + upper-cased by
-                // clap's value parser, so it converts to the delete enum cleanly.
                 let record_type = arg_str(&ctx, "type").unwrap_or_default();
                 let name = arg_str(&ctx, "name").unwrap_or_default();
 
@@ -528,25 +520,74 @@ mod tests {
     fn parse_deletable_type_arg_rejects_ns_and_soa_with_clear_message() {
         assert_eq!(parse_deletable_type_arg("a").expect("valid"), "A");
         assert!(parse_deletable_type_arg("TXT").is_ok());
-        // NS/SOA are valid types but GoDaddy-managed — rejected as non-deletable
-        // (not the generated client's opaque conversion error).
         for ty in ["NS", "soa"] {
             let err = parse_deletable_type_arg(ty).expect_err("should reject");
             assert!(err.contains("managed by GoDaddy"), "got: {err}");
-            assert!(
-                !err.contains("RecordDeleteTypeNameType"),
-                "leaked type name: {err}"
-            );
         }
-        // A non-type is rejected as invalid, not as non-deletable.
         let err = parse_deletable_type_arg("bogus").expect_err("should reject");
         assert!(err.contains("invalid record type"), "got: {err}");
     }
 
+    #[test]
+    fn v3_records_builds_one_per_data_value_with_default_ttl() {
+        let opts = RecordOptions {
+            ttl: None,
+            priority: None,
+            port: None,
+            weight: None,
+            protocol: None,
+            service: None,
+        };
+        let recs = v3_records(
+            "www",
+            "A",
+            &["1.2.3.4".to_string(), "5.6.7.8".to_string()],
+            &opts,
+        );
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].name, "www");
+        assert_eq!(recs[0].type_.as_str(), "A");
+        assert_eq!(recs[0].data, "1.2.3.4");
+        // v3 requires a ttl; an omitted --ttl falls back to the default.
+        assert_eq!(recs[0].ttl, DEFAULT_TTL);
+        assert_eq!(recs[1].data, "5.6.7.8");
+    }
+
+    #[test]
+    fn v3_records_clamps_numeric_fields_to_u16() {
+        let opts = RecordOptions {
+            ttl: Some(600),
+            priority: Some(10),
+            port: Some(443),
+            weight: Some(5),
+            protocol: Some("tcp".to_string()),
+            service: Some("sip".to_string()),
+        };
+        let recs = v3_records("_sip", "SRV", &["sip.example.com".to_string()], &opts);
+        assert_eq!(recs[0].ttl, 600);
+        assert_eq!(recs[0].priority, Some(10));
+        assert_eq!(recs[0].port, Some(443));
+        assert_eq!(recs[0].weight, Some(5));
+    }
+
+    #[test]
+    fn v1_set_records_omit_type_and_name() {
+        let opts = RecordOptions {
+            ttl: None,
+            priority: Some(10),
+            port: None,
+            weight: None,
+            protocol: None,
+            service: None,
+        };
+        let recs = v1_set_records(&["mail.example.com".to_string()], &opts);
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].data, "mail.example.com");
+        assert_eq!(recs[0].priority, Some(10));
+    }
+
     /// Type/flag validation lives in clap value-parsers, so invalid input is
     /// rejected at parse time — before auth or `--dry-run` can short-circuit.
-    /// (Regression guard: these previously validated only in the handler, so
-    /// `--dry-run` reported success and `--name` without `--type` reached auth.)
     #[tokio::test]
     async fn invalid_dns_input_is_rejected_before_auth_or_dry_run() {
         let cli = || {
@@ -557,7 +598,6 @@ mod tests {
             )
         };
         let cases: [(&[&str], &str); 3] = [
-            // Undeletable type — rejected with the GoDaddy reason, not an auth error.
             (
                 &[
                     "gddy",
@@ -571,7 +611,6 @@ mod tests {
                 ],
                 "managed by GoDaddy",
             ),
-            // Bogus type on a mutating command.
             (
                 &[
                     "gddy",
@@ -587,7 +626,6 @@ mod tests {
                 ],
                 "invalid record type",
             ),
-            // `--name` without `--type` on list.
             (
                 &["gddy", "dns", "list", "example.com", "--name", "www"],
                 "--type",
@@ -608,52 +646,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dns_records_builds_one_per_data_value() {
-        let opts = RecordOptions {
-            ttl: Some(600),
-            priority: None,
-            port: None,
-            weight: None,
-            protocol: None,
-            service: None,
-        };
-        let recs = dns_records(
-            "www",
-            types::DnsRecordType::A,
-            &["1.2.3.4".to_string(), "5.6.7.8".to_string()],
-            &opts,
-        );
-        assert_eq!(recs.len(), 2);
-        assert_eq!(recs[0].name, "www");
-        assert_eq!(recs[0].type_, types::DnsRecordType::A);
-        assert_eq!(recs[0].data, "1.2.3.4");
-        assert_eq!(recs[0].ttl, Some(600));
-        assert_eq!(recs[1].data, "5.6.7.8");
-    }
-
-    #[test]
-    fn create_type_name_records_omit_type_and_name() {
-        let opts = RecordOptions {
-            ttl: None,
-            priority: Some(10),
-            port: None,
-            weight: None,
-            protocol: None,
-            service: None,
-        };
-        let recs = create_type_name_records(&["mail.example.com".to_string()], &opts);
-        assert_eq!(recs.len(), 1);
-        assert_eq!(recs[0].data, "mail.example.com");
-        assert_eq!(recs[0].priority, Some(10));
-    }
-
-    /// Like the `domain` commands, the `dns` commands hit the Domains API and
-    /// must stay fail-closed: built with no auth provider registered, the
-    /// engine's default `AuthRequirement::Required` rejects them at credential
-    /// resolution (exit code 2) before any handler runs. Running each leaf also
+    /// Like `domain`, the `dns` commands hit the Domains API and must stay
+    /// fail-closed at auth resolution (exit code 2). Running each leaf also
     /// exercises clap's command-tree construction (duplicate-subcommand panics
-    /// only surface in debug builds).
+    /// surface only in debug builds).
     #[tokio::test]
     async fn dns_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
