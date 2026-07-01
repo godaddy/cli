@@ -8,7 +8,21 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, format_money, make_client};
+use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
+
+// The handler emits a transformed shape (formatted price/currency strings from
+// SimpleMoney, a single headline term) rather than the raw `types::Availability`,
+// so `--schema`/help metadata is declared to match what's actually returned.
+output_schema!(DomainAvailableResult {
+    "domain": "string";
+    "available": "bool";
+    "definitive": "bool";
+    "price": "string";
+    "currency": "string";
+    "renewalPrice": "string";
+    "period": "number";
+});
 
 /// The headline price for an availability/quote: the entry for a 1-year term if
 /// present, else the first listed term.
@@ -31,7 +45,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("domain,available,definitive,price,currency")
-            .with_json_schema::<types::Availability>()
+            .with_output_schema::<DomainAvailableResult>()
             .with_scopes(&[DOMAINS_READ])
             .with_arg(
                 clap::Arg::new("domain")

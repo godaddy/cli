@@ -125,9 +125,12 @@ impl Contact {
     }
 }
 
-/// Validate a (already upper-cased) country code is a two-letter ISO code (or the
-/// special `C2`), preserving the clear early error the v2 path gave before the
-/// strict `AddressCountry` enum was dropped from the generated client.
+/// Validate a (already upper-cased) country code has the *shape* of an ISO-3166
+/// alpha-2 code — two ASCII uppercase letters (or the special `C2`). This is a
+/// cheap format check, not membership in the ISO-3166 list (e.g. `ZZ` passes);
+/// the API validates the actual code server-side. It preserves the clear early
+/// error the v2 path gave before the strict `AddressCountry` enum was dropped
+/// from the generated client.
 fn validate_country(country_upper: &str, role: Role) -> Result<(), String> {
     let ok = country_upper == "C2"
         || (country_upper.len() == 2 && country_upper.bytes().all(|b| b.is_ascii_uppercase()));

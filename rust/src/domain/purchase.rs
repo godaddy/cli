@@ -67,6 +67,18 @@ fn purchase_consent_types(
     agreement_titles: &[String],
     agreement_types: &[String],
 ) -> Result<Vec<types::AgreementType>> {
+    // Validate the cached quote actually carries agreement types *before* the
+    // --agree gate: an empty list means a corrupt/outdated cache the command can
+    // never proceed with, so surface that single accurate error rather than a
+    // "requires agreeing…" prompt with an empty list that a rerun can't satisfy.
+    if agreement_types.is_empty() {
+        return Err(CliCoreError::message(format!(
+            "the cached quote for {domain} recorded no legal agreement types (the cache is \
+             corrupt or from an older CLI version); re-run `gddy domain quote {domain}` for a \
+             fresh quote."
+        )));
+    }
+
     if !agree {
         let list = agreement_titles
             .iter()
@@ -76,12 +88,6 @@ fn purchase_consent_types(
         return Err(CliCoreError::message(format!(
             "registering {domain} requires agreeing to its legal agreement(s):\n{list}\n\n\
              Re-run with --agree to accept them. See `gddy guide domain-purchase`."
-        )));
-    }
-
-    if agreement_types.is_empty() {
-        return Err(CliCoreError::message(format!(
-            "the quote for {domain} recorded no legal agreement types; cannot record consent"
         )));
     }
 
@@ -228,9 +234,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 CliCoreError::message("the cached quote has an invalid registration period")
             })?;
 
-            let profile = cached.profile.as_ref().and_then(|v| {
-                serde_json::from_value::<types::InlineRegistrationProfile>(v.clone()).ok()
-            });
+            // Fail fast if a cached profile won't deserialize: silently dropping
+            // it would re-send a *different* request than was quoted and surface
+            // as a confusing server-side QUOTE_MISMATCH. A clear re-quote message
+            // is better than a mismatched charge attempt.
+            let profile = match cached.profile.as_ref() {
+                Some(v) => Some(
+                    serde_json::from_value::<types::InlineRegistrationProfile>(v.clone()).map_err(
+                        |e| {
+                            CliCoreError::message(format!(
+                                "the cached quote for {domain} is corrupt or from an older CLI \
+                                 version (could not read its registration profile: {e}); re-run \
+                                 `gddy domain quote {domain}` for a fresh quote."
+                            ))
+                        },
+                    )?,
+                ),
+                None => None,
+            };
 
             let consent = types::Consent {
                 agreed_at: types::DateTime(iso_datetime(chrono::Utc::now())),
@@ -360,6 +381,18 @@ mod tests {
             err.to_string().contains("no legal agreement types"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn empty_agreement_types_is_reported_before_the_agree_gate() {
+        // Without --agree AND with no cached agreement types, the accurate
+        // "no agreement types / re-quote" error must win over the "requires
+        // agreeing…" prompt (which would list nothing and never be satisfiable).
+        let err = purchase_consent_types("example.com", 1, false, false, &[], &[])
+            .expect_err("empty types -> error");
+        let msg = err.to_string();
+        assert!(msg.contains("no legal agreement types"), "{msg}");
+        assert!(!msg.contains("requires agreeing"), "{msg}");
     }
 
     #[test]

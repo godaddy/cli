@@ -5,10 +5,17 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use domains_client::types;
-
 use super::common::{api_error, format_money, make_client, string_list};
+use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
+
+// The handler emits a transformed per-item shape (`listPrice` is a formatted
+// string from SimpleMoney, not the raw `types::Suggestion`), so declare the
+// schema to match what's actually returned for `--schema`/help.
+output_schema!(DomainSuggestResult {
+    "domain": "string";
+    "listPrice": "string";
+});
 
 /// Convert a count-style flag value to the `NonZeroU64` the suggest query params
 /// expect, or `None` when it's absent/zero/negative (so the param is simply
@@ -30,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("domain")
-            .with_json_schema::<types::Suggestion>()
+            .with_output_schema::<DomainSuggestResult>()
             .with_scopes(&[DOMAINS_READ])
             .with_arg(
                 clap::Arg::new("query")
