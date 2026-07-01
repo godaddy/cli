@@ -61,8 +61,11 @@ declare_scopes! {
     /// Read the caller's registered applications. Requested at login by default
     /// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
     APP_REGISTRY_READ => "apps.app-registry:read",
-    /// Create/update the caller's registered applications. Requested at login by
-    /// default.
+    /// Create/update/archive the caller's registered applications. NOT requested
+    /// at login by default (it's a rare operation for most customers); the
+    /// app-registry mutation commands (`application init/update/enable/disable/
+    /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
+    /// requests it on demand (OAuth step-up).
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.

@@ -256,7 +256,7 @@ mod tests {
                         "quoteToken": "tok-abc",
                         "consent": {
                             "agreedAt": "2026-06-30T00:00:00Z",
-                            "agreedBy": { "type": "SHOPPER", "principal": "shopper-42", "ip": "127.0.0.1" },
+                            "agreedBy": { "type": "DIRECT", "principal": "shopper-42", "ip": "127.0.0.1" },
                             "agreementTypes": ["REGISTRATION"]
                         }
                     }));
@@ -268,7 +268,7 @@ mod tests {
                     "period": 1,
                     "consent": {
                         "agreedAt": "2026-06-30T00:00:00Z",
-                        "agreedBy": { "type": "SHOPPER", "principal": "shopper-42" },
+                        "agreedBy": { "type": "DIRECT", "principal": "shopper-42" },
                         "agreementTypes": ["REGISTRATION"]
                     },
                     "registrationId": "reg-1",
@@ -288,7 +288,7 @@ mod tests {
                         actor: None,
                         ip: Some("127.0.0.1".to_string()),
                         principal: "shopper-42".to_string(),
-                        type_: types::ConsentActorType("SHOPPER".to_string()),
+                        type_: types::ConsentActorType("DIRECT".to_string()),
                     },
                     agreement_types: vec![types::AgreementType("REGISTRATION".to_string())],
                 },
