@@ -6,6 +6,10 @@ use serde_json::json;
 
 use crate::application::client::{ApplicationClient, api_url_for_env};
 use crate::output_schema::output_schema;
+// App-registry mutations declare their scopes so `apps.app-registry:write` is
+// requested on demand (OAuth step-up), not granted at every login — it's a
+// rarely-used operation for most customers.
+use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 
 output_schema!(ApplicationSummary {
     "id": "string";
@@ -224,6 +228,7 @@ fn init_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationCredentials>()
             .with_arg(
                 clap::Arg::new("name")
@@ -388,6 +393,7 @@ fn update_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationUpdate>()
             .with_arg(
                 clap::Arg::new("id")
@@ -468,6 +474,7 @@ fn enable_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationRef>()
             .with_arg(
                 clap::Arg::new("name")
@@ -540,6 +547,7 @@ fn disable_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationRef>()
             .with_arg(
                 clap::Arg::new("name")
@@ -614,6 +622,7 @@ fn archive_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Destructive)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationArchive>()
             .with_arg(
                 clap::Arg::new("name")
@@ -655,6 +664,7 @@ fn release_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationRelease>()
             .with_arg(
                 clap::Arg::new("application-id")
@@ -712,6 +722,7 @@ fn deploy_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")

@@ -22,16 +22,16 @@ output_schema!(DomainQuoteResult {
     "quoteToken": "string";
 });
 
-/// Build the inline registration profile (contacts + preferences) for a quote, or
-/// `None` when there is nothing to override (no configured contacts and the
-/// account defaults for privacy/auto-renew/nameservers suffice). When any role is
-/// configured in `contacts.toml` the registrant must be present, since v3's
-/// `Contacts` requires it.
+/// Build the inline registration profile (contacts + preferences) sent with a
+/// quote. Always returns a profile: `auto_renew` and `privacy` are always set
+/// (from the flags/defaults), while `contacts` and `name_servers` are populated
+/// only when configured. When any role is set in `contacts.toml` the registrant
+/// must be present, since v3's `Contacts` requires it — that's the one error case.
 fn build_profile(
     privacy: bool,
     renew_auto: bool,
     name_servers: &[String],
-) -> Result<Option<types::InlineRegistrationProfile>> {
+) -> Result<types::InlineRegistrationProfile> {
     let file = contacts::load().map_err(|e| CliCoreError::message(e.to_string()))?;
     let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
     let registrant = to_api(contacts::Role::Registrant)?;
@@ -66,12 +66,12 @@ fn build_profile(
         )
     });
 
-    Ok(Some(types::InlineRegistrationProfile {
+    Ok(types::InlineRegistrationProfile {
         auto_renew: Some(renew_auto),
         contacts: contacts_obj,
         name_servers,
         privacy: Some(privacy),
-    }))
+    })
 }
 
 /// Render a required agreement as a human line ("Title (url)" / "Title"), for the
@@ -240,14 +240,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // request, so what's quoted here is what `purchase` later registers.
             let client = make_client(&ctx).await?;
             let profile = build_profile(privacy, renew_auto, &name_servers)?;
-            let profile_json = profile.as_ref().and_then(|p| serde_json::to_value(p).ok());
+            // Cache the exact profile we quote with: the token binds a hash of the
+            // domain/price/profile, so `purchase` must re-send this verbatim or the
+            // register call fails with QUOTE_MISMATCH.
+            let profile_json = serde_json::to_value(&profile).ok();
 
             let quote = match client
                 .quote_domain_registration()
                 .body(types::QuoteDomainRegistrationBody {
                     domain: domain.clone(),
                     period: period_nz,
-                    profile,
+                    profile: Some(profile),
                     profile_id: None,
                 })
                 .send()
