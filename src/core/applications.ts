@@ -14,6 +14,7 @@ import {
   archiveApplicationEffect as archiveAppServiceEffect,
   createApplicationEffect as createAppServiceEffect,
   createReleaseEffect as createReleaseServiceEffect,
+  activateReleaseEffect as activateReleaseServiceEffect,
   disableApplicationEffect as disableAppServiceEffect,
   enableApplicationEffect as enableAppServiceEffect,
   getApplicationAndLatestReleaseEffect as getAppAndReleaseServiceEffect,
@@ -377,6 +378,18 @@ interface CreateReleaseResult {
   };
 }
 
+interface ActivateReleaseResult {
+  activateRelease: {
+    id: string;
+    version: string;
+    description?: string;
+    status: string;
+    activatedAt?: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
 interface AppListResult {
   applications: {
     edges: Array<{
@@ -466,6 +479,54 @@ function callCreateRelease(
     createReleaseServiceEffect(input, opts),
     (r) => r as CreateReleaseResult,
   );
+}
+
+function callActivateRelease(
+  applicationId: string,
+  releaseId: string,
+  opts: Parameters<typeof activateReleaseServiceEffect>[2],
+) {
+  return narrowResult(
+    activateReleaseServiceEffect(applicationId, releaseId, opts),
+    (r) => r as ActivateReleaseResult,
+  );
+}
+
+/**
+ * Activate the release, then set the parent application status to ACTIVE.
+ * Deploy must activate the release before promoting the application.
+ */
+function finalizeDeployActivation(
+  applicationId: string,
+  releaseId: string,
+  accessToken: string,
+  options?: DeployOptions,
+): Effect.Effect<void, CliError, FileSystem | Keychain | Fetch> {
+  return Effect.gen(function* () {
+    yield* emitProgress(options, {
+      type: "step",
+      name: "release.activate",
+      status: "started",
+    });
+    yield* callActivateRelease(applicationId, releaseId, { accessToken });
+    yield* emitProgress(options, {
+      type: "step",
+      name: "release.activate",
+      status: "completed",
+    });
+
+    yield* emitProgress(options, {
+      type: "step",
+      name: "application.activate",
+      status: "started",
+    });
+    yield* callUpdateApp(applicationId, { status: "ACTIVE" }, { accessToken });
+    yield* emitProgress(options, {
+      type: "step",
+      name: "application.activate",
+      status: "completed",
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -939,7 +1000,8 @@ export function applicationReleaseEffect(
  * 6. Post-bundle security scan (Phase 2.5)
  * 7. Get presigned upload URLs (Phase 3)
  * 8. Upload artifacts to S3 (Phase 4)
- * 9. Update application status to ACTIVE
+ * 9. Activate the release (activateRelease)
+ * 10. Update application status to ACTIVE
  */
 export function applicationDeployEffect(
   applicationName: string,
@@ -1065,21 +1127,12 @@ export function applicationDeployEffect(
 
     // If no extensions found, skip security scan and bundling (no-op)
     if (extensions.length === 0) {
-      yield* emitProgress(options, {
-        type: "step",
-        name: "application.activate",
-        status: "started",
-      });
-      yield* callUpdateApp(
-        appResult.application.id,
-        { status: "ACTIVE" },
-        { accessToken },
+      yield* finalizeDeployActivation(
+        applicationId,
+        releaseId,
+        accessToken,
+        options,
       );
-      yield* emitProgress(options, {
-        type: "step",
-        name: "application.activate",
-        status: "completed",
-      });
       yield* emitProgress(options, {
         type: "step",
         name: "deploy",
@@ -1374,22 +1427,12 @@ export function applicationDeployEffect(
       });
     }
 
-    // Update application status to ACTIVE
-    yield* emitProgress(options, {
-      type: "step",
-      name: "application.activate",
-      status: "started",
-    });
-    yield* callUpdateApp(
-      appResult.application.id,
-      { status: "ACTIVE" },
-      { accessToken },
+    yield* finalizeDeployActivation(
+      applicationId,
+      releaseId,
+      accessToken,
+      options,
     );
-    yield* emitProgress(options, {
-      type: "step",
-      name: "application.activate",
-      status: "completed",
-    });
     yield* emitProgress(options, {
       type: "step",
       name: "deploy",

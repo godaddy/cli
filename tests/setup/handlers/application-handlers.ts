@@ -49,6 +49,9 @@ export const applicationHandlers = [
       case "CreateRelease":
         return handleCreateReleaseMutation(variables);
 
+      case "ActivateRelease":
+        return handleActivateReleaseMutation(variables);
+
       case "EnableApplication":
         return handleEnableApplicationMutation(variables);
 
@@ -296,6 +299,56 @@ function handleCreateReleaseMutation(variables: Record<string, unknown>) {
 
   return HttpResponse.json({
     data: { createRelease: newRelease },
+  });
+}
+
+function handleActivateReleaseMutation(variables: Record<string, unknown>) {
+  const { applicationId, releaseId } = variables;
+
+  if (!applicationId || !releaseId) {
+    return HttpResponse.json(
+      {
+        errors: [
+          {
+            message: "applicationId and releaseId are required",
+            extensions: { code: "BAD_USER_INPUT" },
+          },
+        ],
+      },
+      { status: 400 },
+    );
+  }
+
+  const app = applicationFixtures.applications.find(
+    (app) => app.id === applicationId,
+  );
+  if (!app) {
+    return HttpResponse.json(
+      {
+        errors: [
+          {
+            message: `Application with id "${applicationId}" not found`,
+            extensions: { code: "NOT_FOUND" },
+          },
+        ],
+      },
+      { status: 404 },
+    );
+  }
+
+  const now = new Date().toISOString();
+  return HttpResponse.json({
+    data: {
+      activateRelease: {
+        id: releaseId,
+        version: "1.0.0",
+        description: "Activated release",
+        status: "ACTIVE",
+        activatedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
   });
 }
 

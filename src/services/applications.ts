@@ -120,6 +120,20 @@ export const CreateReleaseMutation = graphql(`
   }
 `);
 
+export const ActivateReleaseMutation = graphql(`
+  mutation ActivateRelease($applicationId: ID!, $releaseId: ID!) {
+    activateRelease(applicationId: $applicationId, releaseId: $releaseId) {
+      id
+      version
+      description
+      status
+      activatedAt
+      createdAt
+      updatedAt
+    }
+  }
+`);
+
 export const EnableApplicationMutation = graphql(`
   mutation EnableApplication($input: MutationEnableStoreApplicationInput!) {
     enableStoreApplication(input: $input) {
@@ -353,6 +367,35 @@ export function createReleaseEffect(
         client.request(
           CreateReleaseMutation,
           { input: releaseData },
+          getRequestHeaders(accessToken),
+        ),
+      catch: mapGraphQLError,
+    });
+  });
+}
+
+export function activateReleaseEffect(
+  applicationId: string,
+  releaseId: string,
+  { accessToken }: { accessToken: string | null },
+) {
+  return Effect.gen(function* () {
+    if (!accessToken) {
+      return yield* Effect.fail(
+        new AuthenticationError({
+          message: "Access token is required",
+          userMessage: "Authentication required",
+        }),
+      );
+    }
+
+    const client = yield* makeGraphQLClientEffect();
+
+    return yield* Effect.tryPromise({
+      try: () =>
+        client.request(
+          ActivateReleaseMutation,
+          { applicationId, releaseId },
           getRequestHeaders(accessToken),
         ),
       catch: mapGraphQLError,
