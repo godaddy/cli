@@ -8,7 +8,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{make_client, string_list};
+use super::common::{api_error, make_client, string_list};
 use crate::scopes::DOMAINS_READ;
 
 /// Validate `--status` values case-insensitively against the generated
@@ -43,16 +43,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Only domains with this status, e.g. ACTIVE (repeatable)"),
             ),
         |ctx| async move {
+            let debug = !ctx.middleware.debug.is_empty();
             let statuses = parse_statuses(&string_list(&ctx, "status"))?;
             let client = make_client(&ctx).await?;
             let mut req = client.list();
             if !statuses.is_empty() {
                 req = req.statuses(statuses);
             }
-            let resp = req
-                .send()
-                .await
-                .map_err(|e| CliCoreError::message(format!("listing domains failed: {e}")))?;
+            let resp = match req.send().await {
+                Ok(r) => r,
+                Err(e) => return Err(api_error("listing domains", debug, e).await),
+            };
             let domains: Vec<serde_json::Value> = resp
                 .into_inner()
                 .iter()
