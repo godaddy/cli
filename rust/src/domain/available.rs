@@ -85,10 +85,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Err(e) => return Err(api_error("domain availability check", debug, e).await),
             };
 
+            // Emit the required identity fields concretely (never JSON null): the
+            // domain falls back to the known input, and missing booleans read as
+            // false — matching how availability is treated for the next action.
             let mut result = json!({
-                "domain": body.domain,
-                "available": body.available,
-                "definitive": body.definitive,
+                "domain": body.domain.clone().unwrap_or_else(|| domain.clone()),
+                "available": body.available.unwrap_or(false),
+                "definitive": body.definitive.unwrap_or(false),
             });
             let prices = body.prices.unwrap_or_default();
             if let Some(term) = headline_price(&prices) {

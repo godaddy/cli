@@ -97,10 +97,13 @@ fn agreement_line(a: &types::Agreement) -> String {
 /// `agreements` scalar joining the required-agreement titles — so the terms are
 /// visible without `--output json`. The full structured `requiredAgreements`
 /// array is kept for scripting.
-fn quote_to_json(quote: &types::RegistrationQuote) -> serde_json::Value {
+fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serde_json::Value {
+    // Emit the required identity fields concretely (never JSON null): domain
+    // falls back to the known request domain, and a missing `available` reads as
+    // false (which is how callers already treat it).
     let mut out = json!({
-        "domain": quote.domain,
-        "available": quote.available,
+        "domain": quote.domain.clone().unwrap_or_else(|| request_domain.to_owned()),
+        "available": quote.available.unwrap_or(false),
     });
     if let Some(price) = quote.price.as_ref()
         && let Some(p) = format_money(price)
@@ -268,7 +271,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Err(e) => return Err(api_error("quoting registration", debug, e).await),
             };
 
-            let view = quote_to_json(&quote);
+            let view = quote_to_json(&quote, &domain);
 
             // Persist the quote so `purchase --quote-token` can reproduce this
             // exact request (only possible when it's available and got a token).

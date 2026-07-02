@@ -106,12 +106,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let suggestions: Vec<serde_json::Value> = resp
                 .items
                 .into_iter()
-                .map(|s| {
-                    let mut obj = json!({ "domain": s.domain });
+                .filter_map(|s| {
+                    // Skip any suggestion without a domain so every emitted object
+                    // matches the schema (`domain` required) and projects cleanly.
+                    let domain = s.domain?;
+                    let mut obj = json!({ "domain": domain });
                     if let Some(p) = s.list_price.as_ref().and_then(format_money) {
                         obj["listPrice"] = json!(p);
                     }
-                    obj
+                    Some(obj)
                 })
                 .collect();
             Ok(

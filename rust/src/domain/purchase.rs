@@ -48,7 +48,8 @@ fn consent_principal(cred: &Credential) -> Result<String> {
 }
 
 /// Whether an async domain-operation status is terminal (no further polling).
-/// The non-terminal states are `CONFIRMED`/`EXECUTING`; `COMPLETED`/`FAILED` end it.
+/// Only `COMPLETED`/`FAILED` are terminal; every other status (e.g. `SUBMITTED`,
+/// `PENDING`, `CONFIRMED`, `EXECUTING`) is treated as still in progress.
 fn is_terminal_status(status: &str) -> bool {
     matches!(status, "COMPLETED" | "FAILED")
 }
