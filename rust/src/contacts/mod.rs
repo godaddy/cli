@@ -243,9 +243,10 @@ pub fn load() -> Result<ContactsFile, ContactsError> {
 pub fn sample_toml() -> &'static str {
     r#"# gddy domain-purchase contacts
 #
-# Default contacts for `gddy domain purchase`. Any role you define here is sent
-# with the purchase; any role you leave out falls back to your GoDaddy account's
-# default contact for that role.
+# Default contacts for domain registration. These are read at `gddy domain quote`
+# time and locked into the quote token, so `gddy domain purchase` registers with
+# exactly the contacts you quoted — edit this file and re-quote to change them.
+# Any role you leave out falls back to your GoDaddy account's default for that role.
 #
 # To use a role, uncomment its block below and replace the placeholder values.
 # Required fields per role: name_first, name_last, email, phone, address1, city,
