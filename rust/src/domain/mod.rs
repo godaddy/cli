@@ -32,7 +32,7 @@ mod suggest;
 
 // Shared with the `dns` module, which builds the same Domains API client and
 // reuses the repeatable-argument helper.
-pub(crate) use common::{make_client, string_list};
+pub(crate) use common::{api_error, make_client, string_list};
 
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {

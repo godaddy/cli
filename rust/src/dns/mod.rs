@@ -21,7 +21,7 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::domain::{make_client, string_list};
+use crate::domain::{api_error, make_client, string_list};
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_DNS_UPDATE, DOMAINS_READ};
 
@@ -288,38 +288,31 @@ pub fn module() -> Module {
                 let type_opt = arg_str(&ctx, "type");
                 let name_opt = arg_str(&ctx, "name");
 
+                let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
-                let records = match (type_opt.as_deref(), name_opt.as_deref()) {
-                    (None, _) => client
-                        .record_get_all()
-                        .domain(domain.as_str())
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("listing DNS records failed: {e}"))
-                        })?
-                        .into_inner(),
-                    (Some(record_type), None) => client
-                        .record_get_by_type()
-                        .domain(domain.as_str())
-                        .type_(record_type)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("listing DNS records failed: {e}"))
-                        })?
-                        .into_inner(),
-                    (Some(record_type), Some(name)) => client
-                        .record_get()
-                        .domain(domain.as_str())
-                        .type_(record_type)
-                        .name(name)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("listing DNS records failed: {e}"))
-                        })?
-                        .into_inner(),
+                let result = match (type_opt.as_deref(), name_opt.as_deref()) {
+                    (None, _) => client.record_get_all().domain(domain.as_str()).send().await,
+                    (Some(record_type), None) => {
+                        client
+                            .record_get_by_type()
+                            .domain(domain.as_str())
+                            .type_(record_type)
+                            .send()
+                            .await
+                    }
+                    (Some(record_type), Some(name)) => {
+                        client
+                            .record_get()
+                            .domain(domain.as_str())
+                            .type_(record_type)
+                            .name(name)
+                            .send()
+                            .await
+                    }
+                };
+                let records = match result {
+                    Ok(r) => r.into_inner(),
+                    Err(e) => return Err(api_error("listing DNS records", debug, e).await),
                 };
 
                 let out: Vec<Value> = records
@@ -361,18 +354,19 @@ pub fn module() -> Module {
                 let records = v3_records(&name, &record_type, &data, &opts);
                 let count = records.len();
 
+                let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
                 // v3 creates a single record per call; add each in turn.
                 for record in records {
-                    client
+                    if let Err(e) = client
                         .create_dns_record()
                         .zone(domain.as_str())
                         .body(record)
                         .send()
                         .await
-                        .map_err(|e| {
-                            CliCoreError::message(format!("adding DNS record failed: {e}"))
-                        })?;
+                    {
+                        return Err(api_error("adding DNS record", debug, e).await);
+                    }
                 }
 
                 Ok(CommandResult::new(json!({
@@ -414,8 +408,9 @@ pub fn module() -> Module {
                 let records = v1_set_records(&data, &opts);
                 let count = records.len();
 
+                let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
-                client
+                if let Err(e) = client
                     .record_replace_type_name()
                     .domain(domain.as_str())
                     .type_(record_type.as_str())
@@ -423,9 +418,9 @@ pub fn module() -> Module {
                     .body(records)
                     .send()
                     .await
-                    .map_err(|e| {
-                        CliCoreError::message(format!("replacing DNS records failed: {e}"))
-                    })?;
+                {
+                    return Err(api_error("replacing DNS records", debug, e).await);
+                }
 
                 Ok(CommandResult::new(json!({
                     "domain": domain,
@@ -480,17 +475,18 @@ pub fn module() -> Module {
                 let record_type = arg_str(&ctx, "type").unwrap_or_default();
                 let name = arg_str(&ctx, "name").unwrap_or_default();
 
+                let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
-                client
+                if let Err(e) = client
                     .record_delete_type_name()
                     .domain(domain.as_str())
                     .type_(record_type.as_str())
                     .name(name.as_str())
                     .send()
                     .await
-                    .map_err(|e| {
-                        CliCoreError::message(format!("deleting DNS records failed: {e}"))
-                    })?;
+                {
+                    return Err(api_error("deleting DNS records", debug, e).await);
+                }
 
                 Ok(CommandResult::new(json!({
                     "domain": domain,

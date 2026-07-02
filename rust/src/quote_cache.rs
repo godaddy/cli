@@ -12,7 +12,10 @@
 //! Entries are single-use: [`get`] reads a quote without consuming it (so the
 //! `--agree` gate can show its terms before the user confirms), and [`remove`]
 //! deletes it only after the registration succeeds. They also expire with the
-//! token (~10 min), so the file only ever holds a few short-lived records. It
+//! token (~10 min), and expired entries are pruned whenever the cache is read
+//! ([`get`]) or written ([`save`]) — so an abandoned quote's data (including a
+//! serialized profile that may contain contact PII) doesn't linger past its
+//! expiry once any later quote/purchase runs, and the file stays small. It
 //! lives beside `contacts.toml`/`environments.toml`
 //! (`dirs::config_dir()/gddy/quotes.json`); a quote token is a short-lived,
 //! single-use capability, not a long-lived secret.
@@ -138,7 +141,25 @@ pub fn get(token: &str) -> Lookup {
     let Some(path) = quotes_path() else {
         return Lookup::Missing;
     };
-    get_at(&path, chrono::Utc::now(), token)
+    let now = chrono::Utc::now();
+    // Best-effort: drop any expired entries (whose serialized profile may hold
+    // contact PII) so an abandoned quote doesn't linger on disk past its expiry.
+    prune_expired(&path, now);
+    get_at(&path, now, token)
+}
+
+/// Remove every expired entry from the cache file, rewriting it only if any were
+/// dropped. Best-effort — a write failure just leaves stale entries (which are
+/// still treated as expired on read and pruned on the next successful write).
+fn prune_expired(path: &Path, now: chrono::DateTime<chrono::Utc>) {
+    let mut file = load(path);
+    let before = file.quotes.len();
+    file.quotes.retain(|_, q| !is_expired(q, now));
+    if file.quotes.len() != before
+        && let Err(e) = write(path, &file)
+    {
+        tracing::warn!(error = %e, "could not prune expired quotes from the cache");
+    }
 }
 
 fn get_at(path: &Path, now: chrono::DateTime<chrono::Utc>, token: &str) -> Lookup {
@@ -283,5 +304,38 @@ mod tests {
 
         assert!(matches!(get_at(&path, later, "old"), Lookup::Missing));
         assert!(matches!(get_at(&path, later, "new"), Lookup::Found(_)));
+    }
+
+    #[test]
+    fn prune_expired_removes_stale_entries_from_disk() {
+        // Bounds PII-at-rest: an expired quote is physically removed on read,
+        // not just masked as expired, so an abandoned quote can't linger.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("quotes.json");
+        let saved = at(2026, 7, 1, 12);
+        save_at(
+            &path,
+            saved,
+            "old",
+            quote("old.com", Some("2026-07-01T12:30:00Z")),
+        )
+        .expect("save");
+        save_at(
+            &path,
+            saved,
+            "live",
+            quote("live.com", Some("2026-07-01T14:00:00Z")),
+        )
+        .expect("save");
+
+        // At 13:00 "old" (expires 12:30) is stale; "live" (expires 14:00) isn't.
+        prune_expired(&path, at(2026, 7, 1, 13));
+
+        let remaining = load(&path).quotes;
+        assert!(
+            !remaining.contains_key("old"),
+            "expired entry must be pruned from disk"
+        );
+        assert!(remaining.contains_key("live"), "live entry must remain");
     }
 }

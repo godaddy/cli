@@ -106,7 +106,7 @@ pub(crate) fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
 /// for unexpected (non-2xx) responses so the API's actual message isn't lost
 /// (progenitor's `Display` prints only the status). Async because reading the
 /// body is async.
-pub(super) async fn api_error(
+pub(crate) async fn api_error(
     action: &str,
     debug: bool,
     err: domains_client::Error<()>,
