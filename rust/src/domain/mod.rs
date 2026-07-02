@@ -51,7 +51,8 @@ pub fn module() -> Module {
              • nameservers set   — point a domain at custom nameservers\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`. Manage a domain's DNS with `gddy dns`.",
+             `domains.domain:create`, and `nameservers set` needs\n\
+             `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )
         .with_command(list::command())

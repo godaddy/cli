@@ -14,8 +14,9 @@ use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
 output_schema!(NameserversResult {
     "domain": "string";
     "nameservers": "[]string";
-    "operationId": "string";
-    "status": "string";
+    // Present when the async operation returns them (serialized from Options).
+    "operationId": "string", optional;
+    "status": "string", optional;
 });
 
 pub(super) fn group() -> RuntimeGroupSpec {

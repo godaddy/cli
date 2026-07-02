@@ -17,8 +17,11 @@ pub(super) fn group() -> RuntimeGroupSpec {
         )
         .with_long(
             "Manage the optional contacts.toml that supplies registrant/admin/billing/\
-                 tech contacts for `gddy domain purchase`. When a role is absent the \
-                 purchase falls back to your account's default contact for that role.",
+                 tech contacts for a registration. These are read at `gddy domain quote` \
+                 time and bound into the quote token, so `gddy domain purchase` registers \
+                 with exactly the contacts you quoted — edit contacts.toml and re-quote to \
+                 change them. When a role is absent the registration falls back to your \
+                 account's default contact for that role.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_with_context(
