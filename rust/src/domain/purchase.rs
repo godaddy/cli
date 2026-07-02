@@ -34,17 +34,28 @@ fn iso_datetime(now: chrono::DateTime<chrono::Utc>) -> String {
 /// verifies this principal against the authenticated identity, so a non-customer
 /// subject is rejected with a clear error before the paid call.
 fn consent_principal(cred: &Credential) -> Result<String> {
-    cred.sub
+    let id = cred
+        .sub
         .strip_prefix("customer:")
-        .filter(|uuid| !uuid.is_empty())
-        .map(str::to_owned)
+        .filter(|id| !id.is_empty())
         .ok_or_else(|| {
             CliCoreError::message(format!(
                 "the OAuth token's subject ({:?}) is not a customer identity; `domain purchase` \
                  needs a customer-scoped token",
                 cred.sub
             ))
-        })
+        })?;
+    // The principal is sent to the paid register endpoint; validate it's a
+    // customer UUID up front so a malformed `customer:<not-a-uuid>` subject fails
+    // fast with a clear message rather than as an opaque server-side rejection.
+    if uuid::Uuid::parse_str(id).is_err() {
+        return Err(CliCoreError::message(format!(
+            "the OAuth token's customer subject ({:?}) is not a valid UUID; `domain purchase` \
+             needs a customer-scoped token",
+            cred.sub
+        )));
+    }
+    Ok(id.to_owned())
 }
 
 /// Whether an async domain-operation status is terminal (no further polling).
@@ -421,6 +432,14 @@ mod tests {
             ..Default::default()
         };
         assert!(consent_principal(&shopper).is_err());
+
+        // A customer subject that isn't a UUID must fail fast before the paid call.
+        let not_uuid = Credential {
+            sub: "customer:12345".to_string(),
+            ..Default::default()
+        };
+        let err = consent_principal(&not_uuid).expect_err("non-uuid customer subject");
+        assert!(err.to_string().contains("not a valid UUID"), "{err}");
     }
 
     #[test]

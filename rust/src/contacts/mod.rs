@@ -95,14 +95,16 @@ impl Role {
 impl Contact {
     /// Convert to the v3 API contact (`Contact`), validating the country code.
     /// Returns a human-readable error (surfaced by `domain purchase`/`quote`) when
-    /// the country is not a recognized two-letter ISO code or the phone can't be
-    /// parsed.
+    /// the country isn't shaped like an ISO-3166 alpha-2 code (see
+    /// [`validate_country`] — a format check, not list membership) or the phone
+    /// can't be parsed.
     ///
     /// v3's `Contact` is leaner than v2's: it has no middle name, job title, fax,
     /// or character-encoding field, and the phone is a structured object
     /// (`countryCode`/`nationalNumber`) rather than a dotted `+1.4805551212`
-    /// string. The `name_middle`/`job_title`/`fax` columns in `contacts.toml` are
-    /// kept in the file schema for backward compatibility but are not sent to v3.
+    /// string. `name_middle`/`job_title`/`fax` are not part of the struct schema;
+    /// a leftover such key in a v1/v2-era `contacts.toml` is simply ignored (serde
+    /// skips unknown keys).
     pub fn to_api(&self, role: Role) -> Result<api::Contact, String> {
         let country_upper = self.country.to_ascii_uppercase();
         validate_country(&country_upper, role)?;
