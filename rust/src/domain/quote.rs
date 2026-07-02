@@ -253,8 +253,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let profile = build_profile(privacy, renew_auto, &name_servers)?;
             // Cache the exact profile we quote with: the token binds a hash of the
             // domain/price/profile, so `purchase` must re-send this verbatim or the
-            // register call fails with QUOTE_MISMATCH.
-            let profile_json = serde_json::to_value(&profile).ok();
+            // register call fails with QUOTE_MISMATCH. Serializing this in-memory
+            // struct effectively never fails, but if it did, silently caching a
+            // profile-less quote would itself cause that mismatch — so fail fast.
+            let profile_json = serde_json::to_value(&profile).map_err(|e| {
+                CliCoreError::message(format!(
+                    "could not serialize the registration profile for the quote cache: {e}"
+                ))
+            })?;
 
             let quote = match client
                 .quote_domain_registration()
@@ -296,7 +302,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         .and_then(|v| v.as_str())
                         .map(str::to_owned),
                     expires_at: quote.expires_at.as_ref().map(|e| e.to_string()),
-                    profile: profile_json,
+                    profile: Some(profile_json),
                 };
                 if let Err(e) = quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't
