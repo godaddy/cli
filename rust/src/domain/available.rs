@@ -18,10 +18,11 @@ output_schema!(DomainAvailableResult {
     "domain": "string";
     "available": "bool";
     "definitive": "bool";
-    "price": "string";
-    "currency": "string";
-    "renewalPrice": "string";
-    "period": "number";
+    // Present only when the API returns a headline price for the term.
+    "price": "string", optional;
+    "currency": "string", optional;
+    "renewalPrice": "string", optional;
+    "period": "number", optional;
 });
 
 /// The headline price for an availability/quote: the entry for a 1-year term if

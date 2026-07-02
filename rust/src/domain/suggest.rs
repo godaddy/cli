@@ -14,7 +14,8 @@ use crate::scopes::DOMAINS_READ;
 // schema to match what's actually returned for `--schema`/help.
 output_schema!(DomainSuggestResult {
     "domain": "string";
-    "listPrice": "string";
+    // Present only when the API returns a formattable list price.
+    "listPrice": "string", optional;
 });
 
 /// Convert a count-style flag value to the `NonZeroU64` the suggest query params

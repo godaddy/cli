@@ -17,9 +17,10 @@ use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 output_schema!(DomainPurchaseResult {
     "domain": "string";
     "status": "string";
-    "operationId": "string";
-    "price": "string";
-    "currency": "string";
+    // Present depending on the async operation + the cached quote's receipt.
+    "operationId": "string", optional;
+    "price": "string", optional;
+    "currency": "string", optional;
 });
 
 /// Format a UTC instant as the API's consent timestamp: RFC 3339 with a literal

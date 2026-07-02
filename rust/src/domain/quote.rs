@@ -13,13 +13,21 @@ use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 use crate::{contacts, quote_cache};
 
+// Mirrors what `quote_to_json` emits: `domain`/`available` are always present;
+// the rest appear only when the API supplies them (available + priced quotes).
 output_schema!(DomainQuoteResult {
     "domain": "string";
     "available": "bool";
-    "price": "string";
-    "currency": "string";
-    "period": "number";
-    "quoteToken": "string";
+    "price": "string", optional;
+    "currency": "string", optional;
+    "renewalPrice": "string", optional;
+    "period": "number", optional;
+    "quoteToken": "string", optional;
+    "expiresAt": "string", optional;
+    "irreversible": "bool", optional;
+    "agreements": "string", optional;
+    "requiredAgreements": "[]object", optional;
+    "resolved": "object", optional;
 });
 
 /// Build the inline registration profile (contacts + preferences) sent with a
