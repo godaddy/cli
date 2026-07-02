@@ -100,6 +100,11 @@
       "file": "customer-profiles.json",
       "title": "Customers API",
       "endpointCount": 9
+    },
+    "hosting-nodejs": {
+      "file": "hosting-nodejs.json",
+      "title": "Node.js Hosting Public API",
+      "endpointCount": 15
     }
   }
 }

@@ -16,6 +16,7 @@ All source code lives under `rust/`.
 - **Format**: `cargo fmt` (from `rust/`)
 - **Check**: `cargo check` (from `rust/`)
 - **Regenerate API catalog**: `cargo run -p generate-api-catalog` (from `rust/`)
+- **Regenerate Node.js Hosting spec**: `./rust/scripts/regenerate-hosting-spec.sh`
 
 ## Architecture
 
@@ -37,6 +38,11 @@ rust/src/
   api_explorer/mod.rs        — api list/describe/search/call commands
   actions_catalog/mod.rs     — embedded action schema catalog
   extension/mod.rs           — esbuild bundler + security scanner (SEC101–SEC115)
+  hosting/
+    nodejs/
+      mod.rs                 — hosting nodejs command group
+      client.rs              — Node.js Hosting REST client
+      scopes.rs              — OAuth scope constants
   webhook/mod.rs             — webhook commands
   config/mod.rs              — godaddy.toml read/write
   auth.rs                    — auth module registration
