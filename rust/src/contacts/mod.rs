@@ -241,7 +241,7 @@ pub fn load() -> Result<ContactsFile, ContactsError> {
 /// fall back to the account) until the user deliberately uncomments and fills a
 /// role — they can't accidentally register a domain with the placeholder values.
 pub fn sample_toml() -> &'static str {
-    r#"# gddy domain-purchase contacts
+    r#"# gddy domain registration contacts
 #
 # Default contacts for domain registration. These are read at `gddy domain quote`
 # time and locked into the quote token, so `gddy domain purchase` registers with

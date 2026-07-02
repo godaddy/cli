@@ -2,7 +2,8 @@
 //!
 //! # Why this module exists
 //!
-//! A command declares the scopes it needs with [`CommandSpec::with_scopes`], and
+//! A command declares the scopes it needs with
+//! [`cli_engine::CommandSpec::with_scopes`], and
 //! cli-engine's OAuth step-up mints a token carrying them. But a scope the CLI
 //! *requests* is only grantable if the CLI's **OAuth client** is *registered* for
 //! it — otherwise the authorization server refuses to mint a token carrying the

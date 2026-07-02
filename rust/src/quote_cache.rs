@@ -82,14 +82,17 @@ pub fn quotes_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("gddy").join("quotes.json"))
 }
 
-/// Whether a cached quote has expired at `now`. An unparseable or absent
-/// `expires_at` is treated as not-expired (the API always returns one in
-/// practice; being lenient never wrongly discards a usable quote).
+/// Whether a cached quote has expired at `now`. An *absent* `expires_at` is
+/// treated as not-expired (the API always returns one in practice; a quote with
+/// no expiry never expires locally). An *unparseable* one is treated as expired:
+/// a malformed timestamp only arises from corruption, a manual edit, or an older
+/// format, so the entry is already suspect — expiring it avoids keeping its
+/// serialized profile (potential PII) on disk indefinitely.
 fn is_expired(quote: &CachedQuote, now: chrono::DateTime<chrono::Utc>) -> bool {
     match quote.expires_at.as_deref() {
         Some(ts) => chrono::DateTime::parse_from_rfc3339(ts)
             .map(|exp| exp.with_timezone(&chrono::Utc) <= now)
-            .unwrap_or(false),
+            .unwrap_or(true),
         None => false,
     }
 }
@@ -268,6 +271,17 @@ mod tests {
             get_at(&path, at(2026, 7, 1, 13), "tok-1"),
             Lookup::Expired
         ));
+    }
+
+    #[test]
+    fn unparseable_expiry_is_treated_as_expired() {
+        // A malformed timestamp (corruption/manual edit/old format) must not keep
+        // an entry — and its potential PII — alive forever.
+        let q = quote("x.com", Some("not-a-timestamp"));
+        assert!(is_expired(&q, at(2026, 7, 1, 12)));
+        // Absent expiry still means never-expires-locally.
+        let no_expiry = quote("y.com", None);
+        assert!(!is_expired(&no_expiry, at(2026, 7, 1, 12)));
     }
 
     #[test]
