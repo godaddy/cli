@@ -35,6 +35,18 @@ output_schema!(DnsWriteResult {
     "action": "string";
 });
 
+// `dns add` creates one v3 record per `--data` value; it reports each outcome
+// individually so a partial failure is explicit (see the handler).
+output_schema!(DnsAddResult {
+    "domain": "string";
+    "type": "string";
+    "name": "string";
+    "created": "number";
+    "failed": "number";
+    "results": "[]object";
+    "action": "string";
+});
+
 output_schema!(DnsDeleteResult {
     "domain": "string";
     "type": "string";
@@ -144,6 +156,58 @@ fn v3_records(
             weight: to_u16(opts.weight),
         })
         .collect()
+}
+
+/// Summarize the per-record create outcomes of `dns add` (each `--data` value
+/// paired with `Ok(())` or an `Err(message)`), preserving input order. Returns
+/// the success JSON payload when *every* record was created, or an error message
+/// (a non-zero exit) with a per-record breakdown if any failed. Pure — no I/O —
+/// so the aggregation and the success/failure decision are unit-testable.
+fn summarize_add_outcomes(
+    domain: &str,
+    record_type: &str,
+    name: &str,
+    outcomes: Vec<(String, Result<(), String>)>,
+) -> Result<Value, String> {
+    let mut results = Vec::with_capacity(outcomes.len());
+    let mut failed = 0usize;
+    for (value, outcome) in &outcomes {
+        match outcome {
+            Ok(()) => results.push(json!({ "data": value, "status": "created" })),
+            Err(err) => {
+                failed += 1;
+                results.push(json!({ "data": value, "status": "failed", "error": err }));
+            }
+        }
+    }
+    let total = results.len();
+    let created = total - failed;
+
+    if failed > 0 {
+        let breakdown = outcomes
+            .iter()
+            .map(|(value, outcome)| match outcome {
+                Ok(()) => format!("  ✓ {value} — created"),
+                Err(err) => format!("  ✗ {value} — {err}"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "added {created} of {total} DNS record(s) for {name} ({record_type}); {failed} \
+             failed:\n{breakdown}\n\nRe-run `gddy dns add` with just the failed value(s), or \
+             `gddy dns list --type {record_type} --name {name}` to review the current state."
+        ));
+    }
+
+    Ok(json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        "created": created,
+        "failed": failed,
+        "results": results,
+        "action": "add",
+    }))
 }
 
 /// Build the v1 type+name-relative record bodies for `set` (the type and name
@@ -341,8 +405,8 @@ pub fn module() -> Module {
                 )
                 .with_system("domain")
                 .with_tier(Tier::Mutate)
-                .with_default_fields("domain,type,name,records")
-                .with_output_schema::<DnsWriteResult>()
+                .with_default_fields("domain,type,name,created,failed")
+                .with_output_schema::<DnsAddResult>()
                 .with_scopes(&[DOMAINS_DNS_UPDATE]),
             ),
             |ctx| async move {
@@ -352,30 +416,34 @@ pub fn module() -> Module {
                 let data = string_list(&ctx, "data");
                 let opts = RecordOptions::from_ctx(&ctx);
                 let records = v3_records(&name, &record_type, &data, &opts);
-                let count = records.len();
 
                 let debug = !ctx.middleware.debug.is_empty();
                 let client = make_client(&ctx).await?;
-                // v3 creates a single record per call; add each in turn.
-                for record in records {
-                    if let Err(e) = client
+                // v3 creates a single record per call. Attempt every record —
+                // don't stop at the first failure — and record each outcome, so a
+                // partial failure is explicit rather than leaving the user unsure
+                // which of the records were actually created. `data` and `records`
+                // are parallel (one record per `--data` value).
+                let mut outcomes = Vec::with_capacity(records.len());
+                for (value, record) in data.iter().zip(records) {
+                    let outcome = match client
                         .create_dns_record()
                         .zone(domain.as_str())
                         .body(record)
                         .send()
                         .await
                     {
-                        return Err(api_error("adding DNS record", debug, e).await);
-                    }
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(api_error("adding DNS record", debug, e).await.to_string()),
+                    };
+                    outcomes.push((value.clone(), outcome));
                 }
 
-                Ok(CommandResult::new(json!({
-                    "domain": domain,
-                    "type": record_type,
-                    "name": name,
-                    "records": count,
-                    "action": "add",
-                })))
+                // All-created → success payload; any failure → non-zero error
+                // with a per-record breakdown.
+                summarize_add_outcomes(&domain, &record_type, &name, outcomes)
+                    .map(CommandResult::new)
+                    .map_err(CliCoreError::message)
             },
         ))
         // --- set (v1) ---------------------------------------------------
@@ -710,5 +778,49 @@ mod tests {
                 output.rendered
             );
         }
+    }
+
+    #[test]
+    fn dns_add_all_created_reports_each_record() {
+        let payload = summarize_add_outcomes(
+            "example.com",
+            "A",
+            "www",
+            vec![
+                ("1.2.3.4".to_string(), Ok(())),
+                ("5.6.7.8".to_string(), Ok(())),
+            ],
+        )
+        .expect("all created -> success payload");
+        assert_eq!(payload["created"], 2);
+        assert_eq!(payload["failed"], 0);
+        let results = payload["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["data"], "1.2.3.4");
+        assert_eq!(results[0]["status"], "created");
+        assert_eq!(results[1]["data"], "5.6.7.8");
+    }
+
+    #[test]
+    fn dns_add_partial_failure_is_an_error_with_per_record_breakdown() {
+        // Middle record fails: the command must NOT succeed, and the message must
+        // make clear which values were created and which failed (and why).
+        let err = summarize_add_outcomes(
+            "example.com",
+            "A",
+            "www",
+            vec![
+                ("1.2.3.4".to_string(), Ok(())),
+                ("5.6.7.8".to_string(), Err("422 invalid data".to_string())),
+                ("9.9.9.9".to_string(), Ok(())),
+            ],
+        )
+        .expect_err("any failure -> error");
+        assert!(err.contains("added 2 of 3"), "{err}");
+        assert!(err.contains("1 failed"), "{err}");
+        // Per-record breakdown names both the created and the failed values.
+        assert!(err.contains("✓ 1.2.3.4"), "{err}");
+        assert!(err.contains("✗ 5.6.7.8 — 422 invalid data"), "{err}");
+        assert!(err.contains("✓ 9.9.9.9"), "{err}");
     }
 }

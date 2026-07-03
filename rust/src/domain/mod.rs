@@ -8,11 +8,10 @@
 //! * **v1** — `list` (the shopper's domains) and `agreements` (a TLD's legal
 //!   agreements), which v3 does not yet serve.
 //!
-//! Both accept either an sso-key API key or an OAuth bearer token; the scheme is
-//! chosen from the credential the
-//! [`CompositeAuthProvider`](crate::auth::CompositeAuthProvider) returns. The v3
-//! registration flow (`purchase`) requires an OAuth customer token (it mints a
-//! single-use quote token, records consent, and registers under the customer).
+//! All of these authenticate with an OAuth bearer token from
+//! [`GoDaddyAuthProvider`](crate::auth::GoDaddyAuthProvider). The v3 registration
+//! flow (`purchase`) requires an OAuth customer token (it mints a single-use
+//! quote token, records consent, and registers under the customer).
 //!
 //! Each subcommand lives in its own module; [`common`] holds the shared
 //! authenticated client, money formatting, and API-error rendering.

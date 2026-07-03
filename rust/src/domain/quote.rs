@@ -303,6 +303,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         .map(str::to_owned),
                     expires_at: quote.expires_at.as_ref().map(|e| e.to_string()),
                     profile: Some(profile_json),
+                    // Mint the register idempotency key now, so every `purchase`
+                    // attempt for this token reuses it (a retry after a lost
+                    // response can't double-charge).
+                    idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
                 };
                 if let Err(e) = quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't

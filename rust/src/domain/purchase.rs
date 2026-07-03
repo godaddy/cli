@@ -9,7 +9,6 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, make_client_with_cred};
-use crate::auth::SSO_KEY_PROVIDER;
 use crate::output_schema::output_schema;
 use crate::quote_cache;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -200,18 +199,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .to_owned();
             let debug = !ctx.middleware.debug.is_empty();
 
-            // The v3 register endpoint needs the customer identity from an OAuth
-            // token (for the consent principal); sso-key auth can never satisfy
-            // it. Resolve auth *before* consuming the cached quote so a failed
-            // login never touches the cache.
+            // The v3 register endpoint needs the customer identity from the OAuth
+            // token (for the consent principal). Resolve auth *before* consuming
+            // the cached quote so a failed login never touches the cache.
             let cred = ctx.credential().await?;
-            if cred.provider == SSO_KEY_PROVIDER {
-                return Err(CliCoreError::message(
-                    "`domain purchase` uses the v3 registration API, which requires OAuth \
-                         authentication; this environment is configured for an sso-key. Re-run \
-                         against an OAuth environment.",
-                ));
-            }
             let principal = consent_principal(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
@@ -230,6 +221,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         "no cached quote for that token. Run `gddy domain quote <domain>` \
                              first — quotes are cached locally, so quote and purchase must run \
                              on the same machine within the token's ~10-minute lifetime.",
+                    ));
+                }
+                quote_cache::Lookup::NoConfigDir => {
+                    return Err(CliCoreError::message(
+                        "could not locate a config directory to read the quote cache from. \
+                             `domain purchase` needs the local quote written by `domain quote`; \
+                             ensure a home/config directory is available (e.g. set HOME or \
+                             XDG_CONFIG_HOME) and re-run `gddy domain quote <domain>`.",
                     ));
                 }
             };
@@ -293,7 +292,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             };
 
             let client = make_client_with_cred(&ctx.middleware.env, &cred)?;
-            let idempotency_key = uuid::Uuid::new_v4().to_string();
+            // Reuse the quote's idempotency key across attempts (older cache
+            // entries may lack one — fall back to a fresh key).
+            let idempotency_key = cached
+                .idempotency_key
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let accepted = match client
                 .register_domain()
                 .idempotency_key(idempotency_key)
@@ -339,6 +343,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         Err(_) => break,
                     }
                 }
+            }
+
+            // A terminal FAILED status means the registration did not complete —
+            // report it as an error (non-zero exit), not a success payload.
+            if status == "FAILED" {
+                let op = operation_id
+                    .as_ref()
+                    .map(|o| o.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                return Err(CliCoreError::message(format!(
+                    "registration for {domain} failed (operation {op}); no domain was registered. \
+                     Check `gddy domain get {domain}`, then re-quote to try again."
+                )));
+            }
+            // Bounded polling gave up before a terminal state (e.g. still
+            // SUBMITTED/PENDING). It may still complete server-side, so tell the
+            // user how to check rather than implying it finished.
+            if operation_id.is_some() && !is_terminal_status(&status) {
+                tracing::info!(
+                    %domain,
+                    %status,
+                    "registration still in progress after polling; check later with \
+                     `gddy domain get {domain}`"
+                );
             }
 
             let result = json!({

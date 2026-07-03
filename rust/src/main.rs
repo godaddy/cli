@@ -29,7 +29,7 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let auth_provider = Arc::new(auth::CompositeAuthProvider::new());
+    let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
 
     let cli = Cli::new(
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")

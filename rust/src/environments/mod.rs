@@ -64,10 +64,7 @@ const BUILTINS: &[Builtin] = &[
 ];
 
 /// A fully-resolved environment: everything needed to talk to it.
-///
-/// `Debug` is hand-written (not derived) to redact the sso-key fields — see the
-/// impl below — so a stray `{:?}`/`?env` never leaks credentials.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ResolvedEnv {
     pub name: String,
     pub api_url: String,
@@ -82,62 +79,12 @@ pub struct ResolvedEnv {
     /// Defaults to `account.godaddy.com` for prod and `account.{env}-godaddy.com`
     /// for other environments; overridable via `<PREFIX>_ACCOUNT_URL` or local config.
     pub account_url: String,
-    /// Optional sso-key for the domain endpoints (which accept either sso-key or
-    /// OAuth). When both are set, `domain:*` commands authenticate with
-    /// `Authorization: sso-key <key>:<secret>`; when absent they use the OAuth
-    /// credential.
-    pub api_key: Option<String>,
-    pub api_secret: Option<String>,
 }
 
 /// The domain-command view of a resolved environment.
-///
-/// `Debug` is hand-written (see below) to redact the sso-key fields.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ResolvedDomains {
     pub base_url: String,
-    pub api_key: Option<String>,
-    pub api_secret: Option<String>,
-}
-
-/// `Debug` wrapper that never prints a secret's value: shows `Some(<redacted>)`
-/// or `None`, so credential-bearing structs can keep a useful `Debug` without
-/// risking leakage via `{:?}` in logs/errors.
-struct Redacted<'a>(&'a Option<String>);
-
-impl std::fmt::Debug for Redacted<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            Some(_) => f.write_str("Some(<redacted>)"),
-            None => f.write_str("None"),
-        }
-    }
-}
-
-impl std::fmt::Debug for ResolvedEnv {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ResolvedEnv")
-            .field("name", &self.name)
-            .field("api_url", &self.api_url)
-            .field("client_id", &self.client_id)
-            .field("auth_url", &self.auth_url)
-            .field("token_url", &self.token_url)
-            .field("domains_api_url", &self.domains_api_url)
-            .field("account_url", &self.account_url)
-            .field("api_key", &Redacted(&self.api_key))
-            .field("api_secret", &Redacted(&self.api_secret))
-            .finish()
-    }
-}
-
-impl std::fmt::Debug for ResolvedDomains {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ResolvedDomains")
-            .field("base_url", &self.base_url)
-            .field("api_key", &Redacted(&self.api_key))
-            .field("api_secret", &Redacted(&self.api_secret))
-            .finish()
-    }
 }
 
 /// Schema of the local environments file (see [`environments_path`]).
@@ -147,7 +94,7 @@ pub struct EnvironmentsFile {
     pub environments: BTreeMap<String, EnvEntry>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct EnvEntry {
     pub api_url: String,
     #[serde(default)]
@@ -162,28 +109,6 @@ pub struct EnvEntry {
     /// Override base URL for the account management site (see [`ResolvedEnv::account_url`]).
     #[serde(default)]
     pub account_url: Option<String>,
-    /// sso-key credentials for domain endpoints (see [`ResolvedEnv::api_key`]).
-    #[serde(default)]
-    pub api_key: Option<String>,
-    #[serde(default)]
-    pub api_secret: Option<String>,
-}
-
-// Hand-written so the sso-key fields are redacted (keeps `EnvironmentsFile`'s
-// derived `Debug` working without risking credential leakage).
-impl std::fmt::Debug for EnvEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EnvEntry")
-            .field("api_url", &self.api_url)
-            .field("client_id", &self.client_id)
-            .field("auth_url", &self.auth_url)
-            .field("token_url", &self.token_url)
-            .field("domains_api_url", &self.domains_api_url)
-            .field("account_url", &self.account_url)
-            .field("api_key", &Redacted(&self.api_key))
-            .field("api_secret", &Redacted(&self.api_secret))
-            .finish()
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -251,13 +176,6 @@ fn clean_url(raw: &str) -> Option<String> {
         .next()
         .unwrap_or("");
     (!host.is_empty()).then(|| trimmed.to_owned())
-}
-
-/// Trims a candidate secret/value and returns it only if non-empty. Keeps the
-/// key/secret resolution consistent with `clean_url`'s "blank never clobbers".
-fn non_empty(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 /// Path to the local environments config file, if a config dir can be resolved.
@@ -340,7 +258,7 @@ fn resolve_with(
     }
 
     // Layer 3: per-env `<PREFIX>_*` overrides (highest precedence). Empty values
-    // are ignored (clean_url for URLs, non_empty for the key/secret).
+    // are ignored (clean_url normalizes URLs and drops blanks).
     let prefix = env_prefix(name);
     if let Some(url) = var(&format!("{prefix}_API_URL")).and_then(|v| clean_url(&v)) {
         api_url = Some(url);
@@ -351,29 +269,6 @@ fn resolve_with(
     if let Some(url) = var(&format!("{prefix}_ACCOUNT_URL")).and_then(|v| clean_url(&v)) {
         account_url = Some(url);
     }
-
-    // The sso-key is a (key, secret) pair; resolve it atomically from a single
-    // layer — the env-var pair wins over the file pair — so we never mix layers
-    // (e.g. an env-var key with a file-provided secret), which would send a bogus
-    // `sso-key key:secret` and yield confusing 401s. A partial pair (only one of
-    // the two present in a layer) yields no sso-key, so domain commands fall back
-    // to OAuth.
-    let entry = file.environments.get(name);
-    let (api_key, api_secret) = match (
-        var(&format!("{prefix}_API_KEY")).and_then(|v| non_empty(&v)),
-        var(&format!("{prefix}_API_SECRET")).and_then(|v| non_empty(&v)),
-    ) {
-        (Some(k), Some(s)) => (Some(k), Some(s)),
-        _ => match (
-            entry.and_then(|e| e.api_key.as_deref()).and_then(non_empty),
-            entry
-                .and_then(|e| e.api_secret.as_deref())
-                .and_then(non_empty),
-        ) {
-            (Some(k), Some(s)) => (Some(k), Some(s)),
-            _ => (None, None),
-        },
-    };
 
     // api_url is already trimmed/normalized by clean_url (and built-ins carry no
     // trailing slash), so callers concatenating paths never produce `//`.
@@ -396,8 +291,6 @@ fn resolve_with(
         token_url,
         domains_api_url,
         account_url,
-        api_key,
-        api_secret,
     })
 }
 
@@ -447,14 +340,12 @@ pub fn resolve(name: &str) -> Result<ResolvedEnv, EnvError> {
     }
 }
 
-/// Resolve the domain-command view of an environment: the domains base URL and
-/// any sso-key credentials. Thin wrapper over [`resolve`].
+/// Resolve the domain-command view of an environment: its domains base URL.
+/// Thin wrapper over [`resolve`].
 pub fn resolve_domains(name: &str) -> Result<ResolvedDomains, EnvError> {
     let env = resolve(name)?;
     Ok(ResolvedDomains {
         base_url: env.domains_api_url,
-        api_key: env.api_key,
-        api_secret: env.api_secret,
     })
 }
 
@@ -511,8 +402,6 @@ mod tests {
             token_url: None,
             domains_api_url: None,
             account_url: None,
-            api_key: None,
-            api_secret: None,
         }
     }
 
@@ -589,8 +478,6 @@ mod tests {
                 token_url: Some("https://auth.example.invalid/token".to_owned()),
                 domains_api_url: None,
                 account_url: None,
-                api_key: None,
-                api_secret: None,
             },
         );
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
@@ -655,8 +542,6 @@ mod tests {
                 token_url: Some("   ".to_owned()),                           // blank
                 domains_api_url: None,
                 account_url: None,
-                api_key: None,
-                api_secret: None,
             },
         );
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
@@ -739,11 +624,10 @@ mod tests {
         let file = EnvironmentsFile::default();
         let env = resolve_with("prod", &file, no_vars).expect("prod resolves");
         assert_eq!(env.domains_api_url, env.api_url);
-        assert!(env.api_key.is_none() && env.api_secret.is_none());
     }
 
     #[test]
-    fn domains_url_and_sso_key_from_local_config() {
+    fn domains_url_from_local_config() {
         let mut file = EnvironmentsFile::default();
         file.environments.insert(
             "dev".to_owned(),
@@ -754,20 +638,16 @@ mod tests {
                 token_url: None,
                 domains_api_url: Some("https://domains.dev.example.invalid".to_owned()),
                 account_url: None,
-                api_key: Some("KEY".to_owned()),
-                api_secret: Some("SECRET".to_owned()),
             },
         );
         let env = resolve_with("dev", &file, no_vars).expect("dev resolves");
         assert_eq!(env.domains_api_url, "https://domains.dev.example.invalid");
-        assert_eq!(env.api_key.as_deref(), Some("KEY"));
-        assert_eq!(env.api_secret.as_deref(), Some("SECRET"));
         // api_url is unaffected by the domains override.
         assert_eq!(env.api_url, "https://dev.example.invalid");
     }
 
     #[test]
-    fn sso_key_and_domains_url_env_vars_override_config() {
+    fn domains_url_env_var_overrides_config() {
         let mut file = EnvironmentsFile::default();
         file.environments.insert(
             "dev".to_owned(),
@@ -778,59 +658,14 @@ mod tests {
                 token_url: None,
                 domains_api_url: Some("https://from-file.example.invalid".to_owned()),
                 account_url: None,
-                api_key: Some("file-key".to_owned()),
-                api_secret: None,
             },
         );
         let var = |k: &str| match k {
             "DEV_DOMAINS_API_URL" => Some("https://from-env.example.invalid".to_owned()),
-            "DEV_API_KEY" => Some("env-key".to_owned()),
-            "DEV_API_SECRET" => Some("env-secret".to_owned()),
             _ => None,
         };
         let env = resolve_with("dev", &file, var).expect("dev resolves");
         assert_eq!(env.domains_api_url, "https://from-env.example.invalid");
-        assert_eq!(env.api_key.as_deref(), Some("env-key")); // env beats file
-        assert_eq!(env.api_secret.as_deref(), Some("env-secret"));
-    }
-
-    #[test]
-    fn blank_sso_key_env_var_does_not_clobber_config() {
-        let mut file = EnvironmentsFile::default();
-        let mut e = entry("https://dev.example.invalid");
-        e.api_key = Some("file-key".to_owned());
-        e.api_secret = Some("file-secret".to_owned());
-        file.environments.insert("dev".to_owned(), e);
-        // A blank env-var key is ignored, so the complete file pair survives.
-        let var = |k: &str| (k == "DEV_API_KEY").then(|| "   ".to_owned());
-        let env = resolve_with("dev", &file, var).expect("dev resolves");
-        assert_eq!(env.api_key.as_deref(), Some("file-key"));
-        assert_eq!(env.api_secret.as_deref(), Some("file-secret"));
-    }
-
-    #[test]
-    fn sso_key_pair_is_resolved_atomically_per_layer() {
-        // File has a complete pair; env supplies only the key. The env layer is
-        // incomplete, so we must NOT mix (env-key + file-secret) — the complete
-        // file pair is used instead.
-        let mut file = EnvironmentsFile::default();
-        let mut e = entry("https://dev.example.invalid");
-        e.api_key = Some("file-key".to_owned());
-        e.api_secret = Some("file-secret".to_owned());
-        file.environments.insert("dev".to_owned(), e);
-        let key_only = |k: &str| (k == "DEV_API_KEY").then(|| "env-key".to_owned());
-        let env = resolve_with("dev", &file, key_only).expect("dev resolves");
-        assert_eq!(env.api_key.as_deref(), Some("file-key"));
-        assert_eq!(env.api_secret.as_deref(), Some("file-secret"));
-
-        // A partial pair within a single layer (file key, no secret) yields no
-        // sso-key at all, so domain commands fall back to OAuth.
-        let mut file2 = EnvironmentsFile::default();
-        let mut e2 = entry("https://dev.example.invalid");
-        e2.api_key = Some("lonely-key".to_owned());
-        file2.environments.insert("dev".to_owned(), e2);
-        let env2 = resolve_with("dev", &file2, no_vars).expect("dev resolves");
-        assert!(env2.api_key.is_none() && env2.api_secret.is_none());
     }
 
     #[test]

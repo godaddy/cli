@@ -57,6 +57,13 @@ pub struct CachedQuote {
     /// carried no profile.
     #[serde(default)]
     pub profile: Option<serde_json::Value>,
+    /// Idempotency key for the `register` call, minted once at quote time and
+    /// reused on every purchase attempt for this token. Reusing it means a retry
+    /// after a lost/timed-out response is recognized server-side as the same
+    /// request rather than risking a second charge. `None` only for entries
+    /// written by an older CLI, where `purchase` falls back to generating one.
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
 }
 
 /// The result of looking a token up in the cache.
@@ -68,6 +75,9 @@ pub enum Lookup {
     Expired,
     /// No quote for this token on this machine.
     Missing,
+    /// No config directory could be resolved, so the cache can't be located at
+    /// all (distinct from a genuinely absent quote — e.g. a stripped container).
+    NoConfigDir,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -142,7 +152,7 @@ fn save_at(
 /// actually succeeds, so an aborted/gated attempt leaves the quote reusable.
 pub fn get(token: &str) -> Lookup {
     let Some(path) = quotes_path() else {
-        return Lookup::Missing;
+        return Lookup::NoConfigDir;
     };
     let now = chrono::Utc::now();
     // Best-effort: drop any expired entries (whose serialized profile may hold
@@ -211,6 +221,7 @@ mod tests {
             currency: Some("USD".to_owned()),
             expires_at: expires.map(str::to_owned),
             profile: None,
+            idempotency_key: Some("idem-test".to_owned()),
         }
     }
 

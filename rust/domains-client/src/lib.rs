@@ -11,7 +11,7 @@
 //! from the vendored, merged OpenAPI 3.0 spec (`openapi/domains.oas3.json`).
 //! Construct [`Client`] with [`Client::new_with_client`] to supply a
 //! pre-authenticated `reqwest::Client` (the CLI sets the `Authorization:
-//! sso-key …`/Bearer header itself). The v3 operations live under the
+//! Bearer <token>` header itself). The v3 operations live under the
 //! `/v3/domains` base path, baked into the spec's absolute paths so one host
 //! `base_url` serves both generations. See `scripts/regenerate-spec.sh` to
 //! refresh and re-merge the spec.
@@ -45,9 +45,9 @@ pub enum BuildError {
 /// header and `x-request-id`.
 ///
 /// `authorization` is the full header value the domain endpoints expect — e.g.
-/// `"sso-key <KEY>:<SECRET>"` (the usual path) or `"Bearer <token>"`. Keeping
-/// the `reqwest::Client` construction here means callers never name reqwest's
-/// types, so the main crate is unaffected by this crate's reqwest version.
+/// `"Bearer <token>"`. Keeping the `reqwest::Client` construction here means
+/// callers never name reqwest's types, so the main crate is unaffected by this
+/// crate's reqwest version.
 pub fn client_with_auth(
     base_url: &str,
     authorization: &str,
@@ -577,36 +577,6 @@ mod tests {
             .send()
             .await
             .expect("request succeeds");
-
-        mock.assert_async().await;
-    }
-
-    // Guard the auth-scheme selection retained from the hand-written helper.
-    #[tokio::test]
-    async fn sso_key_scheme_sets_authorization_header() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/v3/domains/check-availability")
-                    .header("authorization", "sso-key KEY:SECRET");
-                then.status(200)
-                    .json_body(json!({ "domain": "x.com", "available": true }));
-            })
-            .await;
-
-        client_with_auth(
-            &server.base_url(),
-            "sso-key KEY:SECRET",
-            "godaddy-cli/test",
-            "req-1",
-        )
-        .expect("build client")
-        .get_domain_availability()
-        .domain("x.com")
-        .send()
-        .await
-        .expect("request succeeds");
 
         mock.assert_async().await;
     }

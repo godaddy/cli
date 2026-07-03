@@ -4,7 +4,7 @@
 
 use cli_engine::{CliCoreError, CommandContext, Credential, Result};
 
-use crate::{auth::SSO_KEY_PROVIDER, environments};
+use crate::environments;
 
 use domains_client::types;
 
@@ -57,19 +57,8 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
     ))
 }
 
-/// Pick the `Authorization` header value for a resolved credential: the `sso-key`
-/// scheme for the [`SSO_KEY_PROVIDER`] bypass path, otherwise an OAuth `Bearer`
-/// token. Pure so the scheme selection is unit-testable without a full context.
-fn authorization_header(provider: &str, token: &str) -> String {
-    if provider == SSO_KEY_PROVIDER {
-        format!("sso-key {token}")
-    } else {
-        format!("Bearer {token}")
-    }
-}
-
-/// Build a Domains API client for the active environment, choosing the auth
-/// scheme from the resolved credential (sso-key for the bypass path, else Bearer).
+/// Build a Domains API client for the active environment, authenticating with
+/// the resolved OAuth bearer token.
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {
     let cred = ctx.credential().await?;
     make_client_with_cred(&ctx.middleware.env, &cred)
@@ -83,7 +72,7 @@ pub(crate) fn make_client_with_cred(
     cred: &Credential,
 ) -> Result<domains_client::Client> {
     let domains = environments::resolve_domains(env).map_err(map_env_err)?;
-    let authorization = authorization_header(&cred.provider, &cred.token);
+    let authorization = format!("Bearer {}", cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
     domains_client::client_with_auth(&domains.base_url, &authorization, USER_AGENT, &request_id)
         .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
@@ -351,15 +340,6 @@ mod tests {
         assert_eq!(currency_decimals("UYW"), 4);
         assert_eq!(currency_decimals("XAU"), 2); // no ISO minor unit → default 2 (never a price)
         assert_eq!(currency_decimals("ZZZ"), 2); // unknown → default 2
-    }
-
-    #[test]
-    fn authorization_header_picks_scheme_from_provider() {
-        assert_eq!(
-            authorization_header(SSO_KEY_PROVIDER, "KEY:SECRET"),
-            "sso-key KEY:SECRET"
-        );
-        assert_eq!(authorization_header("godaddy", "tok123"), "Bearer tok123");
     }
 
     #[test]
