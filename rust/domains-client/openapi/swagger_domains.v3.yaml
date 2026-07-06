@@ -150,11 +150,6 @@ tags:
     use the concrete resource endpoints instead.
 
     '
-- name: Domains
-  description: 'Core domain entity collection. Retrieve registered domains owned by the authenticated account with management
-    details including status, nameservers, privacy, and auto-renew settings.
-
-    '
 paths:
   x-visibility: public
   /suggestions:
@@ -326,16 +321,7 @@ paths:
           - $ref: '#/components/schemas/OptimizationTarget'
           default: SPEED
         example: SPEED
-      - name: iscCode
-        in: query
-        required: false
-        description: 'Reseller ISC (International Shopper Code) for pricing context. When provided, the indicative prices
-          reflect the applicable reseller rates for this ISC.
-
-          '
-        schema:
-          type: string
-        example: ISC_PARTNER_001
+      - $ref: '#/components/parameters/iscCode'
       security:
       - oauth2:
         - domains.domain:read
@@ -541,10 +527,16 @@ paths:
 
         field-level details so the agent can collect the missing data and re-quote.
 
+
+        May pass `iscCode` to lock pricing at applicable rates;
+
+        the same value must be supplied on /registrations if provided here.
+
         '
       parameters:
       - $ref: '#/components/parameters/xRequestId'
       - $ref: '#/components/parameters/xShopperId'
+      - $ref: '#/components/parameters/iscCode'
       requestBody:
         required: true
         content:
@@ -652,11 +644,17 @@ paths:
 
         it synchronously.
 
+
+        When `iscCode` was supplied at quote time, the same value must be
+
+        provided here or the request fails with `quote_mismatch`.
+
         '
       parameters:
       - $ref: '#/components/parameters/xRequestId'
       - $ref: '#/components/parameters/xShopperId'
       - $ref: '#/components/parameters/idempotencyKey'
+      - $ref: '#/components/parameters/iscCode'
       requestBody:
         required: true
         content:
@@ -838,6 +836,120 @@ paths:
         '429':
           $ref: '#/components/responses/429'
   /zones/{zone}/dns-records:
+    get:
+      operationId: listDNSRecords
+      tags:
+      - Records
+      summary: List DNS records in a zone
+      description: 'Returns a paginated collection of DNS resource records for the
+
+        specified zone. Supports filtering by record type and host name,
+
+        field projection, and page-based pagination.
+
+
+        Pagination uses page (1-based) and pageSize query parameters.
+
+        Pass totalRequired=true to include totalItems and totalPages when
+
+        at least one record matches; both are omitted for empty result
+
+        sets. Defaults to false to avoid count-query overhead.
+
+
+        Filter parameters are combined with logical AND. Pagination links
+
+        in the response preserve active filter, pagination, and
+
+        field-projection parameters.
+
+
+        sortBy and sortOrder are not supported. Results are always
+
+        returned in canonical zone-file order: resource record type (IANA
+
+        RR type number ascending — e.g. A before NS before CNAME), then
+
+        name, then data. This matches authoritative DNS ordering and is
+
+        not client-configurable.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/xRequestId'
+      - $ref: '#/components/parameters/xShopperId'
+      - $ref: '#/components/parameters/zonePath'
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/totalRequired'
+      - $ref: '#/components/parameters/fields'
+      - name: type
+        in: query
+        required: false
+        description: Filter results to records of this DNS type.
+        schema:
+          $ref: '#/components/schemas/DNSRecordType'
+        example: A
+      - name: name
+        in: query
+        required: false
+        description: 'Filter results to records with this host name relative to the zone. Use `@` for the zone apex.
+
+          '
+        schema:
+          type: string
+        example: app2
+      security:
+      - oauth2:
+        - domains.domain:read
+      responses:
+        '200':
+          description: Paginated DNS records for the zone.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/xRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DNSRecords'
+              examples:
+                paginated:
+                  summary: Page 2 of filtered A records with totals
+                  value:
+                    items:
+                    - recordId: Aad7oqdXCms9mlJvm_m6UFYqmwjyP20H2KBmQHgttK9kGbF_TuI3knsocArQqIv5I0Kq5C0
+                      name: '@'
+                      type: A
+                      data: 192.0.2.1
+                      ttl: 3600
+                    - recordId: ARZaSm3N9qvJemM6yBmuXIO6F_YIfqSiZcaHhHFozlDsDhdOr1njlXc09TAPJlm8dXqGttRrjRKIgiXpXVm9fms
+                      name: app2
+                      type: A
+                      data: 192.0.2.2
+                      ttl: 3600
+                    totalItems: 150
+                    totalPages: 6
+                    links:
+                    - rel: self
+                      href: /v3/domains/zones/example.com/dns-records?type=A&name=app2&page=2&pageSize=25&totalRequired=true
+                    - rel: first
+                      href: /v3/domains/zones/example.com/dns-records?type=A&name=app2&page=1&pageSize=25&totalRequired=true
+                    - rel: last
+                      href: /v3/domains/zones/example.com/dns-records?type=A&name=app2&page=6&pageSize=25&totalRequired=true
+                    - rel: next
+                      href: /v3/domains/zones/example.com/dns-records?type=A&name=app2&page=3&pageSize=25&totalRequired=true
+                    - rel: prev
+                      href: /v3/domains/zones/example.com/dns-records?type=A&name=app2&page=1&pageSize=25&totalRequired=true
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
     post:
       operationId: createDNSRecord
       tags:
@@ -900,6 +1012,119 @@ paths:
           $ref: '#/components/responses/409'
         '422':
           $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+  /zones/{zone}/dns-records/{recordId}:
+    put:
+      operationId: replaceDNSRecord
+      tags:
+      - Records
+      summary: Replace a DNS record
+      description: 'Fully replaces an existing DNS resource record identified by
+
+        recordId within the zone. All writable fields (name, type, data,
+
+        ttl) must be supplied; partial updates are not supported on this
+
+        endpoint. Changes are applied synchronously.
+
+
+        GoDaddy-managed system records (SOA and NS) are read-only. When
+
+        recordId refers to such a record, the request fails with
+
+        `409 Conflict` — the record exists but cannot be modified.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/xRequestId'
+      - $ref: '#/components/parameters/xShopperId'
+      - $ref: '#/components/parameters/zonePath'
+      - $ref: '#/components/parameters/recordId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DNSRecord'
+            examples:
+              apexARecord:
+                summary: Replace apex A record
+                value:
+                  name: '@'
+                  type: A
+                  data: 192.0.2.1
+                  ttl: 3600
+      security:
+      - oauth2:
+        - domains.dns:update
+      responses:
+        '200':
+          description: DNS record replaced.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/xRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DNSRecord'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+    delete:
+      operationId: deleteDNSRecord
+      tags:
+      - Records
+      summary: Delete a DNS record
+      description: 'Permanently removes a DNS resource record from the zone. The
+
+        recordId must refer to an existing record within the specified
+
+        zone. Changes are applied synchronously.
+
+
+        GoDaddy-managed system records (SOA and NS) are read-only. When
+
+        recordId refers to such a record, the request fails with
+
+        `409 Conflict` — the record exists but cannot be deleted.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/xRequestId'
+      - $ref: '#/components/parameters/xShopperId'
+      - $ref: '#/components/parameters/zonePath'
+      - $ref: '#/components/parameters/recordId'
+      security:
+      - oauth2:
+        - domains.dns:update
+      responses:
+        '204':
+          description: DNS record deleted.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/xRequestId'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
         '429':
           $ref: '#/components/responses/429'
   /operations/{operationId}:
@@ -1014,6 +1239,17 @@ components:
       schema:
         type: string
       example: shopper_123
+    iscCode:
+      name: iscCode
+      in: query
+      description: 'ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates
+        for this ISC.
+
+        '
+      required: false
+      schema:
+        type: string
+      example: ISC_PARTNER_001
     idempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1064,6 +1300,64 @@ components:
       schema:
         type: string
       example: example.com
+    recordId:
+      name: recordId
+      in: path
+      description: Server-assigned DNS record identifier within the zone.
+      required: true
+      schema:
+        type: string
+      example: Aad7oqdXCms9mlJvm_m6UFYqmwjyP20H2KBmQHgttK9kGbF_TuI3knsocArQqIv5I0Kq5C0
+    page:
+      name: page
+      in: query
+      description: 'One-based page number for offset-based pagination. Defaults to 1.
+
+        '
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 2
+    pageSize:
+      name: pageSize
+      in: query
+      description: 'Maximum number of items to return per page.
+
+        '
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+      example: 25
+    totalRequired:
+      name: totalRequired
+      in: query
+      description: 'When true, the response includes totalItems and totalPages for the current filter when at least one record
+        matches. Both are omitted when the result set is empty. Defaults to false; omitting totals avoids the cost of a count
+        query on large collections.
+
+        '
+      required: false
+      schema:
+        type: boolean
+        default: false
+      example: true
+    fields:
+      name: fields
+      in: query
+      description: 'Comma-separated list of fields to include in each item of the response. Omitted fields are excluded from
+        the payload. When absent, all fields are returned. Field names must match properties defined on the item schema for
+        the operation; any unknown or invalid name returns 400 Bad Request.
+
+        '
+      required: false
+      schema:
+        type: string
+      example: name,type,data,ttl
   headers:
     xRequestId:
       description: Request correlation identifier echoed from the request or server-generated.
@@ -1121,7 +1415,8 @@ components:
             $ref: '#/components/schemas/error'
     '409':
       description: 'Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired,
-        quote_mismatch, quote_consumed, consent_principal_mismatch) and domain state conflicts such as domain_already_exists.
+        quote_mismatch, quote_consumed, consent_principal_mismatch), domain state conflicts such as domain_already_exists,
+        and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.
 
         '
       headers:
@@ -1412,7 +1707,7 @@ components:
             '
           example: A
           allOf:
-          - $ref: '#/components/schemas/DnsRecordType'
+          - $ref: '#/components/schemas/DNSRecordType'
         data:
           type: string
           minLength: 1
@@ -1489,6 +1784,49 @@ components:
 
             '
           example: issue
+    DNSRecords:
+      title: DNS Records
+      description: 'A paginated collection of DNS resource records within a zone. Supports filtering by record type and name,
+        field projection, and page-based pagination. When totalRequired=true, totalItems and totalPages are included for non-empty
+        result sets; both are omitted when there are zero matching records.
+
+        '
+      type: object
+      required:
+      - items
+      - links
+      properties:
+        items:
+          type: array
+          description: DNS records for the current page.
+          items:
+            $ref: '#/components/schemas/DNSRecord'
+        totalItems:
+          type: integer
+          minimum: 1
+          description: 'Total number of records matching the current filter across all pages. Present only when totalRequired=true
+            and at least one record matches.
+
+            '
+          example: 150
+        totalPages:
+          type: integer
+          minimum: 1
+          description: 'Total number of pages available at the requested pageSize. A non-negative, non-zero integer per platform
+            pagination standards. Present only when totalRequired=true and at least one record matches; omitted when the result
+            set is empty.
+
+            '
+          example: 6
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/link-description'
+          description: 'HATEOAS pagination links for navigating result pages. May include rel=self (current page), rel=first,
+            rel=last, rel=next, rel=prev — included when applicable.
+
+            '
+          readOnly: true
     NameServers:
       title: Name Servers
       description: 'Authoritative nameserver hostnames for a domain. ICANN requires a minimum of two nameservers; registries
@@ -1595,11 +1933,6 @@ components:
             '
           readOnly: true
         nameServers:
-          type: array
-          minItems: 2
-          maxItems: 13
-          items:
-            type: string
           description: 'The current authoritative nameservers for this domain.
 
             '
@@ -2044,19 +2377,14 @@ components:
 
             '
           example: sunrisebakery.com
-        listPrice:
-          description: 'Indicative undiscounted list price for a one-year registration. Promotional pricing and the final
-            locked price resolve at quote time.
+        prices:
+          type: array
+          description: 'Indicative pricing offered per registration term length, in ascending order of period. Prices are
+            best-effort indicative and are locked only at quote time.
 
             '
-          allOf:
-          - $ref: '#/components/schemas/simple-money'
-        renewalPrice:
-          description: 'Indicative renewal price at current rates. Not a guarantee.
-
-            '
-          allOf:
-          - $ref: '#/components/schemas/simple-money'
+          items:
+            $ref: '#/components/schemas/TermPrice'
         inventory:
           description: 'The inventory source for this domain. Present when pricing fields are present.
 
@@ -2120,6 +2448,15 @@ components:
       - EXTENSION
       - KEYWORD_SPIN
       - PREMIUM
+    Term:
+      title: Term
+      description: 'The unit of measure for a registration period. YEAR — registration period expressed in whole years.
+
+        '
+      type: string
+      enum:
+      - YEAR
+      default: YEAR
     currency-code:
       type: string
       title: Currency Code
@@ -2262,15 +2599,6 @@ components:
       enum:
       - SPEED
       - ACCURACY
-    Term:
-      title: Term
-      description: 'The unit of measure for a registration period. YEAR — registration period expressed in whole years.
-
-        '
-      type: string
-      enum:
-      - YEAR
-      default: YEAR
     email-address:
       description: 'A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters
         are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters.
@@ -2489,6 +2817,15 @@ components:
 
         '
       type: string
+    DomainOperationStatus:
+      title: Domain Operation Status
+      description: 'The execution state of an asynchronous domain operation. CONFIRMED — operation has been accepted and is
+        queued for execution. EXECUTING — operation is actively being processed by the registry or downstream systems. COMPLETED
+        — operation finished successfully; result data is available. FAILED — operation terminated with an unrecoverable error;
+        error detail is attached.
+
+        '
+      type: string
     DomainStatus:
       title: Domain Status
       description: 'The lifecycle status of a registered domain. Reflects the domain''s current operational state within the registry
@@ -2520,15 +2857,6 @@ components:
       - REPOSSESSED
       - SUSPENDED
       - TRANSFERRED
-    DomainOperationStatus:
-      title: Domain Operation Status
-      description: 'The execution state of an asynchronous domain operation. CONFIRMED — operation has been accepted and is
-        queued for execution. EXECUTING — operation is actively being processed by the registry or downstream systems. COMPLETED
-        — operation finished successfully; result data is available. FAILED — operation terminated with an unrecoverable error;
-        error detail is attached.
-
-        '
-      type: string
     DomainOperationType:
       title: Domain Operation Type
       description: 'The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId}
@@ -2536,7 +2864,7 @@ components:
 
         '
       type: string
-    DnsRecordType:
+    DNSRecordType:
       title: DNS Record Type
       description: 'The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4
         address record. AAAA — IPv6 address record. CAA — certification authority authorization record. CNAME — canonical

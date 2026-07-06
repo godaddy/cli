@@ -57,6 +57,17 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
     ))
 }
 
+/// The headline price among per-term prices: the 1-year term if present, else the
+/// first listed term. Shared by `available` and `suggest`, which both surface a
+/// single indicative price from a `TermPrice` array.
+pub(super) fn headline_price(prices: &[types::TermPrice]) -> Option<&types::TermPrice> {
+    let one_year = std::num::NonZeroU64::new(1);
+    prices
+        .iter()
+        .find(|p| p.period == one_year)
+        .or_else(|| prices.first())
+}
+
 /// Build a Domains API client for the active environment, authenticating with
 /// the resolved OAuth bearer token.
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<domains_client::Client> {

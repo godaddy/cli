@@ -50,10 +50,6 @@
     {
       "name": "Operations",
       "description": "Abstract operation polling. Poll GET /operations/{operationId} for any domain mutation until it reaches COMPLETED or FAILED. Operation IDs are unique across Registration, Renewal, and Transfer \u2014 clients that prefer typed polling can use the concrete resource endpoints instead.\n"
-    },
-    {
-      "name": "Domains",
-      "description": "Core domain entity collection. Retrieve registered domains owned by the authenticated account with management details including status, nameservers, privacy, and auto-renew settings.\n"
     }
   ],
   "paths": {
@@ -231,14 +227,7 @@
             "example": "SPEED"
           },
           {
-            "name": "iscCode",
-            "in": "query",
-            "required": false,
-            "description": "Reseller ISC (International Shopper Code) for pricing context. When provided, the indicative prices reflect the applicable reseller rates for this ISC.\n",
-            "schema": {
-              "type": "string"
-            },
-            "example": "ISC_PARTNER_001"
+            "$ref": "#/components/parameters/iscCode"
           }
         ],
         "security": [
@@ -466,13 +455,16 @@
           "Registration Quotes"
         ],
         "summary": "Quote a single-domain registration (no commitment)",
-        "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken \u2014 this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n",
+        "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken \u2014 this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n\nMay pass `iscCode` to lock pricing at applicable rates;\nthe same value must be supplied on /registrations if provided here.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/xRequestId"
           },
           {
             "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/iscCode"
           }
         ],
         "requestBody": {
@@ -567,7 +559,7 @@
           "Registrations"
         ],
         "summary": "Register a domain (requires quoteToken)",
-        "description": "Executes a previously quoted domain registration. **Irreversible once\naccepted; creates a charge.** Requires a valid unexpired quoteToken from\n`quoteDomainRegistration`, an `Idempotency-Key` header, and a consent\nrecord. The target domain and period are in the request body alongside\nthe quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Registration` entity. Poll `links[rel=self]`\n(`GET /registrations/{registrationId}`) until status is `COMPLETED` or\n`FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n",
+        "description": "Executes a previously quoted domain registration. **Irreversible once\naccepted; creates a charge.** Requires a valid unexpired quoteToken from\n`quoteDomainRegistration`, an `Idempotency-Key` header, and a consent\nrecord. The target domain and period are in the request body alongside\nthe quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Registration` entity. Poll `links[rel=self]`\n(`GET /registrations/{registrationId}`) until status is `COMPLETED` or\n`FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n\nWhen `iscCode` was supplied at quote time, the same value must be\nprovided here or the request fails with `quote_mismatch`.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/xRequestId"
@@ -577,6 +569,9 @@
           },
           {
             "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/iscCode"
           }
         ],
         "requestBody": {
@@ -808,6 +803,128 @@
       }
     },
     "/v3/domains/zones/{zone}/dns-records": {
+      "get": {
+        "operationId": "listDNSRecords",
+        "tags": [
+          "Records"
+        ],
+        "summary": "List DNS records in a zone",
+        "description": "Returns a paginated collection of DNS resource records for the\nspecified zone. Supports filtering by record type and host name,\nfield projection, and page-based pagination.\n\nPagination uses page (1-based) and pageSize query parameters.\nPass totalRequired=true to include totalItems and totalPages when\nat least one record matches; both are omitted for empty result\nsets. Defaults to false to avoid count-query overhead.\n\nFilter parameters are combined with logical AND. Pagination links\nin the response preserve active filter, pagination, and\nfield-projection parameters.\n\nsortBy and sortOrder are not supported. Results are always\nreturned in canonical zone-file order: resource record type (IANA\nRR type number ascending \u2014 e.g. A before NS before CNAME), then\nname, then data. This matches authoritative DNS ordering and is\nnot client-configurable.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/xRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/zonePath"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/pageSize"
+          },
+          {
+            "$ref": "#/components/parameters/totalRequired"
+          },
+          {
+            "$ref": "#/components/parameters/fields"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to records of this DNS type.",
+            "schema": {
+              "$ref": "#/components/schemas/DNSRecordType"
+            },
+            "example": "A"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to records with this host name relative to the zone. Use `@` for the zone apex.\n",
+            "schema": {
+              "type": "string"
+            },
+            "example": "app2"
+          }
+        ],
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated DNS records for the zone.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/xRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DNSRecords"
+                },
+                "examples": {
+                  "paginated": {
+                    "summary": "Page 2 of filtered A records with totals",
+                    "value": {
+                      "items": [
+                        {
+                          "recordId": "Aad7oqdXCms9mlJvm_m6UFYqmwjyP20H2KBmQHgttK9kGbF_TuI3knsocArQqIv5I0Kq5C0",
+                          "name": "@",
+                          "type": "A",
+                          "data": "192.0.2.1",
+                          "ttl": 3600
+                        },
+                        {
+                          "recordId": "ARZaSm3N9qvJemM6yBmuXIO6F_YIfqSiZcaHhHFozlDsDhdOr1njlXc09TAPJlm8dXqGttRrjRKIgiXpXVm9fms",
+                          "name": "app2",
+                          "type": "A",
+                          "data": "192.0.2.2",
+                          "ttl": 3600
+                        }
+                      ],
+                      "totalItems": 150,
+                      "totalPages": 6,
+                      "links": [
+                        {
+                          "rel": "self",
+                          "href": "/v3/domains/zones/example.com/dns-records?type=A&name=app2&page=2&pageSize=25&totalRequired=true"
+                        },
+                        {
+                          "rel": "first",
+                          "href": "/v3/domains/zones/example.com/dns-records?type=A&name=app2&page=1&pageSize=25&totalRequired=true"
+                        },
+                        {
+                          "rel": "last",
+                          "href": "/v3/domains/zones/example.com/dns-records?type=A&name=app2&page=6&pageSize=25&totalRequired=true"
+                        },
+                        {
+                          "rel": "next",
+                          "href": "/v3/domains/zones/example.com/dns-records?type=A&name=app2&page=3&pageSize=25&totalRequired=true"
+                        },
+                        {
+                          "rel": "prev",
+                          "href": "/v3/domains/zones/example.com/dns-records?type=A&name=app2&page=1&pageSize=25&totalRequired=true"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "operationId": "createDNSRecord",
         "tags": [
@@ -880,6 +997,114 @@
                 "schema": {
                   "$ref": "#/components/schemas/DNSRecord"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/domains/zones/{zone}/dns-records/{recordId}": {
+      "put": {
+        "operationId": "replaceDNSRecord",
+        "tags": [
+          "Records"
+        ],
+        "summary": "Replace a DNS record",
+        "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields (name, type, data,\nttl) must be supplied; partial updates are not supported on this\nendpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` \u2014 the record exists but cannot be modified.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/xRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/zonePath"
+          },
+          {
+            "$ref": "#/components/parameters/recordId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DNSRecord"
+              },
+              "examples": {
+                "apexARecord": {
+                  "summary": "Replace apex A record",
+                  "value": {
+                    "name": "@",
+                    "type": "A",
+                    "data": "192.0.2.1",
+                    "ttl": 3600
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.dns:update"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DNS record replaced.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/xRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DNSRecord"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteDNSRecord",
+        "tags": [
+          "Records"
+        ],
+        "summary": "Delete a DNS record",
+        "description": "Permanently removes a DNS resource record from the zone. The\nrecordId must refer to an existing record within the specified\nzone. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` \u2014 the record exists but cannot be deleted.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/xRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/zonePath"
+          },
+          {
+            "$ref": "#/components/parameters/recordId"
+          }
+        ],
+        "security": [
+          {
+            "oauth2": [
+              "domains.dns:update"
+            ]
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "DNS record deleted.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/xRequestId"
               }
             }
           }
@@ -1393,489 +1618,6 @@
         "operationId": "agreements",
         "summary": "Retrieve the legal agreement(s) required to purchase the specified TLD and add-ons"
       }
-    },
-    "/v1/domains/{domain}/records": {
-      "patch": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be augmented",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/V1ArrayOfDNSRecord"
-              }
-            }
-          },
-          "description": "DNS Records to add to whatever currently exists",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Request was successful"
-          }
-        },
-        "operationId": "recordAdd",
-        "summary": "Add the specified DNS Records to the specified Domain"
-      },
-      "put": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be replaced",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "items": {
-                  "$ref": "#/components/schemas/V1DNSRecord"
-                },
-                "type": "array"
-              }
-            }
-          },
-          "description": "DNS Records to replace whatever currently exists",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Request was successful"
-          }
-        },
-        "operationId": "recordReplace",
-        "summary": "Replace all DNS Records for the specified Domain"
-      },
-      "get": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be retrieved",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Request was successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/V1DNSRecord"
-                  },
-                  "type": "array"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "recordGetAll",
-        "summary": "Retrieve DNS Records for the specified Domain, optionally with the specified Type and/or Name"
-      }
-    },
-    "/v1/domains/{domain}/records/{type}": {
-      "put": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be replaced",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "DNS Record Type for which DNS Records are to be replaced",
-            "in": "path",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "A",
-                "AAAA",
-                "CNAME",
-                "MX",
-                "NS",
-                "SOA",
-                "SRV",
-                "TXT"
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "items": {
-                  "$ref": "#/components/schemas/V1DNSRecordCreateType"
-                },
-                "type": "array"
-              }
-            }
-          },
-          "description": "DNS Records to replace whatever currently exists",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Request was successful"
-          }
-        },
-        "operationId": "recordReplaceType",
-        "summary": "Replace all DNS Records for the specified Domain with the specified Type"
-      },
-      "get": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be retrieved",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "DNS Record Type for which DNS Records are to be retrieved",
-            "in": "path",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "A",
-                "AAAA",
-                "CNAME",
-                "MX",
-                "NS",
-                "SOA",
-                "SRV",
-                "TXT"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Request was successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/V1DNSRecord"
-                  },
-                  "type": "array"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "recordGetByType",
-        "summary": "Retrieve DNS Records for the specified Domain, optionally with the specified Type and/or Name"
-      }
-    },
-    "/v1/domains/{domain}/records/{type}/{name}": {
-      "get": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be retrieved",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "DNS Record Type for which DNS Records are to be retrieved",
-            "in": "path",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "A",
-                "AAAA",
-                "CNAME",
-                "MX",
-                "NS",
-                "SOA",
-                "SRV",
-                "TXT"
-              ]
-            }
-          },
-          {
-            "description": "DNS Record Name for which DNS Records are to be retrieved",
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Number of results to skip for pagination",
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Maximum number of items to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Request was successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/V1DNSRecord"
-                  },
-                  "type": "array"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "recordGet",
-        "summary": "Retrieve DNS Records for the specified Domain, optionally with the specified Type and/or Name"
-      },
-      "put": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be replaced",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "DNS Record Type for which DNS Records are to be replaced",
-            "in": "path",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "A",
-                "AAAA",
-                "CNAME",
-                "MX",
-                "NS",
-                "SOA",
-                "SRV",
-                "TXT"
-              ]
-            }
-          },
-          {
-            "description": "DNS Record Name for which DNS Records are to be replaced",
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "items": {
-                  "$ref": "#/components/schemas/V1DNSRecordCreateTypeName"
-                },
-                "type": "array"
-              }
-            }
-          },
-          "description": "DNS Records to replace whatever currently exists",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Request was successful"
-          }
-        },
-        "operationId": "recordReplaceTypeName",
-        "summary": "Replace all DNS Records for the specified Domain with the specified Type and Name"
-      },
-      "delete": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID which owns the domain. NOTE: This is only required if you are a Reseller managing a domain purchased outside the scope of your reseller account. For instance, if you're a Reseller, but purchased a Domain via http://www.godaddy.com",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Domain whose DNS Records are to be deleted",
-            "in": "path",
-            "name": "domain",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "DNS Record Type for which DNS Records are to be deleted",
-            "in": "path",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "A",
-                "AAAA",
-                "CNAME",
-                "MX",
-                "SRV",
-                "TXT"
-              ]
-            }
-          },
-          {
-            "description": "DNS Record Name for which DNS Records are to be deleted",
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Request was successful"
-          }
-        },
-        "operationId": "recordDeleteTypeName",
-        "summary": "Delete all DNS Records for the specified Domain with the specified Type and Name"
-      }
     }
   },
   "components": {
@@ -1898,6 +1640,16 @@
           "type": "string"
         },
         "example": "shopper_123"
+      },
+      "iscCode": {
+        "name": "iscCode",
+        "in": "query",
+        "description": "ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates for this ISC.\n",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "example": "ISC_PARTNER_001"
       },
       "idempotencyKey": {
         "name": "Idempotency-Key",
@@ -1947,6 +1699,62 @@
           "type": "string"
         },
         "example": "example.com"
+      },
+      "recordId": {
+        "name": "recordId",
+        "in": "path",
+        "description": "Server-assigned DNS record identifier within the zone.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "example": "Aad7oqdXCms9mlJvm_m6UFYqmwjyP20H2KBmQHgttK9kGbF_TuI3knsocArQqIv5I0Kq5C0"
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "description": "One-based page number for offset-based pagination. Defaults to 1.\n",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "example": 2
+      },
+      "pageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "description": "Maximum number of items to return per page.\n",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        },
+        "example": 25
+      },
+      "totalRequired": {
+        "name": "totalRequired",
+        "in": "query",
+        "description": "When true, the response includes totalItems and totalPages for the current filter when at least one record matches. Both are omitted when the result set is empty. Defaults to false; omitting totals avoids the cost of a count query on large collections.\n",
+        "required": false,
+        "schema": {
+          "type": "boolean",
+          "default": false
+        },
+        "example": true
+      },
+      "fields": {
+        "name": "fields",
+        "in": "query",
+        "description": "Comma-separated list of fields to include in each item of the response. Omitted fields are excluded from the payload. When absent, all fields are returned. Field names must match properties defined on the item schema for the operation; any unknown or invalid name returns 400 Bad Request.\n",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "example": "name,type,data,ttl"
       }
     },
     "headers": {
@@ -2033,7 +1841,7 @@
         }
       },
       "409": {
-        "description": "Conflict \u2014 the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_mismatch, quote_consumed, consent_principal_mismatch) and domain state conflicts such as domain_already_exists.\n",
+        "description": "Conflict \u2014 the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_mismatch, quote_consumed, consent_principal_mismatch), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
         "headers": {
           "X-Request-Id": {
             "$ref": "#/components/headers/xRequestId"
@@ -2308,7 +2116,7 @@
             "example": "A",
             "allOf": [
               {
-                "$ref": "#/components/schemas/DnsRecordType"
+                "$ref": "#/components/schemas/DNSRecordType"
               }
             ]
           },
@@ -2366,6 +2174,42 @@
             "type": "string",
             "description": "CAA record property tag. Common values: `issue` (authorize CA to issue), `issuewild` (wildcard certs), `iodef` (violation reporting URL).\n",
             "example": "issue"
+          }
+        }
+      },
+      "DNSRecords": {
+        "title": "DNS Records",
+        "description": "A paginated collection of DNS resource records within a zone. Supports filtering by record type and name, field projection, and page-based pagination. When totalRequired=true, totalItems and totalPages are included for non-empty result sets; both are omitted when there are zero matching records.\n",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "DNS records for the current page.",
+            "items": {
+              "$ref": "#/components/schemas/DNSRecord"
+            },
+            "nullable": true
+          },
+          "totalItems": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Total number of records matching the current filter across all pages. Present only when totalRequired=true and at least one record matches.\n",
+            "example": 150
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Total number of pages available at the requested pageSize. A non-negative, non-zero integer per platform pagination standards. Present only when totalRequired=true and at least one record matches; omitted when the result set is empty.\n",
+            "example": 6
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "description": "HATEOAS pagination links for navigating result pages. May include rel=self (current page), rel=first, rel=last, rel=next, rel=prev \u2014 included when applicable.\n",
+            "readOnly": true,
+            "nullable": true
           }
         }
       },
@@ -2459,12 +2303,6 @@
             "readOnly": true
           },
           "nameServers": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 13,
-            "items": {
-              "type": "string"
-            },
             "description": "The current authoritative nameservers for this domain.\n",
             "example": [
               "ns01.domaincontrol.com",
@@ -2474,8 +2312,7 @@
               {
                 "$ref": "#/components/schemas/NameServers"
               }
-            ],
-            "nullable": true
+            ]
           },
           "links": {
             "type": "array",
@@ -2898,21 +2735,13 @@
             "description": "The suggested domain name in punycode A-label form.\n",
             "example": "sunrisebakery.com"
           },
-          "listPrice": {
-            "description": "Indicative undiscounted list price for a one-year registration. Promotional pricing and the final locked price resolve at quote time.\n",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/simple-money"
-              }
-            ]
-          },
-          "renewalPrice": {
-            "description": "Indicative renewal price at current rates. Not a guarantee.\n",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/simple-money"
-              }
-            ]
+          "prices": {
+            "type": "array",
+            "description": "Indicative pricing offered per registration term length, in ascending order of period. Prices are best-effort indicative and are locked only at quote time.\n",
+            "items": {
+              "$ref": "#/components/schemas/TermPrice"
+            },
+            "nullable": true
           },
           "inventory": {
             "description": "The inventory source for this domain. Present when pricing fields are present.\n",
@@ -2978,6 +2807,15 @@
           "KEYWORD_SPIN",
           "PREMIUM"
         ]
+      },
+      "Term": {
+        "title": "Term",
+        "description": "The unit of measure for a registration period. YEAR \u2014 registration period expressed in whole years.\n",
+        "type": "string",
+        "enum": [
+          "YEAR"
+        ],
+        "default": "YEAR"
       },
       "currency-code": {
         "type": "string",
@@ -3126,15 +2964,6 @@
           "SPEED",
           "ACCURACY"
         ]
-      },
-      "Term": {
-        "title": "Term",
-        "description": "The unit of measure for a registration period. YEAR \u2014 registration period expressed in whole years.\n",
-        "type": "string",
-        "enum": [
-          "YEAR"
-        ],
-        "default": "YEAR"
       },
       "email-address": {
         "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
@@ -3327,6 +3156,11 @@
         "description": "Who transmitted consent on behalf of the principal. DIRECT \u2014 the principal acted directly; actor is omitted. AGENT \u2014 an AI or automation acted on behalf of the principal. RESELLER \u2014 a reseller acted on behalf of a shopper.\n",
         "type": "string"
       },
+      "DomainOperationStatus": {
+        "title": "Domain Operation Status",
+        "description": "The execution state of an asynchronous domain operation. CONFIRMED \u2014 operation has been accepted and is queued for execution. EXECUTING \u2014 operation is actively being processed by the registry or downstream systems. COMPLETED \u2014 operation finished successfully; result data is available. FAILED \u2014 operation terminated with an unrecoverable error; error detail is attached.\n",
+        "type": "string"
+      },
       "DomainStatus": {
         "title": "Domain Status",
         "description": "The lifecycle status of a registered domain. Reflects the domain's current operational state within the registry and GoDaddy's management layer. ACTIVE \u2014 domain is registered and is active. CANCELLED \u2014 domain has been cancelled by the user or system, and is not reclaimable. DELETED_REDEEMABLE \u2014 domain is in ICANN redemption grace period; recovery fees apply. EXPIRED \u2014 registration period has ended; domain is pending deletion or redemption. FAILED - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually the result of a dispute. LOCKED_REGISTRAR \u2014 domain is locked at the registrar - this is usually the result of spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER \u2014 an outbound transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED \u2014 domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred to another registrar.\n",
@@ -3348,17 +3182,12 @@
           "TRANSFERRED"
         ]
       },
-      "DomainOperationStatus": {
-        "title": "Domain Operation Status",
-        "description": "The execution state of an asynchronous domain operation. CONFIRMED \u2014 operation has been accepted and is queued for execution. EXECUTING \u2014 operation is actively being processed by the registry or downstream systems. COMPLETED \u2014 operation finished successfully; result data is available. FAILED \u2014 operation terminated with an unrecoverable error; error detail is attached.\n",
-        "type": "string"
-      },
       "DomainOperationType": {
         "title": "Domain Operation Type",
         "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER \u2014 new domain registration.\n",
         "type": "string"
       },
-      "DnsRecordType": {
+      "DNSRecordType": {
         "title": "DNS Record Type",
         "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A \u2014 IPv4 address record. AAAA \u2014 IPv6 address record. CAA \u2014 certification authority authorization record. CNAME \u2014 canonical name alias record. MX \u2014 mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS \u2014 nameserver delegation record; read-only. SOA \u2014 start of authority record; managed by the registry; read-only. SRV \u2014 service locator record. TXT \u2014 free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
         "type": "string"
@@ -3641,12 +3470,6 @@
           }
         }
       },
-      "V1ArrayOfDNSRecord": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/V1DNSRecord"
-        }
-      },
       "V1Contact": {
         "properties": {
           "addressMailing": {
@@ -3683,135 +3506,6 @@
             "type": "string"
           }
         }
-      },
-      "V1DNSRecord": {
-        "properties": {
-          "data": {
-            "type": "string"
-          },
-          "name": {
-            "format": "domain",
-            "type": "string"
-          },
-          "port": {
-            "description": "Service port (SRV only)",
-            "maximum": 65535,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "priority": {
-            "description": "Record priority (MX and SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "protocol": {
-            "description": "Service protocol (SRV only)",
-            "type": "string"
-          },
-          "service": {
-            "description": "Service type (SRV only)",
-            "type": "string"
-          },
-          "ttl": {
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "type": {
-            "enum": [
-              "A",
-              "AAAA",
-              "CNAME",
-              "MX",
-              "NS",
-              "SOA",
-              "SRV",
-              "TXT"
-            ],
-            "type": "string"
-          },
-          "weight": {
-            "description": "Record weight (SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          }
-        }
-      },
-      "V1DNSRecordCreateType": {
-        "properties": {
-          "data": {
-            "type": "string"
-          },
-          "name": {
-            "format": "domain",
-            "type": "string"
-          },
-          "port": {
-            "description": "Service port (SRV only)",
-            "maximum": 65535,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "priority": {
-            "description": "Record priority (MX and SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "protocol": {
-            "description": "Service protocol (SRV only)",
-            "type": "string"
-          },
-          "service": {
-            "description": "Service type (SRV only)",
-            "type": "string"
-          },
-          "ttl": {
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "weight": {
-            "description": "Record weight (SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          }
-        }
-      },
-      "V1DNSRecordCreateTypeName": {
-        "properties": {
-          "data": {
-            "type": "string"
-          },
-          "port": {
-            "description": "Service port (SRV only)",
-            "maximum": 65535,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "priority": {
-            "description": "Record priority (MX and SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "protocol": {
-            "description": "Service protocol (SRV only)",
-            "type": "string"
-          },
-          "service": {
-            "description": "Service type (SRV only)",
-            "type": "string"
-          },
-          "ttl": {
-            "format": "integer-positive",
-            "type": "integer"
-          },
-          "weight": {
-            "description": "Record weight (SRV only)",
-            "format": "integer-positive",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data"
-        ]
       },
       "V1DomainSummary": {
         "properties": {

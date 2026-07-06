@@ -42,7 +42,7 @@ host="https://api.ote-godaddy.com"
 echo "==> Downloading upstream Swagger 2.0 spec"
 curl -fsSL "https://developer.godaddy.com/swagger/swagger_domains.json" -o "$v2"
 
-echo "==> Trimming to retained v1 ops (list + agreements + DNS record list/set/delete)"
+echo "==> Trimming to retained v1 ops (list + agreements)"
 python3 "$here/scripts/trim-spec.py" "$v2" "$trimmed_v1"
 
 echo "==> Converting v1 subset Swagger 2.0 -> OpenAPI 3.0"

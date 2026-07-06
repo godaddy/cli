@@ -5,7 +5,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use super::common::{api_error, format_money, make_client, string_list};
+use super::common::{api_error, format_money, headline_price, make_client, string_list};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 
@@ -111,7 +111,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // matches the schema (`domain` required) and projects cleanly.
                     let domain = s.domain?;
                     let mut obj = json!({ "domain": domain });
-                    if let Some(p) = s.list_price.as_ref().and_then(format_money) {
+                    // v3 returns indicative pricing per term; surface the headline
+                    // (1-year, else first) term's price as the scalar `listPrice`.
+                    if let Some(p) = s
+                        .prices
+                        .as_deref()
+                        .and_then(headline_price)
+                        .and_then(|t| t.price.as_ref())
+                        .and_then(format_money)
+                    {
                         obj["listPrice"] = json!(p);
                     }
                     Some(obj)

@@ -7,7 +7,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client};
+use super::common::{api_error, format_money, headline_price, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 
@@ -27,14 +27,6 @@ output_schema!(DomainAvailableResult {
 
 /// The headline price for an availability/quote: the entry for a 1-year term if
 /// present, else the first listed term.
-fn headline_price(prices: &[types::TermPrice]) -> Option<&types::TermPrice> {
-    let one_year = std::num::NonZeroU64::new(1);
-    prices
-        .iter()
-        .find(|p| p.period == one_year)
-        .or_else(|| prices.first())
-}
-
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("available", "Check whether a domain is available")

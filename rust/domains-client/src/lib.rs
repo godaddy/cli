@@ -2,10 +2,11 @@
 //!
 //! * **v3** — the Domain Lifecycle Management API (`/v3/domains/…`): suggestions,
 //!   availability (single + batch), domain get, registration (quote → register),
-//!   async operation polling, single DNS-record create, and nameserver replace.
+//!   async operation polling, the full DNS record lifecycle (create / list /
+//!   replace / delete), and nameserver replace.
 //! * **v1** — the operations v3 does not yet serve (`/v1/domains/…`): list the
-//!   shopper's domains, TLD legal agreements, and DNS record list/replace/delete.
-//!   Their generated types are `V1`-prefixed to avoid clashing with the v3 ones.
+//!   shopper's domains and TLD legal agreements. Their generated types are
+//!   `V1`-prefixed to avoid clashing with the v3 ones.
 //!
 //! The contents of this crate are **generated** by `progenitor` at build time
 //! from the vendored, merged OpenAPI 3.0 spec (`openapi/domains.oas3.json`).
@@ -445,7 +446,7 @@ mod tests {
         assert_eq!(op.operation_id.as_ref().map(|o| o.as_str()), Some("op-2"));
     }
 
-    // --- retained v1: list + agreements + DNS list/set/delete ---------------
+    // --- retained v1: list + agreements -------------------------------------
 
     #[tokio::test]
     async fn v1_list_tolerates_sparse_payloads() {
@@ -500,57 +501,83 @@ mod tests {
         assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
     }
 
+    // --- v3: DNS list / replace / delete ------------------------------------
+
     #[tokio::test]
-    async fn v1_record_get_all_lists_records() {
+    async fn list_dns_records_sends_filters_and_parses_collection() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
-                when.method(GET).path("/v1/domains/example.com/records");
-                then.status(200).json_body(
-                    json!([{ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600 }]),
-                );
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "A")
+                    .query_param("name", "www")
+                    .query_param("page", "1")
+                    .query_param("pageSize", "100");
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 600, "recordId": "rec-1" }
+                    ],
+                    "totalItems": 1,
+                    "totalPages": 1,
+                    "links": []
+                }));
             })
             .await;
 
-        let records = client_for(&server)
-            .record_get_all()
-            .domain("example.com")
+        let body = client_for(&server)
+            .list_dns_records()
+            .zone("example.com")
+            .type_(types::DnsRecordType("A".to_string()))
+            .name("www")
+            .page(std::num::NonZeroU64::new(1).expect("nonzero"))
+            .page_size(std::num::NonZeroU64::new(100).expect("nonzero"))
             .send()
             .await
             .expect("request succeeds")
             .into_inner();
 
         mock.assert_async().await;
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].data.as_deref(), Some("1.2.3.4"));
+        let items = body.items.expect("items present");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].record_id.as_deref(), Some("rec-1"));
+        assert_eq!(items[0].data, "1.2.3.4");
     }
 
     #[tokio::test]
-    async fn v1_record_replace_type_name_puts_record_set() {
+    async fn replace_dns_record_puts_by_record_id() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(PUT)
-                    .path("/v1/domains/example.com/records/A/www")
-                    .json_body(json!([{ "data": "5.6.7.8", "ttl": 600 }]));
-                then.status(200);
+                    .path("/v3/domains/zones/example.com/dns-records/rec-1")
+                    .json_body(
+                        json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
+                    );
+                then.status(200).json_body(
+                    json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
+                );
             })
             .await;
 
         client_for(&server)
-            .record_replace_type_name()
-            .domain("example.com")
-            .type_("A")
-            .name("www")
-            .body(vec![types::V1dnsRecordCreateTypeName {
+            .replace_dns_record()
+            .zone("example.com")
+            .record_id("rec-1")
+            .body(types::DnsRecord {
                 data: "5.6.7.8".to_string(),
+                flag: None,
+                name: "www".to_string(),
                 port: None,
                 priority: None,
                 protocol: None,
+                record_id: None,
                 service: None,
-                ttl: Some(600),
+                tag: None,
+                ttl: 600,
+                type_: types::DnsRecordType("A".to_string()),
                 weight: None,
-            }])
+            })
             .send()
             .await
             .expect("request succeeds");
@@ -559,21 +586,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v1_record_delete_type_name_issues_delete() {
+    async fn delete_dns_record_deletes_by_record_id() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(DELETE)
-                    .path("/v1/domains/example.com/records/A/www");
+                    .path("/v3/domains/zones/example.com/dns-records/rec-1");
                 then.status(204);
             })
             .await;
 
         client_for(&server)
-            .record_delete_type_name()
-            .domain("example.com")
-            .type_("A")
-            .name("www")
+            .delete_dns_record()
+            .zone("example.com")
+            .record_id("rec-1")
             .send()
             .await
             .expect("request succeeds");
