@@ -52,10 +52,10 @@ fn optional_str(ctx: &CommandContext, key: &str) -> Option<String> {
 }
 
 fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
-    ctx.args
-        .get(key)
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok())
+    let v = ctx.args.get(key)?;
+    v.as_u64()
+        .and_then(|n| u32::try_from(n).ok())
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
 pub fn nodejs_group() -> RuntimeGroupSpec {
@@ -188,6 +188,7 @@ fn app_create_command() -> RuntimeCommandSpec {
                 clap::Arg::new("datacenter")
                     .long("datacenter")
                     .value_name("DATACENTER")
+                    .value_parser(["p3", "sxb1"])
                     .help("Datacenter (p3 or sxb1)"),
             ),
         |ctx| async move {
@@ -337,7 +338,7 @@ fn job_get_command() -> RuntimeCommandSpec {
             let mut actions = vec![
                 NextAction::new(
                     "hosting nodejs job get --job-id <job-id>",
-                    "Poll again while the job is pending",
+                    "Re-check job status",
                 )
                 .with_param("job-id", NextActionParam::value(job_id)),
             ];
@@ -375,6 +376,7 @@ fn deployment_list_command() -> RuntimeCommandSpec {
                 clap::Arg::new("limit")
                     .long("limit")
                     .value_name("N")
+                    .value_parser(clap::value_parser!(u32).range(1..=50))
                     .help("Maximum deployments to return (1-50)"),
             ),
         |ctx| async move {
@@ -580,6 +582,7 @@ fn secrets_list_command() -> RuntimeCommandSpec {
                 clap::Arg::new("variant")
                     .long("variant")
                     .value_name("VARIANT")
+                    .value_parser(["preview", "publish"])
                     .help("Variant filter (preview or publish)"),
             ),
         |ctx| async move {
@@ -658,6 +661,7 @@ fn logs_command() -> RuntimeCommandSpec {
                     .long("target")
                     .value_name("TARGET")
                     .required(true)
+                    .value_parser(["preview", "publish"])
                     .help("Log target (preview or publish)"),
             )
             .with_arg(
@@ -678,6 +682,7 @@ fn logs_command() -> RuntimeCommandSpec {
                 clap::Arg::new("lines")
                     .long("lines")
                     .value_name("N")
+                    .value_parser(clap::value_parser!(u32).range(1..=500))
                     .help("Maximum log lines to return (1-500)"),
             ),
         |ctx| async move {

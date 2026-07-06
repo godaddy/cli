@@ -68,11 +68,7 @@ impl HostingClient {
         let status = resp.status().as_u16();
 
         if status == 204 {
-            if resp.status().is_success() {
-                return Ok(json!(null));
-            }
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ClientError::Http { status, body });
+            return Ok(json!(null));
         }
 
         let text = resp.text().await?;
