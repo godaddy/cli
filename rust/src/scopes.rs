@@ -71,6 +71,8 @@ declare_scopes! {
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
     /// (`domain list/get/available/suggest/agreements/quote`, `dns list`.)
+    /// Requested at login by default (see
+    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
     DOMAINS_READ => "domains.domain:read",
     /// Create/replace/delete DNS records (`dns add/set/delete`).
     DOMAINS_DNS_UPDATE => "domains.dns:update",
