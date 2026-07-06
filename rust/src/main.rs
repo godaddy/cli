@@ -9,6 +9,7 @@ mod domain;
 mod env;
 mod environments;
 mod extension;
+mod hosting;
 mod output_schema;
 mod payments;
 mod webhook;
@@ -39,6 +40,7 @@ async fn main() -> ExitCode {
                  • dns      — view and edit a domain's DNS records\n  \
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
                  • application — build, configure, and deploy platform applications\n  \
+                 • hosting  — manage Node.js PaaS applications (create, upload, deploy)\n  \
                  • payments — manage the payment methods used for purchases\n\
                  \n\
                  Most commands need authentication; run `gddy auth login` first (or just run a\n\
@@ -88,6 +90,7 @@ async fn main() -> ExitCode {
             .with_module(dns::module())
             .with_module(domain::module())
             .with_module(env::module())
+            .with_module(hosting::module())
             .with_module(payments::module())
             .with_module(webhook::module()),
     );

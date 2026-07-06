@@ -1,0 +1,1376 @@
+{
+  "$defs": {
+    "PublicAppCreationJob": {
+      "additionalProperties": false,
+      "properties": {
+        "job": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "active",
+                "failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "job"
+      ],
+      "type": "object"
+    },
+    "PublicAppCreationStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "urls": {
+              "additionalProperties": false,
+              "properties": {
+                "preview": {
+                  "type": "string"
+                },
+                "publish": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "variants": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "variantsWithLifecycle": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "lifecycleState": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "urls"
+          ],
+          "type": "object"
+        },
+        "job": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "active",
+                "failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "job"
+      ],
+      "type": "object"
+    },
+    "PublicAppList": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "createdAt": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "urls": {
+                "additionalProperties": false,
+                "properties": {
+                  "preview": {
+                    "type": "string"
+                  },
+                  "publish": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "variants": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "status",
+              "createdAt",
+              "updatedAt",
+              "urls"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "apps"
+      ],
+      "type": "object"
+    },
+    "PublicAppResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "urls": {
+              "additionalProperties": false,
+              "properties": {
+                "preview": {
+                  "type": "string"
+                },
+                "publish": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "variants": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "variantsWithLifecycle": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "lifecycleState": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "urls"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "app"
+      ],
+      "type": "object"
+    },
+    "PublicAppStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "appStatus": {
+          "type": "string"
+        },
+        "variants": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "lifecycleState": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "variant",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "appStatus",
+        "variants"
+      ],
+      "type": "object"
+    },
+    "PublicCreateAppBody": {
+      "additionalProperties": false,
+      "properties": {
+        "datacenter": {
+          "enum": [
+            "p3",
+            "sxb1"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9 _.'&(),!#:+/-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "PublicCustomerLogs": {
+      "additionalProperties": false,
+      "properties": {
+        "logs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "timestamp",
+              "source",
+              "message",
+              "level"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "logs",
+        "total"
+      ],
+      "type": "object"
+    },
+    "PublicDeploymentsList": {
+      "additionalProperties": false,
+      "properties": {
+        "deployments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "createdAt": {
+                "type": "string"
+              },
+              "errorMessage": {
+                "type": "string"
+              },
+              "gitHash": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "deploying",
+                  "deployed",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "gitHash",
+              "createdAt",
+              "updatedAt"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "totalCount": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deployments",
+        "totalCount",
+        "hasMore"
+      ],
+      "type": "object"
+    },
+    "PublicPatchAppBody": {
+      "additionalProperties": false,
+      "description": "At least one of name or rootPath must be provided.",
+      "minProperties": 1,
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9 _.'&(),!#:+/-]*$",
+          "type": "string"
+        },
+        "rootPath": {
+          "maxLength": 2048,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PublicPublishResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "commitHash": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deploymentId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "PublicRollbackBody": {
+      "additionalProperties": false,
+      "properties": {
+        "deploymentId": {
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "deploymentId"
+      ],
+      "type": "object"
+    },
+    "PublicRollbackResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "commitHash": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "type": "string"
+        },
+        "rollbackFrom": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rollbackFrom",
+        "commitHash",
+        "deploymentId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "PublicSecretsList": {
+      "additionalProperties": false,
+      "properties": {
+        "shared": {
+          "additionalProperties": false,
+          "properties": {
+            "secrets": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "systemManaged": {
+                    "type": "boolean"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "systemManaged"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "secrets"
+          ],
+          "type": "object"
+        },
+        "variants": {
+          "additionalProperties": false,
+          "properties": {
+            "preview": {
+              "additionalProperties": false,
+              "properties": {
+                "secrets": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "systemManaged": {
+                        "type": "boolean"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "systemManaged"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "secrets"
+              ],
+              "type": "object"
+            },
+            "publish": {
+              "additionalProperties": false,
+              "properties": {
+                "secrets": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "systemManaged": {
+                        "type": "boolean"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "systemManaged"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "secrets"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "shared",
+        "variants"
+      ],
+      "type": "object"
+    },
+    "PublicSecretsUpdateBody": {
+      "additionalProperties": false,
+      "properties": {
+        "operations": {
+          "additionalProperties": false,
+          "properties": {
+            "additions": {
+              "default": [],
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            "deletions": {
+              "default": [],
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            "updates": {
+              "default": [],
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "maxItems": 50,
+              "type": "array"
+            }
+          },
+          "required": [
+            "additions",
+            "updates",
+            "deletions"
+          ],
+          "type": "object"
+        },
+        "variant": {
+          "default": "preview",
+          "enum": [
+            "preview",
+            "publish"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "variant",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "PublicZipUploadResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "jobId"
+      ],
+      "type": "object"
+    },
+    "PublicZipUploadStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "errorMessage": {
+          "type": "string"
+        },
+        "errorStage": {
+          "type": "string"
+        },
+        "progressMessage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  "baseUrl": "/v1/hosting/nodejs",
+  "description": "Gateway-integrated API for customer apps. Authenticate with a forwarded customer session (Gasket auth), a developer portal API key (`Authorization: sso-key` on the public gateway URL), or an OAuth Bearer access token. When using Bearer auth, each operation requires the OAuth scope listed on that operation. API keys do not use OAuth scopes. After publish or domain changes, poll GET …/deployments and GET …/status. After zip upload, poll GET …/source/status with the returned jobId.",
+  "endpoints": [
+    {
+      "method": "GET",
+      "operationId": "listApps",
+      "path": "/apps",
+      "responses": {
+        "200": {
+          "description": "App list",
+          "schema": {
+            "$ref": "#/$defs/PublicAppList"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:read"
+      ],
+      "summary": "List apps"
+    },
+    {
+      "method": "POST",
+      "operationId": "createApp",
+      "path": "/apps",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublicCreateAppBody"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "App creation accepted; poll the returned job for status",
+          "schema": {
+            "$ref": "#/$defs/PublicAppCreationJob"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:create"
+      ],
+      "summary": "Create app"
+    },
+    {
+      "method": "GET",
+      "operationId": "getAppCreationStatus",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "jobId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/jobs/{jobId}",
+      "responses": {
+        "200": {
+          "description": "App creation status (app present once active)",
+          "schema": {
+            "$ref": "#/$defs/PublicAppCreationStatus"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:create"
+      ],
+      "summary": "Get app creation status"
+    },
+    {
+      "method": "GET",
+      "operationId": "getApp",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "responses": {
+        "200": {
+          "description": "App details",
+          "schema": {
+            "$ref": "#/$defs/PublicAppResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:read"
+      ],
+      "summary": "Get app"
+    },
+    {
+      "method": "PATCH",
+      "operationId": "patchApp",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublicPatchAppBody"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "App updated",
+          "schema": {
+            "$ref": "#/$defs/PublicAppResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:update"
+      ],
+      "summary": "Update app metadata"
+    },
+    {
+      "method": "DELETE",
+      "operationId": "deleteApp",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "responses": {
+        "204": {
+          "description": "App deleted"
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:delete"
+      ],
+      "summary": "Delete app"
+    },
+    {
+      "method": "GET",
+      "operationId": "listDeployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments",
+      "responses": {
+        "200": {
+          "description": "Deployments",
+          "schema": {
+            "$ref": "#/$defs/PublicDeploymentsList"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:read"
+      ],
+      "summary": "List deployments"
+    },
+    {
+      "method": "POST",
+      "operationId": "publishApp",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments",
+      "responses": {
+        "200": {
+          "description": "Publish started",
+          "schema": {
+            "$ref": "#/$defs/PublicPublishResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.deploy:execute"
+      ],
+      "summary": "Publish app (deploy latest code)"
+    },
+    {
+      "method": "GET",
+      "operationId": "getAppLogs",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "target",
+          "required": true,
+          "schema": {
+            "enum": [
+              "preview",
+              "publish"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "source",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "since",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "lines",
+          "required": false,
+          "schema": {
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/logs",
+      "responses": {
+        "200": {
+          "description": "Log entries",
+          "schema": {
+            "$ref": "#/$defs/PublicCustomerLogs"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.logs:read"
+      ],
+      "summary": "Get application logs"
+    },
+    {
+      "method": "POST",
+      "operationId": "rollbackApp",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/rollback",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublicRollbackBody"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Rollback started",
+          "schema": {
+            "$ref": "#/$defs/PublicRollbackResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "403": {
+          "description": "Rollback not enabled"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.deploy:execute"
+      ],
+      "summary": "Rollback to a previous deployment"
+    },
+    {
+      "method": "GET",
+      "operationId": "listAppSecrets",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "variant",
+          "required": false,
+          "schema": {
+            "enum": [
+              "preview",
+              "publish"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/secrets",
+      "responses": {
+        "200": {
+          "description": "Secret names and metadata (values never returned)",
+          "schema": {
+            "$ref": "#/$defs/PublicSecretsList"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.secrets:write"
+      ],
+      "summary": "List app secrets (metadata only)"
+    },
+    {
+      "method": "POST",
+      "operationId": "updateAppSecrets",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/secrets",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublicSecretsUpdateBody"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated secret metadata",
+          "schema": {
+            "$ref": "#/$defs/PublicSecretsList"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.secrets:write"
+      ],
+      "summary": "Add, update, or delete app secrets"
+    },
+    {
+      "method": "POST",
+      "operationId": "uploadAppSource",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/source",
+      "requestBody": {
+        "contentType": "multipart/form-data",
+        "required": true,
+        "schema": {
+          "properties": {
+            "zipFile": {
+              "format": "binary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "zipFile"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Upload accepted",
+          "schema": {
+            "$ref": "#/$defs/PublicZipUploadResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.code:write"
+      ],
+      "summary": "Upload app source (zip)"
+    },
+    {
+      "method": "GET",
+      "operationId": "getAppSourceUploadStatus",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "jobId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/source/status",
+      "responses": {
+        "200": {
+          "description": "Upload status",
+          "schema": {
+            "$ref": "#/$defs/PublicZipUploadStatus"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.code:write"
+      ],
+      "summary": "Poll zip upload status"
+    },
+    {
+      "method": "GET",
+      "operationId": "getAppStatus",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/status",
+      "responses": {
+        "200": {
+          "description": "App status",
+          "schema": {
+            "$ref": "#/$defs/PublicAppStatus"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        }
+      },
+      "scopes": [
+        "hosting.paas.apps:read"
+      ],
+      "summary": "Get app status"
+    }
+  ],
+  "name": "hosting-nodejs",
+  "title": "Node.js Hosting Public API",
+  "version": "1.0.0"
+}

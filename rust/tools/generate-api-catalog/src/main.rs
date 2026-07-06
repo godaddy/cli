@@ -41,6 +41,12 @@ const BOOTSTRAP_REPOS: &[&str] = &[
 
 const LEGACY_REPOS: &[&str] = &["location.addresses-specification"];
 
+/// Local vendored OpenAPI specs (domain key, path relative to this crate's manifest dir).
+const LOCAL_SPECS: &[(&str, &str)] = &[(
+    "hosting-nodejs",
+    "../../schemas/openapi/hosting-nodejs-public-v1.yaml",
+)];
+
 const HTTP_METHODS: &[&str] = &[
     "get", "post", "put", "patch", "delete", "options", "head", "trace",
 ];
@@ -533,6 +539,42 @@ fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
     }
 
     Ok((sources, tmpdir))
+}
+
+fn local_spec_sources() -> Result<Vec<SpecSource>> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut sources = Vec::new();
+    for (domain, rel_path) in LOCAL_SPECS {
+        let spec_file = manifest_dir.join(rel_path);
+        if !spec_file.exists() {
+            eprintln!(
+                "WARNING: local spec {} not found — skipping",
+                spec_file.display()
+            );
+            continue;
+        }
+        let src = std::fs::read_to_string(&spec_file)
+            .with_context(|| format!("failed to read {}", spec_file.display()))?;
+        let spec = parse_yaml_or_json(&src, &spec_file)?;
+        let raw_version = spec
+            .get("info")
+            .and_then(|i| i.get("version"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("1.0.0");
+        let spec_version = if raw_version.starts_with('v') {
+            raw_version.to_owned()
+        } else {
+            format!("v{raw_version}")
+        };
+        sources.push(SpecSource {
+            domain: (*domain).to_owned(),
+            repo_name: format!("local:{domain}"),
+            spec_file,
+            spec_version,
+            graphql_only: false,
+        });
+    }
+    Ok(sources)
 }
 
 fn regex_is_match_commerce_spec(name: &str) -> bool {
@@ -1649,7 +1691,8 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(&output_dir).context("failed to create output dir")?;
 
     eprintln!("Discovering specification repositories...");
-    let (sources, tmpdir) = discover_spec_sources()?;
+    let (mut sources, tmpdir) = discover_spec_sources()?;
+    sources.extend(local_spec_sources()?);
 
     if sources.is_empty() {
         bail!("no specification repositories discovered — refusing to overwrite catalog output");

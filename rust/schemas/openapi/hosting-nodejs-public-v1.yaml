@@ -1,0 +1,991 @@
+openapi: 3.0.3
+info:
+  title: Node.js Hosting Public API
+  version: 1.0.0
+  description: "Gateway-integrated API for customer apps. Authenticate with a
+    forwarded customer session (Gasket auth), a developer portal API key
+    (`Authorization: sso-key` on the public gateway URL), or an OAuth Bearer
+    access token. When using Bearer auth, each operation requires the OAuth
+    scope listed on that operation. API keys do not use OAuth scopes. After
+    publish or domain changes, poll GET …/deployments and GET …/status. After
+    zip upload, poll GET …/source/status with the returned jobId."
+servers:
+  - url: /v1/hosting/nodejs
+paths:
+  /apps:
+    get:
+      operationId: listApps
+      summary: List apps
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:read
+      responses:
+        "200":
+          description: App list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppList"
+        "401": &a1
+          description: Unauthorized (missing session, invalid API key or Bearer token, or
+            insufficient OAuth scope)
+    post:
+      operationId: createApp
+      summary: Create app
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicCreateAppBody"
+      responses:
+        "202":
+          description: App creation accepted; poll the returned job for status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppCreationJob"
+        "401": *a1
+  /apps/jobs/{jobId}:
+    get:
+      operationId: getAppCreationStatus
+      summary: Get app creation status
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:create
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: App creation status (app present once active)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppCreationStatus"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}:
+    get:
+      operationId: getApp
+      summary: Get app
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:read
+      parameters:
+        - &a2
+          name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: App details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppResponse"
+        "401": *a1
+        "404":
+          description: Not found
+    patch:
+      operationId: patchApp
+      summary: Update app metadata
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:update
+      parameters:
+        - *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicPatchAppBody"
+      responses:
+        "200":
+          description: App updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppResponse"
+        "401": *a1
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteApp
+      summary: Delete app
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:delete
+      parameters:
+        - *a2
+      responses:
+        "204":
+          description: App deleted
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/deployments:
+    get:
+      operationId: listDeployments
+      summary: List deployments
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:read
+      parameters:
+        - *a2
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Deployments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicDeploymentsList"
+        "401": *a1
+        "404":
+          description: Not found
+    post:
+      operationId: publishApp
+      summary: Publish app (deploy latest code)
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.deploy:execute
+      parameters:
+        - *a2
+      responses:
+        "200":
+          description: Publish started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPublishResponse"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/status:
+    get:
+      operationId: getAppStatus
+      summary: Get app status
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.apps:read
+      parameters:
+        - *a2
+      responses:
+        "200":
+          description: App status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAppStatus"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/source:
+    post:
+      operationId: uploadAppSource
+      summary: Upload app source (zip)
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.code:write
+      parameters:
+        - *a2
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - zipFile
+              properties:
+                zipFile:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upload accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicZipUploadResponse"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/source/status:
+    get:
+      operationId: getAppSourceUploadStatus
+      summary: Poll zip upload status
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.code:write
+      parameters:
+        - *a2
+        - name: jobId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upload status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicZipUploadStatus"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/secrets:
+    get:
+      operationId: listAppSecrets
+      summary: List app secrets (metadata only)
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.secrets:write
+      parameters:
+        - *a2
+        - name: variant
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - preview
+              - publish
+      responses:
+        "200":
+          description: Secret names and metadata (values never returned)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSecretsList"
+        "401": *a1
+        "404":
+          description: Not found
+    post:
+      operationId: updateAppSecrets
+      summary: Add, update, or delete app secrets
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.secrets:write
+      parameters:
+        - *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicSecretsUpdateBody"
+      responses:
+        "200":
+          description: Updated secret metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSecretsList"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/logs:
+    get:
+      operationId: getAppLogs
+      summary: Get application logs
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.logs:read
+      parameters:
+        - *a2
+        - name: target
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - preview
+              - publish
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: lines
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicCustomerLogs"
+        "401": *a1
+        "404":
+          description: Not found
+  /apps/{appId}/rollback:
+    post:
+      operationId: rollbackApp
+      summary: Rollback to a previous deployment
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.deploy:execute
+      parameters:
+        - *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicRollbackBody"
+      responses:
+        "200":
+          description: Rollback started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRollbackResponse"
+        "401": *a1
+        "403":
+          description: Rollback not enabled
+        "404":
+          description: Not found
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_idp
+      description: Customer session cookie forwarded by API Gateway
+    apiKeyAuth:
+      type: http
+      scheme: sso-key
+      description: "Developer portal API key on the public gateway URL:
+        `Authorization: sso-key {key}:{secret}`"
+    oauth2:
+      type: oauth2
+      description: GoDaddy OAuth access token (Bearer)
+      flows:
+        clientCredentials:
+          tokenUrl: https://oauth.api.godaddy.com/v2/oauth2/token
+          scopes:
+            hosting.paas.analytics:read: Access application analytics.
+            hosting.paas.apps:create: Create applications and poll creation job status.
+            hosting.paas.apps:delete: Delete applications.
+            hosting.paas.apps:read: Read application details, list apps, deployments, and status.
+            hosting.paas.apps:update: Update application metadata and runtime configuration.
+            hosting.paas.code:read: Read, list, and export files; read database schemas,
+              tables, and data; read Git history.
+            hosting.paas.code:write: Write files; run zip uploads; sync GitHub; run database imports.
+            hosting.paas.deploy:execute: Publish, rollback, restart, and deploy applications.
+            hosting.paas.github:execute: Configure GitHub connections (auth, disconnect,
+              pull, repository access).
+            hosting.paas.health:read: Access application health and diagnose functionality.
+            hosting.paas.logs:read: Access application logs.
+            hosting.paas.secrets:write: Manage application secrets.
+  schemas:
+    PublicAppList:
+      type: object
+      properties:
+        apps:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              status:
+                type: string
+              createdAt:
+                type: string
+              updatedAt:
+                type: string
+              urls:
+                type: object
+                properties:
+                  preview:
+                    type: string
+                  publish:
+                    type: string
+                additionalProperties: false
+              variants:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    status:
+                      type: string
+                  required:
+                    - name
+                    - status
+                  additionalProperties: false
+            required:
+              - id
+              - name
+              - status
+              - createdAt
+              - updatedAt
+              - urls
+            additionalProperties: false
+      required:
+        - apps
+      additionalProperties: false
+    PublicAppResponse:
+      type: object
+      properties:
+        app:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            status:
+              type: string
+            createdAt:
+              type: string
+            updatedAt:
+              type: string
+            urls:
+              type: object
+              properties:
+                preview:
+                  type: string
+                publish:
+                  type: string
+              additionalProperties: false
+            variants:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  status:
+                    type: string
+                required:
+                  - name
+                  - status
+                additionalProperties: false
+            variantsWithLifecycle:
+              type: array
+              items:
+                type: object
+                properties:
+                  variant:
+                    type: string
+                  status:
+                    type: string
+                  lifecycleState:
+                    type: string
+                required:
+                  - variant
+                  - status
+                additionalProperties: false
+          required:
+            - id
+            - name
+            - status
+            - createdAt
+            - updatedAt
+            - urls
+          additionalProperties: false
+      required:
+        - app
+      additionalProperties: false
+    PublicDeploymentsList:
+      type: object
+      properties:
+        deployments:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              status:
+                type: string
+                enum:
+                  - pending
+                  - deploying
+                  - deployed
+                  - failed
+              gitHash:
+                type: string
+              createdAt:
+                type: string
+              updatedAt:
+                type: string
+              errorMessage:
+                type: string
+            required:
+              - id
+              - status
+              - gitHash
+              - createdAt
+              - updatedAt
+            additionalProperties: false
+        totalCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        hasMore:
+          type: boolean
+      required:
+        - deployments
+        - totalCount
+        - hasMore
+      additionalProperties: false
+    PublicAppStatus:
+      type: object
+      properties:
+        appStatus:
+          type: string
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              variant:
+                type: string
+              status:
+                type: string
+              lifecycleState:
+                type: string
+            required:
+              - variant
+              - status
+            additionalProperties: false
+      required:
+        - appStatus
+        - variants
+      additionalProperties: false
+    PublicCreateAppBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9 _.'&(),!#:+/-]*$
+        datacenter:
+          type: string
+          enum:
+            - p3
+            - sxb1
+      required:
+        - name
+      additionalProperties: false
+    PublicAppCreationJob:
+      type: object
+      properties:
+        job:
+          type: object
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+              enum:
+                - pending
+                - active
+                - failed
+          required:
+            - id
+            - status
+          additionalProperties: false
+      required:
+        - job
+      additionalProperties: false
+    PublicAppCreationStatus:
+      type: object
+      properties:
+        job:
+          type: object
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+              enum:
+                - pending
+                - active
+                - failed
+          required:
+            - id
+            - status
+          additionalProperties: false
+        app:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            status:
+              type: string
+            createdAt:
+              type: string
+            updatedAt:
+              type: string
+            urls:
+              type: object
+              properties:
+                preview:
+                  type: string
+                publish:
+                  type: string
+              additionalProperties: false
+            variants:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  status:
+                    type: string
+                required:
+                  - name
+                  - status
+                additionalProperties: false
+            variantsWithLifecycle:
+              type: array
+              items:
+                type: object
+                properties:
+                  variant:
+                    type: string
+                  status:
+                    type: string
+                  lifecycleState:
+                    type: string
+                required:
+                  - variant
+                  - status
+                additionalProperties: false
+          required:
+            - id
+            - name
+            - status
+            - createdAt
+            - updatedAt
+            - urls
+          additionalProperties: false
+      required:
+        - job
+      additionalProperties: false
+    PublicPatchAppBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9 _.'&(),!#:+/-]*$
+        rootPath:
+          type: string
+          maxLength: 2048
+      additionalProperties: false
+      minProperties: 1
+      description: At least one of name or rootPath must be provided.
+    PublicPublishResponse:
+      type: object
+      properties:
+        deploymentId:
+          type: string
+        status:
+          type: string
+        commitHash:
+          type: string
+      required:
+        - deploymentId
+        - status
+      additionalProperties: false
+    PublicZipUploadResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+      required:
+        - jobId
+      additionalProperties: false
+    PublicZipUploadStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        progressMessage:
+          type: string
+        errorMessage:
+          type: string
+        errorStage:
+          type: string
+      required:
+        - status
+      additionalProperties: false
+    PublicSecretsList:
+      type: object
+      properties:
+        shared:
+          type: object
+          properties:
+            secrets:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  systemManaged:
+                    type: boolean
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - name
+                  - systemManaged
+                additionalProperties: false
+          required:
+            - secrets
+          additionalProperties: false
+        variants:
+          type: object
+          properties:
+            preview:
+              type: object
+              properties:
+                secrets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      systemManaged:
+                        type: boolean
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - name
+                      - systemManaged
+                    additionalProperties: false
+              required:
+                - secrets
+              additionalProperties: false
+            publish:
+              type: object
+              properties:
+                secrets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      systemManaged:
+                        type: boolean
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - name
+                      - systemManaged
+                    additionalProperties: false
+              required:
+                - secrets
+              additionalProperties: false
+          additionalProperties: false
+      required:
+        - shared
+        - variants
+      additionalProperties: false
+    PublicSecretsUpdateBody:
+      type: object
+      properties:
+        variant:
+          default: preview
+          type: string
+          enum:
+            - preview
+            - publish
+        operations:
+          type: object
+          properties:
+            additions:
+              default: []
+              maxItems: 50
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 256
+                  value:
+                    type: string
+                    maxLength: 8192
+                required:
+                  - name
+                  - value
+                additionalProperties: false
+            updates:
+              default: []
+              maxItems: 50
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 256
+                  value:
+                    type: string
+                    maxLength: 8192
+                required:
+                  - name
+                  - value
+                additionalProperties: false
+            deletions:
+              default: []
+              maxItems: 50
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 256
+                required:
+                  - name
+                additionalProperties: false
+          required:
+            - additions
+            - updates
+            - deletions
+          additionalProperties: false
+      required:
+        - variant
+        - operations
+      additionalProperties: false
+    PublicCustomerLogs:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+              source:
+                type: string
+              message:
+                type: string
+              level:
+                type: string
+            required:
+              - timestamp
+              - source
+              - message
+              - level
+            additionalProperties: false
+        total:
+          type: number
+      required:
+        - logs
+        - total
+      additionalProperties: false
+    PublicRollbackBody:
+      type: object
+      properties:
+        deploymentId:
+          type: string
+          minLength: 1
+          pattern: ^[a-zA-Z0-9_-]+$
+      required:
+        - deploymentId
+      additionalProperties: false
+    PublicRollbackResponse:
+      type: object
+      properties:
+        rollbackFrom:
+          type: string
+        commitHash:
+          type: string
+        deploymentId:
+          type: string
+        status:
+          type: string
+      required:
+        - rollbackFrom
+        - commitHash
+        - deploymentId
+        - status
+      additionalProperties: false
