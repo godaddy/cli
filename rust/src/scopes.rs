@@ -53,11 +53,6 @@ macro_rules! declare_scopes {
 }
 
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
-//
-// DEV:  https://authz.int.gdcorp.tools/projects/7783/applications/7737/oauth-clients/94488449-5769-4ecf-8bf4-9f8aa83859a3/environment/dev
-// TEST: https://authz.int.gdcorp.tools/projects/7783/applications/7737/oauth-clients/e710d8b9-f4e5-4178-b1bf-98dfcd15d4ed/environment/test
-// OTE:  https://authz.int.gdcorp.tools/projects/7783/applications/7737/oauth-clients/91660d79-c909-426c-b5c8-e0f575e8fcd2/environment/ote
-// PROD: https://authz.int.gdcorp.tools/projects/7783/applications/7737/oauth-clients/bc87f347-af82-4892-833f-818f54a0e79e/environment/prod
 declare_scopes! {
     /// Read the caller's registered applications. Requested at login by default
     /// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
