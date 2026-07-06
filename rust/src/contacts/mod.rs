@@ -45,12 +45,15 @@ pub struct ContactsFile {
     pub tech: Option<Contact>,
 }
 
-/// One contact's details. Field names mirror the Domains API `Contact`/`Address`
-/// schema (in snake_case), so a complete entry maps directly to a request
-/// contact. The fields the API requires (`name_first`/`name_last`/`email`/`phone`
-/// and the mailing-address `address1`/`city`/`state`/`postal_code`/`country`) are
-/// mandatory here too — a partial entry fails to parse rather than producing an
-/// invalid request.
+/// One contact's details. Field names mirror the contact/address fields, so a
+/// complete entry maps directly to a v3 request contact. The fields v3 requires
+/// (`name_first`/`name_last`/`email`/`phone` and the address
+/// `address1`/`city`/`state`/`postal_code`/`country`) are mandatory here too — a
+/// partial entry fails to parse rather than producing an invalid request.
+///
+/// v3's `Contact` has no middle name, job title, or fax; a `name_middle`/
+/// `job_title`/`fax` key left over from a v1/v2-era file is accepted (serde
+/// ignores unknown keys) but not sent.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Contact {
     pub name_first: String,
@@ -58,13 +61,7 @@ pub struct Contact {
     pub email: String,
     pub phone: String,
     #[serde(default)]
-    pub name_middle: Option<String>,
-    #[serde(default)]
     pub organization: Option<String>,
-    #[serde(default)]
-    pub job_title: Option<String>,
-    #[serde(default)]
-    pub fax: Option<String>,
     pub address1: String,
     #[serde(default)]
     pub address2: Option<String>,
@@ -96,80 +93,58 @@ impl Role {
 }
 
 impl Contact {
-    /// Convert to the v2 API contact (`ContactDomainCreate`), validating the
-    /// country code. Returns a human-readable error (surfaced by
-    /// `domain purchase`) when the country is not a recognized two-letter ISO
-    /// code. `encoding` is reported honestly: `ASCII` when every field is ASCII,
-    /// else `UTF-8`, so accented names/addresses aren't mislabeled.
-    pub fn to_api(&self, role: Role) -> Result<api::ContactDomainCreate, String> {
+    /// Convert to the v3 API contact (`Contact`), validating the country code.
+    /// Returns a human-readable error (surfaced by `domain purchase`/`quote`) when
+    /// the country isn't shaped like an ISO-3166 alpha-2 code (see
+    /// [`validate_country`] — a format check, not list membership) or the phone
+    /// can't be parsed.
+    ///
+    /// v3's `Contact` is leaner than v2's: it has no middle name, job title, fax,
+    /// or character-encoding field, and the phone is a structured object
+    /// (`countryCode`/`nationalNumber`) rather than a dotted `+1.4805551212`
+    /// string. `name_middle`/`job_title`/`fax` are not part of the struct schema;
+    /// a leftover such key in a v1/v2-era `contacts.toml` is simply ignored (serde
+    /// skips unknown keys).
+    pub fn to_api(&self, role: Role) -> Result<api::Contact, String> {
         let country_upper = self.country.to_ascii_uppercase();
-        let country = api::AddressCountry::try_from(country_upper.as_str()).map_err(|_| {
-            format!(
-                "{} contact in contacts.toml has invalid country {:?} \
-                 (expected a two-letter ISO code, e.g. US)",
-                role.label(),
-                self.country,
-            )
-        })?;
-        let encoding = if self.is_all_ascii() {
-            api::ContactDomainCreateEncoding::Ascii
-        } else {
-            api::ContactDomainCreateEncoding::Utf8
-        };
-        // Normalize phone (required) and fax (optional, only when present) to the
-        // API's `+<code>.<number>` format so common inputs aren't rejected with a
-        // cryptic 422.
-        let phone = normalize_phone(&self.phone, &country_upper, "phone", role)?;
-        let fax = match empty_to_none(&self.fax) {
-            Some(f) => Some(normalize_phone(&f, &country_upper, "fax", role)?),
-            None => None,
-        };
-        Ok(api::ContactDomainCreate {
-            address_mailing: api::Address {
-                address1: self.address1.clone(),
-                address2: empty_to_none(&self.address2),
+        validate_country(&country_upper, role)?;
+        let phone = to_api_phone(&self.phone, &country_upper, role)?;
+        Ok(api::Contact {
+            address: api::SimpleAddress {
+                line1: self.address1.clone(),
+                line2: empty_to_none(&self.address2),
                 city: self.city.clone(),
-                country,
-                postal_code: self.postal_code.clone(),
-                state: self.state.clone(),
+                state: Some(self.state.clone()),
+                postal_code: Some(self.postal_code.clone()),
+                country_code: api::CountryCode(country_upper),
             },
-            email: self.email.clone(),
-            encoding,
-            fax,
-            job_title: empty_to_none(&self.job_title),
-            metadata: Default::default(),
-            name_first: self.name_first.clone(),
-            name_last: self.name_last.clone(),
-            name_middle: empty_to_none(&self.name_middle),
+            email: api::EmailAddress(self.email.clone()),
+            first_name: self.name_first.clone(),
+            last_name: self.name_last.clone(),
             organization: empty_to_none(&self.organization),
             phone,
         })
     }
+}
 
-    /// Whether every populated field is ASCII (drives the `encoding` we report).
-    fn is_all_ascii(&self) -> bool {
-        let required = [
-            &self.name_first,
-            &self.name_last,
-            &self.email,
-            &self.phone,
-            &self.address1,
-            &self.city,
-            &self.state,
-            &self.postal_code,
-            &self.country,
-        ];
-        let optional = [
-            &self.name_middle,
-            &self.organization,
-            &self.job_title,
-            &self.fax,
-            &self.address2,
-        ];
-        required.iter().all(|s| s.is_ascii())
-            && optional
-                .iter()
-                .all(|o| o.as_deref().is_none_or(str::is_ascii))
+/// Validate a (already upper-cased) country code has the *shape* of an ISO-3166
+/// alpha-2 code — two ASCII uppercase letters (or the special `C2`). This is a
+/// cheap format check, not membership in the ISO-3166 list (e.g. `ZZ` passes);
+/// the API validates the actual code server-side. It preserves the clear early
+/// error the v2 path gave before the strict `AddressCountry` enum was dropped
+/// from the generated client.
+fn validate_country(country_upper: &str, role: Role) -> Result<(), String> {
+    let ok = country_upper == "C2"
+        || (country_upper.len() == 2 && country_upper.bytes().all(|b| b.is_ascii_uppercase()));
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} contact in contacts.toml has invalid country {:?} \
+             (expected a two-letter ISO code, e.g. US)",
+            role.label(),
+            country_upper,
+        ))
     }
 }
 
@@ -187,30 +162,33 @@ fn empty_to_none(value: &Option<String>) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// Normalize a user-entered phone or fax number to the Domains API format
-/// `+<country-calling-code>.<national-number>` (e.g. `+1.4805551212`), matching the
-/// API's required pattern `^\+([0-9]){1,3}\.([0-9] ?){5,14}$`.
+/// Parse a user-entered phone number into v3's structured `Phone`
+/// (`countryCode` = the calling code digits, e.g. `44`; `nationalNumber` = the
+/// national digits, e.g. `7793601890`).
 ///
 /// `region` is the contact's two-letter ISO country, used as the default region so
 /// a number typed without a `+` country prefix (e.g. a local `07793 601890`) still
 /// parses. Returns a human-readable error (surfaced by `domain purchase`, like the
 /// invalid-country error) when the value can't be parsed as a phone number, rather
 /// than forwarding it and letting the API reject it opaquely.
-fn normalize_phone(raw: &str, region: &str, field: &str, role: Role) -> Result<String, String> {
+fn to_api_phone(raw: &str, region: &str, role: Role) -> Result<api::Phone, String> {
     let region_id = region.parse::<phonenumber::country::Id>().ok();
     let number = phonenumber::parse(region_id, raw).map_err(|_| {
         format!(
-            "{} contact in contacts.toml has an unrecognized {} {:?} \
+            "{} contact in contacts.toml has an unrecognized phone {:?} \
              (expected a phone number like +1.4805551212)",
             role.label(),
-            field,
             raw,
         )
     })?;
     // `NationalNumber`'s Display preserves significant leading zeros (e.g. Italy),
     // so this is correct for every region, not just those whose national number is
     // a plain integer.
-    Ok(format!("+{}.{}", number.code().value(), number.national()))
+    Ok(api::Phone {
+        country_code: Some(number.code().value().to_string()),
+        national_number: Some(number.national().to_string()),
+        extension_number: None,
+    })
 }
 
 impl ContactsFile {
@@ -224,10 +202,10 @@ impl ContactsFile {
         }
     }
 
-    /// The v2 API contact for a role: `None` when the role is absent (→ omit
+    /// The v3 API contact for a role: `None` when the role is absent (→ omit
     /// from the request → account default), or an error when the configured
-    /// country is invalid.
-    pub fn to_api(&self, role: Role) -> Result<Option<api::ContactDomainCreate>, String> {
+    /// country or phone is invalid.
+    pub fn to_api(&self, role: Role) -> Result<Option<api::Contact>, String> {
         self.get(role).map(|c| c.to_api(role)).transpose()
     }
 }
@@ -263,17 +241,18 @@ pub fn load() -> Result<ContactsFile, ContactsError> {
 /// fall back to the account) until the user deliberately uncomments and fills a
 /// role — they can't accidentally register a domain with the placeholder values.
 pub fn sample_toml() -> &'static str {
-    r#"# gddy domain-purchase contacts
+    r#"# gddy domain registration contacts
 #
-# Default contacts for `gddy domain purchase`. Any role you define here is sent
-# with the purchase; any role you leave out falls back to your GoDaddy account's
-# default contact for that role.
+# Default contacts for domain registration. These are read at `gddy domain quote`
+# time and locked into the quote token, so `gddy domain purchase` registers with
+# exactly the contacts you quoted — edit this file and re-quote to change them.
+# Any role you leave out falls back to your GoDaddy account's default for that role.
 #
 # To use a role, uncomment its block below and replace the placeholder values.
 # Required fields per role: name_first, name_last, email, phone, address1, city,
 # state, postal_code, country (a two-letter ISO code). Optional fields:
-# name_middle, organization, job_title, fax, address2. A role you uncomment must
-# have all required fields or the file will fail to load.
+# organization, address2. A role you uncomment must have all required fields or
+# the file will fail to load.
 
 # [registrant]
 # name_first   = "Jane"
@@ -345,41 +324,23 @@ country = "US"
             .to_api(Role::Registrant)
             .expect("valid country")
             .expect("present");
-        assert_eq!(registrant.name_first, "Ada");
-        assert_eq!(registrant.name_last, "Lovelace");
-        assert_eq!(registrant.address_mailing.city, "Tempe");
-        // Lower-case "us" in the file resolves to the uppercased ISO enum variant.
-        assert_eq!(registrant.address_mailing.country, api::AddressCountry::Us);
+        assert_eq!(registrant.first_name, "Ada");
+        assert_eq!(registrant.last_name, "Lovelace");
+        assert_eq!(registrant.address.city, "Tempe");
+        assert_eq!(registrant.address.state.as_deref(), Some("AZ"));
+        assert_eq!(registrant.address.postal_code.as_deref(), Some("85281"));
+        // Lower-case "us" in the file resolves to the uppercased ISO code.
+        assert_eq!(registrant.address.country_code.as_str(), "US");
+        assert_eq!(registrant.email.as_str(), "ada@example.com");
         // An absent role resolves to None (→ account default).
         assert!(file.to_api(Role::Admin).expect("ok").is_none());
-        // All-ASCII contact data is reported as ASCII encoding.
-        assert_eq!(registrant.encoding, api::ContactDomainCreateEncoding::Ascii);
     }
 
     #[test]
-    fn to_api_reports_utf8_encoding_for_non_ascii_fields() {
-        let toml = r#"
-[registrant]
-name_first = "José"
-name_last = "Núñez"
-email = "jose@example.com"
-phone = "+34.911111111"
-address1 = "1 Calle"
-city = "Madrid"
-state = "M"
-postal_code = "28001"
-country = "ES"
-"#;
-        let file: ContactsFile = toml::from_str(toml).expect("parses");
-        let c = file
-            .to_api(Role::Registrant)
-            .expect("valid country")
-            .expect("present");
-        assert_eq!(c.encoding, api::ContactDomainCreateEncoding::Utf8);
-    }
-
-    #[test]
-    fn to_api_rejects_unknown_country() {
+    fn to_api_rejects_malformed_country() {
+        // A non-two-letter code is rejected early with a clear message. (ISO
+        // membership beyond the two-letter shape is validated server-side now that
+        // the strict country enum is gone from the generated client.)
         let toml = r#"
 [registrant]
 name_first = "Ada"
@@ -390,18 +351,18 @@ address1 = "1 Bletchley Park"
 city = "Tempe"
 state = "AZ"
 postal_code = "85281"
-country = "ZZ"
+country = "USA"
 "#;
         let file: ContactsFile = toml::from_str(toml).expect("parses");
         let err = file
             .to_api(Role::Registrant)
-            .expect_err("ZZ is not a valid ISO country");
+            .expect_err("USA is not a two-letter code");
         assert!(err.contains("invalid country"));
         assert!(err.contains("registrant"));
     }
 
     /// Build a single-registrant `ContactsFile` from a `[registrant]` TOML body.
-    fn registrant(body: &str) -> api::ContactDomainCreate {
+    fn registrant(body: &str) -> api::Contact {
         let toml = format!("[registrant]\n{body}");
         let file: ContactsFile = toml::from_str(&toml).expect("parses");
         file.to_api(Role::Registrant)
@@ -420,17 +381,26 @@ country = "GB"
 "#;
 
     #[test]
-    fn gb_phone_common_formats_normalize_to_dotted() {
+    fn gb_phone_common_formats_parse_to_structured_phone() {
         // International (no separator), international (spaced), and bare local —
-        // all the same UK number — normalize to the API's `+44.7793601890`.
+        // all the same UK number — parse to countryCode `44` + national `7793601890`.
         for input in ["+447793601890", "+44 7793 601890", "07793 601890"] {
             let c = registrant(&format!("{GB_BASE}phone = \"{input}\"\n"));
-            assert_eq!(c.phone, "+44.7793601890", "input {input:?}");
+            assert_eq!(
+                c.phone.country_code.as_deref(),
+                Some("44"),
+                "input {input:?}"
+            );
+            assert_eq!(
+                c.phone.national_number.as_deref(),
+                Some("7793601890"),
+                "input {input:?}"
+            );
         }
     }
 
     #[test]
-    fn us_phone_normalizes_to_dotted() {
+    fn us_phone_parses_to_structured_phone() {
         let body = r#"name_first = "Ada"
 name_last = "Lovelace"
 email = "ada@example.com"
@@ -441,13 +411,16 @@ state = "AZ"
 postal_code = "85281"
 country = "US"
 "#;
-        assert_eq!(registrant(body).phone, "+1.4805551212");
+        let c = registrant(body);
+        assert_eq!(c.phone.country_code.as_deref(), Some("1"));
+        assert_eq!(c.phone.national_number.as_deref(), Some("4805551212"));
     }
 
     #[test]
-    fn already_dotted_phone_is_preserved() {
+    fn already_dotted_phone_is_parsed() {
         let c = registrant(&format!("{GB_BASE}phone = \"+1.4805551212\"\n"));
-        assert_eq!(c.phone, "+1.4805551212");
+        assert_eq!(c.phone.country_code.as_deref(), Some("1"));
+        assert_eq!(c.phone.national_number.as_deref(), Some("4805551212"));
     }
 
     #[test]
@@ -470,7 +443,7 @@ country = "US"
             let c = registrant(&format!(
                 "{GB_BASE}phone = \"+44.7793601890\"\naddress2 = {blank}\n"
             ));
-            assert_eq!(c.address_mailing.address2, None, "blank {blank}");
+            assert_eq!(c.address.line2, None, "blank {blank}");
         }
     }
 
@@ -479,26 +452,18 @@ country = "US"
         let c = registrant(&format!(
             "{GB_BASE}phone = \"+44.7793601890\"\naddress2 = \"Flat 2\"\n"
         ));
-        assert_eq!(c.address_mailing.address2.as_deref(), Some("Flat 2"));
+        assert_eq!(c.address.line2.as_deref(), Some("Flat 2"));
     }
 
     #[test]
-    fn blank_optional_text_fields_are_omitted() {
+    fn blank_optional_org_is_omitted() {
+        // v3's Contact carries only `organization` among the optional text fields;
+        // job_title/name_middle/fax remain accepted in the file (for compatibility)
+        // but are not sent. A blank organization must be omitted, not sent as "".
         let c = registrant(&format!(
             "{GB_BASE}phone = \"+44.7793601890\"\norganization = \"\"\njob_title = \"\"\nname_middle = \"\"\nfax = \"\"\n"
         ));
         assert_eq!(c.organization, None);
-        assert_eq!(c.job_title, None);
-        assert_eq!(c.name_middle, None);
-        assert_eq!(c.fax, None);
-    }
-
-    #[test]
-    fn present_fax_is_normalized() {
-        let c = registrant(&format!(
-            "{GB_BASE}phone = \"+44.7793601890\"\nfax = \"07793 601891\"\n"
-        ));
-        assert_eq!(c.fax.as_deref(), Some("+44.7793601891"));
     }
 
     #[test]

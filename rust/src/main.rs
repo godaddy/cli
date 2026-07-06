@@ -12,6 +12,8 @@ mod extension;
 mod hosting;
 mod output_schema;
 mod payments;
+mod quote_cache;
+mod scopes;
 mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
@@ -28,7 +30,7 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let auth_provider = Arc::new(auth::CompositeAuthProvider::new());
+    let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
 
     let cli = Cli::new(
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")

@@ -16,7 +16,7 @@ path = "src/main.rs"
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.5", features = ["std", "string"] }
-cli-engine = { features = ["pkce-auth"], version = "0.3.4" }
+cli-engine = { features = ["pkce-auth"], version = "0.3.5" }
 dirs = "6"
 domains-client = { path = "domains-client" }
 fancy-regex = "0.14"
@@ -33,9 +33,11 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+iso_currency = "0.5.3"
 
 [dev-dependencies]
 httpmock = "0.7"
+tempfile = "3"
 
 [lints.rust]
 unsafe_code = "deny"
