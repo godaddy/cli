@@ -307,10 +307,11 @@ fn summarize_set_outcomes(
     }))
 }
 
-/// Build the `delete` result from per-record delete outcomes (each `--data` value
-/// paired with `None` on success or `Some(error)`): `Ok(json)` with the deleted
-/// count (0 when nothing matched) if all succeeded, else `Err(message)` — a
-/// non-zero exit — with a per-record ✓/✗ breakdown. Pure so it's unit-testable.
+/// Build the `delete` result from per-record delete outcomes (each matched
+/// record's `data` value paired with `None` on success or `Some(error)`):
+/// `Ok(json)` with the deleted count (0 when nothing matched) if all succeeded,
+/// else `Err(message)` — a non-zero exit — with a per-record ✓/✗ breakdown. Pure
+/// so it's unit-testable.
 fn summarize_delete_outcomes(
     domain: &str,
     record_type: &str,
