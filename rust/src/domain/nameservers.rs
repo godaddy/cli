@@ -79,12 +79,19 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 Ok(r) => r.into_inner(),
                 Err(e) => return Err(api_error("updating nameservers", debug, e).await),
             };
-            Ok(CommandResult::new(json!({
+            // Only emit the optional async-operation fields when present — never
+            // JSON null (schema marks them optional strings; null leaks into tables).
+            let mut result = json!({
                 "domain": domain,
                 "nameservers": hosts,
-                "operationId": op.operation_id.map(|o| o.to_string()),
-                "status": op.status.map(|s| s.to_string()),
-            })))
+            });
+            if let Some(op_id) = op.operation_id.as_ref() {
+                result["operationId"] = json!(op_id.to_string());
+            }
+            if let Some(status) = op.status.as_ref() {
+                result["status"] = json!(status.to_string());
+            }
+            Ok(CommandResult::new(result))
         },
     ))
 }

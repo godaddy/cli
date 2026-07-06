@@ -377,13 +377,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            let result = json!({
+            // Only emit the optional fields when present — never JSON null (the
+            // schema marks them optional strings, and null leaks into tables).
+            let mut result = json!({
                 "domain": domain,
                 "status": status,
-                "operationId": operation_id.map(|o| o.to_string()),
-                "price": price,
-                "currency": currency,
             });
+            if let Some(op) = operation_id.as_ref() {
+                result["operationId"] = json!(op.to_string());
+            }
+            if let Some(p) = price.as_ref() {
+                result["price"] = json!(p);
+            }
+            if let Some(c) = currency.as_ref() {
+                result["currency"] = json!(c);
+            }
             Ok(CommandResult::new(result).with_next_actions(vec![
                 NextAction::new("domain get <domain>", "See the registered domain's details")
                     .with_param("domain", NextActionParam::required()),

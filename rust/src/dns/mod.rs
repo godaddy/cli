@@ -831,18 +831,27 @@ pub fn module() -> Module {
 
                 let mut outcomes = Vec::with_capacity(existing.len());
                 for rec in &existing {
-                    let Some(id) = rec.record_id.as_deref() else {
-                        continue; // no id to target (shouldn't happen for a real record)
-                    };
-                    let res = client
-                        .delete_dns_record()
-                        .zone(domain.as_str())
-                        .record_id(id)
-                        .send()
-                        .await;
-                    let err = match res {
-                        Ok(_) => None,
-                        Err(e) => Some(api_error("deleting DNS record", debug, e).await.to_string()),
+                    // A record with no server id can't be targeted — report it as a
+                    // failure (non-zero exit) rather than silently leaving it behind.
+                    let err = match rec.record_id.as_deref() {
+                        None => Some(
+                            "the API returned this record without a recordId, so it can't be \
+                             deleted; re-run `gddy dns list` and remove it in the control panel \
+                             if it persists"
+                                .to_string(),
+                        ),
+                        Some(id) => match client
+                            .delete_dns_record()
+                            .zone(domain.as_str())
+                            .record_id(id)
+                            .send()
+                            .await
+                        {
+                            Ok(_) => None,
+                            Err(e) => {
+                                Some(api_error("deleting DNS record", debug, e).await.to_string())
+                            }
+                        },
                     };
                     outcomes.push((rec.data.clone(), err));
                 }
