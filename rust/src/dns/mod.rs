@@ -6,8 +6,8 @@
 //!
 //! * **`list`** — `GET` the (paginated) record collection, with optional
 //!   `type`/`name` filters.
-//! * **`add`** — `POST` one record per `--data` value (`ttl` required; defaults
-//!   to 3600 when omitted).
+//! * **`add`** — `POST` one record per `--data` value. `--ttl` is optional on the
+//!   CLI (defaults to 3600 when omitted); the v3 record payload itself requires a ttl.
 //! * **`set`** / **`delete`** — v3 keys replace/delete on a server-assigned
 //!   record id, so these first list the matching records and then act per record
 //!   (`set` reconciles: reuse ids, delete surplus, create shortfall). They are
