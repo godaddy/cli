@@ -85,6 +85,20 @@ describe("Application Deploy with Security Scanning", () => {
       }),
     );
 
+    vi.spyOn(applicationsService, "activateReleaseEffect").mockReturnValue(
+      Effect.succeed({
+        activateRelease: {
+          id: "release-123",
+          version: "1.0.0",
+          description: "Initial release",
+          status: "ACTIVE",
+          activatedAt: "2025-01-01T00:00:00Z",
+          createdAt: "2025-01-01T00:00:00Z",
+          updatedAt: "2025-01-01T00:00:00Z",
+        },
+      }),
+    );
+
     // Setup spy for getExtensionsFromConfig (will be configured per test)
     getExtensionsFromConfigSpy = vi.spyOn(
       configService,
@@ -153,6 +167,7 @@ exec('rm -rf /'); // SEC001 violation
       const exit = await runEffectExit(applicationDeployEffect("test-app"));
       const err = extractFailure(exit) as { userMessage: string };
       expect(err.userMessage).toContain("blocked");
+      expect(applicationsService.activateReleaseEffect).not.toHaveBeenCalled();
       expect(
         applicationsService.updateApplicationEffect,
       ).not.toHaveBeenCalled();
@@ -246,15 +261,35 @@ export function greet(name: string) {
         progressEvents.some(
           (event) =>
             event.type === "step" &&
+            event.name === "release.activate" &&
+            event.status === "completed",
+        ),
+      ).toBe(true);
+      expect(
+        progressEvents.some(
+          (event) =>
+            event.type === "step" &&
             event.name === "deploy" &&
             event.status === "completed",
         ),
       ).toBe(true);
+      expect(applicationsService.activateReleaseEffect).toHaveBeenCalledWith(
+        "app-123",
+        "release-123",
+        { accessToken: "test-token" },
+      );
       expect(applicationsService.updateApplicationEffect).toHaveBeenCalledWith(
         "app-123",
         { status: "ACTIVE" },
         { accessToken: "test-token" },
       );
+      const activateOrder =
+        vi.mocked(applicationsService.activateReleaseEffect).mock
+          .invocationCallOrder[0];
+      const updateOrder =
+        vi.mocked(applicationsService.updateApplicationEffect).mock
+          .invocationCallOrder[0];
+      expect(activateOrder).toBeLessThan(updateOrder);
     } finally {
       process.chdir(originalCwd);
     }
@@ -359,6 +394,7 @@ exec('dangerous command'); // SEC001
       const exit = await runEffectExit(applicationDeployEffect("test-app"));
       const err = extractFailure(exit) as { userMessage: string };
       expect(err.userMessage).toContain("blocked");
+      expect(applicationsService.activateReleaseEffect).not.toHaveBeenCalled();
       expect(
         applicationsService.updateApplicationEffect,
       ).not.toHaveBeenCalled();
@@ -380,11 +416,23 @@ exec('dangerous command'); // SEC001
       expect(result.totalExtensions).toBe(0);
       expect(result.securityReports).toHaveLength(0);
       // Deployment should still proceed
+      expect(applicationsService.activateReleaseEffect).toHaveBeenCalledWith(
+        "app-123",
+        "release-123",
+        { accessToken: "test-token" },
+      );
       expect(applicationsService.updateApplicationEffect).toHaveBeenCalledWith(
         "app-123",
         { status: "ACTIVE" },
         { accessToken: "test-token" },
       );
+      const activateOrder =
+        vi.mocked(applicationsService.activateReleaseEffect).mock
+          .invocationCallOrder[0];
+      const updateOrder =
+        vi.mocked(applicationsService.updateApplicationEffect).mock
+          .invocationCallOrder[0];
+      expect(activateOrder).toBeLessThan(updateOrder);
     } finally {
       process.chdir(originalCwd);
     }
@@ -410,6 +458,7 @@ exec('dangerous command'); // SEC001
       const exit = await runEffectExit(applicationDeployEffect("test-app"));
       const err = extractFailure(exit) as { userMessage: string };
       expect(err.userMessage).toContain("handle path");
+      expect(applicationsService.activateReleaseEffect).not.toHaveBeenCalled();
       expect(
         applicationsService.updateApplicationEffect,
       ).not.toHaveBeenCalled();
@@ -438,6 +487,7 @@ exec('dangerous command'); // SEC001
       const exit = await runEffectExit(applicationDeployEffect("test-app"));
       const err = extractFailure(exit) as { userMessage: string };
       expect(err.userMessage).toContain("source path");
+      expect(applicationsService.activateReleaseEffect).not.toHaveBeenCalled();
       expect(
         applicationsService.updateApplicationEffect,
       ).not.toHaveBeenCalled();
@@ -520,6 +570,7 @@ export function run() {
       expect(err.userMessage).toBe("upload failed");
       expect(existsSync(artifactPath)).toBe(false);
       expect(existsSync(sourcemapPath)).toBe(false);
+      expect(applicationsService.activateReleaseEffect).not.toHaveBeenCalled();
       expect(
         applicationsService.updateApplicationEffect,
       ).not.toHaveBeenCalled();
