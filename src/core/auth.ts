@@ -45,6 +45,7 @@ export interface AuthResult {
   success: boolean;
   accessToken?: string;
   expiresAt?: Date;
+  onboardingPending?: boolean;
 }
 
 export interface AuthStatus {

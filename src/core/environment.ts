@@ -269,6 +269,21 @@ export function getClientId(env: Environment): string {
 }
 
 /**
+ * Get the devx-core API base URL for the given environment.
+ * Can be overridden with DEVX_CORE_URL environment variable.
+ */
+export function getDevxCoreUrl(env: Environment): string {
+  if (process.env.DEVX_CORE_URL) return process.env.DEVX_CORE_URL;
+
+  const urls: Record<Environment, string> = {
+    ote: "https://api.developer.commerce.ote-godaddy.com",
+    prod: "https://api.developer.commerce.godaddy.com",
+  };
+
+  return urls[env];
+}
+
+/**
  * Check if an action requires confirmation in the current environment
  */
 export function requiresConfirmation(
