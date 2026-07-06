@@ -486,7 +486,7 @@ fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
             .long("ttl")
             .value_name("SECONDS")
             .value_parser(clap::value_parser!(i64).range(1..))
-            .help("Time-to-live in seconds (add: defaults to 3600)"),
+            .help("Time-to-live in seconds (defaults to 3600 when omitted)"),
     )
     .with_arg(
         clap::Arg::new("priority")
@@ -713,6 +713,18 @@ pub fn module() -> Module {
                     debug,
                 )
                 .await?;
+                // Every existing record must have a server id to reconcile against —
+                // v3 mutations are keyed by recordId. Bail before touching anything
+                // if any lacks one, rather than silently dropping it (which would
+                // leave it behind and make `set` add records instead of replacing).
+                if existing.iter().any(|r| r.record_id.is_none()) {
+                    return Err(CliCoreError::message(format!(
+                        "some existing {record_type} records for {name} were returned without a \
+                         recordId, so `set` can't safely replace the full set. Re-run `gddy dns \
+                         list {domain} --type {record_type} --name {name}` and adjust in the \
+                         control panel if this persists."
+                    )));
+                }
                 let existing_ids: Vec<String> =
                     existing.iter().filter_map(|r| r.record_id.clone()).collect();
 

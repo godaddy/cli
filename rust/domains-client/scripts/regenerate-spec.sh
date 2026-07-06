@@ -3,9 +3,8 @@
 #
 # The CLI's domain/dns commands span two API generations:
 #   * v3 — the Domain Lifecycle Management API (availability, suggest, get,
-#     registration quote→register, single DNS-record create, nameservers).
-#   * v1 — the operations v3 does not yet serve (list, agreements, DNS record
-#     list/set/delete).
+#     registration quote→register, the full DNS record lifecycle, nameservers).
+#   * v1 — the operations v3 does not yet serve (list, agreements).
 #
 # Pipeline:
 #   1. Download the upstream GoDaddy Domains API spec (Swagger 2.0).
