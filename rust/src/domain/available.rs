@@ -97,12 +97,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if let Some(term) = headline_price(&prices) {
                 if let Some(price) = term.price.as_ref().and_then(format_money) {
                     result["price"] = json!(price);
-                    result["currency"] = json!(
-                        term.price
-                            .as_ref()
-                            .and_then(|m| m.currency_code.as_ref())
-                            .map(|c| c.to_string())
-                    );
+                    // Only emit `currency` when a code is present — never a JSON
+                    // null (schema declares it optional string; null leaks into
+                    // table output).
+                    if let Some(code) = term.price.as_ref().and_then(|m| m.currency_code.as_ref()) {
+                        result["currency"] = json!(code.to_string());
+                    }
                 }
                 if let Some(renewal) = term.renewal_price.as_ref().and_then(format_money) {
                     result["renewalPrice"] = json!(renewal);

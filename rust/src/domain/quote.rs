@@ -109,7 +109,11 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
         && let Some(p) = format_money(price)
     {
         out["price"] = json!(p);
-        out["currency"] = json!(price.currency_code.as_ref().map(|c| c.to_string()));
+        // Only emit `currency` when a code is present — never a JSON null (the
+        // schema declares it an optional string, and null leaks into tables).
+        if let Some(code) = price.currency_code.as_ref() {
+            out["currency"] = json!(code.to_string());
+        }
     }
     if let Some(renewal) = quote.renewal_price.as_ref().and_then(format_money) {
         out["renewalPrice"] = json!(renewal);

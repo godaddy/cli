@@ -92,7 +92,15 @@ fn purchase_consent_types(
     }
 
     if !agree {
-        let list = agreement_titles
+        // Prefer the human titles, but fall back to the agreement *types* when a
+        // quote from an older CLI cached no titles (they're `#[serde(default)]`) —
+        // types are guaranteed non-empty here, so the list is always actionable.
+        let items = if agreement_titles.is_empty() {
+            agreement_types
+        } else {
+            agreement_titles
+        };
+        let list = items
             .iter()
             .map(|t| format!("  - {t}"))
             .collect::<Vec<_>>()
@@ -434,6 +442,18 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("no legal agreement types"), "{msg}");
         assert!(!msg.contains("requires agreeing"), "{msg}");
+    }
+
+    #[test]
+    fn agree_gate_lists_types_when_titles_absent() {
+        // An older cached quote may carry agreement types but no human titles
+        // (titles are serde-default). The --agree prompt must still list
+        // something actionable — fall back to the types.
+        let err = purchase_consent_types("example.com", 1, false, true, &[], &["DNRA".to_string()])
+            .expect_err("must require --agree");
+        let msg = err.to_string();
+        assert!(msg.contains("requires agreeing"), "{msg}");
+        assert!(msg.contains("- DNRA"), "{msg}");
     }
 
     #[test]
