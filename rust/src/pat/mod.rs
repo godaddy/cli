@@ -259,6 +259,15 @@ pub async fn list_pats() -> Result<Vec<(String, PatEntry)>, CliCoreError> {
     Ok(registry.tokens.into_iter().collect())
 }
 
+/// Return the environment names that have a stored PAT in the registry.
+pub async fn registry_envs() -> Result<Vec<String>, CliCoreError> {
+    let Some(path) = registry_path() else {
+        return Ok(Vec::new());
+    };
+    let registry = load_registry(&path)?;
+    Ok(registry.tokens.into_keys().collect())
+}
+
 fn registry_path_err() -> Result<std::path::PathBuf, CliCoreError> {
     registry_path().ok_or_else(|| {
         CliCoreError::message("could not determine a config directory for the PAT registry")
@@ -410,6 +419,9 @@ fn remove_command() -> RuntimeCommandSpec {
             ),
         |ctx| async move {
             let env = string_arg(&ctx.args, "env");
+            // Validate the environment up front so a typo produces a clear error
+            // instead of silently reporting "not found".
+            environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
             let existed = delete_pat(&env).await?;
             Ok(CommandResult::new(json!({
                 "env": env,

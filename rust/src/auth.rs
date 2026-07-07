@@ -153,13 +153,12 @@ impl AuthProvider for GoDaddyAuthProvider {
         // warning) on a malformed local config, so this never fails wholesale.
         let listable =
             environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
-        let mut envs = Vec::new();
+        let mut envs = std::collections::BTreeSet::new();
+        envs.extend(pat::registry_envs().await?);
         for resolved in listable {
             let provider = build_provider(&resolved);
             envs.extend(provider.list_environments().await.unwrap_or_default());
         }
-        envs.sort();
-        envs.dedup();
-        Ok(envs)
+        Ok(envs.into_iter().collect())
     }
 }
