@@ -5,6 +5,7 @@ use cli_engine::{
 };
 
 use crate::environments::{self, ResolvedEnv};
+use crate::pat::{self, PatEntry};
 
 /// Single auth provider that dispatches to env-specific PKCE providers.
 ///
@@ -62,6 +63,25 @@ fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
 ///
 /// Enable with `RUST_LOG=gddy=debug` (e.g. `RUST_LOG=gddy=debug gddy domain
 /// available example.com --env dev`).
+/// Build a `Credential` from a PAT entry.
+///
+/// The PAT is opaque to the CLI; the gateway exchanges it for an OAuth access
+/// token. `identity` is set to a display name since the token itself carries no
+/// readable subject claim.
+fn pat_credential(env: &str, entry: &PatEntry) -> Credential {
+    Credential {
+        token: entry.token.clone(),
+        provider: pat::PROVIDER.to_owned(),
+        env: env.to_owned(),
+        identity: if entry.name.is_empty() {
+            "PAT".to_owned()
+        } else {
+            format!("PAT ({})", entry.name)
+        },
+        ..Credential::default()
+    }
+}
+
 fn log_resolved_oauth(env: &ResolvedEnv) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;
@@ -91,23 +111,37 @@ impl AuthProvider for GoDaddyAuthProvider {
     }
 
     async fn get_credential(&self, env: &str, command: &str, tier: &str) -> Result<Credential> {
+        if let Some(entry) = pat::resolve_pat(env).await {
+            return Ok(pat_credential(env, &entry));
+        }
         let provider = self.provider_for(env)?;
         provider.get_credential(env, command, tier).await
     }
 
     async fn get_credential_for(&self, req: &CredentialRequest<'_>) -> Result<Credential> {
-        // Forward to the env's PKCE provider, which performs OAuth scope step-up
-        // when the cached token lacks the command's required scopes.
+        // PATs have fixed scopes; the gateway enforces them. Use a PAT when one is
+        // configured, otherwise fall back to PKCE OAuth scope step-up.
+        if let Some(entry) = pat::resolve_pat(req.env).await {
+            return Ok(pat_credential(req.env, &entry));
+        }
         let provider = self.provider_for(req.env)?;
         provider.get_credential_for(req).await
     }
 
     async fn status(&self, env: &str) -> Result<Credential> {
+        if let Some(entry) = pat::resolve_pat(env).await {
+            return Ok(pat_credential(env, &entry));
+        }
         let provider = self.provider_for(env)?;
         provider.status(env).await
     }
 
     async fn logout(&self, env: &str) -> Result<()> {
+        // Remove any stored PAT for the environment; ignore errors because the
+        // OAuth logout that follows is authoritative and PAT may not exist.
+        if let Err(err) = pat::delete_pat(env).await {
+            tracing::debug!(env, error = %err, "ignoring PAT delete error during logout");
+        }
         let provider = self.provider_for(env)?;
         provider.logout(env).await
     }

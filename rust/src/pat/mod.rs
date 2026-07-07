@@ -1,0 +1,451 @@
+//! `gddy pat` — manage Personal Access Tokens (PATs) for non-interactive auth.
+//!
+//! PATs complement the interactive OAuth PKCE flow managed by `gddy auth`. They
+//! are long-lived OAuth refresh tokens created in the GoDaddy Developer Portal
+//! and used as `Authorization: Bearer gd_pat_…`. The gateway exchanges the PAT
+//! for a short-lived access token, so the CLI only needs to store and send the
+//! PAT itself.
+//!
+//! PATs are persisted in `~/.config/gddy/pat.toml` (or equivalent on Windows/macOS)
+//! with `0600` file permissions. They can also be supplied at runtime via the
+//! `GDDY_PAT` or `GDDY_PAT_<ENV>` environment variables, which take precedence over
+//! the registry file.
+
+use std::collections::BTreeMap;
+
+use cli_engine::{
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextAction, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::environments;
+use crate::output_schema::output_schema;
+
+output_schema!(PatListItem {
+    "env": "string";
+    "name": "string";
+    "lastFour": "string";
+});
+
+output_schema!(PatAddResult {
+    "env": "string";
+    "name": "string";
+    "lastFour": "string";
+    "path": "string";
+});
+
+output_schema!(PatRemoveResult {
+    "env": "string";
+    "status": "string";
+});
+
+/// PAT prefix advertised by GoDaddy. A valid PAT starts with this string.
+pub const PAT_PREFIX: &str = "gd_pat_";
+
+/// Default env-var PAT applied to any environment.
+pub const PAT_ENV_VAR: &str = "GDDY_PAT";
+
+/// Provider name reported in `Credential.provider` when a PAT is used.
+pub const PROVIDER: &str = "pat";
+
+const PAT_FILE_NAME: &str = "pat.toml";
+
+/// One stored PAT.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PatEntry {
+    /// Plaintext PAT. Never displayed in full after initial entry.
+    pub token: String,
+    /// Human-readable label chosen when the PAT was added.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+impl std::fmt::Debug for PatEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PatEntry")
+            .field("token", &redact(&self.token))
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+/// Registry of PATs keyed by environment name.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PatRegistry {
+    #[serde(default)]
+    tokens: BTreeMap<String, PatEntry>,
+}
+
+impl PatRegistry {
+    /// Load the PAT registry from disk, or an empty registry if the file is missing.
+    /// A malformed file is treated as an error so a user notices and can fix it.
+    fn load(path: &std::path::Path) -> Result<Self, CliCoreError> {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => toml::from_str(&contents)
+                .map_err(|e| CliCoreError::message(format!("{}: {e}", path.display()))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(CliCoreError::message(format!("{}: {e}", path.display()))),
+        }
+    }
+
+    /// Save the registry to disk atomically with owner-only permissions.
+    fn save(&self, path: &std::path::Path) -> Result<(), CliCoreError> {
+        let contents = toml::to_string_pretty(self)
+            .map_err(|e| CliCoreError::message(format!("failed to serialize PAT registry: {e}")))?;
+        cli_engine::fs::write_string_atomic(path, &contents)
+    }
+}
+
+/// Returns the path to the PAT registry file, or `None` if no config directory is
+/// available.
+pub fn registry_path() -> Option<std::path::PathBuf> {
+    cli_engine::fs::config_base_dir().map(|base| base.join("gddy").join(PAT_FILE_NAME))
+}
+
+fn env_var_for(env: &str) -> String {
+    format!("{}_{}", PAT_ENV_VAR, environments::env_prefix(env))
+}
+
+fn load_registry(path: &std::path::Path) -> Result<PatRegistry, CliCoreError> {
+    PatRegistry::load(path)
+}
+
+fn save_registry(path: &std::path::Path, registry: &PatRegistry) -> Result<(), CliCoreError> {
+    registry.save(path)
+}
+
+/// Validate that `token` looks like a GoDaddy PAT: `gd_pat_<base62>_<8 hex crc>`.
+#[must_use]
+pub fn is_valid_pat(token: &str) -> bool {
+    let Some((body, crc)) = token.rsplit_once('_') else {
+        return false;
+    };
+    if crc.len() != 8 || !crc.chars().all(|c| c.is_ascii_hexdigit()) {
+        return false;
+    }
+    let Some((prefix, entropy)) = body.rsplit_once('_') else {
+        return false;
+    };
+    prefix == "gd_pat" && !entropy.is_empty() && entropy.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// Returns the last four characters of a PAT, or `"----"` when too short.
+fn last_four(token: &str) -> String {
+    token
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+fn redact(token: &str) -> String {
+    if token.len() <= 8 {
+        return "*".repeat(token.len());
+    }
+    format!(
+        "{}****{}",
+        &token[..4],
+        &token[token.len().saturating_sub(4)..]
+    )
+}
+
+/// Find a PAT for `env`, preferring per-env env vars, then the default env var,
+/// then the registry file. Returns `None` when no valid PAT is configured.
+pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
+    if let Ok(token) = std::env::var(env_var_for(env)) {
+        if is_valid_pat(&token) {
+            return Some(PatEntry {
+                token,
+                name: "env".to_owned(),
+            });
+        }
+        tracing::warn!(
+            env,
+            var = env_var_for(env),
+            "PAT env var is malformed; ignoring"
+        );
+    }
+    if let Ok(token) = std::env::var(PAT_ENV_VAR) {
+        if is_valid_pat(&token) {
+            return Some(PatEntry {
+                token,
+                name: "env".to_owned(),
+            });
+        }
+        tracing::warn!(var = PAT_ENV_VAR, "PAT env var is malformed; ignoring");
+    }
+    let path = registry_path()?;
+    // Registry reads are best-effort: a missing file means no PAT.
+    let registry = load_registry(&path).ok()?;
+    registry.tokens.get(env).cloned()
+}
+
+/// Persist a PAT for an environment, replacing any existing entry.
+pub async fn save_pat(env: &str, entry: PatEntry) -> Result<(), CliCoreError> {
+    let path = registry_path().ok_or_else(|| {
+        CliCoreError::message("could not determine a config directory for the PAT registry")
+    })?;
+    let mut registry = load_registry(&path)?;
+    registry.tokens.insert(env.to_owned(), entry);
+    save_registry(&path, &registry)
+}
+
+/// Remove a stored PAT for an environment. Returns `true` if one existed.
+pub async fn delete_pat(env: &str) -> Result<bool, CliCoreError> {
+    let Some(path) = registry_path() else {
+        return Ok(false);
+    };
+    let mut registry = load_registry(&path)?;
+    let existed = registry.tokens.remove(env).is_some();
+    if existed {
+        save_registry(&path, &registry)?;
+    }
+    Ok(existed)
+}
+
+/// List environments that have a PAT in the registry.
+pub async fn list_pats() -> Result<Vec<(String, PatEntry)>, CliCoreError> {
+    let Some(path) = registry_path() else {
+        return Ok(Vec::new());
+    };
+    let registry = load_registry(&path)?;
+    Ok(registry.tokens.into_iter().collect())
+}
+
+fn registry_path_err() -> Result<std::path::PathBuf, CliCoreError> {
+    registry_path().ok_or_else(|| {
+        CliCoreError::message("could not determine a config directory for the PAT registry")
+    })
+}
+
+pub fn module() -> Module {
+    Module::new("Authentication", |_ctx| {
+        RuntimeGroupSpec::new(
+            GroupSpec::new("pat", "Manage Personal Access Tokens (PATs)").with_long(
+                "Store and manage Personal Access Tokens for non-interactive GoDaddy \
+                         authentication. PATs are created in the Developer Portal and are useful \
+                         for CI/CD pipelines and scripts where browser-based OAuth is not \
+                         possible.\n\
+                         \n\
+                         • add     — store a PAT for an environment (reads from stdin)\n\
+                         • list    — show stored PATs (last-four only)\n\
+                         • remove  — delete the PAT for an environment\n\
+                         \n\
+                         PATs can also be supplied with the GDDY_PAT or GDDY_PAT_<ENV> \
+                         environment variables. See `gddy guide auth`.",
+            ),
+        )
+        .with_command(add_command())
+        .with_command(list_command())
+        .with_command(remove_command())
+    })
+    .with_guides_from_markdown([("auth.md", include_bytes!("guides/auth.md").as_slice())])
+}
+
+fn add_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("add", "Store a PAT for an environment")
+            .with_long(
+                "Stores a Personal Access Token for the target environment.\n\
+                 The token is read from stdin by default so it does not appear in shell \
+                 history. Alternatively, pass --token.\n\
+                 \n\
+                 Example:\n  \
+                   echo 'gd_pat_...' | gddy pat add --env prod \"CI token\"",
+            )
+            .with_system("pat")
+            .with_tier(Tier::Mutate)
+            .mutates(true)
+            .no_auth(true)
+            .with_output_schema::<PatAddResult>()
+            .with_default_fields("env,name,lastFour")
+            .with_arg(
+                clap::Arg::new("env")
+                    .long("env")
+                    .value_name("ENV")
+                    .required(true)
+                    .help("Environment the PAT is for (e.g. prod or ote)"),
+            )
+            .with_arg(
+                clap::Arg::new("token")
+                    .long("token")
+                    .value_name("TOKEN")
+                    .help("PAT value (if omitted, read from stdin)"),
+            )
+            .with_arg(
+                clap::Arg::new("name")
+                    .value_name("NAME")
+                    .required(true)
+                    .help("Human-readable label for this PAT"),
+            ),
+        |ctx| async move {
+            let env = string_arg(&ctx.args, "env");
+            // Validate the environment up front so a typo does not stash a PAT
+            // for a non-existent env.
+            environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
+
+            let name = string_arg(&ctx.args, "name");
+            let token = match ctx.args.get("token").and_then(|v| v.as_str()) {
+                Some(t) if !t.is_empty() => t.to_owned(),
+                _ => read_stdin_token().await?,
+            };
+            if !is_valid_pat(&token) {
+                return Err(CliCoreError::message(format!(
+                    "token does not look like a GoDaddy PAT (expected `{PAT_PREFIX}...`); refusing to store it"
+                )));
+            }
+
+            let entry = PatEntry { token, name };
+            save_pat(&env, entry.clone()).await?;
+
+            let path = registry_path_err()?;
+            Ok(CommandResult::new(json!({
+                "env": env,
+                "name": entry.name,
+                "lastFour": last_four(&entry.token),
+                "path": path.display().to_string(),
+            }))
+            .with_next_actions(vec![NextAction::new("guide auth", "Learn about PAT auth")]))
+        },
+    )
+}
+
+fn list_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new(
+        CommandSpec::new("list", "List stored PATs")
+            .with_long(
+                "Lists every PAT stored in the registry, showing only the last four \
+                 characters of each token. Use `GDDY_PAT` or `GDDY_PAT_<ENV>` env vars to \
+                 provide a PAT without storing it in the registry.",
+            )
+            .with_system("pat")
+            .with_tier(Tier::Read)
+            .no_auth(true)
+            .with_output_schema::<PatListItem>()
+            .with_default_fields("env,name,lastFour"),
+        |_cred, _args| async move {
+            let mut entries: Vec<_> = list_pats()
+                .await?
+                .into_iter()
+                .map(|(env, entry)| {
+                    json!({
+                        "env": env,
+                        "name": entry.name,
+                        "lastFour": last_four(&entry.token),
+                    })
+                })
+                .collect();
+            entries.sort_by(|a, b| a["env"].as_str().cmp(&b["env"].as_str()));
+            Ok(CommandResult::new(json!(entries)))
+        },
+    )
+}
+
+fn remove_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("remove", "Remove the PAT for an environment")
+            .with_long(
+                "Deletes the stored PAT for the given environment. This does not revoke \
+                 the PAT in the Developer Portal; it only removes the local copy.",
+            )
+            .with_system("pat")
+            .with_tier(Tier::Mutate)
+            .mutates(true)
+            .no_auth(true)
+            .with_output_schema::<PatRemoveResult>()
+            .with_default_fields("env,status")
+            .with_arg(
+                clap::Arg::new("env")
+                    .long("env")
+                    .value_name("ENV")
+                    .required(true)
+                    .help("Environment whose PAT should be removed"),
+            ),
+        |ctx| async move {
+            let env = string_arg(&ctx.args, "env");
+            let existed = delete_pat(&env).await?;
+            Ok(CommandResult::new(json!({
+                "env": env,
+                "status": if existed { "removed" } else { "not found" },
+            })))
+        },
+    )
+}
+
+fn string_arg(args: &serde_json::Map<String, serde_json::Value>, name: &str) -> String {
+    args.get(name)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned()
+}
+
+async fn read_stdin_token() -> Result<String, CliCoreError> {
+    use tokio::io::AsyncBufReadExt as _;
+    let stdin = tokio::io::stdin();
+    let mut reader = tokio::io::BufReader::new(stdin);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .await
+        .map_err(|e| CliCoreError::message(format!("failed to read PAT from stdin: {e}")))?;
+    Ok(line.trim().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_malformed_pats() {
+        assert!(!is_valid_pat(""));
+        assert!(!is_valid_pat("notapat"));
+        assert!(!is_valid_pat("gd_pat_"));
+        assert!(!is_valid_pat("gd_pat_abc")); // missing crc
+        assert!(!is_valid_pat("gd_pat_abc_xyz")); // crc too short
+        assert!(!is_valid_pat("gd_pat_abc_zzzzzzzz")); // crc not hex
+        assert!(!is_valid_pat("gd_pat_ab!c_12345678")); // invalid char in entropy
+    }
+
+    #[test]
+    fn accepts_well_formed_pat() {
+        assert!(is_valid_pat("gd_pat_abc123_1234abcd"));
+        assert!(is_valid_pat("gd_pat_aA0bB1cC2_abcdef12"));
+        // entropy may be long
+        assert!(is_valid_pat(
+            "gd_pat_abcdefghijklmnopqrstuvwxyz0123456789_abcdef12"
+        ));
+    }
+
+    #[test]
+    fn last_four_extracts_suffix() {
+        assert_eq!(last_four("gd_pat_abc123_1234abcd"), "abcd");
+        assert_eq!(last_four("short"), "hort");
+        assert_eq!(last_four("ab"), "ab");
+    }
+
+    #[test]
+    fn registry_round_trip() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("pat.toml");
+
+        let mut registry = PatRegistry::default();
+        registry.tokens.insert(
+            "prod".to_owned(),
+            PatEntry {
+                token: "gd_pat_abc123_1234abcd".to_owned(),
+                name: "CI".to_owned(),
+            },
+        );
+        registry.save(&path).expect("save");
+
+        let loaded = PatRegistry::load(&path).expect("load");
+        assert_eq!(loaded.tokens.len(), 1);
+        assert_eq!(loaded.tokens["prod"].name, "CI");
+        assert_eq!(loaded.tokens["prod"].token, "gd_pat_abc123_1234abcd");
+    }
+}
