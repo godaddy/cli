@@ -11,6 +11,7 @@ mod environments;
 mod extension;
 mod hosting;
 mod output_schema;
+mod pat;
 mod payments;
 mod quote_cache;
 mod scopes;
@@ -45,7 +46,7 @@ async fn main() -> ExitCode {
                  • hosting  — manage Node.js PaaS applications (create, upload, deploy)\n  \
                  • payments — manage the payment methods used for purchases\n\
                  \n\
-                 Most commands need authentication; run `gddy auth login` first (or just run a\n\
+                 Most commands need authentication; run `gddy auth login` first, or use a PAT via `gddy pat add` / `GDDY_PAT` for non-interactive workflows (or just run a\n\
                  command and follow the prompt). Use `--env` to target an environment and\n\
                  `gddy tree` to see every command. New here? Try `gddy domain available <name>`.",
             )
@@ -93,6 +94,7 @@ async fn main() -> ExitCode {
             .with_module(domain::module())
             .with_module(env::module())
             .with_module(hosting::module())
+            .with_module(pat::module())
             .with_module(payments::module())
             .with_module(webhook::module()),
     );
