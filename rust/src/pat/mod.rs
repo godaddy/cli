@@ -45,6 +45,10 @@ output_schema!(PatRemoveResult {
 /// PAT prefix advertised by GoDaddy. A valid PAT starts with this string.
 pub const PAT_PREFIX: &str = "gd_pat_";
 
+/// The base portion of the advertised prefix, used when validating the
+/// `gd_pat_<entropy>_<crc>` structure.
+const PAT_PREFIX_BODY: &str = "gd_pat";
+
 /// Default env-var PAT applied to any environment.
 pub const PAT_ENV_VAR: &str = "GDDY_PAT";
 
@@ -129,7 +133,9 @@ pub fn is_valid_pat(token: &str) -> bool {
     let Some((prefix, entropy)) = body.rsplit_once('_') else {
         return false;
     };
-    prefix == "gd_pat" && !entropy.is_empty() && entropy.chars().all(|c| c.is_ascii_alphanumeric())
+    prefix == PAT_PREFIX_BODY
+        && !entropy.is_empty()
+        && entropy.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 /// Returns the last four characters of a PAT. If the token is four characters or

@@ -154,7 +154,15 @@ impl AuthProvider for GoDaddyAuthProvider {
         let listable =
             environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
         let mut envs = std::collections::BTreeSet::new();
-        envs.extend(pat::registry_envs().await?);
+        match pat::registry_envs().await {
+            Ok(pats) => envs.extend(pats),
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "failed to load PAT registry while listing environments; continuing"
+                );
+            }
+        }
         for resolved in listable {
             let provider = build_provider(&resolved);
             envs.extend(provider.list_environments().await.unwrap_or_default());
