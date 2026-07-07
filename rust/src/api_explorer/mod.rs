@@ -682,7 +682,10 @@ fn call_command() -> RuntimeCommandSpec {
                 .get("include")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let body_bytes = resp.bytes().await.unwrap_or_default();
+            let body_bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
             cli_engine::transport::debug_log_reqwest_response(
                 status,
                 &response_headers_raw,
