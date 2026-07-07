@@ -347,10 +347,7 @@ fn add_command() -> RuntimeCommandSpec {
             environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
 
             let name = string_arg(&ctx.args, "name");
-            let token = match ctx.args.get("token").and_then(|v| v.as_str()) {
-                Some(t) if !t.is_empty() => t.to_owned(),
-                _ => read_stdin_token().await?,
-            };
+            let token = resolve_token_arg(&ctx.args).await?;
             if !is_valid_pat(&token) {
                 return Err(CliCoreError::message(format!(
                     "token does not look like a GoDaddy PAT (expected `{PAT_PREFIX}...`); refusing to store it"
@@ -456,6 +453,20 @@ async fn read_stdin_token() -> Result<String, CliCoreError> {
     Ok(line.trim().to_owned())
 }
 
+/// Return the PAT supplied on the command line, trimmed of surrounding whitespace,
+/// or read it from stdin when `--token` is absent or whitespace-only.
+async fn resolve_token_arg(
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> Result<String, CliCoreError> {
+    if let Some(t) = args.get("token").and_then(|v| v.as_str()) {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_owned());
+        }
+    }
+    read_stdin_token().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,6 +506,18 @@ mod tests {
         // Multi-byte characters must not cause panics at byte boundaries.
         let unicode = "éééé_éééé_éééé";
         assert!(!redact(unicode).is_empty());
+    }
+
+    #[tokio::test]
+    async fn cli_token_is_trimmed_before_validation() {
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "token".to_owned(),
+            serde_json::Value::String("  gd_pat_a_12345678  \n".to_owned()),
+        );
+        let token = resolve_token_arg(&args).await.unwrap();
+        assert_eq!(token, "gd_pat_a_12345678");
+        assert!(is_valid_pat(&token));
     }
 
     #[test]
