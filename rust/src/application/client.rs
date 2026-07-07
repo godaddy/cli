@@ -69,7 +69,10 @@ impl ApplicationClient {
 
         let payload: Value = serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
             status: status.as_u16(),
-            body: format!("invalid JSON response: {e}"),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
         })?;
         if let Some(errors) = payload.get("errors") {
             return Err(ClientError::GraphQL(errors.to_string()));

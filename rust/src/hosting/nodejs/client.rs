@@ -70,8 +70,8 @@ impl HostingClient {
 
         let status = resp.status();
         let headers = resp.headers().clone();
-        let text = resp.text().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, text.as_bytes());
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
 
         let status = status.as_u16();
         if status == 204 {
@@ -79,16 +79,22 @@ impl HostingClient {
         }
 
         if !(200..300).contains(&status) {
-            return Err(ClientError::Http { status, body: text });
+            return Err(ClientError::Http {
+                status,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+            });
         }
 
-        if text.is_empty() {
+        if bytes.is_empty() {
             return Ok(json!(null));
         }
 
-        serde_json::from_str(&text).map_err(|e| ClientError::Http {
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
             status,
-            body: format!("invalid JSON response: {e}"),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
         })
     }
 
@@ -174,17 +180,23 @@ impl HostingClient {
 
         let status = resp.status();
         let headers = resp.headers().clone();
-        let text = resp.text().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, text.as_bytes());
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
 
         let status = status.as_u16();
         if !(200..300).contains(&status) {
-            return Err(ClientError::Http { status, body: text });
+            return Err(ClientError::Http {
+                status,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+            });
         }
 
-        serde_json::from_str(&text).map_err(|e| ClientError::Http {
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
             status,
-            body: format!("invalid JSON response: {e}"),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
         })
     }
 
