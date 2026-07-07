@@ -662,6 +662,24 @@ mod tests {
         }
     }
 
+    // Serializes tests that mutate the process-wide default transport logger,
+    // mirroring cli-engine's own (crate-private) test lock.
+    static TRANSPORT_LOGGER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    // Restores the noop logger on drop so a panicking assertion below can't
+    // leak a test's logger into later tests in this binary. Declared after
+    // acquiring `TRANSPORT_LOGGER_TEST_LOCK` so the reset runs while the lock
+    // is still held.
+    struct RestoreDefaultTransportLogger;
+
+    impl Drop for RestoreDefaultTransportLogger {
+        fn drop(&mut self) {
+            cli_engine::transport::set_default_transport_logger(std::sync::Arc::new(
+                cli_engine::transport::NoopTransportLogger,
+            ));
+        }
+    }
+
     // Generated calls thread every request/response through `ClientHooks`,
     // which this crate implements (see above) to call cli-engine's
     // `debug_log_reqwest_request`/`debug_log_reqwest_response` bridge — the
@@ -670,6 +688,11 @@ mod tests {
     // that the request/response round-trips.
     #[tokio::test]
     async fn client_hooks_feed_the_debug_transport_bridge() {
+        let _test_lock = TRANSPORT_LOGGER_TEST_LOCK
+            .lock()
+            .expect("lock is never held across a panic");
+        let _restore = RestoreDefaultTransportLogger;
+
         let logger = std::sync::Arc::new(RecordingLogger::default());
         cli_engine::transport::set_default_transport_logger(logger.clone());
 
@@ -688,10 +711,6 @@ mod tests {
             .await
             .expect("request succeeds");
         mock.assert_async().await;
-
-        cli_engine::transport::set_default_transport_logger(std::sync::Arc::new(
-            cli_engine::transport::NoopTransportLogger,
-        ));
 
         let events = logger
             .events
