@@ -145,14 +145,20 @@ fn last_four(token: &str) -> String {
 }
 
 fn redact(token: &str) -> String {
-    if token.len() <= 8 {
-        return "*".repeat(token.len());
+    let len = token.chars().count();
+    if len <= 8 {
+        return "*".repeat(len);
     }
-    format!(
-        "{}****{}",
-        &token[..4],
-        &token[token.len().saturating_sub(4)..]
-    )
+    let prefix: String = token.chars().take(4).collect();
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}****{suffix}")
 }
 
 /// Find a PAT for `env`, preferring per-env env vars, then the default env var,
@@ -298,7 +304,7 @@ fn add_command() -> RuntimeCommandSpec {
             .mutates(true)
             .no_auth(true)
             .with_output_schema::<PatAddResult>()
-            .with_default_fields("env,name,lastFour")
+            .with_default_fields("env,name,lastFour,path")
             .with_arg(
                 clap::Arg::new("env")
                     .long("env")
@@ -464,6 +470,15 @@ mod tests {
     }
 
     #[test]
+    fn redact_masks_prefix_and_suffix_and_handles_unicode() {
+        assert_eq!(redact("gd_pat_abc123_1234abcd"), "gd_p****abcd");
+        assert_eq!(redact("short"), "*****");
+        // Multi-byte characters must not cause panics at byte boundaries.
+        let unicode = "éééé_éééé_éééé";
+        assert!(!redact(unicode).is_empty());
+    }
+
+    #[test]
     fn registry_round_trip() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("pat.toml");
@@ -547,6 +562,25 @@ mod tests {
         let registry = test_registry_with("prod", "not-a-pat");
         let env = |_var: &str| None;
         assert!(resolve_pat_with("prod", env, Some(&registry)).is_none());
+    }
+
+    #[test]
+    fn redact_uses_char_boundaries_and_does_not_panic() {
+        // Regression test: byte-index slicing would panic on this token.
+        let token = "gd_pat_αβγδ_12345678";
+        let redacted = redact(token);
+        assert!(redacted.starts_with("gd_p"));
+        assert!(redacted.ends_with("5678"));
+        assert!(redacted.contains("****"));
+    }
+
+    #[test]
+    fn debug_format_does_not_panic_on_multibyte_token() {
+        let entry = PatEntry {
+            token: "gd_pat_αβγδ_12345678".to_owned(),
+            name: "test".to_owned(),
+        };
+        let _ = format!("{:?}", entry);
     }
 
     #[test]
