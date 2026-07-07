@@ -27,23 +27,35 @@ pub fn module() -> Module {
                 let token = ctx.credential().await?.token;
                 let base_url = api_url_for_env(&ctx.middleware.env);
                 let url = format!("{base_url}/v1/apis/webhook-event-types");
-                let resp = crate::application::client::make_http_client()
+                let client = crate::application::client::make_http_client();
+                let request = client
                     .get(&url)
                     .bearer_auth(&token)
                     .header("x-request-id", uuid::Uuid::new_v4().to_string())
-                    .send()
+                    .build()
+                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                cli_engine::transport::debug_log_reqwest_request(&request);
+                let resp = client
+                    .execute(request)
                     .await
                     .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                if !resp.status().is_success() {
-                    let status = resp.status().as_u16();
-                    let body = resp.text().await.unwrap_or_default();
+
+                let status = resp.status();
+                let headers = resp.headers().clone();
+                let bytes = resp
+                    .bytes()
+                    .await
+                    .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+                if !status.is_success() {
+                    let body = String::from_utf8_lossy(&bytes).into_owned();
                     return Err(cli_engine::CliCoreError::message(format!(
-                        "webhook events request failed ({status}): {body}"
+                        "webhook events request failed ({}): {body}",
+                        status.as_u16()
                     )));
                 }
-                let data: serde_json::Value = resp
-                    .json()
-                    .await
+                let data: serde_json::Value = serde_json::from_slice(&bytes)
                     .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
                 Ok(CommandResult::new(data))
             },

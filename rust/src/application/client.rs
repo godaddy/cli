@@ -44,22 +44,36 @@ impl ApplicationClient {
 
     async fn query(&self, body: Value) -> Result<Value, ClientError> {
         let url = format!("{}{}", self.base_url, GRAPHQL_PATH);
-        let resp = self
+        let request = self
             .client
             .post(&url)
             .bearer_auth(&self.token)
             .header("x-request-id", new_request_id())
             .json(&body)
-            .send()
-            .await?;
+            .build()?;
+        cli_engine::transport::debug_log_reqwest_request(&request);
+        let resp = self.client.execute(request).await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(ClientError::Http { status, body: text });
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+        if !status.is_success() {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            return Err(ClientError::Http {
+                status: status.as_u16(),
+                body: text,
+            });
         }
 
-        let payload: Value = resp.json().await?;
+        let payload: Value = serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
+            status: status.as_u16(),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
+        })?;
         if let Some(errors) = payload.get("errors") {
             return Err(ClientError::GraphQL(errors.to_string()));
         }
@@ -176,11 +190,20 @@ impl ApplicationClient {
                 }
             }
         }
-        let resp = req.send().await?;
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ClientError::Http { status, body });
+        let request = req.build()?;
+        cli_engine::transport::debug_log_reqwest_request(&request);
+        let resp = self.client.execute(request).await?;
+
+        let status = resp.status();
+        let resp_headers = resp.headers().clone();
+        let body = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &resp_headers, &body);
+
+        if !status.is_success() {
+            return Err(ClientError::Http {
+                status: status.as_u16(),
+                body: String::from_utf8_lossy(&body).into_owned(),
+            });
         }
         Ok(())
     }

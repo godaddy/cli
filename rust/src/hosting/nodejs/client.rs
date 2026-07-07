@@ -64,25 +64,37 @@ impl HostingClient {
             req = req.json(&body);
         }
 
-        let resp = req.send().await?;
-        let status = resp.status().as_u16();
+        let request = req.build()?;
+        cli_engine::transport::debug_log_reqwest_request(&request);
+        let resp = self.client.execute(request).await?;
 
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+        let status = status.as_u16();
         if status == 204 {
             return Ok(json!(null));
         }
 
-        let text = resp.text().await?;
         if !(200..300).contains(&status) {
-            return Err(ClientError::Http { status, body: text });
+            return Err(ClientError::Http {
+                status,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+            });
         }
 
-        if text.is_empty() {
+        if bytes.is_empty() {
             return Ok(json!(null));
         }
 
-        serde_json::from_str(&text).map_err(|e| ClientError::Http {
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
             status,
-            body: format!("invalid JSON response: {e}"),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
         })
     }
 
@@ -156,24 +168,35 @@ impl HostingClient {
                 source: e,
             })?;
 
-        let resp = self
+        let request = self
             .client
             .post(self.url(&format!("/apps/{app_id}/source")))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id())
             .multipart(form)
-            .send()
-            .await?;
+            .build()?;
+        cli_engine::transport::debug_log_reqwest_request(&request);
+        let resp = self.client.execute(request).await?;
 
-        let status = resp.status().as_u16();
-        let text = resp.text().await?;
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+        let status = status.as_u16();
         if !(200..300).contains(&status) {
-            return Err(ClientError::Http { status, body: text });
+            return Err(ClientError::Http {
+                status,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+            });
         }
 
-        serde_json::from_str(&text).map_err(|e| ClientError::Http {
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
             status,
-            body: format!("invalid JSON response: {e}"),
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
         })
     }
 

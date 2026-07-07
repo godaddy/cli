@@ -42,6 +42,45 @@ pub enum BuildError {
     Http(#[from] reqwest::Error),
 }
 
+/// Bridges generated requests/responses into cli-engine's `--debug transport`
+/// logger.
+///
+/// progenitor generates every call as `client.pre(...)`, `client.exec(...)`,
+/// `client.post(...)` (see [`progenitor_client::ClientHooks`]); the default
+/// impl (for `&Client`) is a no-op. Implementing the trait for `Client`
+/// (without the reference) overrides it via progenitor's "auto-ref
+/// specialization" — this is the sanctioned extension point, not a hack.
+///
+/// `post` only gets `&reqwest::Result<Response>` (a reference, pre-body-read),
+/// so response bodies aren't capturable here without consuming the body ahead
+/// of the generated code's own deserialization — this logs status/headers
+/// only for responses; request bodies log in full via `pre`.
+impl progenitor_client::ClientHooks<()> for Client {
+    async fn pre<E>(
+        &self,
+        request: &mut reqwest::Request,
+        _info: &progenitor_client::OperationInfo,
+    ) -> Result<(), progenitor_client::Error<E>> {
+        cli_engine::transport::debug_log_reqwest_request(request);
+        Ok(())
+    }
+
+    async fn post<E>(
+        &self,
+        result: &reqwest::Result<reqwest::Response>,
+        _info: &progenitor_client::OperationInfo,
+    ) -> Result<(), progenitor_client::Error<E>> {
+        if let Ok(response) = result {
+            cli_engine::transport::debug_log_reqwest_response(
+                response.status(),
+                response.headers(),
+                &[],
+            );
+        }
+        Ok(())
+    }
+}
+
 /// Build a [`Client`] whose every request carries a pre-set `Authorization`
 /// header and `x-request-id`.
 ///
@@ -605,5 +644,89 @@ mod tests {
             .expect("request succeeds");
 
         mock.assert_async().await;
+    }
+
+    // --- ClientHooks / --debug transport bridge ------------------------------
+
+    #[derive(Debug, Default)]
+    struct RecordingLogger {
+        events: std::sync::Mutex<Vec<cli_engine::transport::TransportLogEvent>>,
+    }
+
+    impl cli_engine::transport::TransportLogger for RecordingLogger {
+        fn debug(&self, event: &cli_engine::transport::TransportLogEvent) {
+            self.events
+                .lock()
+                .expect("lock is never held across a panic")
+                .push(event.clone());
+        }
+    }
+
+    // Serializes tests that mutate the process-wide default transport logger,
+    // mirroring cli-engine's own (crate-private) test lock.
+    static TRANSPORT_LOGGER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    // Restores the noop logger on drop so a panicking assertion below can't
+    // leak a test's logger into later tests in this binary. Declared after
+    // acquiring `TRANSPORT_LOGGER_TEST_LOCK` so the reset runs while the lock
+    // is still held.
+    struct RestoreDefaultTransportLogger;
+
+    impl Drop for RestoreDefaultTransportLogger {
+        fn drop(&mut self) {
+            cli_engine::transport::set_default_transport_logger(std::sync::Arc::new(
+                cli_engine::transport::NoopTransportLogger,
+            ));
+        }
+    }
+
+    // Generated calls thread every request/response through `ClientHooks`,
+    // which this crate implements (see above) to call cli-engine's
+    // `debug_log_reqwest_request`/`debug_log_reqwest_response` bridge — the
+    // mechanism that makes `--debug transport` show HTTP traffic for a
+    // progenitor-generated client. Assert the bridge actually fires, not just
+    // that the request/response round-trips.
+    #[tokio::test]
+    async fn client_hooks_feed_the_debug_transport_bridge() {
+        let _test_lock = TRANSPORT_LOGGER_TEST_LOCK
+            .lock()
+            .expect("lock is never held across a panic");
+        let _restore = RestoreDefaultTransportLogger;
+
+        let logger = std::sync::Arc::new(RecordingLogger::default());
+        cli_engine::transport::set_default_transport_logger(logger.clone());
+
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v3/domains/suggestions");
+                then.status(200).json_body(json!({ "items": [] }));
+            })
+            .await;
+
+        client_for(&server)
+            .suggest_domains()
+            .query("coffee")
+            .send()
+            .await
+            .expect("request succeeds");
+        mock.assert_async().await;
+
+        let events = logger
+            .events
+            .lock()
+            .expect("lock is never held across a panic");
+        assert!(
+            events
+                .iter()
+                .any(|e| e.fields.get("method").map(String::as_str) == Some("GET")),
+            "expected a request event, got: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.fields.get("status").map(String::as_str) == Some("200")),
+            "expected a response event, got: {events:?}"
+        );
     }
 }
