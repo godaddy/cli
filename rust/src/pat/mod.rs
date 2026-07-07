@@ -158,16 +158,25 @@ fn redact(token: &str) -> String {
 /// Find a PAT for `env`, preferring per-env env vars, then the default env var,
 /// then the registry file. Returns `None` when no valid PAT is configured.
 pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
-    let path = registry_path();
-    let registry = match path.as_deref().map(load_registry).transpose() {
-        Ok(Some(r)) => Some(r),
-        Ok(None) => None,
+    // Check env vars before touching the registry. This keeps the registry-load
+    // warning honest (env vars have already been ruled out) and avoids I/O when
+    // a PAT is supplied via the environment.
+    if let Some(entry) = resolve_pat_with(env, |var| std::env::var(var).ok(), None) {
+        return Some(entry);
+    }
+    let path = registry_path()?;
+    let registry = match load_registry(&path) {
+        Ok(r) => r,
         Err(err) => {
-            tracing::warn!(env, error = %err, "failed to load PAT registry; falling back to OAuth");
-            None
+            tracing::warn!(
+                env,
+                error = %err,
+                "failed to load PAT registry; falling back to OAuth"
+            );
+            return None;
         }
     };
-    resolve_pat_with(env, |var| std::env::var(var).ok(), registry.as_ref())
+    resolve_pat_with(env, |_| None, Some(&registry))
 }
 
 /// Internal, testable version of [`resolve_pat`]. `get_env` supplies env-var values;
