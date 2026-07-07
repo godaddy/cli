@@ -446,10 +446,21 @@ async fn read_stdin_token() -> Result<String, CliCoreError> {
     let stdin = tokio::io::stdin();
     let mut reader = tokio::io::BufReader::new(stdin);
     let mut line = String::new();
-    reader
+    let bytes_read = reader
         .read_line(&mut line)
         .await
         .map_err(|e| CliCoreError::message(format!("failed to read PAT from stdin: {e}")))?;
+    parse_stdin_token(&line, bytes_read)
+}
+
+/// Validate that a line read from stdin actually contains a token.
+/// Returns an actionable error on EOF or whitespace-only input.
+fn parse_stdin_token(line: &str, bytes_read: usize) -> Result<String, CliCoreError> {
+    if bytes_read == 0 || line.trim().is_empty() {
+        return Err(CliCoreError::message(
+            "no PAT provided on stdin; pass --token or pipe the PAT",
+        ));
+    }
     Ok(line.trim().to_owned())
 }
 
@@ -518,6 +529,16 @@ mod tests {
         let token = resolve_token_arg(&args).await.unwrap();
         assert_eq!(token, "gd_pat_a_12345678");
         assert!(is_valid_pat(&token));
+    }
+
+    #[test]
+    fn empty_stdin_token_returns_actionable_error() {
+        assert!(parse_stdin_token("", 0).is_err());
+        assert!(parse_stdin_token("  \n", 3).is_err());
+        assert_eq!(
+            parse_stdin_token("  gd_pat_a_12345678  \n", 23).unwrap(),
+            "gd_pat_a_12345678"
+        );
     }
 
     #[test]
