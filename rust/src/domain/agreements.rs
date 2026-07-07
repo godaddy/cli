@@ -1,6 +1,6 @@
 //! `gddy domain agreements` — the legal agreements a TLD requires (v1).
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::json;
 
 use domains_client::types;
@@ -22,6 +22,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Read)
         .with_default_fields("agreementKey,title,url")
+        .with_view(vec![
+            TableColumn::new("agreementKey", "Agreement Key"),
+            TableColumn::new("title", "Title"),
+            TableColumn::new("url", "URL").no_truncate(true),
+        ])
         .with_json_schema::<types::V1LegalAgreement>()
         .with_scopes(&[DOMAINS_READ])
         .with_arg(
