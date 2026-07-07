@@ -50,19 +50,6 @@ fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
     .with_redirect_uri(environments::REDIRECT_URI)
 }
 
-/// Emit (at debug level) the OAuth parameters that will be used for login and
-/// the code→token exchange. cli-engine builds the actual token request, so this
-/// is the CLI's single point of visibility into the client id / endpoints that
-/// drive an `invalid_client`/`invalid_grant` failure.
-///
-/// It mirrors cli-engine's `<ENV>_OAUTH_*` env-var overrides
-/// (`PkceAuthProvider::effective_*`) so the logged values are what's actually
-/// sent — and flags when a value comes from an env var rather than config, which
-/// is the usual cause of a "wrong client id". No secrets are logged (the OAuth
-/// client id is a public identifier; tokens never pass through here).
-///
-/// Enable with `RUST_LOG=gddy=debug` (e.g. `RUST_LOG=gddy=debug gddy domain
-/// available example.com --env dev`).
 /// Build a `Credential` from a PAT entry.
 ///
 /// The PAT is opaque to the CLI; the gateway exchanges it for an OAuth access
@@ -82,6 +69,19 @@ fn pat_credential(env: &str, entry: &PatEntry) -> Credential {
     }
 }
 
+/// Emit (at debug level) the OAuth parameters that will be used for login and
+/// the code→token exchange. cli-engine builds the actual token request, so this
+/// is the CLI's single point of visibility into the client id / endpoints that
+/// drive an `invalid_client`/`invalid_grant` failure.
+///
+/// It mirrors cli-engine's `<ENV>_OAUTH_*` env-var overrides
+/// (`PkceAuthProvider::effective_*`) so the logged values are what's actually
+/// sent — and flags when a value comes from an env var rather than config, which
+/// is the usual cause of a "wrong client id". No secrets are logged (the OAuth
+/// client id is a public identifier; tokens never pass through here).
+///
+/// Enable with `RUST_LOG=gddy=debug` (e.g. `RUST_LOG=gddy=debug gddy domain
+/// available example.com --env dev`).
 fn log_resolved_oauth(env: &ResolvedEnv) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;

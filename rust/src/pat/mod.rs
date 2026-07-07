@@ -131,7 +131,8 @@ pub fn is_valid_pat(token: &str) -> bool {
     prefix == "gd_pat" && !entropy.is_empty() && entropy.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-/// Returns the last four characters of a PAT, or `"----"` when too short.
+/// Returns the last four characters of a PAT. If the token is four characters or
+/// shorter, returns the whole token unchanged.
 fn last_four(token: &str) -> String {
     token
         .chars()
@@ -180,8 +181,16 @@ pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
         tracing::warn!(var = PAT_ENV_VAR, "PAT env var is malformed; ignoring");
     }
     let path = registry_path()?;
-    // Registry reads are best-effort: a missing file means no PAT.
-    let registry = load_registry(&path).ok()?;
+    // Registry reads are best-effort: a missing file means no PAT. Load errors
+    // (parse failures, permission problems) are logged but do not crash; in those
+    // cases the CLI falls back to OAuth rather than silently returning None.
+    let registry = match load_registry(&path) {
+        Ok(r) => r,
+        Err(err) => {
+            tracing::warn!(env, error = %err, "failed to load PAT registry; falling back to OAuth");
+            return None;
+        }
+    };
     registry.tokens.get(env).cloned()
 }
 

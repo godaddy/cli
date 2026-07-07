@@ -78,7 +78,7 @@ For per-environment tokens:
 ```sh
 export GDDY_PAT_PROD=gd_pat_...
 export GDDY_PAT_OTE=gd_pat_...
-giddy domain list --env prod
+gddy domain list --env prod
 ```
 
 Per-environment variables take precedence over `GDDY_PAT`.
