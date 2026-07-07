@@ -46,7 +46,7 @@ Alternatively, pass it explicitly:
 gddy pat add --env prod --token 'gd_pat_...' "CI token"
 ```
 
-PATs are saved to `~/.config/gddy/pat.toml` with owner-only file permissions (`0600`).
+PATs are saved to your platform's `gddy` configuration directory (e.g. `~/.config/gddy/pat.toml` on Linux) with owner-only permissions where the platform supports it (`0600`).
 
 ### Listing and removing PATs
 
@@ -89,7 +89,7 @@ For each command, the CLI resolves credentials in this order:
 
 1. `GDDY_PAT_<ENV>` environment variable
 2. `GDDY_PAT` environment variable
-3. Stored PAT for the environment in `~/.config/gddy/pat.toml`
+3. Stored PAT for the environment in the `gddy` configuration directory (e.g. `~/.config/gddy/pat.toml` on Linux)
 4. OAuth token from `gddy auth login` (browser flow)
 
 If a PAT is configured, the CLI sends it as:

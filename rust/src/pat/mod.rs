@@ -6,10 +6,11 @@
 //! for a short-lived access token, so the CLI only needs to store and send the
 //! PAT itself.
 //!
-//! PATs are persisted in `~/.config/gddy/pat.toml` (or equivalent on Windows/macOS)
-//! with `0600` file permissions. They can also be supplied at runtime via the
-//! `GDDY_PAT` or `GDDY_PAT_<ENV>` environment variables, which take precedence over
-//! the registry file.
+//! PATs are persisted in the `gddy` configuration directory alongside other CLI
+//! configuration files (e.g. `~/.config/gddy/pat.toml` on Linux). They are written
+//! with owner-only file permissions where the platform supports it. They can also
+//! be supplied at runtime via the `GDDY_PAT` or `GDDY_PAT_<ENV>` environment
+//! variables, which take precedence over the registry file.
 
 use std::collections::BTreeMap;
 
@@ -98,10 +99,10 @@ impl PatRegistry {
     }
 }
 
-/// Returns the path to the PAT registry file, or `None` if no config directory is
-/// available.
+/// Path to the local PAT registry file, if a config directory can be resolved.
+/// Mirrors the other `gddy/` config paths in this crate.
 pub fn registry_path() -> Option<std::path::PathBuf> {
-    cli_engine::fs::config_base_dir().map(|base| base.join("gddy").join(PAT_FILE_NAME))
+    dirs::config_dir().map(|d| d.join("gddy").join(PAT_FILE_NAME))
 }
 
 fn env_var_for(env: &str) -> String {
