@@ -158,7 +158,30 @@ fn redact(token: &str) -> String {
 /// Find a PAT for `env`, preferring per-env env vars, then the default env var,
 /// then the registry file. Returns `None` when no valid PAT is configured.
 pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
-    if let Ok(token) = std::env::var(env_var_for(env)) {
+    let path = registry_path();
+    let registry = match path.as_deref().map(load_registry).transpose() {
+        Ok(Some(r)) => Some(r),
+        Ok(None) => None,
+        Err(err) => {
+            tracing::warn!(env, error = %err, "failed to load PAT registry; falling back to OAuth");
+            None
+        }
+    };
+    resolve_pat_with(env, |var| std::env::var(var).ok(), registry.as_ref())
+}
+
+/// Internal, testable version of [`resolve_pat`]. `get_env` supplies env-var values;
+/// `registry` is the pre-loaded PAT registry (if any). Every token is validated
+/// before it is returned.
+fn resolve_pat_with<F>(
+    env: &str,
+    mut get_env: F,
+    registry: Option<&PatRegistry>,
+) -> Option<PatEntry>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    if let Some(token) = get_env(&env_var_for(env)) {
         if is_valid_pat(&token) {
             return Some(PatEntry {
                 token,
@@ -171,7 +194,7 @@ pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
             "PAT env var is malformed; ignoring"
         );
     }
-    if let Ok(token) = std::env::var(PAT_ENV_VAR) {
+    if let Some(token) = get_env(PAT_ENV_VAR) {
         if is_valid_pat(&token) {
             return Some(PatEntry {
                 token,
@@ -180,18 +203,12 @@ pub async fn resolve_pat(env: &str) -> Option<PatEntry> {
         }
         tracing::warn!(var = PAT_ENV_VAR, "PAT env var is malformed; ignoring");
     }
-    let path = registry_path()?;
-    // Registry reads are best-effort: a missing file means no PAT. Load errors
-    // (parse failures, permission problems) are logged but do not crash; in those
-    // cases the CLI falls back to OAuth rather than silently returning None.
-    let registry = match load_registry(&path) {
-        Ok(r) => r,
-        Err(err) => {
-            tracing::warn!(env, error = %err, "failed to load PAT registry; falling back to OAuth");
-            return None;
-        }
-    };
-    registry.tokens.get(env).cloned()
+    let entry = registry?.tokens.get(env).cloned()?;
+    if !is_valid_pat(&entry.token) {
+        tracing::warn!(env, "stored PAT entry is malformed; ignoring");
+        return None;
+    }
+    Some(entry)
 }
 
 /// Persist a PAT for an environment, replacing any existing entry.
@@ -456,5 +473,76 @@ mod tests {
         assert_eq!(loaded.tokens.len(), 1);
         assert_eq!(loaded.tokens["prod"].name, "CI");
         assert_eq!(loaded.tokens["prod"].token, "gd_pat_abc123_1234abcd");
+    }
+
+    fn test_registry_with(env: &str, token: &str) -> PatRegistry {
+        let mut registry = PatRegistry::default();
+        registry.tokens.insert(
+            env.to_owned(),
+            PatEntry {
+                token: token.to_owned(),
+                name: "stored".to_owned(),
+            },
+        );
+        registry
+    }
+
+    #[test]
+    fn per_env_var_wins_over_default_and_registry() {
+        let registry = test_registry_with("prod", "gd_pat_registry_12345678");
+        let env = |var: &str| match var {
+            "GDDY_PAT_PROD" => Some("gd_pat_prod_12345678".to_owned()),
+            "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
+            _ => None,
+        };
+        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        assert_eq!(entry.token, "gd_pat_prod_12345678");
+        assert_eq!(entry.name, "env");
+    }
+
+    #[test]
+    fn default_env_var_wins_over_registry() {
+        let registry = test_registry_with("prod", "gd_pat_registry_12345678");
+        let env = |var: &str| match var {
+            "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
+            _ => None,
+        };
+        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        assert_eq!(entry.token, "gd_pat_default_12345678");
+        assert_eq!(entry.name, "env");
+    }
+
+    #[test]
+    fn malformed_env_var_is_ignored_and_fallback_works() {
+        let registry = test_registry_with("prod", "gd_pat_registry_12345678");
+        let env = |var: &str| match var {
+            "GDDY_PAT_PROD" => Some("not-a-pat".to_owned()),
+            "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
+            _ => None,
+        };
+        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        assert_eq!(entry.token, "gd_pat_default_12345678");
+    }
+
+    #[test]
+    fn registry_entry_returned_when_no_env_vars() {
+        let registry = test_registry_with("prod", "gd_pat_registry_12345678");
+        let env = |_var: &str| None;
+        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        assert_eq!(entry.token, "gd_pat_registry_12345678");
+        assert_eq!(entry.name, "stored");
+    }
+
+    #[test]
+    fn stored_malformed_pat_is_ignored() {
+        let registry = test_registry_with("prod", "not-a-pat");
+        let env = |_var: &str| None;
+        assert!(resolve_pat_with("prod", env, Some(&registry)).is_none());
+    }
+
+    #[test]
+    fn env_var_for_uses_uppercase_env_prefix() {
+        assert_eq!(env_var_for("prod"), "GDDY_PAT_PROD");
+        assert_eq!(env_var_for("ote"), "GDDY_PAT_OTE");
     }
 }
