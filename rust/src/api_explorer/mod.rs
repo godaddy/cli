@@ -651,7 +651,8 @@ fn call_command() -> RuntimeCommandSpec {
                 }
             }
 
-            let mut req = crate::application::client::make_http_client()
+            let client = crate::application::client::make_http_client();
+            let mut req = client
                 .request(
                     method.parse().map_err(|_| {
                         cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
@@ -665,20 +666,33 @@ fn call_command() -> RuntimeCommandSpec {
                 req = req.json(&body);
             }
 
-            let resp = req
-                .send()
+            let request = req
+                .build()
+                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            cli_engine::transport::debug_log_reqwest_request(&request);
+            let resp = client
+                .execute(request)
                 .await
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
 
-            let status = resp.status().as_u16();
+            let status = resp.status();
+            let response_headers_raw = resp.headers().clone();
             let include_headers = ctx
                 .args
                 .get("include")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let body_bytes = resp.bytes().await.unwrap_or_default();
+            cli_engine::transport::debug_log_reqwest_response(
+                status,
+                &response_headers_raw,
+                &body_bytes,
+            );
+
+            let status = status.as_u16();
             let response_headers: Option<serde_json::Map<String, Value>> = if include_headers {
                 Some(
-                    resp.headers()
+                    response_headers_raw
                         .iter()
                         .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.to_string(), json!(s))))
                         .collect(),
@@ -687,7 +701,7 @@ fn call_command() -> RuntimeCommandSpec {
                 None
             };
 
-            let body: Value = resp.json().await.unwrap_or(json!(null));
+            let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(json!(null));
 
             // Scope step-up already ran up front (the token was requested with
             // `required`). A 403 here means the granted token still lacks a

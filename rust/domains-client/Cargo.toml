@@ -10,6 +10,9 @@ description = "Generated GoDaddy Domains API client (domains list + availability
 # workspace on one reqwest + ring-based rustls-tls stack as cli-engine/the main
 # crate, which avoids aws-lc-rs (reqwest 0.13's only rustls provider) and keeps
 # the Windows-msvc cross-build clean.
+# Only for the `--debug transport` bridge (see `ClientHooks` impl below) — no
+# feature flags needed, `transport` is part of the default lib.
+cli-engine = "0.3.5"
 progenitor-client = "0.11"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 # Pinned to match cli-engine's schemars so the generated types' derived
