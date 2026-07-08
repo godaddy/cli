@@ -319,10 +319,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
                 next_actions.push(
                     NextAction::new(
-                        "domain purchase --quote-token <token> --agree --confirm",
+                        "domain purchase --quote-token <quote-token> --agree --confirm",
                         "Register at the quoted price (within ~10 minutes)",
                     )
-                    .with_param("quote-token", NextActionParam::required()),
+                    .with_param("quote-token", NextActionParam::value(token)),
                 );
             } else {
                 // Not available (or no token was issued): point at discovery, the

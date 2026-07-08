@@ -1,8 +1,8 @@
 //! `gddy payments` — payment method management.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam,
+    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
@@ -52,7 +52,14 @@ fn add_command() -> RuntimeCommandSpec {
                     "Could not open browser. Visit the URL above to add a payment method. \
                      Only credit card or Good-as-Gold can be used for domain purchases."
                 }
-            })))
+            }))
+            .with_next_actions(vec![
+                NextAction::new(
+                    "domain quote <domain>",
+                    "Price a domain registration now that a payment method is on file",
+                )
+                .with_param("domain", NextActionParam::required()),
+            ]))
         },
     )
 }

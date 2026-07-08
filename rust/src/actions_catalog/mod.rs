@@ -1,5 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
@@ -85,7 +86,10 @@ pub fn module() -> Module {
                     .iter()
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
-                Ok(CommandResult::new(json!({ "actions": actions })))
+                Ok(CommandResult::new(json!({ "actions": actions })).with_next_actions(vec![
+                    NextAction::new("actions describe <action>", "See an action's full schema")
+                        .with_param("action", NextActionParam::required()),
+                ]))
             },
         ))
         .with_command(RuntimeCommandSpec::new_with_context(

@@ -1,7 +1,8 @@
 //! `gddy domain nameservers` — manage a domain's nameservers (v3).
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
@@ -91,7 +92,10 @@ pub(super) fn group() -> RuntimeGroupSpec {
             if let Some(status) = op.status.as_ref() {
                 result["status"] = json!(status.to_string());
             }
-            Ok(CommandResult::new(result))
+            Ok(CommandResult::new(result).with_next_actions(vec![
+                NextAction::new("domain get <domain>", "Confirm the updated nameservers")
+                    .with_param("domain", NextActionParam::value(domain)),
+            ]))
         },
     ))
 }
