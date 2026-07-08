@@ -64,6 +64,34 @@ fn is_terminal_status(status: &str) -> bool {
     matches!(status, "COMPLETED" | "FAILED")
 }
 
+/// Description for the `domain get <domain>` next-action, tailored to whether
+/// registration actually finished (`COMPLETED`) or bounded polling gave up
+/// while it was still non-terminal — the latter shouldn't claim the domain is
+/// already registered when it may not be provisioned yet.
+fn next_action_description(status: &str) -> &'static str {
+    if status == "COMPLETED" {
+        "See the registered domain's details"
+    } else {
+        "Check whether registration has finished (was still in progress after polling)"
+    }
+}
+
+/// Renders a `FAILED` operation's `error` payload (name/message) for the
+/// user-facing error, e.g. `" (DOMAIN_UNAVAILABLE: the domain is already
+/// registered)"`. Empty when the operation carried no error detail (e.g. it
+/// failed before an operation with a populated `error` was ever polled).
+fn format_operation_error(error: Option<&types::Error>) -> String {
+    let Some(error) = error else {
+        return String::new();
+    };
+    match (error.name.as_deref(), error.message.as_deref()) {
+        (Some(name), Some(message)) => format!(" ({name}: {message})"),
+        (Some(name), None) => format!(" ({name})"),
+        (None, Some(message)) => format!(" ({message})"),
+        (None, None) => String::new(),
+    }
+}
+
 /// Enforce the purchase gates against a cached quote, returning the agreement
 /// types to record as consent. Pure (no I/O) so the gating is unit-testable:
 /// `--agree` is the legal-consent gate (its error lists the agreements — by their
@@ -329,6 +357,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "SUBMITTED".to_string());
             let operation_id = accepted.operation_id.clone();
+            let mut operation_error: Option<types::Error> = None;
             if let Some(op_id) = operation_id.as_ref() {
                 for _ in 0..20 {
                     if is_terminal_status(&status) {
@@ -342,9 +371,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         .await
                     {
                         Ok(r) => {
-                            if let Some(s) = r.into_inner().status {
+                            let op = r.into_inner();
+                            if let Some(s) = op.status {
                                 status = s.to_string();
                             }
+                            operation_error = op.error;
                         }
                         // A transient poll failure shouldn't fail the purchase —
                         // it already succeeded; report the last-known status.
@@ -354,15 +385,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             // A terminal FAILED status means the registration did not complete —
-            // report it as an error (non-zero exit), not a success payload.
+            // report it as an error (non-zero exit), not a success payload. No
+            // domain was ever registered, so don't point at `domain get` (it
+            // won't find anything) — the only viable next step is a fresh quote.
             if status == "FAILED" {
                 let op = operation_id
                     .as_ref()
                     .map(|o| o.to_string())
                     .unwrap_or_else(|| "unknown".to_string());
+                let detail = format_operation_error(operation_error.as_ref());
                 return Err(CliCoreError::message(format!(
-                    "registration for {domain} failed (operation {op}); no domain was registered. \
-                     Check `gddy domain get {domain}`, then re-quote to try again."
+                    "registration for {domain} failed (operation {op}){detail}; no domain was \
+                     registered. Re-run `gddy domain quote {domain}` for a fresh quote and try again."
                 )));
             }
             // Bounded polling gave up before a terminal state (e.g. still
@@ -393,7 +427,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 result["currency"] = json!(c);
             }
             Ok(CommandResult::new(result).with_next_actions(vec![
-                NextAction::new("domain get <domain>", "See the registered domain's details")
+                NextAction::new("domain get <domain>", next_action_description(&status))
                     .with_param("domain", NextActionParam::required()),
             ]))
         },
@@ -402,8 +436,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{consent_principal, is_terminal_status, iso_datetime, purchase_consent_types};
+    use super::{
+        consent_principal, format_operation_error, is_terminal_status, iso_datetime,
+        next_action_description, purchase_consent_types,
+    };
     use cli_engine::Credential;
+    use domains_client::types;
 
     #[test]
     fn purchase_consent_requires_agree_then_confirm() {
@@ -471,6 +509,60 @@ mod tests {
         assert!(!is_terminal_status("CONFIRMED"));
         assert!(!is_terminal_status("EXECUTING"));
         assert!(!is_terminal_status("SUBMITTED"));
+    }
+
+    #[test]
+    fn next_action_description_reflects_final_status() {
+        // A true COMPLETED gets the "already registered" wording.
+        assert_eq!(
+            next_action_description("COMPLETED"),
+            "See the registered domain's details"
+        );
+        // Any non-terminal status left over after polling gave up must NOT
+        // claim the domain is already registered.
+        for status in ["EXECUTING", "SUBMITTED", "CONFIRMED"] {
+            let desc = next_action_description(status);
+            assert!(
+                !desc.contains("registered domain"),
+                "status {status:?} must not claim the domain is registered: {desc}"
+            );
+        }
+    }
+
+    #[test]
+    fn format_operation_error_includes_name_and_message() {
+        assert_eq!(format_operation_error(None), "");
+
+        let name_only = types::Error {
+            name: Some("DOMAIN_UNAVAILABLE".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            format_operation_error(Some(&name_only)),
+            " (DOMAIN_UNAVAILABLE)"
+        );
+
+        let message_only = types::Error {
+            message: Some("the domain is already registered".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            format_operation_error(Some(&message_only)),
+            " (the domain is already registered)"
+        );
+
+        let both = types::Error {
+            name: Some("DOMAIN_UNAVAILABLE".to_string()),
+            message: Some("the domain is already registered".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            format_operation_error(Some(&both)),
+            " (DOMAIN_UNAVAILABLE: the domain is already registered)"
+        );
+
+        let neither = types::Error::default();
+        assert_eq!(format_operation_error(Some(&neither)), "");
     }
 
     #[test]
