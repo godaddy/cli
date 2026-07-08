@@ -100,7 +100,10 @@ fn status_command() -> RuntimeCommandSpec {
                 // parens for inline sentence-appending (as `purchase.rs` uses it);
                 // strip that decoration since this is a standalone field value.
                 let detail = format_operation_error(Some(error));
-                let detail = detail.trim().trim_start_matches('(').trim_end_matches(')');
+                let detail = detail
+                    .strip_prefix(" (")
+                    .and_then(|s| s.strip_suffix(')'))
+                    .unwrap_or(&detail);
                 if !detail.is_empty() {
                     result["error"] = json!(detail);
                 }

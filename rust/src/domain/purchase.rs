@@ -380,12 +380,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // SUBMITTED/PENDING). It may still complete server-side, so tell the
             // user how to check rather than implying it finished.
             let still_pending = operation_id.is_some() && !is_terminal_status(&status);
-            if still_pending {
+            if let Some(op) = operation_id.as_ref().filter(|_| still_pending) {
                 tracing::info!(
                     %domain,
                     %status,
+                    operation_id = %op,
                     "registration still in progress after polling; check later with \
-                     `gddy domain operation status`"
+                     `gddy domain operation status {op}`"
                 );
             }
 
