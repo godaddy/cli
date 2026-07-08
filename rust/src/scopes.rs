@@ -39,10 +39,15 @@ macro_rules! declare_scopes {
     ($( $(#[$doc:meta])* $name:ident => $value:literal ),+ $(,)?) => {
         $( $(#[$doc])* pub const $name: &str = $value; )+
 
-        /// Every OAuth scope the CLI may request, and therefore the exact set its
-        /// OAuth client must be registered for. Auto-derived from the constants
-        /// declared in [`declare_scopes!`] — keep the client's registration in sync
-        /// with this list.
+        /// Every `resource:action` permission scope the CLI may request. Auto-derived
+        /// from the constants declared in [`declare_scopes!`] — keep the client's
+        /// registration in sync with this list.
+        ///
+        /// NOT the complete set of scopes requiring OAuth client registration:
+        /// [`OFFLINE_ACCESS`] is a directive scope (not a `resource:action` permission)
+        /// and is deliberately excluded, but still must be registered on the client
+        /// server-side. Diff the client's configuration against `ALL` *plus*
+        /// [`OFFLINE_ACCESS`], not `ALL` alone.
         ///
         /// Not referenced by production code (the individual constants are what
         /// commands use); it exists as the authoritative registry to diff against
