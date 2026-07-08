@@ -52,6 +52,18 @@ macro_rules! declare_scopes {
     };
 }
 
+/// OIDC directive scope requesting a `refresh_token` alongside the access
+/// token. Requested at login by default (see
+/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+///
+/// Deliberately declared outside [`declare_scopes!`]/[`ALL`]: unlike the
+/// scopes below, it isn't a `resource:action` permission grant, so it fails
+/// the `resource:action` shape the module tests enforce for `ALL`. It still
+/// must be registered on the CLI's OAuth client server-side, or the
+/// authorization server will refuse or silently drop it just like any other
+/// unregistered scope.
+pub const OFFLINE_ACCESS: &str = "offline_access";
+
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
     /// Read the caller's registered applications. Requested at login by default
@@ -75,6 +87,23 @@ declare_scopes! {
     DOMAINS_CREATE => "domains.domain:create",
     /// Replace a domain's nameservers (`domain nameservers set`).
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
+
+    /// Read Node.js Hosting apps (`hosting nodejs app list/get`).
+    HOSTING_APPS_READ => "hosting.paas.apps:read",
+    /// Create a Node.js Hosting app (`hosting nodejs app create`).
+    HOSTING_APPS_CREATE => "hosting.paas.apps:create",
+    /// Update a Node.js Hosting app (`hosting nodejs app update`).
+    HOSTING_APPS_UPDATE => "hosting.paas.apps:update",
+    /// Delete a Node.js Hosting app (`hosting nodejs app delete`).
+    HOSTING_APPS_DELETE => "hosting.paas.apps:delete",
+    /// Upload code to a Node.js Hosting app (`hosting nodejs app deploy`/`upload`).
+    HOSTING_CODE_WRITE => "hosting.paas.code:write",
+    /// Trigger a Node.js Hosting deploy (`hosting nodejs app deploy`).
+    HOSTING_DEPLOY_EXECUTE => "hosting.paas.deploy:execute",
+    /// Write Node.js Hosting app secrets (`hosting nodejs secret set/delete`).
+    HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
+    /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
+    HOSTING_LOGS_READ => "hosting.paas.logs:read",
 }
 
 #[cfg(test)]

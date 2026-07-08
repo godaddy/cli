@@ -42,7 +42,7 @@ rust/src/
     nodejs/
       mod.rs                 — hosting nodejs command group
       client.rs              — Node.js Hosting REST client
-      scopes.rs              — OAuth scope constants
+  scopes.rs                  — centralized OAuth scope registry (all commands draw from this)
   webhook/mod.rs             — webhook commands
   config/mod.rs              — godaddy.toml read/write
   auth.rs                    — auth module registration
