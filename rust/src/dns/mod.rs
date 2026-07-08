@@ -348,11 +348,6 @@ fn summarize_delete_outcomes(
     }))
 }
 
-/// Summarize the per-record create outcomes of `dns add` (each `--data` value
-/// paired with `Ok(())` or an `Err(message)`), preserving input order. Returns
-/// the success JSON payload when *every* record was created, or an error message
-/// (a non-zero exit) with a per-record breakdown if any failed. Pure — no I/O —
-/// so the aggregation and the success/failure decision are unit-testable.
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
 /// the domain/type/name the write just touched.
 fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
@@ -365,6 +360,11 @@ fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextA
     .with_param("name", NextActionParam::value(name))
 }
 
+/// Summarize the per-record create outcomes of `dns add` (each `--data` value
+/// paired with `Ok(())` or an `Err(message)`), preserving input order. Returns
+/// the success JSON payload when *every* record was created, or an error message
+/// (a non-zero exit) with a per-record breakdown if any failed. Pure — no I/O —
+/// so the aggregation and the success/failure decision are unit-testable.
 fn summarize_add_outcomes(
     domain: &str,
     record_type: &str,
