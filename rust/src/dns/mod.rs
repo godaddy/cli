@@ -19,8 +19,8 @@
 //! `--dry-run` short-circuits them with a preview.
 
 use cli_engine::{
-    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module,
-    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, Module, NextAction,
+    NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::{Value, json};
 
@@ -348,6 +348,18 @@ fn summarize_delete_outcomes(
     }))
 }
 
+/// Next action pointing back at `dns list` to verify a write, pre-filled with
+/// the domain/type/name the write just touched.
+fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
+    NextAction::new(
+        "dns list <domain> --type <type> --name <name>",
+        "Verify the records for this type+name",
+    )
+    .with_param("domain", NextActionParam::value(domain))
+    .with_param("type", NextActionParam::value(record_type))
+    .with_param("name", NextActionParam::value(name))
+}
+
 /// Summarize the per-record create outcomes of `dns add` (each `--data` value
 /// paired with `Ok(())` or an `Err(message)`), preserving input order. Returns
 /// the success JSON payload when *every* record was created, or an error message
@@ -665,7 +677,13 @@ pub fn module() -> Module {
                 // All-created → success payload; any failure → non-zero error
                 // with a per-record breakdown.
                 summarize_add_outcomes(&domain, &record_type, &name, outcomes)
-                    .map(CommandResult::new)
+                    .map(|v| {
+                        CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
+                            &domain,
+                            &record_type,
+                            &name,
+                        )])
+                    })
                     .map_err(CliCoreError::message)
             },
         ))
@@ -781,7 +799,13 @@ pub fn module() -> Module {
                 }
 
                 summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
-                    .map(CommandResult::new)
+                    .map(|v| {
+                        CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
+                            &domain,
+                            &record_type,
+                            &name,
+                        )])
+                    })
                     .map_err(CliCoreError::message)
             },
         ))
@@ -870,7 +894,13 @@ pub fn module() -> Module {
                 }
 
                 summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
-                    .map(CommandResult::new)
+                    .map(|v| {
+                        CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
+                            &domain,
+                            &record_type,
+                            &name,
+                        )])
+                    })
                     .map_err(CliCoreError::message)
             },
         ))

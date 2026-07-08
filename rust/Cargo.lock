@@ -560,9 +560,33 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli-engine"
-version = "0.4.0"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6786efadc13f2a6202786e2149e4aa6f9dcb6326202a26a75c747e7202af7b17"
+checksum = "35b4759ac63483df8b4fb0b2a88010d71c830d42eee81405808d58b4ae77a8fa"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "jmespath",
+ "regex",
+ "reqwest",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml_edit 0.22.27",
+ "tracing",
+]
+
+[[package]]
+name = "cli-engine"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "666d8e4bf199623eda4f64cc3f6273143e5cbd080517cb378df40a5fdd3fe0ba"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -942,7 +966,7 @@ name = "domains-client"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "cli-engine",
+ "cli-engine 0.3.5",
  "futures",
  "httpmock",
  "openapiv3",
@@ -1302,7 +1326,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
- "cli-engine",
+ "cli-engine 0.4.1",
  "dirs",
  "domains-client",
  "fancy-regex",

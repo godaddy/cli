@@ -526,7 +526,7 @@ mod tests {
             "token".to_owned(),
             serde_json::Value::String("  gd_pat_a_12345678  \n".to_owned()),
         );
-        let token = resolve_token_arg(&args).await.unwrap();
+        let token = resolve_token_arg(&args).await.expect("token arg resolves");
         assert_eq!(token, "gd_pat_a_12345678");
         assert!(is_valid_pat(&token));
     }
@@ -536,7 +536,7 @@ mod tests {
         assert!(parse_stdin_token("", 0).is_err());
         assert!(parse_stdin_token("  \n", 3).is_err());
         assert_eq!(
-            parse_stdin_token("  gd_pat_a_12345678  \n", 23).unwrap(),
+            parse_stdin_token("  gd_pat_a_12345678  \n", 23).expect("token parses"),
             "gd_pat_a_12345678"
         );
     }
@@ -582,7 +582,7 @@ mod tests {
             "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
             _ => None,
         };
-        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        let entry = resolve_pat_with("prod", env, Some(&registry)).expect("pat resolves");
         assert_eq!(entry.token, "gd_pat_prod_12345678");
         assert_eq!(entry.name, "env");
     }
@@ -594,7 +594,7 @@ mod tests {
             "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
             _ => None,
         };
-        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        let entry = resolve_pat_with("prod", env, Some(&registry)).expect("pat resolves");
         assert_eq!(entry.token, "gd_pat_default_12345678");
         assert_eq!(entry.name, "env");
     }
@@ -607,7 +607,7 @@ mod tests {
             "GDDY_PAT" => Some("gd_pat_default_12345678".to_owned()),
             _ => None,
         };
-        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        let entry = resolve_pat_with("prod", env, Some(&registry)).expect("pat resolves");
         assert_eq!(entry.token, "gd_pat_default_12345678");
     }
 
@@ -615,7 +615,7 @@ mod tests {
     fn registry_entry_returned_when_no_env_vars() {
         let registry = test_registry_with("prod", "gd_pat_registry_12345678");
         let env = |_var: &str| None;
-        let entry = resolve_pat_with("prod", env, Some(&registry)).unwrap();
+        let entry = resolve_pat_with("prod", env, Some(&registry)).expect("pat resolves");
         assert_eq!(entry.token, "gd_pat_registry_12345678");
         assert_eq!(entry.name, "stored");
     }

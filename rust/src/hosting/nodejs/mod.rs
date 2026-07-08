@@ -454,7 +454,18 @@ fn status_command() -> RuntimeCommandSpec {
             let app_id = required_str(&ctx, "app-id", "--app-id")?;
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.get_app_status(&app_id).await.map_err(client_err)?;
-            Ok(CommandResult::new(data))
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                NextAction::new(
+                    "hosting nodejs deployment list --app-id <app-id>",
+                    "List deployments for this application",
+                )
+                .with_param("app-id", NextActionParam::value(app_id.clone())),
+                NextAction::new(
+                    "hosting nodejs logs --app-id <app-id>",
+                    "View application logs",
+                )
+                .with_param("app-id", NextActionParam::value(app_id)),
+            ]))
         },
     )
 }
