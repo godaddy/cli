@@ -13,15 +13,23 @@
 //!
 //! So: **every scope the CLI uses is declared here, once**, and commands draw
 //! from these constants rather than spelling out string literals. The [`ALL`]
-//! slice is derived from the same declarations, so it is always the complete,
-//! authoritative list of scopes the OAuth client must be registered for — a
-//! single place to diff against the client's configuration.
+//! slice is derived from the same declarations, so it is always the complete
+//! list of `resource:action` *permission* scopes the OAuth client must be
+//! registered for — a single place to diff against the client's configuration.
+//!
+//! `ALL` does NOT cover every scope requiring client registration, though:
+//! directive scopes like [`OFFLINE_ACCESS`] aren't `resource:action` grants, so
+//! they're declared outside [`declare_scopes!`]/`ALL` but still need the same
+//! server-side registration. When syncing the OAuth client's configuration,
+//! diff against `ALL` *plus* every such standalone constant, not `ALL` alone.
 //!
 //! # Adding a scope (READ THIS)
 //!
-//! 1. Add a constant to the [`declare_scopes!`] block below. It is automatically
-//!    included in [`ALL`] — you cannot add a scope constant without registering
-//!    it in the list.
+//! 1. Add a constant to the [`declare_scopes!`] block below (or, for a directive
+//!    scope that isn't a `resource:action` permission, declare it standalone
+//!    like [`OFFLINE_ACCESS`]). Constants in `declare_scopes!` are automatically
+//!    included in [`ALL`] — you cannot add one there without registering it in
+//!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
 //! 3. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
