@@ -1,6 +1,6 @@
 pub mod nodejs;
 
-use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
+use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 
 pub fn module() -> Module {
     Module::new("Hosting", |_ctx| {
@@ -13,4 +13,5 @@ pub fn module() -> Module {
         )
         .with_group(nodejs::nodejs_group())
     })
+    .with_feature_flag("hosting", Stage::Beta)
 }

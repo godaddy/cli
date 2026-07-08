@@ -1274,7 +1274,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig};
+    use cli_engine::{Cli, CliConfig, Stage};
 
     /// API commands must stay fail-closed: `application list` calls the backend,
     /// so it must require authentication. Built with **no auth provider
@@ -1286,6 +1286,7 @@ mod tests {
     async fn application_list_requires_auth() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
                 .with_default_auth_provider("godaddy")
                 .with_module(super::super::module()),
         );

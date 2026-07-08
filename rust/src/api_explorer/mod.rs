@@ -240,7 +240,7 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
 // ---------------------------------------------------------------------------
 
 pub fn module() -> Module {
-    Module::new("Contracts", |_ctx| {
+    Module::new("API", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("api", "Explore and call GoDaddy API endpoints").with_long(
                 "Browse the GoDaddy API catalog and make authenticated requests \

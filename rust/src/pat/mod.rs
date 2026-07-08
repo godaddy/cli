@@ -281,7 +281,7 @@ fn registry_path_err() -> Result<std::path::PathBuf, CliCoreError> {
 }
 
 pub fn module() -> Module {
-    Module::new("Authentication", |_ctx| {
+    Module::new("Admin", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("pat", "Manage Personal Access Tokens (PATs)").with_long(
                 "Store and manage Personal Access Tokens for non-interactive GoDaddy \

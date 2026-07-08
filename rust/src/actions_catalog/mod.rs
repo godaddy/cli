@@ -1,6 +1,6 @@
 use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    RuntimeGroupSpec, Stage, Tier,
 };
 use serde_json::json;
 
@@ -59,7 +59,7 @@ fn load_action_schema(name: &str) -> Option<serde_json::Value> {
 }
 
 pub fn module() -> Module {
-    Module::new("Contracts", |_ctx| {
+    Module::new("GPA", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("actions", "Discover available GoDaddy action contracts")
                 .with_long(
@@ -127,4 +127,5 @@ pub fn module() -> Module {
             },
         ))
     })
+    .with_feature_flag("actions", Stage::Experimental)
 }
