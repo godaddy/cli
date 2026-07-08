@@ -1,5 +1,4 @@
 pub mod client;
-pub mod scopes;
 
 use cli_engine::{
     CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, NextAction,
@@ -12,9 +11,11 @@ use crate::{
     output_schema::output_schema,
 };
 
-use self::scopes::{
-    APPS_CREATE, APPS_DELETE, APPS_READ, APPS_UPDATE, CODE_WRITE, DEPLOY_EXECUTE, LOGS_READ,
-    SECRETS_WRITE,
+use crate::scopes::{
+    HOSTING_APPS_CREATE as APPS_CREATE, HOSTING_APPS_DELETE as APPS_DELETE,
+    HOSTING_APPS_READ as APPS_READ, HOSTING_APPS_UPDATE as APPS_UPDATE,
+    HOSTING_CODE_WRITE as CODE_WRITE, HOSTING_DEPLOY_EXECUTE as DEPLOY_EXECUTE,
+    HOSTING_LOGS_READ as LOGS_READ, HOSTING_SECRETS_WRITE as SECRETS_WRITE,
 };
 
 output_schema!(HostingAppSummary {

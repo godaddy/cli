@@ -13,15 +13,23 @@
 //!
 //! So: **every scope the CLI uses is declared here, once**, and commands draw
 //! from these constants rather than spelling out string literals. The [`ALL`]
-//! slice is derived from the same declarations, so it is always the complete,
-//! authoritative list of scopes the OAuth client must be registered for — a
-//! single place to diff against the client's configuration.
+//! slice is derived from the same declarations, so it is always the complete
+//! list of `resource:action` *permission* scopes the OAuth client must be
+//! registered for — a single place to diff against the client's configuration.
+//!
+//! `ALL` does NOT cover every scope requiring client registration, though:
+//! directive scopes like [`OFFLINE_ACCESS`] aren't `resource:action` grants, so
+//! they're declared outside [`declare_scopes!`]/`ALL` but still need the same
+//! server-side registration. When syncing the OAuth client's configuration,
+//! diff against `ALL` *plus* every such standalone constant, not `ALL` alone.
 //!
 //! # Adding a scope (READ THIS)
 //!
-//! 1. Add a constant to the [`declare_scopes!`] block below. It is automatically
-//!    included in [`ALL`] — you cannot add a scope constant without registering
-//!    it in the list.
+//! 1. Add a constant to the [`declare_scopes!`] block below (or, for a directive
+//!    scope that isn't a `resource:action` permission, declare it standalone
+//!    like [`OFFLINE_ACCESS`]). Constants in `declare_scopes!` are automatically
+//!    included in [`ALL`] — you cannot add one there without registering it in
+//!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
 //! 3. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
@@ -39,10 +47,15 @@ macro_rules! declare_scopes {
     ($( $(#[$doc:meta])* $name:ident => $value:literal ),+ $(,)?) => {
         $( $(#[$doc])* pub const $name: &str = $value; )+
 
-        /// Every OAuth scope the CLI may request, and therefore the exact set its
-        /// OAuth client must be registered for. Auto-derived from the constants
-        /// declared in [`declare_scopes!`] — keep the client's registration in sync
-        /// with this list.
+        /// Every `resource:action` permission scope the CLI may request. Auto-derived
+        /// from the constants declared in [`declare_scopes!`] — keep the client's
+        /// registration in sync with this list.
+        ///
+        /// NOT the complete set of scopes requiring OAuth client registration:
+        /// [`OFFLINE_ACCESS`] is a directive scope (not a `resource:action` permission)
+        /// and is deliberately excluded, but still must be registered on the client
+        /// server-side. Diff the client's configuration against `ALL` *plus*
+        /// [`OFFLINE_ACCESS`], not `ALL` alone.
         ///
         /// Not referenced by production code (the individual constants are what
         /// commands use); it exists as the authoritative registry to diff against
@@ -51,6 +64,18 @@ macro_rules! declare_scopes {
         pub const ALL: &[&str] = &[ $($name),+ ];
     };
 }
+
+/// OIDC directive scope requesting a `refresh_token` alongside the access
+/// token. Requested at login by default (see
+/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+///
+/// Deliberately declared outside [`declare_scopes!`]/[`ALL`]: unlike the
+/// scopes below, it isn't a `resource:action` permission grant, so it fails
+/// the `resource:action` shape the module tests enforce for `ALL`. It still
+/// must be registered on the CLI's OAuth client server-side, or the
+/// authorization server will refuse or silently drop it just like any other
+/// unregistered scope.
+pub const OFFLINE_ACCESS: &str = "offline_access";
 
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
@@ -75,6 +100,23 @@ declare_scopes! {
     DOMAINS_CREATE => "domains.domain:create",
     /// Replace a domain's nameservers (`domain nameservers set`).
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
+
+    /// Read Node.js Hosting apps (`hosting nodejs app list/get`).
+    HOSTING_APPS_READ => "hosting.paas.apps:read",
+    /// Create a Node.js Hosting app (`hosting nodejs app create`).
+    HOSTING_APPS_CREATE => "hosting.paas.apps:create",
+    /// Update a Node.js Hosting app (`hosting nodejs app update`).
+    HOSTING_APPS_UPDATE => "hosting.paas.apps:update",
+    /// Delete a Node.js Hosting app (`hosting nodejs app delete`).
+    HOSTING_APPS_DELETE => "hosting.paas.apps:delete",
+    /// Upload code to a Node.js Hosting app (`hosting nodejs app deploy`/`upload`).
+    HOSTING_CODE_WRITE => "hosting.paas.code:write",
+    /// Trigger a Node.js Hosting deploy (`hosting nodejs app deploy`).
+    HOSTING_DEPLOY_EXECUTE => "hosting.paas.deploy:execute",
+    /// Write Node.js Hosting app secrets (`hosting nodejs secret set/delete`).
+    HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
+    /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
+    HOSTING_LOGS_READ => "hosting.paas.logs:read",
 }
 
 #[cfg(test)]
