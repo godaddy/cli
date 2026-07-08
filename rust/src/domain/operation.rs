@@ -80,14 +80,13 @@ fn status_command() -> RuntimeCommandSpec {
                 .map(|id| id.to_string())
                 .unwrap_or(operation_id);
 
+            let op_type = op.type_.as_ref().map(|t| t.to_string()).unwrap_or_default();
             let mut result = json!({
                 "operationId": op_id,
+                "type": op_type,
                 "domain": domain,
                 "status": status,
             });
-            if let Some(t) = op.type_.as_ref() {
-                result["type"] = json!(t.to_string());
-            }
             if let Some(op_result) = op.result.as_ref() {
                 if let Some(order_id) = op_result.order_id.as_ref() {
                     result["orderId"] = json!(order_id);
@@ -109,7 +108,7 @@ fn status_command() -> RuntimeCommandSpec {
 
             let mut actions = Vec::new();
             if is_terminal_status(&status) {
-                if status == "COMPLETED" {
+                if status == "COMPLETED" && !domain.is_empty() {
                     actions.push(
                         NextAction::new("domain get <domain>", "See the domain's details")
                             .with_param("domain", NextActionParam::value(domain)),
