@@ -35,8 +35,11 @@ pub const DEFAULT_ENV: &str = "prod";
 /// Scopes requested at login by default. The authorization server may grant a
 /// subset; commands needing more declare them and the provider steps up. Drawn
 /// from the central [`crate::scopes`] registry (which the OAuth client mirrors).
-pub const DEFAULT_OAUTH_SCOPES: &[&str] =
-    &[crate::scopes::DOMAINS_READ, crate::scopes::OFFLINE_ACCESS];
+pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
+    crate::scopes::APP_REGISTRY_READ,
+    crate::scopes::DOMAINS_READ,
+    crate::scopes::OFFLINE_ACCESS,
+];
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
 
