@@ -15,9 +15,7 @@ A purchase is **paid and not reversible**, so `purchase` has two gates
 (`--agree`, `--confirm`) on top of the token. Because the token locks the price
 and settings you reviewed, you're charged exactly what the quote showed.
 
-Registration completes **asynchronously**: `purchase` submits the registration
-and waits briefly for the registry, reporting the operation's `status`
-(`COMPLETED` when done). The domain then appears in `gddy domain list`.
+Registration completes **asynchronously**; `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then appears in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it still succeeded — check on it later with `gddy domain operation status <operation-id>` (the ID it printed).
 
 ## The flow
 
