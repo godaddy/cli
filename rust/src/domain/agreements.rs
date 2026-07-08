@@ -1,6 +1,8 @@
 //! `gddy domain agreements` — the legal agreements a TLD requires (v1).
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+};
 use serde_json::json;
 
 use domains_client::types;
@@ -68,7 +70,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     })
                 })
                 .collect();
-            Ok(CommandResult::new(json!(agreements)))
+            Ok(
+                CommandResult::new(json!(agreements)).with_next_actions(vec![
+                    NextAction::new(
+                        "domain quote <domain>",
+                        "Price a registration and see the agreements for a specific domain",
+                    )
+                    .with_param("domain", NextActionParam::required()),
+                    NextAction::new(
+                        "domain purchase --quote-token <quote-token> --agree --confirm",
+                        "Register once you have a quote",
+                    )
+                    .with_param("quote-token", NextActionParam::required()),
+                ]),
+            )
         },
     )
 }
