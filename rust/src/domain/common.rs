@@ -58,8 +58,8 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
 }
 
 /// The headline price among per-term prices: the 1-year term if present, else the
-/// first listed term. Shared by `available` and `suggest`, which both surface a
-/// single indicative price from a `TermPrice` array.
+/// first listed term. Used by `available`, which surfaces a single indicative
+/// price from a `TermPrice` array.
 pub(super) fn headline_price(prices: &[types::TermPrice]) -> Option<&types::TermPrice> {
     let one_year = std::num::NonZeroU64::new(1);
     prices

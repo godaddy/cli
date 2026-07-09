@@ -59,12 +59,14 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
         }
     }
     // Only emit `currency` when a code is present — never a JSON null (the
-    // schema declares it an optional string, and null leaks into tables).
-    if let Some(code) = term_1yr
+    // schema declares it an optional string, and null leaks into tables). Falls
+    // back to `renewal_price`'s code when `price` is absent, so a renewal-only
+    // term still gets a currency.
+    let currency_code = term_1yr
         .or(term_2yr)
-        .and_then(|t| t.price.as_ref())
-        .and_then(|m| m.currency_code.as_ref())
-    {
+        .and_then(|t| t.price.as_ref().or(t.renewal_price.as_ref()))
+        .and_then(|m| m.currency_code.as_ref());
+    if let Some(code) = currency_code {
         obj["currency"] = json!(code.to_string());
     }
     Some(obj)
@@ -203,6 +205,27 @@ mod tests {
         assert_eq!(obj["renewalPrice1Year"], "37.99");
         assert_eq!(obj["price2Year"], "60.98");
         assert_eq!(obj["renewalPrice2Year"], "75.98");
+        assert_eq!(obj["currency"], "USD");
+    }
+
+    #[test]
+    fn currency_falls_back_to_renewal_price_when_price_is_absent() {
+        // A term with only a renewal price (no indicative price) must still
+        // surface a currency code, sourced from the renewal price itself.
+        let renewal_only = types::TermPrice {
+            period: std::num::NonZeroU64::new(1),
+            price: None,
+            renewal_price: Some(money(3799, "USD")),
+            term: Some(types::Term::Year),
+        };
+        let suggestion = types::Suggestion {
+            domain: Some("example.com".to_string()),
+            inventory: Some(types::InventoryType::Registry),
+            prices: Some(vec![renewal_only]),
+        };
+        let obj = suggestion_to_json(&suggestion).expect("domain is present");
+        assert_eq!(obj["renewalPrice1Year"], "37.99");
+        assert!(obj.get("price1Year").is_none());
         assert_eq!(obj["currency"], "USD");
     }
 
