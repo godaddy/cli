@@ -159,7 +159,11 @@ async fn run_apply(force: bool) -> Result<serde_json::Value, CliCoreError> {
             cache.latest_version
         ))
     })?;
-    if latest <= current && !force {
+    // `--force` only bypasses the "already up to date" case (`latest ==
+    // current`) — it must never let a stale/dev build "update" to an older
+    // published release, so a genuine downgrade (`latest < current`) is
+    // always blocked regardless of `force`.
+    if latest < current || (latest == current && !force) {
         return Ok(json!({
             "previousVersion": current.to_string(),
             "newVersion": current.to_string(),
@@ -306,9 +310,23 @@ async fn fetch_latest_tag(
     client: &reqwest::Client,
     timeout: Duration,
 ) -> Result<String, CliCoreError> {
-    let url = format!("https://github.com/{REPO}/releases/latest");
+    fetch_latest_tag_from(
+        client,
+        &format!("https://github.com/{REPO}/releases/latest"),
+        timeout,
+    )
+    .await
+}
+
+/// Testable core of [`fetch_latest_tag`] — takes the `/releases/latest` URL
+/// as a parameter so tests can point it at a mock server.
+async fn fetch_latest_tag_from(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+) -> Result<String, CliCoreError> {
     let resp = client
-        .head(&url)
+        .head(url)
         .timeout(timeout)
         .send()
         .await
@@ -319,13 +337,19 @@ async fn fetch_latest_tag(
             resp.status()
         )));
     }
-    resp.url()
+    // Use the resolved (post-redirect) URL in the error below, not the
+    // constant `.../releases/latest` request URL — that's what actually
+    // failed to parse and is what's needed to diagnose the failure.
+    let resolved_url = resp.url().clone();
+    resolved_url
         .path_segments()
         .and_then(Iterator::last)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .ok_or_else(|| {
-            CliCoreError::message(format!("could not determine latest release tag from {url}"))
+            CliCoreError::message(format!(
+                "could not determine latest release tag from resolved URL {resolved_url}"
+            ))
         })
 }
 
@@ -498,6 +522,9 @@ fn write_temp_binary(bytes: &[u8]) -> Result<PathBuf, CliCoreError> {
 
 #[cfg(test)]
 mod tests {
+    use httpmock::Method::HEAD;
+    use httpmock::prelude::*;
+
     use super::*;
 
     #[test]
@@ -630,6 +657,67 @@ def456  gddy-aarch64-unknown-linux-gnu.tar.gz
         assert_eq!(extracted, b"binary-contents");
 
         assert!(extract_tar_gz(&gz_bytes, "not-gddy").is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_from_follows_redirect_to_release_tag() {
+        let server = MockServer::start_async().await;
+        let redirect_mock = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/godaddy/cli/releases/latest");
+                then.status(302)
+                    .header("location", "/godaddy/cli/releases/tag/v1.2.3");
+            })
+            .await;
+        // reqwest follows the redirect above, so the tag page itself also
+        // needs to answer the (re-issued) HEAD request with success.
+        let tag_page_mock = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/godaddy/cli/releases/tag/v1.2.3");
+                then.status(200);
+            })
+            .await;
+
+        let tag = fetch_latest_tag_from(
+            &reqwest::Client::new(),
+            &format!("{}/godaddy/cli/releases/latest", server.base_url()),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("resolves tag from redirect");
+
+        redirect_mock.assert_async().await;
+        tag_page_mock.assert_async().await;
+        assert_eq!(tag, "v1.2.3");
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_from_errors_with_resolved_url_when_redirect_has_no_tag_segment() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/empty");
+                then.status(302).header("location", "/");
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/");
+                then.status(200);
+            })
+            .await;
+
+        let err = fetch_latest_tag_from(
+            &reqwest::Client::new(),
+            &format!("{}/empty", server.base_url()),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect_err("no path segment to parse a tag from");
+
+        let message = err.to_string();
+        assert!(message.contains("resolved URL"));
+        assert!(message.contains(&server.base_url()));
     }
 
     #[test]
