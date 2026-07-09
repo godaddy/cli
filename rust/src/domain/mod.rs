@@ -25,6 +25,7 @@ mod contacts;
 mod get;
 mod list;
 mod nameservers;
+mod operation;
 mod purchase;
 mod quote;
 mod suggest;
@@ -48,6 +49,7 @@ pub fn module() -> Module {
              • quote             — price a registration and see required agreements\n\
              • purchase          — register a new domain (charges your account)\n\
              • nameservers set   — point a domain at custom nameservers\n\
+             • operation status  — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase also needs\n\
              `domains.domain:create`, and `nameservers set` needs\n\
@@ -63,6 +65,7 @@ pub fn module() -> Module {
         .with_command(purchase::command())
         .with_group(nameservers::group())
         .with_group(contacts::group())
+        .with_group(operation::group())
     })
     .with_guides_from_markdown([(
         "domain-purchase.md",
@@ -83,7 +86,7 @@ mod tests {
     #[tokio::test]
     async fn domain_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 8] = [
+        let cases: [&[&str]; 9] = [
             &["gddy", "domain", "list", "--output", "json"],
             &["gddy", "domain", "get", "example.com", "--output", "json"],
             &[
@@ -128,6 +131,15 @@ mod tests {
                 "ns1.example.net",
                 "--reason",
                 "test",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
+                "operation",
+                "status",
+                "dummy-op-id",
                 "--output",
                 "json",
             ],

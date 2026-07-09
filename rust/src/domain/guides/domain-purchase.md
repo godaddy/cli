@@ -17,7 +17,10 @@ and settings you reviewed, you're charged exactly what the quote showed.
 
 Registration completes **asynchronously**: `purchase` submits the registration
 and waits briefly for the registry, reporting the operation's `status`
-(`COMPLETED` when done). The domain then appears in `gddy domain list`.
+(`COMPLETED` when done). The domain then appears in `gddy domain list`. If
+`purchase` gives up waiting before reaching a terminal status, it still
+succeeded — check on it later (the ID it printed) with:
+`gddy domain operation status <operation-id>`.
 
 ## The flow
 
