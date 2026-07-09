@@ -14,7 +14,9 @@ set -euo pipefail
 
 REPO="godaddy/cli"
 VERSION=""
-PREFIX="${HOME}/.local/bin"
+# Unquoted tilde expands to the OS-reported home directory even when $HOME is
+# unset (unlike "${HOME}", which would abort under `set -u`).
+PREFIX=~/.local/bin
 PREFIX_EXPLICIT=0  # set when the user passes --prefix; gates the Windows default
 
 # ── 1. Arg parsing ──────────────────────────────────────────────────────────

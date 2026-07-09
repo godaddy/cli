@@ -13,6 +13,7 @@
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use cli_engine::{
@@ -43,6 +44,13 @@ const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const BACKGROUND_TIMEOUT: Duration = Duration::from_secs(2);
 const FOREGROUND_TIMEOUT: Duration = Duration::from_secs(15);
 const CHECKSUMS_FILE_NAME: &str = "gddy-checksums-sha256.txt";
+
+/// Set once `update apply` has replaced the running binary, so the
+/// `on_shutdown` notice doesn't tell the user to update again this same
+/// invocation — the freshly-refreshed cache would otherwise make it look
+/// like an update is still available (the *running* process is still the
+/// old version even though the binary on disk was just swapped).
+static UPDATE_APPLIED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct UpdateCache {
@@ -166,6 +174,7 @@ async fn run_apply() -> Result<serde_json::Value, CliCoreError> {
         .map_err(|e| CliCoreError::message(format!("failed to replace running binary: {e}")));
     let _ = std::fs::remove_file(&tmp_path);
     replaced?;
+    UPDATE_APPLIED.store(true, Ordering::Relaxed);
 
     Ok(json!({
         "previousVersion": current.to_string(),
@@ -179,7 +188,11 @@ async fn run_apply() -> Result<serde_json::Value, CliCoreError> {
 /// errors — this is purely advisory, feeding the next invocation's passive
 /// notice, never the current one.
 pub fn maybe_spawn_background_refresh() {
-    let cache = cache_path().and_then(|p| load_cache(&p));
+    if !should_show_notice() {
+        return;
+    }
+    let Some(path) = cache_path() else { return };
+    let cache = load_cache(&path);
     if !is_stale(&cache) {
         return;
     }
@@ -195,7 +208,7 @@ pub fn maybe_spawn_background_refresh() {
 /// TTY or a CI environment is detected, so scripted/piped/CI output is never
 /// polluted.
 pub fn maybe_print_update_notice() {
-    if !should_show_notice() {
+    if !should_show_notice() || UPDATE_APPLIED.load(Ordering::Relaxed) {
         return;
     }
     let Some(path) = cache_path() else { return };
