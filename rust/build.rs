@@ -8,7 +8,12 @@ fn git_short_sha() -> String {
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_owned())
-        .unwrap_or_default()
+        .filter(|s| !s.is_empty())
+        // `cli_engine::BuildInfo::version_string()` only omits the "(commit ...,
+        // built ...)" suffix when commit AND date are both empty — since
+        // GDDY_BUILD_DATE is always set, an empty commit here would still render
+        // as the broken-looking "commit , built <date>".
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 fn main() {
