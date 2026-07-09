@@ -1,5 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec, RuntimeGroupSpec, Stage,
+    Tier,
 };
 
 use crate::application::client::api_url_for_env;
@@ -61,4 +62,5 @@ pub fn module() -> Module {
             },
         ))
     })
+    .with_feature_flag("webhook", Stage::Experimental)
 }
