@@ -211,9 +211,9 @@ pub fn maybe_spawn_background_refresh() {
 }
 
 /// Prints a one-line "update available" notice to stderr based on the
-/// previously cached check, if any. Skipped entirely when stdout isn't a
-/// TTY or a CI environment is detected, so scripted/piped/CI output is never
-/// polluted.
+/// previously cached check, if any. Skipped entirely when stdout or stderr
+/// isn't a TTY or a CI environment is detected, so scripted/piped/CI output
+/// is never polluted.
 pub fn maybe_print_update_notice() {
     if !should_show_notice() || UPDATE_APPLIED.load(Ordering::Relaxed) {
         return;
@@ -230,14 +230,14 @@ pub fn maybe_print_update_notice() {
     }
     let _ = writeln!(
         std::io::stderr(),
-        "\nA new gddy version is available: {} -> {latest} — run `gddy update apply` to install it.",
+        "A new gddy version is available: {} -> {latest} — run `gddy update apply` to install it.",
         current_version(),
     );
 }
 
 fn should_show_notice() -> bool {
     use std::io::IsTerminal as _;
-    if !std::io::stdout().is_terminal() {
+    if !std::io::stdout().is_terminal() || !std::io::stderr().is_terminal() {
         return false;
     }
     if std::env::var_os("CI").is_some() || std::env::var_os("GITHUB_ACTIONS").is_some() {
