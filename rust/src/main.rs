@@ -15,6 +15,7 @@ mod pat;
 mod payments;
 mod quote_cache;
 mod scopes;
+mod update;
 mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
@@ -50,7 +51,11 @@ async fn main() -> ExitCode {
                  command and follow the prompt). Use `--env` to target an environment and\n\
                  `gddy tree` to see every command. New here? Try `gddy domain available <name>`.",
             )
-            .with_build(BuildInfo::new(env!("CARGO_PKG_VERSION")))
+            .with_build(
+                BuildInfo::new(env!("CARGO_PKG_VERSION"))
+                    .with_commit(env!("GDDY_BUILD_COMMIT"))
+                    .with_date(env!("GDDY_BUILD_DATE")),
+            )
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_register_flags(Arc::new(|cmd| {
@@ -87,6 +92,11 @@ async fn main() -> ExitCode {
                     NextAction::new("tree", "Display the full command tree"),
                 ]
             }))
+            .with_pre_run(Arc::new(|_mw, _path, _args| {
+                update::maybe_spawn_background_refresh();
+                Ok(())
+            }))
+            .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
             .with_module(actions_catalog::module())
             .with_module(api_explorer::module())
             .with_module(application::module())
@@ -96,6 +106,7 @@ async fn main() -> ExitCode {
             .with_module(hosting::module())
             .with_module(pat::module())
             .with_module(payments::module())
+            .with_module(update::module())
             .with_module(webhook::module()),
     );
 
