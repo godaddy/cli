@@ -1,8 +1,10 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam, RuntimeCommandSpec,
+    CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
     RuntimeGroupSpec, Stage, Tier,
 };
 use serde_json::json;
+
+use crate::next_action::next_action;
 
 /// Static catalog of available GoDaddy action names.
 /// Loaded from the manifest at compile time.
@@ -87,7 +89,7 @@ pub fn module() -> Module {
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
                 Ok(CommandResult::new(json!({ "actions": actions })).with_next_actions(vec![
-                    NextAction::new("actions describe <action>", "See an action's full schema")
+                    next_action("actions describe <action>", "See an action's full schema")
                         .with_param("action", NextActionParam::required()),
                 ]))
             },

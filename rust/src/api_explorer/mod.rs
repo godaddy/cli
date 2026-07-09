@@ -1,12 +1,13 @@
 use std::sync::OnceLock;
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam, RuntimeCommandSpec,
+    CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 
 output_schema!(ApiDomain {
@@ -304,12 +305,12 @@ fn domain_list_command() -> RuntimeCommandSpec {
                 })
                 .collect();
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "api endpoint list --domain <domain>",
                     "List endpoints in a specific domain",
                 )
                 .with_param("domain", NextActionParam::required()),
-                NextAction::new("api search <query>", "Search across all endpoints"),
+                next_action("api search <query>", "Search across all endpoints"),
             ]))
         },
     )
@@ -362,7 +363,7 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
                 })
                 .collect();
             Ok(CommandResult::new(json!(endpoints)).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "api describe <operationId>",
                     "Get full details for an endpoint",
                 )
@@ -419,7 +420,7 @@ fn describe_command() -> RuntimeCommandSpec {
                 "scopes": ep.scopes,
             }))
             .with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     format!("api call {} --method {}", ep.path, ep.method),
                     "Make an authenticated call to this endpoint",
                 ),
@@ -467,7 +468,7 @@ fn search_command() -> RuntimeCommandSpec {
                 })
                 .collect();
             Ok(CommandResult::new(json!(results)).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "api describe <operationId>",
                     "Get full details for a result",
                 )

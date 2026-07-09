@@ -1,13 +1,12 @@
 //! `gddy domain available` — check whether a domain can be registered (v3).
 
-use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
-};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{api_error, format_money, headline_price, make_client};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 
@@ -107,12 +106,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
                 Ok(cmd.with_next_actions(vec![
-                    NextAction::new("domain quote <domain>", "Price a registration")
+                    next_action("domain quote <domain>", "Price a registration")
                         .with_param("domain", NextActionParam::required()),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![
-                    NextAction::new("domain suggest <query>", "Find alternatives")
+                    next_action("domain suggest <query>", "Find alternatives")
                         .with_param("query", NextActionParam::required()),
                 ]))
             }

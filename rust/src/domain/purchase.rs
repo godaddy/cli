@@ -1,7 +1,7 @@
 //! `gddy domain purchase` — register a domain by accepting a cached quote (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, Credential, NextAction, NextActionParam, Result,
+    CliCoreError, CommandResult, CommandSpec, Credential, NextActionParam, Result,
     RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
@@ -9,6 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::quote_cache;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -406,14 +407,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 result["currency"] = json!(c);
             }
             let mut actions = vec![
-                NextAction::new("domain get <domain>", next_action_description(&status))
+                next_action("domain get <domain>", next_action_description(&status))
                     .with_param("domain", NextActionParam::required()),
             ];
             if still_pending {
                 // `still_pending` implies `operation_id.is_some()`.
                 if let Some(op) = &operation_id {
                     actions.push(
-                        NextAction::new(
+                        next_action(
                             "domain operation status <operation-id>",
                             "Check whether registration has finished since polling gave up",
                         )

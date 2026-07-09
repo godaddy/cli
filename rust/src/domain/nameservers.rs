@@ -1,14 +1,15 @@
 //! `gddy domain nameservers` — manage a domain's nameservers (v3).
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
+    Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{api_error, make_client, string_list};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
 
@@ -93,7 +94,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 result["status"] = json!(status.to_string());
             }
             Ok(CommandResult::new(result).with_next_actions(vec![
-                NextAction::new("domain get <domain>", "Confirm the updated nameservers")
+                next_action("domain get <domain>", "Confirm the updated nameservers")
                     .with_param("domain", NextActionParam::value(domain)),
             ]))
         },

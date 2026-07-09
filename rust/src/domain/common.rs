@@ -68,6 +68,17 @@ pub(super) fn headline_price(prices: &[types::TermPrice]) -> Option<&types::Term
         .or_else(|| prices.first())
 }
 
+/// The entry for a specific year-term period (1, 2, …), or `None` when that term
+/// isn't in the list. Used by `suggest` to flatten multiple terms into scalar
+/// per-period fields (e.g. `price1Year`, `price2Year`).
+pub(super) fn term_for_period(
+    prices: &[types::TermPrice],
+    period: u64,
+) -> Option<&types::TermPrice> {
+    let period = std::num::NonZeroU64::new(period)?;
+    prices.iter().find(|p| p.period == Some(period))
+}
+
 /// Whether an async domain-operation status is terminal (no further polling).
 /// Only `COMPLETED`/`FAILED` are terminal; every other status (e.g. `SUBMITTED`,
 /// `PENDING`, `CONFIRMED`, `EXECUTING`) is treated as still in progress.

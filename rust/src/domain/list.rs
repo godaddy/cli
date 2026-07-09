@@ -1,14 +1,14 @@
 //! `gddy domain list` — list the domains in the account (v1).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{api_error, make_client, string_list};
+use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
 /// Validate `--status` values case-insensitively against the generated
@@ -63,7 +63,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     CliCoreError::message(format!("failed to serialize domain list: {e}"))
                 })?;
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
-                NextAction::new("dns list <domain>", "View a domain's DNS records")
+                next_action("dns list <domain>", "View a domain's DNS records")
                     .with_param("domain", NextActionParam::required()),
             ]))
         },

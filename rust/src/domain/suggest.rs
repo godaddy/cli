@@ -1,21 +1,26 @@
 //! `gddy domain suggest` — suggest available domains for a query (v3).
 
-use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
-};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
-use super::common::{api_error, format_money, headline_price, make_client, string_list};
+use domains_client::types;
+
+use super::common::{api_error, format_money, make_client, string_list, term_for_period};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 
-// The handler emits a transformed per-item shape (`listPrice` is a formatted
-// string from SimpleMoney, not the raw `types::Suggestion`), so declare the
-// schema to match what's actually returned for `--schema`/help.
+// The handler emits a transformed per-item shape (formatted price/renewal-price
+// strings per term, not the raw `types::Suggestion`), so declare the schema to
+// match what's actually returned for `--schema`/help.
 output_schema!(DomainSuggestResult {
     "domain": "string";
-    // Present only when the API returns a formattable list price.
-    "listPrice": "string", optional;
+    // Present only when the API returns a formattable price for that term.
+    "price1Year": "string", optional;
+    "renewalPrice1Year": "string", optional;
+    "price2Year": "string", optional;
+    "renewalPrice2Year": "string", optional;
+    "currency": "string", optional;
 });
 
 /// Convert a count-style flag value to the `NonZeroU64` the suggest query params
@@ -24,6 +29,45 @@ output_schema!(DomainSuggestResult {
 /// engine's global `--limit` default is `0`), which must mean "unset", not abort.
 fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
     u64::try_from(n).ok().and_then(std::num::NonZeroU64::new)
+}
+
+/// Build the JSON view of a single suggestion, flattening its 1- and 2-year
+/// `TermPrice` entries into scalar price/renewal-price fields (v3 returns
+/// indicative pricing as a `prices` array, which doesn't project into a table).
+/// `None` when the suggestion has no domain, so every emitted object matches the
+/// schema (`domain` required).
+fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
+    let domain = s.domain.as_deref()?;
+    let mut obj = json!({ "domain": domain });
+    let prices = s.prices.as_deref().unwrap_or(&[]);
+    let term_1yr = term_for_period(prices, 1);
+    let term_2yr = term_for_period(prices, 2);
+    if let Some(t) = term_1yr {
+        if let Some(p) = t.price.as_ref().and_then(format_money) {
+            obj["price1Year"] = json!(p);
+        }
+        if let Some(r) = t.renewal_price.as_ref().and_then(format_money) {
+            obj["renewalPrice1Year"] = json!(r);
+        }
+    }
+    if let Some(t) = term_2yr {
+        if let Some(p) = t.price.as_ref().and_then(format_money) {
+            obj["price2Year"] = json!(p);
+        }
+        if let Some(r) = t.renewal_price.as_ref().and_then(format_money) {
+            obj["renewalPrice2Year"] = json!(r);
+        }
+    }
+    // Only emit `currency` when a code is present — never a JSON null (the
+    // schema declares it an optional string, and null leaks into tables).
+    if let Some(code) = term_1yr
+        .or(term_2yr)
+        .and_then(|t| t.price.as_ref())
+        .and_then(|m| m.currency_code.as_ref())
+    {
+        obj["currency"] = json!(code.to_string());
+    }
+    Some(obj)
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -37,7 +81,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("domain")
+            .with_default_fields("domain,price1Year,renewalPrice1Year,currency")
             .with_output_schema::<DomainSuggestResult>()
             .with_scopes(&[DOMAINS_READ])
             .with_arg(
@@ -103,31 +147,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Ok(r) => r.into_inner(),
                 Err(e) => return Err(api_error("domain suggestion", debug, e).await),
             };
-            let suggestions: Vec<serde_json::Value> = resp
-                .items
-                .into_iter()
-                .filter_map(|s| {
-                    // Skip any suggestion without a domain so every emitted object
-                    // matches the schema (`domain` required) and projects cleanly.
-                    let domain = s.domain?;
-                    let mut obj = json!({ "domain": domain });
-                    // v3 returns indicative pricing per term; surface the headline
-                    // (1-year, else first) term's price as the scalar `listPrice`.
-                    if let Some(p) = s
-                        .prices
-                        .as_deref()
-                        .and_then(headline_price)
-                        .and_then(|t| t.price.as_ref())
-                        .and_then(format_money)
-                    {
-                        obj["listPrice"] = json!(p);
-                    }
-                    Some(obj)
-                })
-                .collect();
+            let suggestions: Vec<serde_json::Value> =
+                resp.items.iter().filter_map(suggestion_to_json).collect();
             Ok(
                 CommandResult::new(json!(suggestions)).with_next_actions(vec![
-                    NextAction::new("domain available <domain>", "Check a suggested domain")
+                    next_action("domain available <domain>", "Check a suggested domain")
                         .with_param("domain", NextActionParam::required()),
                 ]),
             )
@@ -137,7 +161,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::nonzero;
+    use super::{nonzero, suggestion_to_json};
+    use domains_client::types;
 
     #[test]
     fn nonzero_maps_zero_and_negative_to_none() {
@@ -146,5 +171,48 @@ mod tests {
         assert_eq!(nonzero(0), None);
         assert_eq!(nonzero(-5), None);
         assert_eq!(nonzero(5).map(|n| n.get()), Some(5));
+    }
+
+    fn money(value: i64, currency: &str) -> types::SimpleMoney {
+        types::SimpleMoney {
+            value: Some(value),
+            currency_code: Some(types::CurrencyCode(currency.to_string())),
+        }
+    }
+
+    fn term(period: u64, price: i64, renewal: i64) -> types::TermPrice {
+        types::TermPrice {
+            period: std::num::NonZeroU64::new(period),
+            price: Some(money(price, "USD")),
+            renewal_price: Some(money(renewal, "USD")),
+            term: Some(types::Term::Year),
+        }
+    }
+
+    #[test]
+    fn flattens_1_and_2_year_terms_into_scalar_fields() {
+        // Mirrors the API's example response for a suggestion with both terms.
+        let suggestion = types::Suggestion {
+            domain: Some("kirklandfreshtreats.shop".to_string()),
+            inventory: Some(types::InventoryType::Registry),
+            prices: Some(vec![term(1, 99, 3799), term(2, 6098, 7598)]),
+        };
+        let obj = suggestion_to_json(&suggestion).expect("domain is present");
+        assert_eq!(obj["domain"], "kirklandfreshtreats.shop");
+        assert_eq!(obj["price1Year"], "0.99");
+        assert_eq!(obj["renewalPrice1Year"], "37.99");
+        assert_eq!(obj["price2Year"], "60.98");
+        assert_eq!(obj["renewalPrice2Year"], "75.98");
+        assert_eq!(obj["currency"], "USD");
+    }
+
+    #[test]
+    fn no_domain_is_skipped() {
+        let suggestion = types::Suggestion {
+            domain: None,
+            inventory: None,
+            prices: None,
+        };
+        assert!(suggestion_to_json(&suggestion).is_none());
     }
 }
