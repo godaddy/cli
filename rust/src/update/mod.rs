@@ -56,6 +56,10 @@ static UPDATE_APPLIED: AtomicBool = AtomicBool::new(false);
 struct UpdateCache {
     checked_at: String,
     latest_version: String,
+    /// The exact release tag (e.g. `v1.2.3`), used to build download URLs —
+    /// `latest_version` is normalized for comparison/display and may not
+    /// round-trip back to the tag's exact spelling.
+    tag_name: String,
 }
 
 #[derive(Deserialize)]
@@ -155,7 +159,10 @@ async fn run_apply() -> Result<serde_json::Value, CliCoreError> {
 
     let target = target_triple()?;
     let asset = asset_name(target);
-    let base_url = format!("https://github.com/{REPO}/releases/download/v{latest}");
+    let base_url = format!(
+        "https://github.com/{REPO}/releases/download/{}",
+        cache.tag_name
+    );
 
     let archive_bytes = download(&client, &format!("{base_url}/{asset}")).await?;
     let checksums_text =
@@ -314,6 +321,7 @@ async fn refresh_cache(
     let cache = UpdateCache {
         checked_at: chrono::Utc::now().to_rfc3339(),
         latest_version: version.to_string(),
+        tag_name: release.tag_name,
     };
     // Caching is advisory (only the passive notice depends on it) — a write
     // failure (e.g. read-only config dir) shouldn't fail the actual check.
@@ -542,6 +550,7 @@ def456  gddy-aarch64-unknown-linux-gnu.tar.gz
         let cache = UpdateCache {
             checked_at: chrono::Utc::now().to_rfc3339(),
             latest_version: "9.9.9".to_owned(),
+            tag_name: "v9.9.9".to_owned(),
         };
         save_cache(&path, &cache).expect("save");
 
@@ -562,12 +571,14 @@ def456  gddy-aarch64-unknown-linux-gnu.tar.gz
         let fresh = Some(UpdateCache {
             checked_at: chrono::Utc::now().to_rfc3339(),
             latest_version: "1.0.0".to_owned(),
+            tag_name: "v1.0.0".to_owned(),
         });
         assert!(!is_stale(&fresh));
 
         let old = Some(UpdateCache {
             checked_at: (chrono::Utc::now() - chrono::Duration::hours(48)).to_rfc3339(),
             latest_version: "1.0.0".to_owned(),
+            tag_name: "v1.0.0".to_owned(),
         });
         assert!(is_stale(&old));
     }
