@@ -302,8 +302,10 @@ async fn refresh_cache(
         checked_at: chrono::Utc::now().to_rfc3339(),
         latest_version: version.to_string(),
     };
+    // Caching is advisory (only the passive notice depends on it) — a write
+    // failure (e.g. read-only config dir) shouldn't fail the actual check.
     if let Some(path) = cache_path() {
-        save_cache(&path, &cache)?;
+        let _ = save_cache(&path, &cache);
     }
     Ok(cache)
 }

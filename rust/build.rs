@@ -17,5 +17,8 @@ fn main() {
         "cargo:rustc-env=GDDY_BUILD_DATE={}",
         chrono::Utc::now().format("%Y-%m-%d")
     );
+    // .git/HEAD only changes on checkout/detach; .git/logs/HEAD is appended to
+    // on every commit/checkout/merge, so watch both to catch the branch tip moving.
     println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-changed=../.git/logs/HEAD");
 }
