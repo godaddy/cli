@@ -1,43 +1,41 @@
 #!/bin/bash
-# gddy installer — downloads, verifies, and installs the GoDaddy CLI Rust-port
-# ALPHA binary (`gddy`) from the rolling `alpha` GitHub prerelease.
-#
-# `gddy` installs alongside the legacy `godaddy` CLI so you can run both. It is
-# an experimental build that tracks the tip of `rust-port`; expect compatibility
-# breakage.
+# gddy installer — downloads, verifies, and installs the GoDaddy CLI (`gddy`)
+# from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://github.com/godaddy/cli/releases/download/alpha/install.sh | bash
+#   curl -fsSL https://github.com/godaddy/cli/releases/latest/download/install.sh | bash
 #
 # Options (when run as a file, e.g. `bash install.sh --prefix ~/.local/bin`):
-#   --prefix  DIR       Install directory (default: /usr/local/bin)
+#   --prefix  DIR       Install directory (default: ~/.local/bin)
+#   --version VERSION   Release to install, e.g. v1.2.3 (default: latest)
 #   --help              Show this help message
 
 set -euo pipefail
 
 REPO="godaddy/cli"
-TAG="alpha"
-PREFIX="/usr/local/bin"
+VERSION=""
+PREFIX="${HOME}/.local/bin"
 PREFIX_EXPLICIT=0  # set when the user passes --prefix; gates the Windows default
 
 # ── 1. Arg parsing ──────────────────────────────────────────────────────────
 
 usage() {
   cat <<'EOF'
-gddy installer (Rust-port alpha)
+gddy installer
 
 Usage:
   bash install.sh [OPTIONS]
 
 Options:
   --prefix  DIR       Binary install directory
-                      (default: /usr/local/bin on macOS/Linux;
+                      (default: ~/.local/bin on macOS/Linux;
                        %LOCALAPPDATA%\Programs\gddy on Windows)
+  --version VERSION   Release to install, e.g. v1.2.3 (default: latest)
   --help              Show this help message
 
 Examples:
-  bash install.sh                       # latest alpha to /usr/local/bin
-  bash install.sh --prefix ~/.local/bin # custom prefix (no sudo for binaries)
+  bash install.sh                       # latest release to ~/.local/bin
+  bash install.sh --prefix /usr/local/bin --version v1.2.3
 
 Prerequisites:
   - curl
@@ -60,6 +58,9 @@ while [ $# -gt 0 ]; do
     --prefix)
       if [ $# -lt 2 ]; then echo "Error: --prefix requires a directory argument." >&2; exit 1; fi
       PREFIX="$2"; PREFIX_EXPLICIT=1; shift 2 ;;
+    --version)
+      if [ $# -lt 2 ]; then echo "Error: --version requires a version argument." >&2; exit 1; fi
+      VERSION="$2"; shift 2 ;;
     --help|-h)  usage ;;
     *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -120,9 +121,10 @@ esac
 if [ "$OS" = "windows" ]; then
   BIN="gddy.exe"
   ARCHIVE_EXT="zip"
-  # /usr/local/bin is a poor default on Windows shells: there's usually no sudo
-  # and it often isn't user-writable (Git for Windows lives under Program Files).
-  # Default to a user-writable dir matching install.ps1 unless --prefix was given.
+  # ~/.local/bin is a poor default on Windows shells: there's no `bin` PATH
+  # convention there and it often isn't user-writable in the way it is on
+  # macOS/Linux. Default to a user-writable dir matching install.ps1 unless
+  # --prefix was given.
   if [ "$PREFIX_EXPLICIT" = "0" ]; then
     if [ -n "${LOCALAPPDATA:-}" ]; then
       lad="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null || printf '%s' "$LOCALAPPDATA")"
@@ -139,13 +141,17 @@ else
 fi
 
 info "Detected platform: ${PLATFORM}"
-info "Installing gddy alpha (${TAG})"
+info "Installing gddy (${VERSION:-latest})"
 
 # ── 4. Download + verify ───────────────────────────────────────────────────
 
 ARCHIVE="gddy-${PLATFORM}.${ARCHIVE_EXT}"
 CHECKSUMS="gddy-checksums-sha256.txt"
-BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+if [ -n "$VERSION" ]; then
+  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+else
+  BASE_URL="https://github.com/${REPO}/releases/latest/download"
+fi
 # GNU mktemp accepts a bare `-d`; BSD/macOS mktemp needs a template, so fall
 # back to `-t` for portability across both.
 TMPDIR="$(mktemp -d 2>/dev/null || mktemp -d -t gddy)"
@@ -153,7 +159,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 info "Downloading ${ARCHIVE} and checksums..."
 curl -fsSL "${BASE_URL}/${ARCHIVE}"   -o "${TMPDIR}/${ARCHIVE}" \
-  || error "Failed to download ${ARCHIVE}. Has the ${TAG} release been published yet?"
+  || error "Failed to download ${ARCHIVE}. Has the ${VERSION:-latest} release been published yet?"
 curl -fsSL "${BASE_URL}/${CHECKSUMS}" -o "${TMPDIR}/${CHECKSUMS}" \
   || error "Failed to download ${CHECKSUMS}."
 
@@ -236,18 +242,15 @@ info "Binary installed to ${PREFIX}/${BIN}"
 # ── 6. Success ──────────────────────────────────────────────────────────────
 
 echo ""
-info "gddy alpha (${TAG}) installed successfully!"
+info "gddy (${VERSION:-latest}) installed successfully!"
 echo ""
 echo "  Binary:    ${PREFIX}/${BIN}"
 echo "  Verify:    gddy --version"
-echo ""
-echo "  Note: this is an experimental Rust-port alpha that installs alongside"
-echo "  the current 'godaddy' CLI."
 echo ""
 if ! printf '%s' ":$PATH:" | grep -qF ":${PREFIX}:"; then
   warn "${PREFIX} is not on your PATH — add it to use 'gddy' directly."
 fi
 echo "Share this one-liner with your team:"
 echo ""
-echo "  curl -fsSL https://github.com/${REPO}/releases/download/${TAG}/install.sh | bash"
+echo "  curl -fsSL https://github.com/${REPO}/releases/latest/download/install.sh | bash"
 echo ""

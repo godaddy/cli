@@ -1,35 +1,35 @@
 <#
 .SYNOPSIS
-    gddy installer (Rust-port alpha) for Windows / PowerShell.
+    gddy installer for Windows / PowerShell.
 
 .DESCRIPTION
-    Downloads, verifies, and installs the GoDaddy CLI Rust-port ALPHA binary
-    (gddy.exe) from the rolling `alpha` GitHub prerelease.
-
-    `gddy` installs alongside the legacy `godaddy` CLI so you can run both. It is
-    an experimental build that tracks the tip of `rust-port`; expect breakage.
+    Downloads, verifies, and installs the GoDaddy CLI (gddy.exe) from GitHub
+    Releases.
 
     macOS/Linux (and Git Bash/MSYS2/Cygwin) users should use install.sh instead.
 
 .PARAMETER Prefix
     Install directory. Defaults to "$env:LOCALAPPDATA\Programs\gddy".
 
-.EXAMPLE
-    irm https://github.com/godaddy/cli/releases/download/alpha/install.ps1 | iex
+.PARAMETER Version
+    Release to install, e.g. "v1.2.3". Defaults to the latest release.
 
 .EXAMPLE
-    .\install.ps1 -Prefix "C:\tools\gddy"
+    irm https://github.com/godaddy/cli/releases/latest/download/install.ps1 | iex
+
+.EXAMPLE
+    .\install.ps1 -Prefix "C:\tools\gddy" -Version v1.2.3
 #>
 [CmdletBinding()]
 param(
-    [string]$Prefix
+    [string]$Prefix,
+    [string]$Version
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'godaddy/cli'
-$Tag  = 'alpha'
 
 function Write-Info  { param([string]$Message) Write-Host "==> $Message" -ForegroundColor Blue }
 function Write-Warn  { param([string]$Message) Write-Host "WARN: $Message" -ForegroundColor Yellow }
@@ -57,17 +57,18 @@ switch ($arch) {
     'x64'   { $platform = 'x86_64-pc-windows-msvc' }
     default {
         Die ("Unsupported architecture '$arch'. Only x86_64-pc-windows-msvc is published today. " +
-             "Download the matching asset manually from https://github.com/$Repo/releases/tag/$Tag")
+             "Download the matching asset manually from https://github.com/$Repo/releases")
     }
 }
 
 $bin       = 'gddy.exe'
 $archive   = "gddy-$platform.zip"
 $checksums = 'gddy-checksums-sha256.txt'
-$baseUrl   = "https://github.com/$Repo/releases/download/$Tag"
+$baseUrl   = if ($Version) { "https://github.com/$Repo/releases/download/$Version" }
+             else          { "https://github.com/$Repo/releases/latest/download" }
 
 Write-Info "Detected platform: $platform"
-Write-Info "Installing gddy alpha ($Tag)"
+Write-Info "Installing gddy $(if ($Version) { $Version } else { '(latest)' })"
 
 # ── 2. Download + verify ─────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ try {
     try {
         Invoke-WebRequest -Uri "$baseUrl/$archive"   -OutFile $archivePath   -UseBasicParsing
     } catch {
-        Die "Failed to download $archive. Has the $Tag release been published yet?"
+        Die "Failed to download $archive. Has the $(if ($Version) { $Version } else { 'latest' }) release been published yet?"
     }
     try {
         Invoke-WebRequest -Uri "$baseUrl/$checksums" -OutFile $checksumsPath -UseBasicParsing
@@ -140,15 +141,14 @@ try {
 # ── 5. Success ────────────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Info "gddy alpha ($Tag) installed successfully!"
+Write-Info "gddy installed successfully!"
 Write-Host ""
 Write-Host "  Binary:    $(Join-Path $Prefix $bin)"
 Write-Host "  Verify:    gddy --version"
 Write-Host ""
-Write-Host "  Note: this is an experimental Rust-port alpha that installs alongside"
-Write-Host "  the current 'godaddy' CLI."
+Write-Host "  Note: gddy installs alongside the legacy 'godaddy' CLI."
 Write-Host ""
 Write-Host "Share this one-liner with your team:"
 Write-Host ""
-Write-Host "  irm https://github.com/$Repo/releases/download/$Tag/install.ps1 | iex"
+Write-Host "  irm https://github.com/$Repo/releases/latest/download/install.ps1 | iex"
 Write-Host ""
