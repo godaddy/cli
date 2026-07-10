@@ -58,14 +58,25 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
 }
 
 /// The headline price among per-term prices: the 1-year term if present, else the
-/// first listed term. Shared by `available` and `suggest`, which both surface a
-/// single indicative price from a `TermPrice` array.
+/// first listed term. Used by `available`, which surfaces a single indicative
+/// price from a `TermPrice` array.
 pub(super) fn headline_price(prices: &[types::TermPrice]) -> Option<&types::TermPrice> {
     let one_year = std::num::NonZeroU64::new(1);
     prices
         .iter()
         .find(|p| p.period == one_year)
         .or_else(|| prices.first())
+}
+
+/// The entry for a specific year-term period (1, 2, …), or `None` when that term
+/// isn't in the list. Used by `suggest` to flatten multiple terms into scalar
+/// per-period fields (e.g. `price1Year`, `price2Year`).
+pub(super) fn term_for_period(
+    prices: &[types::TermPrice],
+    period: u64,
+) -> Option<&types::TermPrice> {
+    let period = std::num::NonZeroU64::new(period)?;
+    prices.iter().find(|p| p.period == Some(period))
 }
 
 /// Whether an async domain-operation status is terminal (no further polling).

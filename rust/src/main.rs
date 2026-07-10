@@ -10,6 +10,7 @@ mod env;
 mod environments;
 mod extension;
 mod hosting;
+mod next_action;
 mod output_schema;
 mod pat;
 mod payments;
@@ -21,9 +22,10 @@ mod webhook;
 use std::{process::ExitCode, sync::Arc};
 
 use clap::Arg;
-use cli_engine::{BuildInfo, Cli, CliConfig, NextAction};
+use cli_engine::{BuildInfo, Cli, CliConfig};
 
 use crate::env::get_env;
+use crate::next_action::next_action;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -86,10 +88,10 @@ async fn main() -> ExitCode {
             }))
             .with_root_next_actions(Arc::new(|| {
                 vec![
-                    NextAction::new("auth status", "Check authentication status"),
-                    NextAction::new("env get", "Get the current active environment"),
-                    NextAction::new("application list", "List all applications"),
-                    NextAction::new("tree", "Display the full command tree"),
+                    next_action("auth status", "Check authentication status"),
+                    next_action("env get", "Get the current active environment"),
+                    next_action("application list", "List all applications"),
+                    next_action("tree", "Display the full command tree"),
                 ]
             }))
             .with_pre_run(Arc::new(|_mw, _path, _args| {

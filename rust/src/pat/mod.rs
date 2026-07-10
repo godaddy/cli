@@ -15,13 +15,14 @@
 use std::collections::BTreeMap;
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextAction, RuntimeCommandSpec,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::environments;
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 
 output_schema!(PatListItem {
@@ -364,7 +365,7 @@ fn add_command() -> RuntimeCommandSpec {
                 "lastFour": last_four(&entry.token),
                 "path": path.display().to_string(),
             }))
-            .with_next_actions(vec![NextAction::new("guide auth", "Learn about PAT auth")]))
+            .with_next_actions(vec![next_action("guide auth", "Learn about PAT auth")]))
         },
     )
 }

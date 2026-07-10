@@ -2,12 +2,12 @@
 //! `domain quote`/`purchase`. This is a local-file command group; no API/auth.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, NextAction, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use crate::contacts;
+use crate::next_action::next_action;
 
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
@@ -64,7 +64,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 "path": path.display().to_string(),
                 "action": if existed { "overwritten" } else { "created" },
             }))
-            .with_next_actions(vec![NextAction::new(
+            .with_next_actions(vec![next_action(
                 "guide domain-purchase",
                 "Learn how purchase uses these contacts",
             )]))

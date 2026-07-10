@@ -6,14 +6,15 @@
 //! bounded poll loop already uses internally.
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
+    Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 
@@ -113,13 +114,13 @@ fn status_command() -> RuntimeCommandSpec {
             if is_terminal_status(&status) {
                 if status == "COMPLETED" && !domain.is_empty() {
                     actions.push(
-                        NextAction::new("domain get <domain>", "See the domain's details")
+                        next_action("domain get <domain>", "See the domain's details")
                             .with_param("domain", NextActionParam::value(domain)),
                     );
                 }
             } else {
                 actions.push(
-                    NextAction::new(
+                    next_action(
                         "domain operation status <operation-id>",
                         "Re-check whether the operation has finished",
                     )

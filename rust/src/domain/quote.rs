@@ -1,14 +1,14 @@
 //! `gddy domain quote` — price a registration, lock a quote, cache it (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{api_error, format_money, make_client, string_list};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
 use crate::{contacts, quote_cache};
@@ -318,7 +318,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     tracing::warn!(error = %e, "could not cache the quote for purchase");
                 }
                 next_actions.push(
-                    NextAction::new(
+                    next_action(
                         "domain purchase --quote-token <quote-token> --agree --confirm",
                         "Register at the quoted price (within ~10 minutes)",
                     )
@@ -328,7 +328,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
                 next_actions.push(
-                    NextAction::new("domain suggest <query>", "Find an available alternative")
+                    next_action("domain suggest <query>", "Find an available alternative")
                         .with_param("query", NextActionParam::required()),
                 );
             }

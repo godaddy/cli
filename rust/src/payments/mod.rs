@@ -1,12 +1,13 @@
 //! `gddy payments` — payment method management.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextAction, NextActionParam,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextActionParam,
     RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use crate::environments;
+use crate::next_action::next_action;
 
 fn map_env_err(e: environments::EnvError) -> CliCoreError {
     CliCoreError::message(e.to_string())
@@ -54,7 +55,7 @@ fn add_command() -> RuntimeCommandSpec {
                 }
             }))
             .with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "domain quote <domain>",
                     "Price a domain registration now that a payment method is on file",
                 )

@@ -1,10 +1,11 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, StreamSender, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
+    StreamSender, Tier,
 };
 use serde_json::json;
 
 use crate::application::client::{ApplicationClient, api_url_for_env};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 // App-registry mutations declare their scopes so `apps.app-registry:write` is
 // requested on demand (OAuth step-up), not granted at every login — it's a
@@ -151,12 +152,12 @@ fn list_command() -> RuntimeCommandSpec {
             let client = make_client(&ctx).await?;
             let data = client.list_applications().await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "application info --name <name>",
                     "Get details for a specific application",
                 )
                 .with_param("name", NextActionParam::required()),
-                NextAction::new(
+                next_action(
                     "application init --name <name> --description <desc> --url <url>",
                     "Initialize a new application",
                 ),
@@ -190,11 +191,11 @@ fn info_command() -> RuntimeCommandSpec {
             let data = client.get_application(&name).await.map_err(client_err)?;
             Ok(
                 CommandResult::new(data["application"].clone()).with_next_actions(vec![
-                    NextAction::new(
+                    next_action(
                         "application release --application-id <id> --version <ver>",
                         "Create a release",
                     ),
-                    NextAction::new(
+                    next_action(
                         format!("application deploy --name {name}"),
                         "Deploy this application",
                     )
@@ -206,7 +207,7 @@ fn info_command() -> RuntimeCommandSpec {
                             ..Default::default()
                         },
                     ),
-                    NextAction::new(
+                    next_action(
                         "application update --id <id>",
                         "Update application metadata",
                     ),
@@ -328,15 +329,15 @@ fn init_command() -> RuntimeCommandSpec {
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
 
             Ok(CommandResult::new(app.clone()).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "application add action --name <name> --url <url>",
                     "Add an action to godaddy.toml",
                 ),
-                NextAction::new(
+                next_action(
                     "application validate",
                     "Validate the generated godaddy.toml",
                 ),
-                NextAction::new(
+                next_action(
                     "application release --application-id <id> --version 0.0.1",
                     "Create the first release",
                 ),
@@ -434,7 +435,7 @@ fn update_command() -> RuntimeCommandSpec {
                 .to_owned();
             Ok(
                 CommandResult::new(data["updateApplication"].clone()).with_next_actions(vec![
-                    NextAction::new(
+                    next_action(
                         format!("application info --name {name}"),
                         "Inspect updated application",
                     )
@@ -446,7 +447,7 @@ fn update_command() -> RuntimeCommandSpec {
                             ..Default::default()
                         },
                     ),
-                    NextAction::new(
+                    next_action(
                         format!("application deploy --name {name}"),
                         "Deploy updated application",
                     )
@@ -499,7 +500,7 @@ fn enable_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             Ok(
                 CommandResult::new(data["enableStoreApplication"].clone()).with_next_actions(vec![
-                    NextAction::new(
+                    next_action(
                         format!("application disable {name} --store-id {store_id}"),
                         "Disable the application on the same store",
                     )
@@ -519,7 +520,7 @@ fn enable_command() -> RuntimeCommandSpec {
                             ..Default::default()
                         },
                     ),
-                    NextAction::new(
+                    next_action(
                         format!("application info --name {name}"),
                         "Inspect application",
                     )
@@ -573,7 +574,7 @@ fn disable_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["disableStoreApplication"].clone()).with_next_actions(
                     vec![
-                        NextAction::new(
+                        next_action(
                             format!("application enable {name} --store-id {store_id}"),
                             "Re-enable the application on the same store",
                         )
@@ -593,7 +594,7 @@ fn disable_command() -> RuntimeCommandSpec {
                                 ..Default::default()
                             },
                         ),
-                        NextAction::new(
+                        next_action(
                             format!("application info --name {name}"),
                             "Inspect application",
                         )
@@ -646,7 +647,7 @@ fn archive_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             Ok(
                 CommandResult::new(data["archiveApplication"].clone()).with_next_actions(vec![
-                    NextAction::new("application list", "List remaining applications"),
+                    next_action("application list", "List remaining applications"),
                 ]),
             )
         },
@@ -702,8 +703,8 @@ fn release_command() -> RuntimeCommandSpec {
             let data = client.create_release(input).await.map_err(client_err)?;
             Ok(
                 CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
-                    NextAction::new("application deploy --name <name>", "Deploy this release"),
-                    NextAction::new("application info --name <name>", "Inspect application"),
+                    next_action("application deploy --name <name>", "Deploy this release"),
+                    next_action("application info --name <name>", "Inspect application"),
                 ]),
             )
         },

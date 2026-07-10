@@ -25,6 +25,7 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client, string_list};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_DNS_UPDATE, DOMAINS_READ};
 
@@ -351,7 +352,7 @@ fn summarize_delete_outcomes(
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
 /// the domain/type/name the write just touched.
 fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
-    NextAction::new(
+    next_action(
         "dns list <domain> --type <type> --name <name>",
         "Verify the records for this type+name",
     )

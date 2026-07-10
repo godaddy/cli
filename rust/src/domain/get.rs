@@ -1,12 +1,13 @@
 //! `gddy domain get` — show full details for one owned domain (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier,
 };
 
 use domains_client::types;
 
 use super::common::{api_error, make_client};
+use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -49,7 +50,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 CliCoreError::message(format!("failed to serialize domain details: {e}"))
             })?;
             Ok(CommandResult::new(value).with_next_actions(vec![
-                NextAction::new("dns list <domain>", "View this domain's DNS records")
+                next_action("dns list <domain>", "View this domain's DNS records")
                     .with_param("domain", NextActionParam::required()),
             ]))
         },

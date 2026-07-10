@@ -1,11 +1,12 @@
 pub mod client;
 
 use cli_engine::{
-    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, NextAction,
-    NextActionParam, Result, RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CliCoreError, CommandContext, CommandResult, CommandSpec, GroupSpec, NextActionParam, Result,
+    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::{Value, json};
 
+use crate::next_action::next_action;
 use crate::{
     application::client::api_url_for_env, hosting::nodejs::client::HostingClient,
     output_schema::output_schema,
@@ -123,7 +124,7 @@ fn app_list_command() -> RuntimeCommandSpec {
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.list_apps().await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs app get --app-id <app-id>",
                     "Get details for an application",
                 )
@@ -152,12 +153,12 @@ fn app_get_command() -> RuntimeCommandSpec {
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.get_app(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs deployment list --app-id <app-id>",
                     "List deployments for this application",
                 )
                 .with_param("app-id", NextActionParam::value(app_id.clone())),
-                NextAction::new(
+                next_action(
                     "hosting nodejs status --app-id <app-id>",
                     "Get application status",
                 )
@@ -205,14 +206,14 @@ fn app_create_command() -> RuntimeCommandSpec {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let mut actions = vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs job get --job-id <job-id>",
                     "Poll app creation status",
                 )
                 .with_param("job-id", NextActionParam::required()),
             ];
             if !job_id.is_empty() {
-                actions[0] = NextAction::new(
+                actions[0] = next_action(
                     "hosting nodejs job get --job-id <job-id>",
                     "Poll app creation status",
                 )
@@ -297,7 +298,7 @@ fn app_delete_command() -> RuntimeCommandSpec {
             client.delete_app(&app_id).await.map_err(client_err)?;
             Ok(
                 CommandResult::new(json!({ "deleted": true, "appId": app_id })).with_next_actions(
-                    vec![NextAction::new(
+                    vec![next_action(
                         "hosting nodejs app list",
                         "List remaining applications",
                     )],
@@ -337,7 +338,7 @@ fn job_get_command() -> RuntimeCommandSpec {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let mut actions = vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs job get --job-id <job-id>",
                     "Re-check job status",
                 )
@@ -345,7 +346,7 @@ fn job_get_command() -> RuntimeCommandSpec {
             ];
             if let Some(app_id) = data.pointer("/app/id").and_then(|v| v.as_str()) {
                 actions.push(
-                    NextAction::new(
+                    next_action(
                         "hosting nodejs app get --app-id <app-id>",
                         "View the provisioned application",
                     )
@@ -389,7 +390,7 @@ fn deployment_list_command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs deployment publish --app-id <app-id>",
                     "Publish the latest source",
                 )
@@ -422,12 +423,12 @@ fn deployment_publish_command() -> RuntimeCommandSpec {
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
             let data = client.publish_app(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs status --app-id <app-id>",
                     "Check application status",
                 )
                 .with_param("app-id", NextActionParam::value(app_id.clone())),
-                NextAction::new(
+                next_action(
                     "hosting nodejs deployment list --app-id <app-id>",
                     "List deployments",
                 )
@@ -456,12 +457,12 @@ fn status_command() -> RuntimeCommandSpec {
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.get_app_status(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs deployment list --app-id <app-id>",
                     "List deployments for this application",
                 )
                 .with_param("app-id", NextActionParam::value(app_id.clone())),
-                NextAction::new(
+                next_action(
                     "hosting nodejs logs --app-id <app-id>",
                     "View application logs",
                 )
@@ -511,14 +512,14 @@ fn source_upload_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             let upload_job_id = data.get("jobId").and_then(|v| v.as_str()).unwrap_or("");
             let action = if upload_job_id.is_empty() {
-                NextAction::new(
+                next_action(
                     "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
                     "Poll zip upload status",
                 )
                 .with_param("app-id", NextActionParam::value(app_id))
                 .with_param("job-id", NextActionParam::required())
             } else {
-                NextAction::new(
+                next_action(
                     "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
                     "Poll zip upload status",
                 )
@@ -560,13 +561,13 @@ fn source_status_command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                NextAction::new(
+                next_action(
                     "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
                     "Poll again while upload is in progress",
                 )
                 .with_param("app-id", NextActionParam::value(app_id.clone()))
                 .with_param("job-id", NextActionParam::value(job_id)),
-                NextAction::new(
+                next_action(
                     "hosting nodejs deployment publish --app-id <app-id>",
                     "Publish after upload completes",
                 )
