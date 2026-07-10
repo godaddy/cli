@@ -662,9 +662,11 @@ mod tests {
         }
     }
 
-    // Serializes tests that mutate the process-wide default transport logger,
-    // mirroring cli-engine's own (crate-private) test lock.
-    static TRANSPORT_LOGGER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Serializes tests that mutate the process-wide default transport logger.
+    // An async-aware lock, not a `std::sync::Mutex` — the guard is held across
+    // this test's `.await` points (clippy::await_holding_lock), which is only
+    // sound with a lock that yields the executor instead of blocking a thread.
+    static TRANSPORT_LOGGER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     // Restores the noop logger on drop so a panicking assertion below can't
     // leak a test's logger into later tests in this binary. Declared after
@@ -688,9 +690,7 @@ mod tests {
     // that the request/response round-trips.
     #[tokio::test]
     async fn client_hooks_feed_the_debug_transport_bridge() {
-        let _test_lock = TRANSPORT_LOGGER_TEST_LOCK
-            .lock()
-            .expect("lock is never held across a panic");
+        let _test_lock = TRANSPORT_LOGGER_TEST_LOCK.lock().await;
         let _restore = RestoreDefaultTransportLogger;
 
         let logger = std::sync::Arc::new(RecordingLogger::default());

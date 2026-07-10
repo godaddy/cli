@@ -62,11 +62,6 @@ struct UpdateCache {
     tag_name: String,
 }
 
-#[derive(Deserialize)]
-struct GithubRelease {
-    tag_name: String,
-}
-
 pub fn module() -> Module {
     Module::new("Admin", |_ctx| {
         RuntimeGroupSpec::new(
@@ -134,12 +129,27 @@ fn apply_command() -> RuntimeCommandSpec {
             .mutates(true)
             .no_auth(true)
             .with_output_schema::<UpdateApplyResult>()
-            .with_default_fields("previousVersion,newVersion,status"),
-        |_cred, _args| async move { Ok(CommandResult::new(run_apply().await?)) },
+            .with_default_fields("previousVersion,newVersion,status")
+            .with_arg(
+                clap::Arg::new("force")
+                    .long("force")
+                    .action(clap::ArgAction::SetTrue)
+                    .help(
+                        "Reinstall the latest release even if it matches the running \
+                         version (useful for validating the update mechanism itself)",
+                    ),
+            ),
+        |_cred, args| async move {
+            let force = args
+                .get("force")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            Ok(CommandResult::new(run_apply(force).await?))
+        },
     )
 }
 
-async fn run_apply() -> Result<serde_json::Value, CliCoreError> {
+async fn run_apply(force: bool) -> Result<serde_json::Value, CliCoreError> {
     let current = current_version();
     let client = http_client()?;
     let cache = refresh_cache(&client, FOREGROUND_TIMEOUT).await?;
@@ -149,7 +159,11 @@ async fn run_apply() -> Result<serde_json::Value, CliCoreError> {
             cache.latest_version
         ))
     })?;
-    if latest <= current {
+    // `--force` only bypasses the "already up to date" case (`latest ==
+    // current`) — it must never let a stale/dev build "update" to an older
+    // published release, so a genuine downgrade (`latest < current`) is
+    // always blocked regardless of `force`.
+    if latest < current || (latest == current && !force) {
         return Ok(json!({
             "previousVersion": current.to_string(),
             "newVersion": current.to_string(),
@@ -285,43 +299,72 @@ fn http_client() -> Result<reqwest::Client, CliCoreError> {
         .map_err(|e| CliCoreError::message(format!("failed to build HTTP client: {e}")))
 }
 
-async fn fetch_latest_release(
+/// Resolves the latest release tag via `github.com/{REPO}/releases/latest`'s
+/// redirect to `.../releases/tag/<tag>`, rather than the `api.github.com`
+/// REST endpoint — the REST API enforces a 60-requests/hour *unauthenticated*
+/// limit per IP (shared, e.g. behind a corporate NAT, exhausted trivially),
+/// while this plain web redirect isn't API-rate-limited at all. `install.sh`
+/// already relies on the same redirect (via `releases/latest/download/...`)
+/// for the same reason.
+async fn fetch_latest_tag(
     client: &reqwest::Client,
     timeout: Duration,
-) -> Result<GithubRelease, CliCoreError> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+) -> Result<String, CliCoreError> {
+    fetch_latest_tag_from(
+        client,
+        &format!("https://github.com/{REPO}/releases/latest"),
+        timeout,
+    )
+    .await
+}
+
+/// Testable core of [`fetch_latest_tag`] — takes the `/releases/latest` URL
+/// as a parameter so tests can point it at a mock server.
+async fn fetch_latest_tag_from(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+) -> Result<String, CliCoreError> {
     let resp = client
-        .get(&url)
+        .head(url)
         .timeout(timeout)
         .send()
         .await
         .map_err(|e| CliCoreError::message(format!("failed to check for updates: {e}")))?;
     if !resp.status().is_success() {
         return Err(CliCoreError::message(format!(
-            "GitHub API returned {} while checking for updates",
+            "GitHub returned {} while checking for updates",
             resp.status()
         )));
     }
-    resp.json::<GithubRelease>()
-        .await
-        .map_err(|e| CliCoreError::message(format!("failed to parse GitHub release response: {e}")))
+    // Use the resolved (post-redirect) URL in the error below, not the
+    // constant `.../releases/latest` request URL — that's what actually
+    // failed to parse and is what's needed to diagnose the failure.
+    let resolved_url = resp.url().clone();
+    resolved_url
+        .path_segments()
+        .and_then(Iterator::last)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            CliCoreError::message(format!(
+                "could not determine latest release tag from resolved URL {resolved_url}"
+            ))
+        })
 }
 
 async fn refresh_cache(
     client: &reqwest::Client,
     timeout: Duration,
 ) -> Result<UpdateCache, CliCoreError> {
-    let release = fetch_latest_release(client, timeout).await?;
-    let version = parse_version(&release.tag_name).ok_or_else(|| {
-        CliCoreError::message(format!(
-            "unexpected tag format from GitHub: {}",
-            release.tag_name
-        ))
+    let tag_name = fetch_latest_tag(client, timeout).await?;
+    let version = parse_version(&tag_name).ok_or_else(|| {
+        CliCoreError::message(format!("unexpected tag format from GitHub: {tag_name}"))
     })?;
     let cache = UpdateCache {
         checked_at: chrono::Utc::now().to_rfc3339(),
         latest_version: version.to_string(),
-        tag_name: release.tag_name,
+        tag_name,
     };
     // Caching is advisory (only the passive notice depends on it) — a write
     // failure (e.g. read-only config dir) shouldn't fail the actual check.
@@ -479,6 +522,9 @@ fn write_temp_binary(bytes: &[u8]) -> Result<PathBuf, CliCoreError> {
 
 #[cfg(test)]
 mod tests {
+    use httpmock::Method::HEAD;
+    use httpmock::prelude::*;
+
     use super::*;
 
     #[test]
@@ -611,6 +657,67 @@ def456  gddy-aarch64-unknown-linux-gnu.tar.gz
         assert_eq!(extracted, b"binary-contents");
 
         assert!(extract_tar_gz(&gz_bytes, "not-gddy").is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_from_follows_redirect_to_release_tag() {
+        let server = MockServer::start_async().await;
+        let redirect_mock = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/godaddy/cli/releases/latest");
+                then.status(302)
+                    .header("location", "/godaddy/cli/releases/tag/v1.2.3");
+            })
+            .await;
+        // reqwest follows the redirect above, so the tag page itself also
+        // needs to answer the (re-issued) HEAD request with success.
+        let tag_page_mock = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/godaddy/cli/releases/tag/v1.2.3");
+                then.status(200);
+            })
+            .await;
+
+        let tag = fetch_latest_tag_from(
+            &reqwest::Client::new(),
+            &format!("{}/godaddy/cli/releases/latest", server.base_url()),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("resolves tag from redirect");
+
+        redirect_mock.assert_async().await;
+        tag_page_mock.assert_async().await;
+        assert_eq!(tag, "v1.2.3");
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_from_errors_with_resolved_url_when_redirect_has_no_tag_segment() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/empty");
+                then.status(302).header("location", "/");
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/");
+                then.status(200);
+            })
+            .await;
+
+        let err = fetch_latest_tag_from(
+            &reqwest::Client::new(),
+            &format!("{}/empty", server.base_url()),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect_err("no path segment to parse a tag from");
+
+        let message = err.to_string();
+        assert!(message.contains("resolved URL"));
+        assert!(message.contains(&server.base_url()));
     }
 
     #[test]
