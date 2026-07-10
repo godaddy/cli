@@ -22,13 +22,23 @@ fn parse_statuses(raw: &[String]) -> Result<Vec<types::ListStatusesItem>> {
         .collect()
 }
 
+/// Whether the request should be scoped to the `VISIBLE` status group —
+/// GoDaddy's default view that hides cancelled/confiscated/other
+/// non-visible domains. Skipped when the caller passed an explicit
+/// `--status` filter or asked to see hidden domains via `--show-hidden`.
+fn wants_visible_only(statuses: &[types::ListStatusesItem], show_hidden: bool) -> bool {
+    statuses.is_empty() && !show_hidden
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List the domains in your account")
             .with_long(
                 "List the domains registered to your account. Shows domain, status, \
-                 expiry, and auto-renew by default; use --fields to pick columns and \
-                 --status to filter (repeatable).",
+                 expiry, and auto-renew by default; use --fields to pick columns. Hides \
+                 domains that are cancelled or otherwise not visible unless --show-hidden \
+                 is passed; use --status to filter to specific status values (repeatable, \
+                 overrides the default filter).",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
@@ -41,14 +51,27 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .value_name("STATUS")
                     .action(clap::ArgAction::Append)
                     .help("Only domains with this status, e.g. ACTIVE (repeatable)"),
+            )
+            .with_arg(
+                clap::Arg::new("show-hidden")
+                    .long("show-hidden")
+                    .action(clap::ArgAction::SetTrue)
+                    .help("Include domains hidden by default, e.g. cancelled or confiscated"),
             ),
         |ctx| async move {
             let debug = !ctx.middleware.debug.is_empty();
             let statuses = parse_statuses(&string_list(&ctx, "status"))?;
+            let show_hidden = ctx
+                .args
+                .get("show-hidden")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let client = make_client(&ctx).await?;
             let mut req = client.list();
             if !statuses.is_empty() {
                 req = req.statuses(statuses);
+            } else if wants_visible_only(&statuses, show_hidden) {
+                req = req.status_groups(vec![types::ListStatusGroupsItem::Visible]);
             }
             let resp = match req.send().await {
                 Ok(r) => r,
@@ -72,7 +95,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_statuses;
+    use super::{parse_statuses, wants_visible_only};
     use domains_client::types;
 
     #[test]
@@ -87,5 +110,15 @@ mod tests {
         assert!(parse_statuses(&[]).expect("empty ok").is_empty());
         let err = parse_statuses(&["bogus".to_string()]).expect_err("should reject");
         assert!(err.to_string().contains("invalid --status"), "{err}");
+    }
+
+    #[test]
+    fn wants_visible_only_defaults_true_but_yields_to_status_or_show_hidden() {
+        assert!(wants_visible_only(&[], false));
+        assert!(!wants_visible_only(&[], true));
+        assert!(!wants_visible_only(
+            &[types::ListStatusesItem::Cancelled],
+            false
+        ));
     }
 }
