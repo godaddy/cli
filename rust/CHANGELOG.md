@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/godaddy/cli/compare/v0.1.2...v0.1.3) (2026-07-11)
+
+
+### Features
+
+* **domain list:** hide cancelled/non-visible domains by default ([#94](https://github.com/godaddy/cli/issues/94)) ([ad17cd3](https://github.com/godaddy/cli/commit/ad17cd33f1f0c54723b97ee718a5fc48b856211a))
+
 ## [0.1.2](https://github.com/godaddy/cli/compare/v0.1.1...v0.1.2) (2026-07-10)
 
 
