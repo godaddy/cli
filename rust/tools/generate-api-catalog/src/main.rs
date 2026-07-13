@@ -51,6 +51,37 @@ const HTTP_METHODS: &[&str] = &[
     "get", "post", "put", "patch", "delete", "options", "head", "trace",
 ];
 
+/// The exact set of domains the committed catalog must contain — the deliberate,
+/// reviewed contract. The `committed_catalog_matches_expected_domains_and_manifest`
+/// test fails if the catalog files, or `manifest.json`, drift from this list, so
+/// adding or removing a domain is a conscious change (update this list in the same
+/// PR). This is the always-on, no-network guard; the scheduled regen-and-diff CI
+/// job catches per-operation drift against the upstream spec repos.
+#[cfg(test)]
+const EXPECTED_DOMAINS: &[&str] = &[
+    "bulk-operations",
+    "businesses",
+    "catalog-products",
+    "channels",
+    "chargebacks",
+    "customer-profiles",
+    "fulfillments",
+    "hosting-nodejs",
+    "location-addresses",
+    "metafields",
+    "onboarding",
+    "orders",
+    "payment-requests",
+    "payments",
+    "price-adjustments",
+    "recommendations",
+    "shipping",
+    "stores",
+    "subscriptions",
+    "taxes",
+    "transactions",
+];
+
 // ---------------------------------------------------------------------------
 // Output catalog types
 // ---------------------------------------------------------------------------
@@ -2069,5 +2100,70 @@ components:
             derive_defs_key_for_path("./shared.yaml#/definitions/Bar"),
             "Bar"
         );
+    }
+
+    /// Drift guard: the committed catalog files and `manifest.json` must match the
+    /// intentional `EXPECTED_DOMAINS` contract, and every domain's endpoint count
+    /// must agree between its file and the manifest. Catches accidental drift
+    /// (a domain added/removed, a hand-edited catalog, a stale manifest) on every
+    /// `cargo test` run — no network or credentials required.
+    #[test]
+    fn committed_catalog_matches_expected_domains_and_manifest() {
+        let dir = resolve_output_dir();
+
+        // Domain files present on disk (excluding manifest.json).
+        let mut files: Vec<String> = std::fs::read_dir(&dir)
+            .expect("read schemas/api dir")
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let n = e.file_name().to_string_lossy().into_owned();
+                match n.strip_suffix(".json") {
+                    Some(stem) if n != "manifest.json" => Some(stem.to_owned()),
+                    _ => None,
+                }
+            })
+            .collect();
+        files.sort();
+
+        let mut expected: Vec<String> = EXPECTED_DOMAINS.iter().map(|s| (*s).to_owned()).collect();
+        expected.sort();
+
+        assert_eq!(
+            files, expected,
+            "catalog domain files drifted from EXPECTED_DOMAINS — if adding/removing a \
+             domain, update EXPECTED_DOMAINS in the same change"
+        );
+
+        // manifest.json must list exactly the same domains...
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("manifest.json")).expect("read manifest.json"),
+        )
+        .expect("parse manifest.json");
+        let domains = manifest["domains"]
+            .as_object()
+            .expect("manifest.domains is an object");
+
+        let mut manifest_domains: Vec<String> = domains.keys().cloned().collect();
+        manifest_domains.sort();
+        assert_eq!(
+            manifest_domains, expected,
+            "manifest.json domains differ from EXPECTED_DOMAINS / catalog files"
+        );
+
+        // ...and each domain's endpoint count must match between file and manifest.
+        for domain in EXPECTED_DOMAINS {
+            let catalog: Value = serde_json::from_str(
+                &std::fs::read_to_string(dir.join(format!("{domain}.json")))
+                    .unwrap_or_else(|e| panic!("read {domain}.json: {e}")),
+            )
+            .unwrap_or_else(|e| panic!("parse {domain}.json: {e}"));
+
+            let actual = catalog["endpoints"].as_array().map_or(0, Vec::len);
+            let manifest_count = domains[*domain]["endpointCount"].as_u64().unwrap_or(0) as usize;
+            assert_eq!(
+                actual, manifest_count,
+                "endpoint-count drift for '{domain}': file has {actual}, manifest says {manifest_count}"
+            );
+        }
     }
 }
