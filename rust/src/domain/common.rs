@@ -254,7 +254,7 @@ pub(crate) async fn api_error(
 /// Build the user-facing message for an unexpected API response. Pure so the
 /// HTTP 402 → payment-method guidance and the `--debug` request-id line are
 /// unit-testable.
-fn format_api_error(
+pub(crate) fn format_api_error(
     action: &str,
     status: u16,
     status_display: &str,
@@ -287,14 +287,17 @@ fn format_api_error(
     msg
 }
 
-/// A Domains API validation error body. Tolerates both the v1 shape
-/// (`{"fields":[...]}`) and the v3 shape (`{"error":{"fields":[...]}}`).
+/// A Domains API validation error body. Tolerates the v1 field-level shape
+/// (`{"fields":[...]}` or `{"error":{"fields":[...]}}`) and the v3 top-level
+/// shape (`{"name","message","correlationId","details":[{"issue","description"}]}`).
 #[derive(serde::Deserialize)]
 struct ApiErrorBody {
     #[serde(default)]
     fields: Vec<ApiFieldError>,
     #[serde(default)]
     error: Option<ApiErrorEnvelope>,
+    #[serde(default)]
+    details: Vec<ApiDetailError>,
 }
 
 #[derive(serde::Deserialize)]
@@ -311,6 +314,12 @@ struct ApiFieldError {
     path: String,
 }
 
+#[derive(serde::Deserialize)]
+struct ApiDetailError {
+    #[serde(default)]
+    description: String,
+}
+
 /// Render a structured validation error as a plain-English bullet list, or `None`
 /// when `body` isn't a field-level validation error.
 fn friendly_field_errors(body: &str) -> Option<String> {
@@ -320,14 +329,25 @@ fn friendly_field_errors(body: &str) -> Option<String> {
     } else {
         parsed.error.map(|e| e.fields).unwrap_or_default()
     };
-    if fields.is_empty() {
-        return None;
+    if !fields.is_empty() {
+        let lines: Vec<String> = fields
+            .iter()
+            .map(|f| format!("  • {}", describe_field_error(f)))
+            .collect();
+        return Some(format!("some fields are invalid:\n{}", lines.join("\n")));
     }
-    let lines: Vec<String> = fields
-        .iter()
-        .map(|f| format!("  • {}", describe_field_error(f)))
-        .collect();
-    Some(format!("some fields are invalid:\n{}", lines.join("\n")))
+    if !parsed.details.is_empty() {
+        let lines: Vec<String> = parsed
+            .details
+            .iter()
+            .filter(|d| !d.description.is_empty())
+            .map(|d| format!("  • {}", d.description))
+            .collect();
+        if !lines.is_empty() {
+            return Some(format!("some fields are invalid:\n{}", lines.join("\n")));
+        }
+    }
+    None
 }
 
 fn describe_field_error(f: &ApiFieldError) -> String {
@@ -626,6 +646,25 @@ mod tests {
         assert_eq!(
             validate_nameserver_hosts(Vec::new()).expect("empty is valid"),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn v3_top_level_details_render_as_plain_english() {
+        // The real body a DNS write returns on a name-exclusivity conflict: no
+        // `fields`/`error` envelope at all, just a top-level `details[]`.
+        let body = r#"{"correlationId":"abc-123","details":[{"description":"Duplicate data provided for record name, www.","issue":"DUPLICATE_RECORD"}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(
+            msg.contains("Duplicate data provided for record name, www."),
+            "{msg}"
         );
     }
 

@@ -29,10 +29,12 @@ fn iso_datetime(now: chrono::DateTime<chrono::Utc>) -> String {
     now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-/// The GoDaddy account/customer id used as the consent `principal`, taken from the
-/// OAuth token's typed `sub` claim (`customer:<uuid>`). The v3 register endpoint
-/// verifies this principal against the authenticated identity, so a non-customer
-/// subject is rejected with a clear error before the paid call.
+/// Validate the OAuth token is a customer identity (`customer:<uuid>`), so a
+/// non-customer subject is rejected with a clear local error *before* the paid
+/// call and before the cached quote is consumed. `agreedBy` is server-derived
+/// from the request's auth context (the API no longer accepts a caller-supplied
+/// consent principal), so the returned id isn't sent anywhere — this is purely a
+/// fail-fast check.
 fn consent_principal(cred: &Credential) -> Result<String> {
     let id = cred
         .sub
@@ -45,9 +47,9 @@ fn consent_principal(cred: &Credential) -> Result<String> {
                 cred.sub
             ))
         })?;
-    // The principal is sent to the paid register endpoint; validate it's a
-    // customer UUID up front so a malformed `customer:<not-a-uuid>` subject fails
-    // fast with a clear message rather than as an opaque server-side rejection.
+    // Validate it's a customer UUID up front so a malformed
+    // `customer:<not-a-uuid>` subject fails fast with a clear message rather
+    // than as an opaque server-side rejection.
     if uuid::Uuid::parse_str(id).is_err() {
         return Err(CliCoreError::message(format!(
             "the OAuth token's customer subject ({:?}) is not a valid UUID; `domain purchase` \
@@ -124,10 +126,18 @@ fn purchase_consent_types(
         )));
     }
 
-    Ok(agreement_types
+    agreement_types
         .iter()
-        .map(|t| types::AgreementType(t.clone()))
-        .collect())
+        .map(|t| {
+            t.parse::<types::AgreementType>().map_err(|_| {
+                CliCoreError::message(format!(
+                    "the cached quote for {domain} recorded an agreement type ({t:?}) this CLI \
+                     version doesn't recognize (the cache is stale or from a different CLI \
+                     version); re-run `gddy domain quote {domain}` for a fresh quote."
+                ))
+            })
+        })
+        .collect()
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -177,12 +187,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ),
         )
         .with_arg(
-            clap::Arg::new("agreed-by")
-                .long("agreed-by")
-                .value_name("IP")
-                .help("Originating IP recorded with your consent (defaults to 127.0.0.1)"),
-        )
-        .with_arg(
             clap::Arg::new("confirm")
                 .long("confirm")
                 .action(clap::ArgAction::SetTrue)
@@ -205,19 +209,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .get("confirm")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let agreed_by = ctx
-                .args
-                .get("agreed-by")
-                .and_then(|v| v.as_str())
-                .unwrap_or("127.0.0.1")
-                .to_owned();
             let debug = !ctx.middleware.debug.is_empty();
 
-            // The v3 register endpoint needs the customer identity from the OAuth
-            // token (for the consent principal). Resolve auth *before* consuming
-            // the cached quote so a failed login never touches the cache.
+            // Resolve auth *before* consuming the cached quote, so a token that
+            // isn't customer-scoped fails locally rather than after the cache
+            // entry (and the ~10-minute quote window) is spent.
             let cred = ctx.credential().await?;
-            let principal = consent_principal(&cred)?;
+            consent_principal(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
@@ -281,12 +279,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let consent = types::Consent {
                 agreed_at: types::DateTime(iso_datetime(chrono::Utc::now())),
-                agreed_by: types::ConsentActor {
-                    actor: None,
-                    ip: Some(agreed_by),
-                    principal,
-                    type_: types::ConsentActorType("DIRECT".to_string()),
-                },
+                // Server-derived from the execute request's auth context; the
+                // caller no longer supplies this.
+                agreed_by: None,
                 agreement_types,
             };
             let registration = types::Registration {
@@ -296,7 +291,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 expires_at: None,
                 links: vec![],
                 operation_id: None,
+                order_id: None,
                 period: period_nz,
+                price: None,
                 profile,
                 profile_id: None,
                 quote_token: Some(types::Uuid(quote_token.clone())),
@@ -436,7 +433,7 @@ mod tests {
     fn purchase_consent_requires_agree_then_confirm() {
         // Titles + types as they'd come from a cached quote.
         let titles = vec!["Registration Agreement (https://x)".to_string()];
-        let ty = vec!["DNRA".to_string()];
+        let ty = vec!["API_DPA".to_string()];
 
         let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty)
             .expect_err("must require --agree");
@@ -453,7 +450,21 @@ mod tests {
         let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty)
             .expect("both gates satisfied");
         assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_str(), "DNRA");
+        assert_eq!(types[0].to_string(), "API_DPA");
+    }
+
+    #[test]
+    fn purchase_consent_types_rejects_a_cached_type_this_cli_no_longer_recognizes() {
+        // A quote cached before an agreement-type rename (e.g. the API's
+        // DNRA -> API_DPA rename) must fail with a clear re-quote message
+        // rather than panicking or silently dropping the type.
+        let titles = vec!["Registration Agreement (https://x)".to_string()];
+        let ty = vec!["DNRA".to_string()];
+        let err = purchase_consent_types("example.com", 1, true, true, &titles, &ty)
+            .expect_err("unrecognized agreement type must error");
+        let msg = err.to_string();
+        assert!(msg.contains("doesn't recognize"), "{msg}");
+        assert!(msg.contains("gddy domain quote example.com"), "{msg}");
     }
 
     #[test]
@@ -484,11 +495,12 @@ mod tests {
         // An older cached quote may carry agreement types but no human titles
         // (titles are serde-default). The --agree prompt must still list
         // something actionable — fall back to the types.
-        let err = purchase_consent_types("example.com", 1, false, true, &[], &["DNRA".to_string()])
-            .expect_err("must require --agree");
+        let err =
+            purchase_consent_types("example.com", 1, false, true, &[], &["API_DPA".to_string()])
+                .expect_err("must require --agree");
         let msg = err.to_string();
         assert!(msg.contains("requires agreeing"), "{msg}");
-        assert!(msg.contains("- DNRA"), "{msg}");
+        assert!(msg.contains("- API_DPA"), "{msg}");
     }
 
     #[test]
