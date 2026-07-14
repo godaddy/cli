@@ -73,24 +73,31 @@ pub(super) fn describe_duplicate_record(
 ) -> String {
     let conflicts = conflicting_records(desired_type, at_name);
     if !conflicts.is_empty() {
+        let mut conflict_types: Vec<&str> = conflicts.iter().map(|r| r.type_.as_str()).collect();
+        conflict_types.sort_unstable();
+        conflict_types.dedup();
+
         let remediation = if can_auto_replace {
             "\n\nRe-run with `--replace-conflicting-types` to remove it automatically.".to_string()
         } else {
+            // A CNAME conflict can span multiple non-CNAME types (e.g. A + MX) at
+            // the same name — every one of them has to be deleted before the add
+            // can succeed, not just the first.
+            let deletes = conflict_types
+                .iter()
+                .map(|t| format!("gddy dns delete {domain} --type {t} --name {name}"))
+                .collect::<Vec<_>>()
+                .join("; ");
             format!(
-                "\n\nRun `gddy dns delete {domain} --type {} --name {name}` first, then \
-                 re-run `gddy dns add {domain} --type {desired_type} --name {name} --data \
-                 {desired_data}`.",
-                conflicts[0].type_.as_str(),
+                "\n\nRun `{deletes}` first, then re-run `gddy dns add {domain} --type \
+                 {desired_type} --name {name} --data {desired_data}`.",
             )
         };
         return if desired_type == "CNAME" {
-            let mut types: Vec<&str> = conflicts.iter().map(|r| r.type_.as_str()).collect();
-            types.sort_unstable();
-            types.dedup();
             format!(
                 "`{name}` already has other record(s) ({}) at this name, which can't coexist \
                  with a CNAME — DNS only allows one or the other at a given name.{remediation}",
-                types.join(", "),
+                conflict_types.join(", "),
             )
         } else {
             format!(
@@ -117,7 +124,9 @@ pub(super) fn describe_duplicate_record(
 
 /// Fetch every record at a name (all types), for diagnosing a name-exclusivity
 /// conflict after a write already failed. Reuses [`fetch_records`] with no
-/// type filter — the same call `dns list <domain> --name <name>` would make.
+/// type filter — unlike `dns list`, which requires `--type` whenever `--name`
+/// is given, this deliberately fetches every type at the name, since the
+/// conflict could be with any of them.
 pub(super) async fn conflicting_records_at(
     client: &domains_client::Client,
     domain: &str,
@@ -274,6 +283,25 @@ mod tests {
         );
         assert!(msg.contains("can't coexist with a CNAME"), "{msg}");
         assert!(msg.contains("A, MX"), "{msg}");
+
+        // Manual remediation for a multi-type conflict must name every
+        // conflicting type's delete command, not just the first.
+        let msg_no_flag = describe_duplicate_record(
+            "CNAME",
+            "target.example.net",
+            "example.com",
+            "www",
+            &others,
+            false,
+        );
+        assert!(
+            msg_no_flag.contains("dns delete example.com --type A --name www"),
+            "{msg_no_flag}"
+        );
+        assert!(
+            msg_no_flag.contains("dns delete example.com --type MX --name www"),
+            "{msg_no_flag}"
+        );
     }
 
     #[test]
