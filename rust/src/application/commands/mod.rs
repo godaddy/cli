@@ -817,12 +817,46 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .await?;
             }
 
+            finalize_deploy_activation(&client, &sender, &application_id, &release_id).await?;
+
             sender
                 .send(json!({ "type": "step", "name": "deploy", "status": "completed", "name": name, "extensions": total }))
                 .await;
             Ok(())
         },
     )
+}
+
+/// Finalize a deploy: activate the release, then promote the application to
+/// `ACTIVE`. Deploy must activate the release before promoting the application.
+async fn finalize_deploy_activation(
+    client: &ApplicationClient,
+    sender: &StreamSender,
+    application_id: &str,
+    release_id: &str,
+) -> cli_engine::Result<()> {
+    sender
+        .send(json!({ "type": "step", "name": "release.activate", "status": "started" }))
+        .await;
+    client
+        .activate_release(application_id, release_id)
+        .await
+        .map_err(client_err)?;
+    sender
+        .send(json!({ "type": "step", "name": "release.activate", "status": "completed" }))
+        .await;
+    sender
+        .send(json!({ "type": "step", "name": "application.activate", "status": "started" }))
+        .await;
+    client
+        .update_application(application_id, json!({ "status": "ACTIVE" }))
+        .await
+        .map_err(client_err)?;
+    sender
+        .send(json!({ "type": "step", "name": "application.activate", "status": "completed" }))
+        .await;
+
+    Ok(())
 }
 
 /// Collect extension source files from config, returning (name, source_path, ext_type) triples.
