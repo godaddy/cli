@@ -213,9 +213,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             // Resolve auth *before* consuming the cached quote, so a token that
             // isn't customer-scoped fails locally rather than after the cache
-            // entry (and the ~10-minute quote window) is spent.
+            // entry (and the ~10-minute quote window) is spent. The register
+            // endpoint derives `agreedBy` server-side, so only the validation
+            // (the early return on error) is needed here — the customer id
+            // itself is intentionally discarded.
             let cred = ctx.credential().await?;
-            consent_principal(&cred)?;
+            let _customer_id = consent_principal(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or

@@ -527,4 +527,181 @@ mod tests {
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
     }
+
+    // --- write_with_conflict_handling ---------------------------------------
+    //
+    // These exercise the DUPLICATE_RECORD branching against a mock server: the
+    // no-conflict path, the conflict-without-`--replace-conflicting-types` path
+    // (message only, no delete attempted), and the conflict-with-the-flag path
+    // (delete_conflicts outcome then the retry outcome, in that order).
+
+    use httpmock::prelude::*;
+
+    fn client_for(server: &MockServer) -> domains_client::Client {
+        domains_client::client_with_auth(
+            &server.base_url(),
+            "Bearer tok",
+            "godaddy-cli/test",
+            "req-1",
+        )
+        .expect("build client")
+    }
+
+    fn write_opts() -> RecordOptions {
+        RecordOptions {
+            ttl: None,
+            priority: None,
+            port: None,
+            weight: None,
+            protocol: None,
+            service: None,
+            flag: None,
+            tag: None,
+        }
+    }
+
+    const DUPLICATE_RECORD_BODY: &str = r#"{"correlationId":"c-1","details":[{"issue":"DUPLICATE_RECORD","description":"Duplicate data provided for record name, www."}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+
+    #[tokio::test]
+    async fn write_with_conflict_handling_creates_without_conflict() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(201).json_body(
+                    json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600 }),
+                );
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "A",
+            value: "1.2.3.4",
+            opts: &opts,
+            replace_conflicting: false,
+            debug: false,
+        };
+        let outcomes =
+            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+
+        create.assert_async().await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "created");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    #[tokio::test]
+    async fn write_with_conflict_handling_conflict_without_flag_reports_message_and_skips_delete() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(422).json_body(
+                    serde_json::from_str::<Value>(DUPLICATE_RECORD_BODY).expect("valid json"),
+                );
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("name", "www");
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "type": "CNAME", "name": "www", "data": "parkpage.godaddy.com", "ttl": 3600, "recordId": "cn-1" }
+                    ],
+                    "totalItems": 1,
+                    "totalPages": 1,
+                    "links": []
+                }));
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "A",
+            value: "1.2.3.4",
+            opts: &opts,
+            replace_conflicting: false,
+            debug: false,
+        };
+        let outcomes =
+            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+
+        // Only the message outcome — no delete attempted since the flag wasn't set.
+        assert_eq!(outcomes.len(), 1);
+        let err = outcomes[0].error.as_deref().expect("conflict reported");
+        assert!(err.contains("already has a CNAME record"), "{err}");
+        assert!(err.contains("--replace-conflicting-types"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn write_with_conflict_handling_replace_flag_deletes_then_retries_in_order() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(422).json_body(
+                    serde_json::from_str::<Value>(DUPLICATE_RECORD_BODY).expect("valid json"),
+                );
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("name", "www");
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "type": "CNAME", "name": "www", "data": "parkpage.godaddy.com", "ttl": 3600, "recordId": "cn-1" }
+                    ],
+                    "totalItems": 1,
+                    "totalPages": 1,
+                    "links": []
+                }));
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/cn-1");
+                then.status(204);
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "A",
+            value: "1.2.3.4",
+            opts: &opts,
+            replace_conflicting: true,
+            debug: false,
+        };
+        let outcomes =
+            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+
+        delete.assert_async().await;
+        // delete_conflicts' outcome must come first, then the retry outcome —
+        // the order `summarize_set_outcomes`'s breakdown reports to the user.
+        assert_eq!(outcomes.len(), 2);
+        assert_eq!(outcomes[0].kind, "deleted");
+        assert_eq!(outcomes[0].detail, "CNAME parkpage.godaddy.com");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+        assert_eq!(outcomes[1].kind, "created");
+        assert_eq!(outcomes[1].detail, "1.2.3.4");
+        // The retry hits the same mocked conflict response; unlike the first
+        // attempt, a failure here is reported generically (no re-diagnosis).
+        let err = outcomes[1].error.as_deref().expect("retry still failed");
+        assert!(err.contains("Duplicate data provided"), "{err}");
+    }
 }
