@@ -115,8 +115,8 @@ fn summarize_set_outcomes(
             .join("\n");
         return Err(format!(
             "set for {name} ({record_type}) partially failed — {failed} of {} action(s):\n\
-             {breakdown}\n\nRe-run `gddy dns set`, or `gddy dns list {domain} --type \
-             {record_type} --name {name}` to review the current state.",
+             {breakdown}\n\nRe-run the original `gddy dns set` command, or `gddy dns list \
+             {domain} --type {record_type} --name {name}` to review the current state.",
             outcomes.len(),
         ));
     }
@@ -434,7 +434,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 Some(api_error("deleting DNS record", debug, e).await.to_string())
                             }
                         };
-                        outcomes.push(SetOutcome::new("deleted", record_id.clone(), err));
+                        // Match `delete_conflicts`'s "<TYPE> <DATA>" detail format so a
+                        // partial-failure breakdown doesn't mix raw record ids with
+                        // human-readable values.
+                        let detail = existing
+                            .iter()
+                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
+                            .map(|r| format!("{record_type} {}", r.data))
+                            .unwrap_or_else(|| record_id.clone());
+                        outcomes.push(SetOutcome::new("deleted", detail, err));
                     }
                 }
             }

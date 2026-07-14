@@ -77,8 +77,9 @@ pub(super) fn describe_duplicate_record(
             "\n\nRe-run with `--replace-conflicting-types` to remove it automatically.".to_string()
         } else {
             format!(
-                "\n\nRun `gddy dns delete {domain} --type {} --name {name}` first, or use \
-                 `gddy dns set --replace-conflicting-types`.",
+                "\n\nRun `gddy dns delete {domain} --type {} --name {name}` first, then \
+                 re-run `gddy dns add {domain} --type {desired_type} --name {name} --data \
+                 {desired_data}`.",
                 conflicts[0].type_.as_str(),
             )
         };
