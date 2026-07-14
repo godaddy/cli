@@ -122,12 +122,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // A record with no server id can't be targeted — report it as a
                 // failure (non-zero exit) rather than silently leaving it behind.
                 let err = match rec.record_id.as_deref() {
-                    None => Some(
+                    None => Some(format!(
                         "the API returned this record without a recordId, so it can't be \
-                         deleted; re-run `gddy dns list` and remove it in the control panel \
-                         if it persists"
-                            .to_string(),
-                    ),
+                         deleted; re-run `gddy dns list {domain} --type {record_type} --name \
+                         {name}` and remove it in the control panel if it persists"
+                    )),
                     Some(id) => match client
                         .delete_dns_record()
                         .zone(domain.as_str())
