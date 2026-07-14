@@ -318,6 +318,24 @@ struct ApiFieldError {
 struct ApiDetailError {
     #[serde(default)]
     description: String,
+    #[serde(default)]
+    issue: String,
+}
+
+impl ApiDetailError {
+    /// The human-readable `description` when present; the v3 spec documents it
+    /// as unstable ("MAY change... MUST NOT depend on this value") and often
+    /// absent, so fall back to the stable `issue` code rather than dropping the
+    /// detail entirely.
+    fn render(&self) -> Option<&str> {
+        if !self.description.is_empty() {
+            Some(self.description.as_str())
+        } else if !self.issue.is_empty() {
+            Some(self.issue.as_str())
+        } else {
+            None
+        }
+    }
 }
 
 /// Render a structured validation error as a plain-English bullet list, or `None`
@@ -340,8 +358,8 @@ fn friendly_field_errors(body: &str) -> Option<String> {
         let lines: Vec<String> = parsed
             .details
             .iter()
-            .filter(|d| !d.description.is_empty())
-            .map(|d| format!("  • {}", d.description))
+            .filter_map(ApiDetailError::render)
+            .map(|text| format!("  • {text}"))
             .collect();
         if !lines.is_empty() {
             return Some(format!("some fields are invalid:\n{}", lines.join("\n")));
@@ -666,6 +684,35 @@ mod tests {
             msg.contains("Duplicate data provided for record name, www."),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn v3_details_with_no_description_fall_back_to_the_issue_code() {
+        // `description` is documented as unstable and often omitted; `issue` is
+        // the stable code. A detail with only `issue` must still render
+        // something useful, not fall through to the generic opaque message.
+        let body = r#"{"correlationId":"abc-123","details":[{"issue":"INVALID_NAMESERVER"}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(msg.contains("INVALID_NAMESERVER"), "{msg}");
+
+        // Both empty → no friendly rendering, falls through to the generic message.
+        let body = r#"{"correlationId":"abc-123","details":[{}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(!msg.contains("some fields are invalid"), "{msg}");
     }
 
     #[test]
