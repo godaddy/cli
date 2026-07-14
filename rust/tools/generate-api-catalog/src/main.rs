@@ -998,6 +998,20 @@ fn collect_unresolved_refs_inner(value: &Value, found: &mut Vec<String>) {
             {
                 found.push(r.clone());
             }
+            // `discriminator.mapping` values are schema refs carried as plain strings.
+            // Any that still point outside this document (not `#/...`) are unresolved
+            // and must fail the build, same as an external `$ref`.
+            if let Some(Value::Object(disc)) = map.get("discriminator")
+                && let Some(Value::Object(mapping)) = disc.get("mapping")
+            {
+                for v in mapping.values() {
+                    if let Value::String(s) = v
+                        && !s.starts_with('#')
+                    {
+                        found.push(s.clone());
+                    }
+                }
+            }
             for v in map.values() {
                 collect_unresolved_refs_inner(v, found);
             }
@@ -1005,6 +1019,47 @@ fn collect_unresolved_refs_inner(value: &Value, found: &mut Vec<String>) {
         Value::Array(arr) => {
             for v in arr {
                 collect_unresolved_refs_inner(v, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Rewrite `discriminator.mapping` values that still point at external files
+/// (e.g. `./BasicChannel.yaml`, `../payment-token/ApplePayPaymentToken.yaml`) to
+/// the local `#/$defs/<key>` pointer produced by ref-lifting.
+///
+/// The OpenAPI `discriminator.mapping` holds schema references as *plain strings*,
+/// not `$ref` objects, so `dereference()` never touches them — leaving broken
+/// external file paths in the generated catalog that surface through `api describe`.
+/// The referenced subschemas are lifted into `$defs` via the same key derivation
+/// (`derive_defs_key_for_path`), so we rewrite each mapping value to the matching
+/// `#/$defs/<key>` — but only when that def exists, so a mapping is never pointed
+/// at a missing schema.
+fn rewrite_discriminator_mappings(value: &mut Value, def_keys: &HashSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::Object(disc)) = map.get_mut("discriminator")
+                && let Some(Value::Object(mapping)) = disc.get_mut("mapping")
+            {
+                for v in mapping.values_mut() {
+                    if let Value::String(s) = v
+                        && !s.starts_with('#')
+                    {
+                        let key = derive_defs_key_for_path(s);
+                        if def_keys.contains(&key) {
+                            *s = format!("#/$defs/{}", json_pointer_escape(&key));
+                        }
+                    }
+                }
+            }
+            for v in map.values_mut() {
+                rewrite_discriminator_mappings(v, def_keys);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr {
+                rewrite_discriminator_mappings(v, def_keys);
             }
         }
         _ => {}
@@ -1020,7 +1075,7 @@ fn load_and_dereference(
     let parsed = parse_yaml_or_json(&src, spec_file)?;
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
-    let dereffed = dereference(
+    let mut dereffed = dereference(
         &parsed.clone(),
         parsed,
         spec_dir,
@@ -1028,6 +1083,14 @@ fn load_and_dereference(
         &mut defs,
         0,
     );
+    // Rewrite discriminator mappings (which carry schema refs as plain strings) to
+    // the lifted `#/$defs/<key>` pointers. Run after all lifting so every def key
+    // is known; rewrite both the top-level spec and the lifted defs themselves.
+    let def_keys: HashSet<String> = defs.keys().cloned().collect();
+    rewrite_discriminator_mappings(&mut dereffed, &def_keys);
+    for v in defs.values_mut() {
+        rewrite_discriminator_mappings(v, &def_keys);
+    }
     Ok((dereffed, defs))
 }
 
@@ -1874,6 +1937,129 @@ mod tests {
         });
         let unresolved = collect_unresolved_refs(&value);
         assert_eq!(unresolved, vec!["./models/Foo.yaml"]);
+    }
+
+    #[test]
+    fn collect_unresolved_refs_finds_external_discriminator_mapping() {
+        // A discriminator.mapping value pointing outside the document is unresolved,
+        // even though it is a plain string rather than a `$ref` object.
+        let value = serde_json::json!({
+            "$defs": {
+                "Channel": {
+                    "discriminator": {
+                        "propertyName": "kind",
+                        "mapping": {
+                            "DEFAULT": "./BasicChannel.yaml",
+                            "LOCAL": "#/$defs/LocalChannel"
+                        }
+                    }
+                }
+            }
+        });
+        let unresolved = collect_unresolved_refs(&value);
+        assert_eq!(unresolved, vec!["./BasicChannel.yaml"]);
+    }
+
+    #[test]
+    fn discriminator_mapping_rewritten_to_defs_pointer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let schemas_dir = dir.path().join("schemas");
+        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
+
+        fs::write(
+            schemas_dir.join("BasicChannel.yaml"),
+            "type: object\nproperties:\n  kind:\n    type: string\n",
+        )
+        .expect("write model");
+
+        // The oneOf `$ref` lifts BasicChannel into `$defs`; the discriminator.mapping
+        // carries the same target as a plain string that dereference() won't touch.
+        let spec_path = schemas_dir.join("openapi.yaml");
+        fs::write(
+            &spec_path,
+            concat!(
+                "openapi: '3.0.0'\n",
+                "components:\n",
+                "  schemas:\n",
+                "    Channel:\n",
+                "      oneOf:\n",
+                "        - $ref: './BasicChannel.yaml'\n",
+                "      discriminator:\n",
+                "        propertyName: kind\n",
+                "        mapping:\n",
+                "          DEFAULT: './BasicChannel.yaml'\n",
+            ),
+        )
+        .expect("write spec");
+
+        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
+
+        // No external refs remain — the mapping value now points inside the document.
+        let mut unresolved = collect_unresolved_refs(&result);
+        for def_val in defs.values() {
+            unresolved.extend(collect_unresolved_refs(def_val));
+        }
+        assert!(
+            unresolved.is_empty(),
+            "expected zero unresolved refs after mapping rewrite, got: {unresolved:?}"
+        );
+
+        // The mapping value is rewritten to the lifted def pointer.
+        let mapping =
+            result["components"]["schemas"]["Channel"]["discriminator"]["mapping"]["DEFAULT"]
+                .as_str()
+                .expect("mapping DEFAULT string");
+        assert_eq!(mapping, "#/$defs/BasicChannel");
+        assert!(defs.contains_key("BasicChannel"));
+    }
+
+    #[test]
+    fn discriminator_mapping_target_not_lifted_stays_external_and_fails_guard() {
+        // Safety branch: a mapping value whose target is NOT otherwise referenced
+        // (no oneOf/$ref lifts it into $defs) must be left external — never pointed
+        // at a missing #/$defs key — so collect_unresolved_refs then flags it and
+        // the build fails, rather than silently producing a dangling pointer.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let schemas_dir = dir.path().join("schemas");
+        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
+
+        // Note: no BasicChannel.yaml on disk and no oneOf/$ref to it — nothing lifts it.
+        let spec_path = schemas_dir.join("openapi.yaml");
+        fs::write(
+            &spec_path,
+            concat!(
+                "openapi: '3.0.0'\n",
+                "components:\n",
+                "  schemas:\n",
+                "    Channel:\n",
+                "      type: object\n",
+                "      discriminator:\n",
+                "        propertyName: kind\n",
+                "        mapping:\n",
+                "          DEFAULT: './BasicChannel.yaml'\n",
+            ),
+        )
+        .expect("write spec");
+
+        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
+
+        // The mapping value is left untouched (no matching def to point at)...
+        let mapping =
+            result["components"]["schemas"]["Channel"]["discriminator"]["mapping"]["DEFAULT"]
+                .as_str()
+                .expect("mapping DEFAULT string");
+        assert_eq!(mapping, "./BasicChannel.yaml");
+        assert!(!defs.contains_key("BasicChannel"));
+
+        // ...and the unresolved-ref guard flags it, so the build would fail.
+        let mut unresolved = collect_unresolved_refs(&result);
+        for def_val in defs.values() {
+            unresolved.extend(collect_unresolved_refs(def_val));
+        }
+        assert!(
+            unresolved.contains(&"./BasicChannel.yaml".to_owned()),
+            "expected the un-liftable mapping to be flagged as unresolved, got: {unresolved:?}"
+        );
     }
 
     #[test]

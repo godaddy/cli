@@ -68,8 +68,8 @@
       "description": "Transaction amount details",
       "discriminator": {
         "mapping": {
-          "DETAILED": "./DetailedAmount.yaml",
-          "SIMPLE": "./SimpleAmount.yaml"
+          "DETAILED": "#/$defs/DetailedAmount",
+          "SIMPLE": "#/$defs/SimpleAmount"
         },
         "propertyName": "amountType"
       },
@@ -667,8 +667,8 @@
       "description": "Fee associated with transaction",
       "discriminator": {
         "mapping": {
-          "ADDITIONAL": "./SimpleFee.yaml",
-          "GOVERNED": "./GovernedFee.yaml"
+          "ADDITIONAL": "#/$defs/SimpleFee",
+          "GOVERNED": "#/$defs/GovernedFee"
         },
         "propertyName": "feeType"
       },
@@ -698,15 +698,15 @@
       "description": "Funding source of Transaction",
       "discriminator": {
         "mapping": {
-          "APPLE_PAY": "../payment-token/ApplePayPaymentToken.yaml",
-          "BANK_ACCOUNT": "./BankAccount.yaml",
-          "CASH": "./Cash.yaml",
-          "CUSTOM": "./CustomFundingSource.yaml",
-          "EBT_CARD": "./EBTCard.yaml",
-          "GODADDY": "../payment-token/GoDaddyPaymentToken.yaml",
-          "GOOGLE_PAY": "../payment-token/GooglePayPaymentToken.yaml",
-          "PAYMENT_CARD": "./PaymentCard.yaml",
-          "PAZE": "../payment-token/PazePaymentToken.yaml"
+          "APPLE_PAY": "#/$defs/ApplePayPaymentToken",
+          "BANK_ACCOUNT": "#/$defs/BankAccount",
+          "CASH": "#/$defs/Cash",
+          "CUSTOM": "#/$defs/CustomFundingSource",
+          "EBT_CARD": "#/$defs/EBTCard",
+          "GODADDY": "#/$defs/GoDaddyPaymentToken",
+          "GOOGLE_PAY": "#/$defs/GooglePayPaymentToken",
+          "PAYMENT_CARD": "#/$defs/PaymentCard",
+          "PAZE": "#/$defs/PazePaymentToken"
         },
         "propertyName": "sourceType"
       },
@@ -2937,8 +2937,8 @@
       "description": "Response from processor received as part of processing transaction",
       "discriminator": {
         "mapping": {
-          "CREDIT_CARD": "./CreditCardProcessorResponse.yaml",
-          "DEBIT_CARD": "./DebitCardProcessorResponse.yaml"
+          "CREDIT_CARD": "#/$defs/CreditCardProcessorResponse",
+          "DEBIT_CARD": "#/$defs/DebitCardProcessorResponse"
         },
         "propertyName": "processorType"
       },
@@ -3116,11 +3116,11 @@
       "description": "Transaction details",
       "discriminator": {
         "mapping": {
-          "ADJUSTMENT": "./Adjustment.yaml",
-          "AUTHORIZE": "./Authorization.yaml",
-          "CAPTURE": "./Capture.yaml",
-          "REFUND": "./Refund.yaml",
-          "SALE": "./Sale.yaml"
+          "ADJUSTMENT": "#/$defs/Adjustment",
+          "AUTHORIZE": "#/$defs/Authorization",
+          "CAPTURE": "#/$defs/Capture",
+          "REFUND": "#/$defs/Refund",
+          "SALE": "#/$defs/Sale"
         },
         "propertyName": "type"
       },
@@ -3325,8 +3325,8 @@
       "description": "Verification data for funding source",
       "discriminator": {
         "mapping": {
-          "CARD": "../verification-data/CardVerificationData.yaml",
-          "TOKEN": "../verification-data/TokenVerificationData.yaml"
+          "CARD": "#/$defs/CardVerificationData",
+          "TOKEN": "#/$defs/TokenVerificationData"
         },
         "propertyName": "type"
       },

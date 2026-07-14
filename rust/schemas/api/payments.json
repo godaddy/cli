@@ -116,8 +116,8 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "discriminator": {
         "mapping": {
-          "DETAILED": "./DetailedAmount.yaml",
-          "SIMPLE": "./SimpleAmount.yaml"
+          "DETAILED": "#/$defs/DetailedAmount",
+          "SIMPLE": "#/$defs/SimpleAmount"
         },
         "propertyName": "amountType"
       },
@@ -610,8 +610,8 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "discriminator": {
         "mapping": {
-          "ADDITIONAL": "./SimpleFee.yaml",
-          "GOVERNED": "./GovernedFee.yaml"
+          "ADDITIONAL": "#/$defs/SimpleFee",
+          "GOVERNED": "#/$defs/GovernedFee"
         },
         "propertyName": "feeType"
       },
@@ -640,12 +640,12 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "discriminator": {
         "mapping": {
-          "APPLE_PAY": "../payment-token/ApplePayPaymentToken.yaml",
-          "EBT_CARD": "./EBTCard.yaml",
-          "GODADDY": "../payment-token/GDPaymentTokenReference.yaml",
-          "GOOGLE_PAY": "../payment-token/GooglePayPaymentToken.yaml",
-          "PAYMENT_CARD": "./PaymentCard.yaml",
-          "PAYPAL": "../payment-token/PaypalPaymentToken.yaml"
+          "APPLE_PAY": "#/$defs/ApplePayPaymentToken",
+          "EBT_CARD": "#/$defs/EBTCard",
+          "GODADDY": "#/$defs/GDPaymentTokenReference",
+          "GOOGLE_PAY": "#/$defs/GooglePayPaymentToken",
+          "PAYMENT_CARD": "#/$defs/PaymentCard",
+          "PAYPAL": "#/$defs/PaypalPaymentToken"
         },
         "propertyName": "sourceType"
       },
@@ -1056,8 +1056,8 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "discriminator": {
         "mapping": {
-          "CREDIT_CARD": "./CreditCardProcessorResponse.yaml",
-          "DEBIT_CARD": "./DebitCardProcessorResponse.yaml"
+          "CREDIT_CARD": "#/$defs/CreditCardProcessorResponse",
+          "DEBIT_CARD": "#/$defs/DebitCardProcessorResponse"
         },
         "propertyName": "processorType"
       },
@@ -1290,8 +1290,8 @@
       "description": "Verification data for funding source",
       "discriminator": {
         "mapping": {
-          "CARD": "../verification-data/CardVerificationData.yaml",
-          "TOKEN": "../verification-data/TokenVerificationData.yaml"
+          "CARD": "#/$defs/CardVerificationData",
+          "TOKEN": "#/$defs/TokenVerificationData"
         },
         "propertyName": "type"
       },

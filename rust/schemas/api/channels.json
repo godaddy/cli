@@ -58,12 +58,12 @@
       "description": "Resource representing the Channel",
       "discriminator": {
         "mapping": {
-          "DEFAULT": "./BasicChannel.yaml",
-          "MARKETPLACE": "./MarketplaceChannel.yaml",
-          "MOBILE": "./MobileChannel.yaml",
-          "ONLINE": "./OnlineChannel.yaml",
-          "RETAIL": "./RetailChannel.yaml",
-          "SOCIAL": "./SocialChannel.yaml"
+          "DEFAULT": "#/$defs/BasicChannel",
+          "MARKETPLACE": "#/$defs/MarketplaceChannel",
+          "MOBILE": "#/$defs/MobileChannel",
+          "ONLINE": "#/$defs/OnlineChannel",
+          "RETAIL": "#/$defs/RetailChannel",
+          "SOCIAL": "#/$defs/SocialChannel"
         },
         "propertyName": "type"
       },
