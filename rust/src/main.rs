@@ -21,7 +21,7 @@ mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
 
-use clap::Arg;
+use clap::{Arg, ArgAction};
 use cli_engine::{BuildInfo, Cli, CliConfig};
 
 use crate::env::get_env;
@@ -61,16 +61,28 @@ async fn main() -> ExitCode {
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_register_flags(Arc::new(|cmd| {
-                cmd.arg(
-                    Arg::new("env")
-                        .long("env")
-                        .global(true)
-                        .value_name("ENV")
-                        .default_value(
-                            get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned()),
-                        )
-                        .help("Target environment: prod or ote"),
-                )
+                cmd.disable_help_flag(true)
+                    .arg(
+                        // clap's default help arg shows a short summary for
+                        // `-h` and the full text for `--help`. Override it so
+                        // both flags print the same full help everywhere.
+                        Arg::new("help")
+                            .short('h')
+                            .long("help")
+                            .action(ArgAction::HelpLong)
+                            .global(true)
+                            .help("Print help"),
+                    )
+                    .arg(
+                        Arg::new("env")
+                            .long("env")
+                            .global(true)
+                            .value_name("ENV")
+                            .default_value(
+                                get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned()),
+                            )
+                            .help("Target environment: prod or ote"),
+                    )
             }))
             .with_apply_flags(Arc::new(|matches, mw| {
                 if let Some(env) = matches.get_one::<String>("env") {
