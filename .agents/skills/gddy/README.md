@@ -1,4 +1,4 @@
-# `gddy` skill
+# gddy skill
 
 Teaches an AI coding agent how to drive `gddy`, GoDaddy's beta CLI for domain search, registration, and DNS management. It covers install/auth, the two-step quote-then-purchase flow for buying a domain, DNS record semantics (`add` vs `set` vs `delete`), and — since `gddy` moves faster than its own docs — how to fetch GoDaddy's developer docs correctly and when to trust `gddy --help` over a doc page.
 
@@ -17,7 +17,7 @@ This installs the plugin that bundles both skills in this repo (`godaddy-cli` an
 
 ### Any other AI coding agent
 
-This repo is also compatible with [`skills`](https://github.com/vercel-labs/skills), a package-manager-style installer for agent skills that isn't tied to Claude Code — it supports Cursor, Codex, Windsurf, opencode, and 70+ other agents in addition to Claude Code:
+This repo is also compatible with [skills](https://github.com/vercel-labs/skills), a package-manager-style installer for agent skills that isn't tied to Claude Code — it supports Cursor, Codex, Windsurf, opencode, and 70+ other agents in addition to Claude Code:
 
 ```bash
 npx skills add godaddy/cli --skill gddy --agent claude-code
@@ -27,4 +27,4 @@ Swap `--agent claude-code` for whichever agent you use (`cursor`, `codex`, `wind
 
 ## What it doesn't cover
 
-Applications, auth, environments, releases/deploys, extensions, and webhooks live in a separate, older tool, `godaddy`, with its own skill — see [`../godaddy-cli/README.md`](../godaddy-cli/README.md).
+Applications, auth, environments, releases/deploys, extensions, and webhooks live in a separate, older tool, `godaddy`, with its own skill — see [../godaddy-cli/README.md](../godaddy-cli/README.md).
