@@ -2158,8 +2158,16 @@ components:
             )
             .unwrap_or_else(|e| panic!("parse {domain}.json: {e}"));
 
-            let actual = catalog["endpoints"].as_array().map_or(0, Vec::len);
-            let manifest_count = domains[*domain]["endpointCount"].as_u64().unwrap_or(0) as usize;
+            // Fail loudly on a structurally broken file rather than comparing two
+            // silent zeros (which would hide a missing endpoints array / count).
+            let actual = catalog["endpoints"]
+                .as_array()
+                .unwrap_or_else(|| panic!("'{domain}.json' has no endpoints array"))
+                .len();
+            let manifest_count = domains[*domain]["endpointCount"]
+                .as_u64()
+                .unwrap_or_else(|| panic!("manifest.json missing endpointCount for '{domain}'"))
+                as usize;
             assert_eq!(
                 actual, manifest_count,
                 "endpoint-count drift for '{domain}': file has {actual}, manifest says {manifest_count}"

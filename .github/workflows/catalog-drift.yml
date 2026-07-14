@@ -22,6 +22,8 @@ permissions:
 jobs:
   drift:
     runs-on: ubuntu-latest
+    # Guard against a hung network fetch to the spec repos burning runner minutes.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: rust
@@ -48,6 +50,7 @@ jobs:
 
       - name: Regenerate catalog from upstream specs
         if: steps.token.outputs.present == 'true'
+        # Runs from the job-default working-directory (rust/) — cargo needs the workspace.
         env:
           GITHUB_TOKEN: ${{ secrets.CATALOG_SPEC_TOKEN }}
         run: cargo run -p generate-api-catalog
