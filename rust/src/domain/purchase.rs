@@ -132,8 +132,10 @@ fn purchase_consent_types(
             t.parse::<types::AgreementType>().map_err(|_| {
                 CliCoreError::message(format!(
                     "the cached quote for {domain} recorded an agreement type ({t:?}) this CLI \
-                     version doesn't recognize (the cache is stale or from a different CLI \
-                     version); re-run `gddy domain quote {domain}` for a fresh quote."
+                     version doesn't recognize; re-run `gddy domain quote {domain}` for a fresh \
+                     quote in case the cache was just stale. If the fresh quote still fails, the \
+                     API has introduced an agreement type this CLI build doesn't know about yet — \
+                     update to the latest CLI version and try again."
                 ))
             })
         })
@@ -468,6 +470,9 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("doesn't recognize"), "{msg}");
         assert!(msg.contains("gddy domain quote example.com"), "{msg}");
+        // A fresh quote won't help if the API itself added a new agreement type
+        // this CLI build predates — the message must also point at upgrading.
+        assert!(msg.contains("update to the latest CLI version"), "{msg}");
     }
 
     #[test]
