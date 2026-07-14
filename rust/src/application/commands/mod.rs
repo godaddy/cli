@@ -817,8 +817,34 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .await?;
             }
 
+            // Activate the release, then set the application ACTIVE. This runs
+            // regardless of extension count — without it the app stays INACTIVE
+            // and can't be enabled, so a deploy that only uploads artifacts is
+            // effectively a no-op. (Parity with the TS deploy flow / PR #77.)
             sender
-                .send(json!({ "type": "step", "name": "deploy", "status": "completed", "name": name, "extensions": total }))
+                .send(json!({ "type": "step", "name": "release.activate", "status": "started", "releaseId": release_id }))
+                .await;
+            client
+                .activate_release(&application_id, &release_id)
+                .await
+                .map_err(client_err)?;
+            sender
+                .send(json!({ "type": "step", "name": "release.activate", "status": "completed", "releaseId": release_id }))
+                .await;
+
+            sender
+                .send(json!({ "type": "step", "name": "application.activate", "status": "started", "id": application_id }))
+                .await;
+            client
+                .update_application(&application_id, json!({ "status": "ACTIVE" }))
+                .await
+                .map_err(client_err)?;
+            sender
+                .send(json!({ "type": "step", "name": "application.activate", "status": "completed", "id": application_id }))
+                .await;
+
+            sender
+                .send(json!({ "type": "step", "name": "deploy", "status": "completed", "name": name, "extensions": total, "status_after": "ACTIVE" }))
                 .await;
             Ok(())
         },

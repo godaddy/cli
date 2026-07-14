@@ -128,6 +128,18 @@ impl ApplicationClient {
         .await
     }
 
+    pub async fn activate_release(
+        &self,
+        application_id: &str,
+        release_id: &str,
+    ) -> Result<Value, ClientError> {
+        self.query(json!({
+            "query": "mutation ActivateRelease($applicationId: ID!, $releaseId: ID!) { activateRelease(applicationId: $applicationId, releaseId: $releaseId) { id version description status activatedAt createdAt updatedAt } }",
+            "variables": { "applicationId": application_id, "releaseId": release_id }
+        }))
+        .await
+    }
+
     pub async fn enable_application(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
             "query": "mutation EnableApplication($input: MutationEnableStoreApplicationInput!) { enableStoreApplication(input: $input) { id } }",
@@ -242,5 +254,34 @@ mod tests {
         // Don't hard-code the scheme: a built-in's URL is overridable (a dev
         // may point the default at an http:// local proxy).
         assert!(url.contains("://"), "{url:?}");
+    }
+
+    #[tokio::test]
+    async fn activate_release_sends_ids_and_returns_data() {
+        use httpmock::prelude::*;
+        use serde_json::json;
+
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .body_contains("activateRelease")
+                .body_contains("app-1")
+                .body_contains("rel-9");
+            then.status(200).header("content-type", "application/json").json_body(json!({
+                "data": { "activateRelease": { "id": "rel-9", "version": "1.0.0", "status": "ACTIVE" } }
+            }));
+        });
+
+        let client = super::ApplicationClient::new(server.base_url(), "test-token");
+        let data = client
+            .activate_release("app-1", "rel-9")
+            .await
+            .expect("activate_release should succeed");
+
+        // The mutation was sent with both IDs, and the response data is returned.
+        mock.assert();
+        assert_eq!(data["activateRelease"]["status"], "ACTIVE");
+        assert_eq!(data["activateRelease"]["id"], "rel-9");
     }
 }
