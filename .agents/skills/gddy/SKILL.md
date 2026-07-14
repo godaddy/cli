@@ -1,6 +1,6 @@
 ---
 name: gddy
-description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage domains and DNS records. Load this skill whenever a task involves running `gddy` commands, parsing their JSON output, finding or buying a domain, editing DNS records (A, CNAME, MX, TXT, etc.) for a domain hosted at GoDaddy, or reading a page under developer.godaddy.com/docs/api-users/**. Also trigger any time Claude is about to fetch a GoDaddy developer-docs page, even mid-task, since it changes how that fetch should be done. `gddy` is a separate tool from GoDaddy's older `godaddy` CLI (applications, deployments, webhooks) — do not use this skill for that tool, and don't trigger for other registrars or DNS providers (Cloudflare, Route 53, Namecheap, etc.) unless GoDaddy is explicitly involved.
+description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage domains and DNS records. Load this skill whenever a task involves running `gddy` commands, parsing their JSON output, finding or buying a domain, or editing DNS records (A, CNAME, MX, TXT, etc.) for a domain hosted at GoDaddy. `gddy` is a separate tool from GoDaddy's older `godaddy` CLI (applications, deployments, webhooks) — do not use this skill for that tool, and don't trigger for other registrars or DNS providers (Cloudflare, Route 53, Namecheap, etc.) unless GoDaddy is explicitly involved.
 ---
 
 # gddy — GoDaddy domains & DNS CLI
@@ -10,28 +10,6 @@ description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage dom
 Both tools exist side by side because `gddy` is the newer of the two and under active development, with more surface area on its roadmap than what's documented here — it already has early, not-yet-stable support for things like applications and webhooks alongside its domain/DNS focus. Stick to the domain/DNS commands documented in this skill unless you've confirmed a newer capability is ready via `gddy --help`.
 
 It's under active development, and moves faster than its own docs and README — see "When the CLI and the docs disagree" below.
-
-## Fetching GoDaddy developer docs: curl the llms.mdx mirror, don't WebFetch the HTML
-
-Read this before fetching anything under `developer.godaddy.com/docs/**`.
-
-WebFetch always pipes the page through a summarizing model, no matter what the prompt says. For documentation with exact command syntax, flag names, and code samples, that summarization silently drops or rewrites details — a flag gets dropped, a code sample gets paraphrased into something that no longer runs. GoDaddy publishes a full-text markdown mirror of every docs page specifically so agents can get the real content instead. Use it.
-
-To read any docs page, curl its markdown mirror instead of fetching the HTML:
-
-```bash
-# HTML page:   https://developer.godaddy.com/docs/api-users/cli-setup
-# curl this:   https://developer.godaddy.com/llms.mdx/api-users/cli-setup
-curl -fsSL https://developer.godaddy.com/llms.mdx/api-users/cli-setup
-```
-
-The rule for deriving the URL: take the path after `/docs/` (or `/en/docs/`), and fetch `https://developer.godaddy.com/llms.mdx/<that-path>`. This applies even if the user hands you the HTML URL directly — rewrite it yourself before fetching. If you only need the table of contents for a section, `https://developer.godaddy.com/llms.mdx/api-users` (no subpage) gives the full page tree for that section.
-
-Do this for every GoDaddy docs page you touch, not just ones the user explicitly names — if a task leads you to open another page on the same docs site partway through, curl its mirror too rather than falling back to WebFetch.
-
-## When the CLI and the docs disagree, trust the CLI
-
-`gddy`'s own `--help` output reflects the actual installed version; docs and the README can lag behind a release, since it's beta and moves fast. Before relying on a remembered or documented flag shape, especially for anything destructive or paid, run `gddy <command> --help` and trust that over any doc page or README. This matters most for domain purchase, which is a two-step flow that some docs oversimplify (see below).
 
 ## Setup
 
@@ -51,21 +29,17 @@ Authenticate with `gddy auth login` (opens a browser for OAuth). Check state wit
 
 Every command accepts `--env <ote|prod>` to pick environment (default `prod`) and `--debug` for verbose output.
 
+## When the CLI and the docs disagree, trust the CLI
+
+`gddy`'s own `--help` output reflects the actual installed version; docs and the README can lag behind a release, since it's beta and moves fast. Before relying on a remembered or documented flag shape, especially for anything destructive or paid, run `gddy <command> --help` and trust that over any doc page or README. This matters most for domain purchase, which is a two-step flow that some docs oversimplify (see below).
+
 ## Domain purchase: it's a two-step quote-then-purchase flow, not one command
 
 This is the highest-stakes command in the CLI — it charges money and can't be undone — so get the shape right. Some docs and even the README show it as a single `gddy domain purchase <domain> --agree --confirm` call; that's a simplification and doesn't match what the CLI actually does. The real flow locks in registration terms first, then executes against that locked quote:
 
-1. **Quote** — decide the registration period, privacy, and nameservers here; they get baked into the quote token:
-   ```bash
-   gddy domain quote example.com --period 1 --privacy
-   ```
-   Returns a single-use `quoteToken` valid for roughly 10 minutes, cached locally alongside the contacts file.
+1. **Quote** — run `gddy domain quote --help` for the full flag list (period, privacy, nameservers, etc. all get baked into the quote token). Returns a single-use `quoteToken` valid for roughly 10 minutes, cached locally alongside the contacts file.
 
-2. **Purchase** — spend the quote token:
-   ```bash
-   gddy domain purchase --quote-token <token> --agree --confirm
-   ```
-   `--agree` means "I consent to this quote's required legal agreements" — leave it off once first if you want to see what agreements apply before agreeing. `--confirm` is a separate, explicit acknowledgment that this charges the account. Both are required; there's no lower-friction path, by design. Purchase needs an OAuth login (`gddy auth login`) — a bare PAT is rejected here even though PATs work fine for read commands.
+2. **Purchase** — run `gddy domain purchase --help` for the full flag list. `--agree` means "I consent to this quote's required legal agreements" — leave it off once first if you want to see what agreements apply before agreeing. `--confirm` is a separate, explicit acknowledgment that this charges the account. Both are required; there's no lower-friction path, by design. Purchase needs an OAuth login (`gddy auth login`) — a bare PAT is rejected here even though PATs work fine for read commands.
 
 3. Purchase is async. The command waits briefly and reports status; if it's still pending, check back with `gddy domain operation status <operation-id>`. A completed purchase shows up in `gddy domain list`.
 
@@ -108,5 +82,5 @@ gddy dns delete example.com --type A --name www
 
 Read these only when the task needs the detail — they're not needed for common domain/DNS operations:
 
-- `reference/api.md` — raw GoDaddy Domains API endpoints (when `gddy` isn't installed/available, e.g. CI in a non-shell language): availability/suggestions, the registration-quote → registration flow with idempotency keys, pagination, and the MCP server.
+- `reference/api.md` — raw GoDaddy Domains API fallback (when `gddy` isn't installed/available, e.g. CI in a non-shell language): base URL/auth, the public OpenAPI specs to fetch and search directly, and the durable gotchas (idempotency keys on registration, the MCP server's read-only/no-auth scope).
 - `reference/errors-and-limits.md` — error envelope shape, retry/idempotency rules per HTTP method, and rate-limit headers/handling.

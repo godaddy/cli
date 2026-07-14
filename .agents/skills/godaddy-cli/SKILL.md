@@ -372,7 +372,7 @@ godaddy application enable my-app --store-id <storeId>   # 8. Enable
 ```bash
 godaddy application info my-app                          # 1. Check current state
 godaddy application update my-app --description "New"    # 2. Update
-godaddy application validate my-app                       # 3. Validate
+godaddy application validate my-app                      # 3. Validate
 godaddy application release my-app \                     # 4. Bump version
   --release-version 1.1.0
 godaddy application deploy my-app --follow               # 5. Deploy
