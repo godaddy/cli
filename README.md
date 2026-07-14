@@ -4,6 +4,12 @@ Agent-first CLI for interacting with GoDaddy Developer Platform.
 
 ## Installation
 
+### Using an AI coding agent?
+
+Point your agent at this README and ask it to check for and install the relevant skill(s) — `godaddy-cli` for applications/auth/deploy/webhooks, `gddy` for domain search/registration/DNS. Once installed, the skill teaches the agent the CLI's JSON output contract and typical workflows, so it can drive the CLI correctly without guessing at flags. See [`.agents/skills/godaddy-cli/README.md`](./.agents/skills/godaddy-cli/README.md) and [`.agents/skills/gddy/README.md`](./.agents/skills/gddy/README.md) for one-line install commands (Claude Code and 70+ other agents).
+
+### Installing the CLI directly
+
 ```bash
 npm install -g @godaddy/cli
 godaddy --help

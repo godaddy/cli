@@ -1,0 +1,18 @@
+{
+  "name": "godaddy",
+  "owner": {
+    "name": "GoDaddy",
+    "email": "opensource@godaddy.com"
+  },
+  "description": "Skills for using GoDaddy's command-line tools with an AI coding agent.",
+  "plugins": [
+    {
+      "name": "godaddy-cli",
+      "source": "./plugins/godaddy-cli",
+      "description": "Skill for using the GoDaddy CLI tools — the godaddy CLI (applications, auth, environments, deployments, extensions, webhooks) and the gddy CLI (domain search, registration, and DNS management).",
+      "author": {
+        "name": "GoDaddy"
+      }
+    }
+  ]
+}
