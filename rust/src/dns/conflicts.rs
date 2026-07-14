@@ -78,7 +78,9 @@ pub(super) fn describe_duplicate_record(
         conflict_types.dedup();
 
         let remediation = if can_auto_replace {
-            "\n\nRe-run with `--replace-conflicting-types` to remove it automatically.".to_string()
+            "\n\nRe-run with `--replace-conflicting-types` to remove the conflicting record(s) \
+             automatically."
+                .to_string()
         } else {
             // A CNAME conflict can span multiple non-CNAME types (e.g. A + MX) at
             // the same name — every one of them has to be deleted before the add
