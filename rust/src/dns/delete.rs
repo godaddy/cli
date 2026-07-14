@@ -43,8 +43,9 @@ fn summarize_delete_outcomes(
             .join("\n");
         return Err(format!(
             "deleted {deleted} of {} record(s) for {name} ({record_type}); {failed} failed:\n\
-             {breakdown}\n\nRe-run `gddy dns delete`, or `gddy dns list {domain} --type \
-             {record_type} --name {name}` to review the current state.",
+             {breakdown}\n\nRe-run `gddy dns delete {domain} --type {record_type} --name \
+             {name}`, or `gddy dns list {domain} --type {record_type} --name {name}` to \
+             review the current state.",
             outcomes.len(),
         ));
     }
@@ -179,5 +180,14 @@ mod tests {
             summarize_delete_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("deleted 1 of 2"), "{err}");
         assert!(err.contains("✗ 5.6.7.8 — nope"), "{err}");
+        // The recovery hint must include the domain positional and flags or it won't parse.
+        assert!(
+            err.contains("dns delete example.com --type A --name www"),
+            "{err}"
+        );
+        assert!(
+            err.contains("dns list example.com --type A --name www"),
+            "{err}"
+        );
     }
 }

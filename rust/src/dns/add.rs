@@ -61,9 +61,9 @@ fn summarize_add_outcomes(
             .join("\n");
         return Err(format!(
             "added {created} of {total} DNS record(s) for {name} ({record_type}); {failed} \
-             failed:\n{breakdown}\n\nRe-run `gddy dns add` with just the failed value(s), or \
-             `gddy dns list {domain} --type {record_type} --name {name}` to review the current \
-             state."
+             failed:\n{breakdown}\n\nRe-run `gddy dns add {domain} --type {record_type} --name \
+             {name} --data <value>` with just the failed value(s), or `gddy dns list {domain} \
+             --type {record_type} --name {name}` to review the current state."
         ));
     }
 
@@ -206,6 +206,10 @@ mod tests {
         assert!(err.contains("✗ 5.6.7.8 — 422 invalid data"), "{err}");
         assert!(err.contains("✓ 9.9.9.9"), "{err}");
         // The recovery hint must include the domain positional or it won't parse.
+        assert!(
+            err.contains("dns add example.com --type A --name www --data <value>"),
+            "{err}"
+        );
         assert!(
             err.contains("dns list example.com --type A --name www"),
             "{err}"
