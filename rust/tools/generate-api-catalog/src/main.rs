@@ -2014,6 +2014,55 @@ mod tests {
     }
 
     #[test]
+    fn discriminator_mapping_target_not_lifted_stays_external_and_fails_guard() {
+        // Safety branch: a mapping value whose target is NOT otherwise referenced
+        // (no oneOf/$ref lifts it into $defs) must be left external — never pointed
+        // at a missing #/$defs key — so collect_unresolved_refs then flags it and
+        // the build fails, rather than silently producing a dangling pointer.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let schemas_dir = dir.path().join("schemas");
+        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
+
+        // Note: no BasicChannel.yaml on disk and no oneOf/$ref to it — nothing lifts it.
+        let spec_path = schemas_dir.join("openapi.yaml");
+        fs::write(
+            &spec_path,
+            concat!(
+                "openapi: '3.0.0'\n",
+                "components:\n",
+                "  schemas:\n",
+                "    Channel:\n",
+                "      type: object\n",
+                "      discriminator:\n",
+                "        propertyName: kind\n",
+                "        mapping:\n",
+                "          DEFAULT: './BasicChannel.yaml'\n",
+            ),
+        )
+        .expect("write spec");
+
+        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
+
+        // The mapping value is left untouched (no matching def to point at)...
+        let mapping =
+            result["components"]["schemas"]["Channel"]["discriminator"]["mapping"]["DEFAULT"]
+                .as_str()
+                .expect("mapping DEFAULT string");
+        assert_eq!(mapping, "./BasicChannel.yaml");
+        assert!(!defs.contains_key("BasicChannel"));
+
+        // ...and the unresolved-ref guard flags it, so the build would fail.
+        let mut unresolved = collect_unresolved_refs(&result);
+        for def_val in defs.values() {
+            unresolved.extend(collect_unresolved_refs(def_val));
+        }
+        assert!(
+            unresolved.contains(&"./BasicChannel.yaml".to_owned()),
+            "expected the un-liftable mapping to be flagged as unresolved, got: {unresolved:?}"
+        );
+    }
+
+    #[test]
     fn dereference_lifts_external_ref_to_defs() {
         let dir = tempfile::tempdir().expect("tempdir");
         let model_dir = dir.path().join("schemas").join("models");
