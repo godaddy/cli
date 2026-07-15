@@ -115,16 +115,18 @@ fn log_resolved_oauth(env: &ResolvedEnv) {
 /// reject it anyway. Catching it here turns that into a clear, local error
 /// instead of the auth server's `invalid_scope`.
 fn validate_requested_scopes(requested: &[String]) -> Result<()> {
+    let mut seen = std::collections::HashSet::new();
     let unknown: Vec<&str> = requested
         .iter()
         .map(String::as_str)
         .filter(|scope| *scope != scopes::OFFLINE_ACCESS && !scopes::ALL.contains(scope))
+        .filter(|scope| seen.insert(*scope))
         .collect();
     if unknown.is_empty() {
         return Ok(());
     }
     Err(CliCoreError::message(format!(
-        "unsupported OAuth scope(s) requested: {}",
+        "unknown OAuth scope(s) requested: {} (not registered for the gddy OAuth client)",
         unknown.join(", ")
     )))
 }
@@ -237,7 +239,11 @@ mod tests {
     fn validate_requested_scopes_rejects_unregistered_scope() {
         let err = validate_requested_scopes(&["domains.domain:write".to_owned()])
             .expect_err("scope is not in the registry");
-        assert!(err.to_string().contains("domains.domain:write"));
+        assert_eq!(
+            err.to_string(),
+            "unknown OAuth scope(s) requested: domains.domain:write \
+             (not registered for the gddy OAuth client)"
+        );
     }
 
     #[test]
@@ -252,5 +258,16 @@ mod tests {
         assert!(message.contains("bogus:scope"));
         assert!(message.contains("another:bogus"));
         assert!(!message.contains(scopes::DOMAINS_READ));
+    }
+
+    #[test]
+    fn validate_requested_scopes_dedupes_repeated_unknown_scopes() {
+        let err = validate_requested_scopes(&["bogus:scope".to_owned(), "bogus:scope".to_owned()])
+            .expect_err("scope is not in the registry");
+        assert_eq!(
+            err.to_string(),
+            "unknown OAuth scope(s) requested: bogus:scope \
+             (not registered for the gddy OAuth client)"
+        );
     }
 }
