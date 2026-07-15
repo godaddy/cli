@@ -695,7 +695,34 @@ fn release_command() -> RuntimeCommandSpec {
                 .get("description")
                 .and_then(|v| v.as_str())
                 .map(str::to_owned);
-            let mut input = json!({ "applicationId": app_id, "version": version });
+            // Best-effort read of godaddy.toml: missing is fine, malformed warns but isn't fatal.
+            let config = match crate::config::read_config(&crate::config::config_path(Some(
+                &ctx.middleware.env,
+            ))) {
+                Ok(c) => Some(c),
+                Err(crate::config::ConfigError::NotFound { .. }) => None,
+                Err(_) => {
+                    tracing::warn!(
+                        "ignoring malformed application config; releasing without actions/subscriptions"
+                    );
+                    None
+                }
+            };
+            let actions = config
+                .as_ref()
+                .map(|c| c.actions.clone())
+                .unwrap_or_default();
+            let subscriptions = config
+                .as_ref()
+                .and_then(|c| c.subscriptions.as_ref())
+                .map(|s| s.webhook.clone())
+                .unwrap_or_default();
+            let mut input = json!({
+                "applicationId": app_id,
+                "version": version,
+                "actions": actions,
+                "subscriptions": subscriptions,
+            });
             if let Some(desc) = description {
                 input["description"] = json!(desc);
             }
