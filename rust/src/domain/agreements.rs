@@ -7,7 +7,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, make_client, string_list};
+use super::common::{api_error, comma_joined, make_client, string_list};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -55,7 +55,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .unwrap_or(false);
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
-            let resp = match client.agreements().tlds(tlds).privacy(privacy).send().await {
+            let resp = match client
+                .agreements()
+                .tlds(comma_joined(tlds))
+                .privacy(privacy)
+                .send()
+                .await
+            {
                 Ok(r) => r,
                 Err(e) => return Err(api_error("retrieving legal agreements", debug, e).await),
             };
@@ -87,4 +93,41 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::common::comma_joined;
+
+    #[tokio::test]
+    async fn tlds_are_sent_as_a_single_comma_joined_query_param() {
+        // Regression for DEVEX-882: the v1 `tlds` query param is OpenAPI
+        // `style: form, explode: false` — one comma-joined value. progenitor's
+        // generated `tlds()` setter always seq-serializes a `Vec` as repeated
+        // `tlds=` pairs, so callers must join multiple `--tld` occurrences into
+        // a single element before calling it, or the API rejects the request.
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v1/domains/agreements")
+                    .query_param("tlds", "com,net,io");
+                then.status(200).json_body(serde_json::json!([]));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let tlds = comma_joined(vec!["com".to_string(), "net".to_string(), "io".to_string()]);
+        client
+            .agreements()
+            .tlds(tlds)
+            .privacy(false)
+            .send()
+            .await
+            .expect("request succeeds");
+
+        mock.assert_async().await;
+    }
 }

@@ -136,6 +136,23 @@ pub(crate) fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
     }
 }
 
+/// Collapse a repeatable CLI flag's values into the single query-string value
+/// some domains-client endpoints require (e.g. `tlds`, whose OpenAPI param is
+/// `style: form, explode: false` — one comma-joined value). progenitor's
+/// generated setters always seq-serialize a `Vec` argument as repeated
+/// `key=value` pairs regardless of the spec's `explode` setting, so passing
+/// multiple `--tlds` occurrences straight through sends `tlds=com&tlds=net`
+/// and the API rejects it (`400 MISMATCH_FORMAT`, DEVEX-882). Joining into a
+/// single element before calling the setter produces the one pair the API
+/// expects. `[]` stays `[]` so callers can still gate on "no filter given".
+pub(crate) fn comma_joined(values: Vec<String>) -> Vec<String> {
+    if values.is_empty() {
+        Vec::new()
+    } else {
+        vec![values.join(",")]
+    }
+}
+
 /// Turn a domains-client error into a `CliCoreError`, reading the response body
 /// for unexpected (non-2xx) responses so the API's actual message isn't lost
 /// (progenitor's `Display` prints only the status). Async because reading the
@@ -328,6 +345,30 @@ fn split_camel_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comma_joined_collapses_multiple_values_into_one_element() {
+        // Regression for DEVEX-882: repeated `--tlds`/`--tld` values must become
+        // one comma-joined query element, not stay as separate elements (which
+        // progenitor would send as repeated `tlds=` pairs).
+        assert_eq!(
+            comma_joined(vec!["com".to_string(), "net".to_string(), "io".to_string()]),
+            vec!["com,net,io".to_string()]
+        );
+    }
+
+    #[test]
+    fn comma_joined_single_value_is_unchanged() {
+        assert_eq!(
+            comma_joined(vec!["com".to_string()]),
+            vec!["com".to_string()]
+        );
+    }
+
+    #[test]
+    fn comma_joined_empty_stays_empty() {
+        assert_eq!(comma_joined(Vec::<String>::new()), Vec::<String>::new());
+    }
 
     fn money(value: Option<i64>, currency: &str) -> types::SimpleMoney {
         types::SimpleMoney {
