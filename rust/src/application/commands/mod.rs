@@ -703,7 +703,7 @@ fn release_command() -> RuntimeCommandSpec {
                 Err(crate::config::ConfigError::NotFound { .. }) => None,
                 Err(_) => {
                     tracing::warn!(
-                        "ignoring malformed application config; releasing without actions/subscriptions"
+                        "ignoring malformed application config; releasing without its configured actions, subscriptions, or extensions"
                     );
                     None
                 }
@@ -717,11 +717,13 @@ fn release_command() -> RuntimeCommandSpec {
                 .and_then(|c| c.subscriptions.as_ref())
                 .map(|s| s.webhook.clone())
                 .unwrap_or_default();
+            let ui_extensions = release_ui_extensions(config.as_ref())?;
             let mut input = json!({
                 "applicationId": app_id,
                 "version": version,
                 "actions": actions,
                 "subscriptions": subscriptions,
+                "uiExtensions": ui_extensions,
             });
             if let Some(desc) = description {
                 input["description"] = json!(desc);
@@ -915,6 +917,59 @@ fn collect_extensions(
         }
     }
     result
+}
+
+/// Flatten the manifest's UI extensions (embed/checkout/blocks) into `createRelease`'s
+/// `uiExtensions` metadata. An extension with more than one target is rejected.
+fn release_ui_extensions(
+    config: Option<&crate::config::Config>,
+) -> cli_engine::Result<Vec<serde_json::Value>> {
+    let Some(extensions) = config.and_then(|c| c.extensions.as_ref()) else {
+        return Ok(Vec::new());
+    };
+
+    let mut entries = Vec::new();
+
+    // embed and checkout are distinct types with the same shape, so chain them.
+    let targeted = extensions
+        .embed
+        .iter()
+        .map(|e| ("embed", &e.name, &e.handle, &e.source, &e.targets))
+        .chain(
+            extensions
+                .checkout
+                .iter()
+                .map(|e| ("checkout", &e.name, &e.handle, &e.source, &e.targets)),
+        );
+    for (kind, name, handle, source, targets) in targeted {
+        if targets.len() > 1 {
+            return Err(cli_engine::CliCoreError::message(format!(
+                "UI extension {name:?} has {} targets, but only one target is supported per extension during release",
+                targets.len()
+            )));
+        }
+        let mut entry = json!({
+            "type": kind,
+            "name": name,
+            "handle": handle,
+            "source": source,
+        });
+        if let Some(t) = targets.first() {
+            entry["target"] = json!(t.target);
+        }
+        entries.push(entry);
+    }
+
+    if let Some(blocks) = &extensions.blocks {
+        entries.push(json!({
+            "type": "blocks",
+            "name": "Blocks",
+            "handle": "blocks",
+            "source": blocks.source,
+        }));
+    }
+
+    Ok(entries)
 }
 
 async fn deploy_extension(
@@ -1373,6 +1428,111 @@ mod tests {
             message.contains("provider"),
             "expected an auth-provider resolution error, got: {}",
             output.rendered
+        );
+    }
+
+    fn config_with_extensions(
+        extensions: Option<crate::config::ExtensionsConfig>,
+    ) -> crate::config::Config {
+        crate::config::Config {
+            name: "app".to_owned(),
+            client_id: "cid".to_owned(),
+            description: None,
+            version: "0.0.0".to_owned(),
+            url: "https://example.com".to_owned(),
+            proxy_url: "https://example.com".to_owned(),
+            authorization_scopes: vec![],
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions,
+        }
+    }
+
+    #[test]
+    fn release_ui_extensions_maps_embed_checkout_blocks() {
+        use crate::config::{
+            BlocksExtensionConfig, CheckoutExtensionConfig, EmbedExtensionConfig, ExtensionTarget,
+            ExtensionsConfig,
+        };
+
+        let config = config_with_extensions(Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "banner".to_owned(),
+                handle: "banner-handle".to_owned(),
+                source: "src/banner.js".to_owned(),
+                targets: vec![ExtensionTarget {
+                    target: "home".to_owned(),
+                }],
+            }],
+            checkout: vec![CheckoutExtensionConfig {
+                name: "upsell".to_owned(),
+                handle: "upsell-handle".to_owned(),
+                source: "src/upsell.js".to_owned(),
+                targets: vec![],
+            }],
+            blocks: Some(BlocksExtensionConfig {
+                source: "src/blocks.js".to_owned(),
+            }),
+        }));
+
+        let ui = super::release_ui_extensions(Some(&config)).expect("valid extensions");
+        assert_eq!(ui.len(), 3);
+
+        assert_eq!(ui[0]["type"], "embed");
+        assert_eq!(ui[0]["name"], "banner");
+        assert_eq!(ui[0]["handle"], "banner-handle");
+        assert_eq!(ui[0]["source"], "src/banner.js");
+        assert_eq!(ui[0]["target"], "home");
+
+        // checkout with no target → `target` omitted, not null
+        assert_eq!(ui[1]["type"], "checkout");
+        assert!(ui[1].get("target").is_none());
+
+        // blocks → fixed name/handle, no target
+        assert_eq!(ui[2]["type"], "blocks");
+        assert_eq!(ui[2]["name"], "Blocks");
+        assert_eq!(ui[2]["handle"], "blocks");
+        assert!(ui[2].get("target").is_none());
+    }
+
+    #[test]
+    fn release_ui_extensions_rejects_multiple_targets() {
+        use crate::config::{EmbedExtensionConfig, ExtensionTarget, ExtensionsConfig};
+
+        let config = config_with_extensions(Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "multi".to_owned(),
+                handle: "multi-handle".to_owned(),
+                source: "src/multi.js".to_owned(),
+                targets: vec![
+                    ExtensionTarget {
+                        target: "home".to_owned(),
+                    },
+                    ExtensionTarget {
+                        target: "cart".to_owned(),
+                    },
+                ],
+            }],
+            checkout: vec![],
+            blocks: None,
+        }));
+
+        let err =
+            super::release_ui_extensions(Some(&config)).expect_err("more than one target rejected");
+        assert!(
+            err.to_string().contains("only one target is supported"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn release_ui_extensions_empty_without_extensions() {
+        assert!(super::release_ui_extensions(None).expect("ok").is_empty());
+        assert!(
+            super::release_ui_extensions(Some(&config_with_extensions(None)))
+                .expect("ok")
+                .is_empty()
         );
     }
 }
