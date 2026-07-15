@@ -196,6 +196,34 @@ fn string_list(args: &serde_json::Map<String, Value>, key: &str) -> Vec<String> 
     }
 }
 
+/// Split a `--header` value of the form `KEY:VALUE` into trimmed parts.
+/// Splits on the first colon only, so values may themselves contain colons
+/// (e.g. a URL). Returns None when there is no colon.
+fn split_header(raw: &str) -> Option<(&str, &str)> {
+    raw.split_once(':').map(|(k, v)| (k.trim(), v.trim()))
+}
+
+/// Parse a response body as JSON when possible, otherwise preserve it as raw
+/// UTF-8 text. A non-JSON body (plain text / HTML error page) must not be
+/// silently dropped to `null` — only a truly empty or binary body becomes null.
+fn parse_response_body(bytes: &[u8]) -> Value {
+    match serde_json::from_slice::<Value>(bytes) {
+        Ok(v) => v,
+        Err(_) => match std::str::from_utf8(bytes) {
+            Ok(s) if !s.is_empty() => json!(s),
+            _ => Value::Null,
+        },
+    }
+}
+
+/// A non-empty top-level GraphQL `errors` array, if present. GraphQL endpoints
+/// return HTTP 200 even on failure and carry the failure here.
+fn graphql_errors(body: &Value) -> Option<&Vec<Value>> {
+    body.get("errors")
+        .and_then(|e| e.as_array())
+        .filter(|a| !a.is_empty())
+}
+
 /// Union of user-supplied `--scope` flags and a matched endpoint's declared
 /// scopes, order-preserving and de-duplicated (flags first).
 fn merge_required_scopes(flag_scopes: Vec<String>, endpoint_scopes: &[String]) -> Vec<String> {
@@ -663,6 +691,16 @@ fn call_command() -> RuntimeCommandSpec {
                 .bearer_auth(&token)
                 .header("x-request-id", uuid::Uuid::new_v4().to_string());
 
+            // Apply user-supplied `--header KEY:VALUE` values (repeatable).
+            for h in string_list(&ctx.args, "header") {
+                let (key, val) = split_header(&h).ok_or_else(|| {
+                    cli_engine::CliCoreError::message(format!(
+                        "invalid header '{h}': expected KEY:VALUE"
+                    ))
+                })?;
+                req = req.header(key, val);
+            }
+
             if let Some(body) = request_body {
                 req = req.json(&body);
             }
@@ -676,7 +714,8 @@ fn call_command() -> RuntimeCommandSpec {
                 .await
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
 
-            let status = resp.status();
+            let status_code = resp.status();
+            let status_text = status_code.canonical_reason().unwrap_or("").to_owned();
             let response_headers_raw = resp.headers().clone();
             let include_headers = ctx
                 .args
@@ -688,12 +727,12 @@ fn call_command() -> RuntimeCommandSpec {
                 .await
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
             cli_engine::transport::debug_log_reqwest_response(
-                status,
+                status_code,
                 &response_headers_raw,
                 &body_bytes,
             );
 
-            let status = status.as_u16();
+            let status = status_code.as_u16();
             let response_headers: Option<serde_json::Map<String, Value>> = if include_headers {
                 Some(
                     response_headers_raw
@@ -705,11 +744,23 @@ fn call_command() -> RuntimeCommandSpec {
                 None
             };
 
-            let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(json!(null));
+            let body: Value = parse_response_body(&body_bytes);
+
+            // GraphQL endpoints return HTTP 200 even on failure, carrying the error
+            // in a top-level `errors` array. Detect the GraphQL commerce surfaces by
+            // path and surface those errors instead of reporting a false success.
+            let is_graphql = endpoint.contains("graphql") || endpoint.contains("subgraph");
+            if is_graphql && let Some(errors) = graphql_errors(&body) {
+                return Err(cli_engine::CliCoreError::message(format!(
+                    "GraphQL request returned {} error(s):\n{}",
+                    errors.len(),
+                    serde_json::to_string_pretty(&json!(errors)).unwrap_or_default(),
+                )));
+            }
 
             // Scope step-up already ran up front (the token was requested with
             // `required`). A 403 here means the granted token still lacks a
-            // required scope — surface it rather than silently returning the body.
+            // required scope — surface it with a re-login hint.
             if status == 403 && !required.is_empty() {
                 // `auth login --scope` is append-style (one value per flag), so
                 // repeat the flag rather than space-joining.
@@ -725,6 +776,20 @@ fn call_command() -> RuntimeCommandSpec {
                 )));
             }
 
+            // Any other non-2xx is a failure, not a success envelope. Include the
+            // status line and (truncated) response body so the caller sees the detail
+            // instead of a success result that happens to carry an error payload.
+            if !(200..300).contains(&status) {
+                let detail: String = serde_json::to_string_pretty(&body)
+                    .unwrap_or_else(|_| body.to_string())
+                    .chars()
+                    .take(4000)
+                    .collect();
+                return Err(cli_engine::CliCoreError::message(format!(
+                    "{status} {status_text}\n{detail}"
+                )));
+            }
+
             let query_path = ctx.args.get("query").and_then(|v| v.as_str());
             let output = if let Some(path) = query_path {
                 extract_json_path(&body, path)
@@ -734,7 +799,14 @@ fn call_command() -> RuntimeCommandSpec {
                 body
             };
 
-            let mut result = json!({ "status": status, "body": output });
+            // Identify the call and its outcome in the result envelope.
+            let mut result = json!({
+                "endpoint": endpoint,
+                "method": method,
+                "status": status,
+                "status_text": status_text,
+                "data": output,
+            });
             if let Some(headers) = response_headers {
                 result["headers"] = Value::Object(headers);
             }
@@ -779,6 +851,43 @@ mod tests {
             merge_required_scopes(v(&["a", "a", "b"]), &v(&["b"])),
             v(&["a", "b"])
         );
+    }
+
+    #[test]
+    fn split_header_trims_and_splits_on_first_colon() {
+        assert_eq!(
+            super::split_header("x-store-id: abc-123"),
+            Some(("x-store-id", "abc-123"))
+        );
+        // Value may contain colons (e.g. a URL) — only the first colon splits.
+        assert_eq!(
+            super::split_header("Location: https://x/y"),
+            Some(("Location", "https://x/y"))
+        );
+        assert_eq!(super::split_header("no-colon"), None);
+    }
+
+    #[test]
+    fn parse_response_body_json_text_and_empty() {
+        use serde_json::json;
+        assert_eq!(super::parse_response_body(b"{\"a\":1}"), json!({"a":1}));
+        // Non-JSON is preserved as text, not dropped to null.
+        assert_eq!(
+            super::parse_response_body(b"plain text"),
+            json!("plain text")
+        );
+        // Empty body is null.
+        assert_eq!(super::parse_response_body(b""), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn graphql_errors_detects_nonempty_array_only() {
+        use serde_json::json;
+        assert!(
+            super::graphql_errors(&json!({"data": null, "errors": [{"message": "x"}]})).is_some()
+        );
+        assert!(super::graphql_errors(&json!({"data": {}, "errors": []})).is_none());
+        assert!(super::graphql_errors(&json!({"data": {}})).is_none());
     }
 
     #[test]
