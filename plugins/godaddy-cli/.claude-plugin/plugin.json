@@ -1,8 +1,0 @@
-{
-  "name": "godaddy-cli",
-  "description": "Skill for using the GoDaddy CLI tools — the godaddy CLI (applications, auth, environments, deployments, extensions, webhooks) and the gddy CLI (domain search, registration, and DNS management).",
-  "version": "0.1.0",
-  "author": {
-    "name": "GoDaddy"
-  }
-}

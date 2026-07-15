@@ -10,8 +10,6 @@ tags: [godaddy, cli, commerce, applications, deploy]
 
 The `godaddy` CLI is an agent-first tool. Every command returns a single JSON envelope to stdout. There is no plain text mode, no `--json` flag, and no table output. Parse stdout as JSON.
 
-GoDaddy also publishes `gddy`, a separate and newer CLI — a beta tool, distributed via GitHub Releases rather than npm, for domain search, registration, and DNS management. It's a different binary with its own install method, auth, and config; installing or using one doesn't affect the other. If the task is about domains or DNS records rather than applications, auth, environments, deployments, extensions, or webhooks, use the `gddy` skill instead of this one.
-
 ## Quick Start
 
 ```bash
@@ -66,7 +64,7 @@ Every command writes exactly one JSON object to stdout followed by a newline. Pa
 
 Check `ok` first. On failure, read `error.code` for programmatic handling and `fix` for the suggested recovery step.
 
-Error codes: `NOT_FOUND`, `AUTH_REQUIRED`, `VALIDATION_ERROR`, `NETWORK_ERROR`, `CONFIG_ERROR`, `SECURITY_BLOCKED`, `COMMAND_NOT_FOUND`, `UNSUPPORTED_OPTION`, `UNEXPECTED_ERROR`, `FORBIDDEN`, `CONFLICT`, `RATE_LIMIT_EXCEEDED`.
+Error codes: `NOT_FOUND`, `AUTH_REQUIRED`, `VALIDATION_ERROR`, `NETWORK_ERROR`, `CONFIG_ERROR`, `SECURITY_BLOCKED`, `COMMAND_NOT_FOUND`, `UNSUPPORTED_OPTION`, `UNEXPECTED_ERROR`.
 
 ### next_actions (HATEOAS)
 

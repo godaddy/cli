@@ -5,7 +5,7 @@ description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage dom
 
 # gddy — GoDaddy domains & DNS CLI
 
-`gddy` is GoDaddy's beta CLI for domain search, registration, and DNS management. It's separate from GoDaddy's older `godaddy` CLI. For application, deployment, or webhook tasks, use the `godaddy-cli` skill instead of this one.
+`gddy` is GoDaddy's beta CLI for domain search, registration, and DNS management. It's separate from GoDaddy's older `godaddy` CLI, which covers applications, deployments, and webhooks.
 
 Both tools exist side by side because `gddy` is the newer of the two, under active development, and ships new features frequently. Run `gddy --help` against your installed release for the authoritative, current command list.
 
