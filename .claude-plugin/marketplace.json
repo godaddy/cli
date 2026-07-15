@@ -2,7 +2,7 @@
   "name": "godaddy",
   "owner": {
     "name": "GoDaddy",
-    "email": "opensource@godaddy.com"
+    "email": "oss@godaddy.com"
   },
   "description": "Skills for using GoDaddy's command-line tools with an AI coding agent.",
   "plugins": [
