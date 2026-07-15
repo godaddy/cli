@@ -21,4 +21,4 @@ This repo is also compatible with [skills](https://github.com/vercel-labs/skills
 npx skills add godaddy/cli --skill gddy --agent <agent>
 ```
 
-Swap `<agent>` for whichever agent you use (`cursor`, `codex`, `windsurf`, `opencode`, ...). Run `npx skills add --help` for the full list of supported agents.
+Swap `<agent>` for whichever agent you use (`claude-code`, `cursor`, `codex`, `windsurf`, `opencode`, ...). Run `npx skills add --help` for the full list of supported agents.
