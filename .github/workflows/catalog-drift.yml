@@ -9,11 +9,19 @@ name: API catalog drift
 #
 # Requires a token with read access to the gdcorp-platform spec repos, provisioned
 # as the `CATALOG_SPEC_TOKEN` secret. The default GITHUB_TOKEN only reaches this
-# repo, so the job no-ops when the secret is absent (e.g. on forks).
+# repo. A missing token is a configuration error and fails the job.
+#
+# Scheduled workflows only run from a repository's default branch. While
+# `rust-port` is not the default, run this check on every push to `rust-port`;
+# the weekly schedule activates when `rust-port` becomes the default branch.
+# `workflow_dispatch` also allows an on-demand check of any branch.
 
 on:
   schedule:
-    - cron: "17 6 * * 1" # Mondays ~06:17 UTC
+    - cron: "17 6 * * 1" # Mondays ~06:17 UTC after rust-port becomes default
+  push:
+    branches:
+      - rust-port
   workflow_dispatch:
 
 permissions:
@@ -32,38 +40,36 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Check for spec token
-        id: token
         working-directory: .
         env:
           CATALOG_SPEC_TOKEN: ${{ secrets.CATALOG_SPEC_TOKEN }}
         run: |
-          if [ -n "$CATALOG_SPEC_TOKEN" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::CATALOG_SPEC_TOKEN not set — skipping catalog drift check."
+          if [ -z "$CATALOG_SPEC_TOKEN" ]; then
+            echo "::error::CATALOG_SPEC_TOKEN must be configured with read access to gdcorp-platform specification repositories."
+            exit 1
           fi
 
       - name: Install Rust toolchain
-        if: steps.token.outputs.present == 'true'
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Regenerate catalog from upstream specs
-        if: steps.token.outputs.present == 'true'
         # Runs from the job-default working-directory (rust/) — cargo needs the workspace.
         env:
           GITHUB_TOKEN: ${{ secrets.CATALOG_SPEC_TOKEN }}
         run: cargo run -p generate-api-catalog
 
       - name: Fail on drift
-        if: steps.token.outputs.present == 'true'
         working-directory: .
         run: |
           # manifest.json carries a generated-at timestamp that changes every run;
-          # exclude it and compare only the domain schema files.
-          if ! git diff --quiet -- rust/schemas/api ':(exclude)rust/schemas/api/manifest.json'; then
+          # stage the generated directory, then unstage that timestamp-only file.
+          # The staged diff catches modifications, deletions, and new untracked domains.
+          git add -A -- rust/schemas/api
+          git restore --staged -- rust/schemas/api/manifest.json
+
+          if ! git diff --cached --quiet -- rust/schemas/api; then
             echo "::error::Embedded API catalog is stale vs upstream commerce.*-specification repos. Regenerate with: (cd rust && GITHUB_TOKEN=<token> cargo run -p generate-api-catalog) and commit."
-            git diff --stat -- rust/schemas/api ':(exclude)rust/schemas/api/manifest.json'
+            git diff --cached --stat -- rust/schemas/api
             exit 1
           fi
           echo "API catalog is in sync with upstream specs."

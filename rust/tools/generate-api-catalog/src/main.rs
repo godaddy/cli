@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
+use base64::Engine;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,70 +17,10 @@ use serde_json::Value;
 const GITHUB_ORG: &str = "gdcorp-platform";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 const GITHUB_PAGE_SIZE: u32 = 100;
-
-const BOOTSTRAP_REPOS: &[&str] = &[
-    "commerce.bulk-operations-specification",
-    "commerce.businesses-specification",
-    "commerce.catalog-products-specification",
-    "commerce.channels-specification",
-    "commerce.chargebacks-specification",
-    "commerce.customer-profiles-specification",
-    "commerce.fulfillments-specification",
-    "commerce.metafields-specification",
-    "commerce.onboarding-specification",
-    "commerce.orders-specification",
-    "commerce.payment-requests-specification",
-    "commerce.payments-specification",
-    "commerce.price-adjustments-specification",
-    "commerce.recommendations-specification",
-    "commerce.shipping-specification",
-    "commerce.stores-specification",
-    "commerce.subscriptions-specification",
-    "commerce.taxes-specification",
-    "commerce.transactions-specification",
-];
-
-const LEGACY_REPOS: &[&str] = &["location.addresses-specification"];
-
-/// Local vendored OpenAPI specs (domain key, path relative to this crate's manifest dir).
-const LOCAL_SPECS: &[(&str, &str)] = &[(
-    "hosting-nodejs",
-    "../../schemas/openapi/hosting-nodejs-public-v1.yaml",
-)];
+const SOURCE_MANIFEST_JSON: &str = include_str!("../../../api-catalog-sources.json");
 
 const HTTP_METHODS: &[&str] = &[
     "get", "post", "put", "patch", "delete", "options", "head", "trace",
-];
-
-/// The exact set of domains the committed catalog must contain — the deliberate,
-/// reviewed contract. The `committed_catalog_matches_expected_domains_and_manifest`
-/// test fails if the catalog files, or `manifest.json`, drift from this list, so
-/// adding or removing a domain is a conscious change (update this list in the same
-/// PR). This is the always-on, no-network guard; the scheduled regen-and-diff CI
-/// job catches per-operation drift against the upstream spec repos.
-#[cfg(test)]
-const EXPECTED_DOMAINS: &[&str] = &[
-    "bulk-operations",
-    "businesses",
-    "catalog-products",
-    "channels",
-    "chargebacks",
-    "customer-profiles",
-    "fulfillments",
-    "hosting-nodejs",
-    "location-addresses",
-    "metafields",
-    "onboarding",
-    "orders",
-    "payment-requests",
-    "payments",
-    "price-adjustments",
-    "recommendations",
-    "shipping",
-    "stores",
-    "subscriptions",
-    "taxes",
-    "transactions",
 ];
 
 // ---------------------------------------------------------------------------
@@ -200,6 +141,49 @@ struct CatalogManifest {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+struct RemoteCatalogSource {
+    domain: String,
+    repository: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalCatalogSource {
+    domain: String,
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyTypescriptParity {
+    status: String,
+    shared_domain_count: usize,
+    rust_only_domains: Vec<String>,
+    rationale: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogSourceManifest {
+    version: u32,
+    remote: Vec<RemoteCatalogSource>,
+    local: Vec<LocalCatalogSource>,
+    legacy_typescript: LegacyTypescriptParity,
+}
+
+impl CatalogSourceManifest {
+    fn expected_domains(&self) -> Vec<String> {
+        let mut domains: Vec<String> = self
+            .remote
+            .iter()
+            .map(|source| source.domain.clone())
+            .chain(self.local.iter().map(|source| source.domain.clone()))
+            .collect();
+        domains.sort();
+        domains
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct GithubRepo {
     name: String,
     clone_url: String,
@@ -214,6 +198,55 @@ struct SpecSource {
     spec_file: PathBuf,
     spec_version: String,
     graphql_only: bool,
+}
+
+fn load_source_manifest() -> Result<CatalogSourceManifest> {
+    let manifest: CatalogSourceManifest = serde_json::from_str(SOURCE_MANIFEST_JSON)
+        .context("failed to parse api-catalog-sources.json")?;
+
+    if manifest.version != 1 {
+        bail!(
+            "unsupported api-catalog-sources.json version {}",
+            manifest.version
+        );
+    }
+    if manifest.legacy_typescript.status != "retired-on-rust-port" {
+        bail!("legacyTypescript.status must document the Rust-port retirement");
+    }
+    if manifest.legacy_typescript.shared_domain_count != manifest.remote.len() {
+        bail!(
+            "legacyTypescript.sharedDomainCount must match the {} remote domains",
+            manifest.remote.len()
+        );
+    }
+    if manifest.legacy_typescript.rationale.trim().is_empty() {
+        bail!("legacyTypescript.rationale must document the catalog difference");
+    }
+
+    let expected = manifest.expected_domains();
+    let unique: HashSet<&str> = expected.iter().map(String::as_str).collect();
+    if unique.len() != expected.len() {
+        bail!("api-catalog-sources.json contains duplicate domain names");
+    }
+
+    let mut local_domains: Vec<&str> = manifest
+        .local
+        .iter()
+        .map(|source| source.domain.as_str())
+        .collect();
+    local_domains.sort();
+    let mut rust_only_domains: Vec<&str> = manifest
+        .legacy_typescript
+        .rust_only_domains
+        .iter()
+        .map(String::as_str)
+        .collect();
+    rust_only_domains.sort();
+    if rust_only_domains != local_domains {
+        bail!("legacyTypescript.rustOnlyDomains must match the local source domains");
+    }
+
+    Ok(manifest)
 }
 
 // ---------------------------------------------------------------------------
@@ -337,54 +370,36 @@ fn find_latest_spec_file(repo_dir: &Path) -> Option<(String, PathBuf, bool)> {
     None
 }
 
-fn derive_domain(repo_name: &str) -> String {
-    let without_suffix = repo_name
-        .strip_suffix("-specification")
-        .unwrap_or(repo_name);
-    let without_prefix = without_suffix
-        .strip_prefix("commerce.")
-        .unwrap_or(without_suffix);
-    let slug = without_prefix.to_lowercase().replace('.', "-");
-    let slug = regex_replace_all(r"[^a-z0-9-]", &slug, "-");
-    let slug = regex_replace_all(r"-+", &slug, "-");
-    slug.trim_matches('-').to_owned()
+fn git_auth_config(token: Option<&str>) -> HashMap<String, String> {
+    let mut config = HashMap::from([(
+        "url.https://github.com/.insteadOf".to_owned(),
+        "git@github.com:".to_owned(),
+    )]);
+    if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+        let credentials =
+            base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{token}"));
+        config.insert(
+            "http.https://github.com/.extraHeader".to_owned(),
+            format!("AUTHORIZATION: basic {credentials}"),
+        );
+    }
+    config
 }
 
-fn regex_replace_all(pattern: &str, input: &str, replacement: &str) -> String {
-    // Simple character-class based replace using char iteration for our limited patterns.
-    match pattern {
-        r"[^a-z0-9-]" => input
-            .chars()
-            .map(|c| {
-                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' {
-                    c.to_string()
-                } else {
-                    replacement.to_owned()
-                }
-            })
-            .collect(),
-        r"-+" => {
-            let mut out = String::with_capacity(input.len());
-            let mut in_dash = false;
-            for c in input.chars() {
-                if c == '-' {
-                    if !in_dash {
-                        out.push_str(replacement);
-                        in_dash = true;
-                    }
-                } else {
-                    in_dash = false;
-                    out.push(c);
-                }
-            }
-            out
-        }
-        _ => input.to_owned(),
+fn git_command() -> Command {
+    let token = std::env::var("GITHUB_TOKEN").ok();
+    let config = git_auth_config(token.as_deref());
+    let mut command = Command::new("git");
+    command.env("GIT_CONFIG_COUNT", config.len().to_string());
+    for (index, (key, value)) in config.into_iter().enumerate() {
+        command.env(format!("GIT_CONFIG_KEY_{index}"), key);
+        command.env(format!("GIT_CONFIG_VALUE_{index}"), value);
     }
+    command
 }
 
 fn git_run(args: &[&str]) -> Result<()> {
-    let status = Command::new("git")
+    let status = git_command()
         .args(args)
         .status()
         .context("failed to run git")?;
@@ -456,13 +471,7 @@ fn parse_repo_ref_overrides() -> HashMap<String, String> {
     map
 }
 
-fn include_legacy_location() -> bool {
-    std::env::var("API_CATALOG_INCLUDE_LEGACY_LOCATION")
-        .map(|v| v.to_lowercase() != "false")
-        .unwrap_or(true)
-}
-
-fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
+fn discover_spec_sources(manifest: &CatalogSourceManifest) -> Result<(Vec<SpecSource>, PathBuf)> {
     let client = github_client()?;
     let all_repos = list_org_repos(&client);
     let repo_map: HashMap<&str, &GithubRepo> =
@@ -470,53 +479,26 @@ fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
 
     let overrides = parse_repo_overrides();
     let ref_overrides = parse_repo_ref_overrides();
-
-    let mut selected: Vec<String> = if let Some(ov) = overrides {
-        ov
-    } else {
-        let commerce_pattern = regex_is_match_commerce_spec;
-        let mut names: Vec<String> = all_repos
-            .iter()
-            .filter(|r| commerce_pattern(&r.name))
-            .map(|r| r.name.clone())
-            .collect();
-        if names.is_empty() {
-            eprintln!(
-                "WARNING: no commerce specs found via GitHub discovery; using bootstrap list"
-            );
-            names = BOOTSTRAP_REPOS.iter().map(|s| s.to_string()).collect();
+    let selected: Vec<&RemoteCatalogSource> = match overrides {
+        Some(repositories) => {
+            let selected: Vec<&RemoteCatalogSource> = repositories
+                .iter()
+                .map(|repository| {
+                    manifest
+                        .remote
+                        .iter()
+                        .find(|source| source.repository == *repository)
+                        .with_context(|| {
+                            format!(
+                                "API_CATALOG_REPOS contains '{repository}', which is not declared in api-catalog-sources.json"
+                            )
+                        })
+                })
+                .collect::<Result<_>>()?;
+            selected
         }
-        names
+        None => manifest.remote.iter().collect(),
     };
-
-    if include_legacy_location() {
-        for r in LEGACY_REPOS {
-            if !selected.contains(&r.to_string()) {
-                selected.push(r.to_string());
-            }
-        }
-    }
-
-    selected.sort();
-
-    // Build list of (name, clone_url) filtering out archived/disabled/private
-    let repos_to_clone: Vec<(String, String)> = selected
-        .iter()
-        .filter_map(|name| {
-            if let Some(r) = repo_map.get(name.as_str()) {
-                if r.archived || r.disabled || r.private {
-                    return None;
-                }
-                Some((name.clone(), r.clone_url.clone()))
-            } else {
-                // Not in discovered list — synthesize URL
-                Some((
-                    name.clone(),
-                    format!("https://github.com/{GITHUB_ORG}/{name}.git"),
-                ))
-            }
-        })
-        .collect();
 
     // Create temp directory
     let timestamp = std::time::SystemTime::now()
@@ -529,32 +511,32 @@ fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
     // Clone common-types-specification
     let common_types_dir = tmpdir.join("__common-types");
     let ct_url = format!("https://github.com/{GITHUB_ORG}/common-types-specification.git");
-    if let Err(e) = clone_repo(&ct_url, &common_types_dir, None) {
-        eprintln!("WARNING: failed to clone common-types-specification: {e}");
-    }
+    clone_repo(&ct_url, &common_types_dir, None)
+        .context("failed to clone declared common-types specification source")?;
 
     let mut sources = Vec::new();
     let mut used_domains = HashSet::new();
 
-    for (repo_name, clone_url) in &repos_to_clone {
+    for source in selected {
+        let repo_name = &source.repository;
+        let clone_url = if let Some(repo) = repo_map.get(repo_name.as_str()) {
+            if repo.archived || repo.disabled || repo.private {
+                bail!("catalog source repository '{repo_name}' is unavailable");
+            }
+            repo.clone_url.clone()
+        } else {
+            format!("https://github.com/{GITHUB_ORG}/{repo_name}.git")
+        };
         let repo_dir = tmpdir.join(repo_name);
         let git_ref = ref_overrides.get(repo_name.as_str()).map(String::as_str);
 
-        if let Err(e) = clone_repo(clone_url, &repo_dir, git_ref) {
-            eprintln!("WARNING: failed to clone {repo_name}: {e}");
-            continue;
-        }
+        clone_repo(&clone_url, &repo_dir, git_ref)
+            .with_context(|| format!("failed to clone declared catalog source '{repo_name}'"))?;
 
-        let Some((version, spec_file, graphql_only)) = find_latest_spec_file(&repo_dir) else {
-            eprintln!("WARNING: {repo_name} has no versioned spec file — skipping");
-            continue;
-        };
+        let (version, spec_file, graphql_only) = find_latest_spec_file(&repo_dir)
+            .with_context(|| format!("catalog source '{repo_name}' has no versioned spec file"))?;
 
-        let domain = derive_domain(repo_name);
-        if domain.is_empty() {
-            eprintln!("WARNING: could not derive domain from '{repo_name}' — skipping");
-            continue;
-        }
+        let domain = source.domain.clone();
         if !used_domains.insert(domain.clone()) {
             eprintln!("WARNING: duplicate domain '{domain}' from '{repo_name}' — skipping");
             continue;
@@ -572,17 +554,14 @@ fn discover_spec_sources() -> Result<(Vec<SpecSource>, PathBuf)> {
     Ok((sources, tmpdir))
 }
 
-fn local_spec_sources() -> Result<Vec<SpecSource>> {
+fn local_spec_sources(manifest: &CatalogSourceManifest) -> Result<Vec<SpecSource>> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let rust_dir = manifest_dir.join("../..");
     let mut sources = Vec::new();
-    for (domain, rel_path) in LOCAL_SPECS {
-        let spec_file = manifest_dir.join(rel_path);
+    for source in &manifest.local {
+        let spec_file = rust_dir.join(&source.path);
         if !spec_file.exists() {
-            eprintln!(
-                "WARNING: local spec {} not found — skipping",
-                spec_file.display()
-            );
-            continue;
+            bail!("local catalog spec {} not found", spec_file.display());
         }
         let src = std::fs::read_to_string(&spec_file)
             .with_context(|| format!("failed to read {}", spec_file.display()))?;
@@ -598,27 +577,14 @@ fn local_spec_sources() -> Result<Vec<SpecSource>> {
             format!("v{raw_version}")
         };
         sources.push(SpecSource {
-            domain: (*domain).to_owned(),
-            repo_name: format!("local:{domain}"),
+            domain: source.domain.clone(),
+            repo_name: format!("local:{}", source.domain),
             spec_file,
             spec_version,
             graphql_only: false,
         });
     }
     Ok(sources)
-}
-
-fn regex_is_match_commerce_spec(name: &str) -> bool {
-    // ^commerce\.[a-z0-9-]+-specification$
-    if let Some(rest) = name.strip_prefix("commerce.")
-        && let Some(slug) = rest.strip_suffix("-specification")
-    {
-        return !slug.is_empty()
-            && slug
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    }
-    false
 }
 
 // ---------------------------------------------------------------------------
@@ -1721,9 +1687,10 @@ fn main() -> Result<()> {
     let output_dir = resolve_output_dir();
     std::fs::create_dir_all(&output_dir).context("failed to create output dir")?;
 
+    let source_manifest = load_source_manifest()?;
     eprintln!("Discovering specification repositories...");
-    let (mut sources, tmpdir) = discover_spec_sources()?;
-    sources.extend(local_spec_sources()?);
+    let (mut sources, tmpdir) = discover_spec_sources(&source_manifest)?;
+    sources.extend(local_spec_sources(&source_manifest)?);
 
     if sources.is_empty() {
         bail!("no specification repositories discovered — refusing to overwrite catalog output");
@@ -2102,14 +2069,51 @@ components:
         );
     }
 
+    #[test]
+    fn source_manifest_defines_the_reconciled_catalog_domains() {
+        let manifest = load_source_manifest().expect("load source manifest");
+        let expected = manifest.expected_domains();
+
+        assert_eq!(expected.len(), 21);
+        assert_eq!(manifest.remote.len(), 20);
+        assert_eq!(
+            manifest
+                .local
+                .iter()
+                .map(|source| source.domain.as_str())
+                .collect::<Vec<_>>(),
+            ["hosting-nodejs"]
+        );
+        assert_eq!(
+            manifest.legacy_typescript.rust_only_domains,
+            ["hosting-nodejs"]
+        );
+    }
+
+    #[test]
+    fn git_auth_config_rewrites_ssh_submodules_without_exposing_the_token() {
+        let config = git_auth_config(Some("test-token"));
+
+        assert_eq!(
+            config.get("url.https://github.com/.insteadOf"),
+            Some(&"git@github.com:".to_owned())
+        );
+        let header = config
+            .get("http.https://github.com/.extraHeader")
+            .expect("authorization header");
+        assert!(header.starts_with("AUTHORIZATION: basic "));
+        assert!(!header.contains("test-token"));
+    }
+
     /// Drift guard: the committed catalog files and `manifest.json` must match the
-    /// intentional `EXPECTED_DOMAINS` contract, and every domain's endpoint count
-    /// must agree between its file and the manifest. Catches accidental drift
-    /// (a domain added/removed, a hand-edited catalog, a stale manifest) on every
-    /// `cargo test` run — no network or credentials required.
+    /// intentional source-manifest contract, and every domain's endpoint count must
+    /// agree between its file and the manifest. Catches accidental drift (a domain
+    /// added/removed, a hand-edited catalog, a stale manifest) on every `cargo test`
+    /// run — no network or credentials required.
     #[test]
     fn committed_catalog_matches_expected_domains_and_manifest() {
         let dir = resolve_output_dir();
+        let source_manifest = load_source_manifest().expect("load source manifest");
 
         // Domain files present on disk (excluding manifest.json).
         let mut files: Vec<String> = std::fs::read_dir(&dir)
@@ -2125,13 +2129,11 @@ components:
             .collect();
         files.sort();
 
-        let mut expected: Vec<String> = EXPECTED_DOMAINS.iter().map(|s| (*s).to_owned()).collect();
-        expected.sort();
+        let expected = source_manifest.expected_domains();
 
         assert_eq!(
             files, expected,
-            "catalog domain files drifted from EXPECTED_DOMAINS — if adding/removing a \
-             domain, update EXPECTED_DOMAINS in the same change"
+            "catalog domain files drifted from api-catalog-sources.json"
         );
 
         // manifest.json must list exactly the same domains...
@@ -2147,11 +2149,11 @@ components:
         manifest_domains.sort();
         assert_eq!(
             manifest_domains, expected,
-            "manifest.json domains differ from EXPECTED_DOMAINS / catalog files"
+            "manifest.json domains differ from api-catalog-sources.json / catalog files"
         );
 
         // ...and each domain's endpoint count must match between file and manifest.
-        for domain in EXPECTED_DOMAINS {
+        for domain in &expected {
             let catalog: Value = serde_json::from_str(
                 &std::fs::read_to_string(dir.join(format!("{domain}.json")))
                     .unwrap_or_else(|e| panic!("read {domain}.json: {e}")),
@@ -2164,7 +2166,7 @@ components:
                 .as_array()
                 .unwrap_or_else(|| panic!("'{domain}.json' has no endpoints array"))
                 .len();
-            let manifest_count = domains[*domain]["endpointCount"]
+            let manifest_count = domains[domain]["endpointCount"]
                 .as_u64()
                 .unwrap_or_else(|| panic!("manifest.json missing endpointCount for '{domain}'"))
                 as usize;

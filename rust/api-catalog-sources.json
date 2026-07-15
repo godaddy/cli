@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "remote": [
+    {
+      "domain": "bulk-operations",
+      "repository": "commerce.bulk-operations-specification"
+    },
+    {
+      "domain": "businesses",
+      "repository": "commerce.businesses-specification"
+    },
+    {
+      "domain": "catalog-products",
+      "repository": "commerce.catalog-products-specification"
+    },
+    {
+      "domain": "channels",
+      "repository": "commerce.channels-specification"
+    },
+    {
+      "domain": "chargebacks",
+      "repository": "commerce.chargebacks-specification"
+    },
+    {
+      "domain": "customer-profiles",
+      "repository": "commerce.customer-profiles-specification"
+    },
+    {
+      "domain": "fulfillments",
+      "repository": "commerce.fulfillments-specification"
+    },
+    {
+      "domain": "location-addresses",
+      "repository": "location.addresses-specification"
+    },
+    {
+      "domain": "metafields",
+      "repository": "commerce.metafields-specification"
+    },
+    {
+      "domain": "onboarding",
+      "repository": "commerce.onboarding-specification"
+    },
+    {
+      "domain": "orders",
+      "repository": "commerce.orders-specification"
+    },
+    {
+      "domain": "payment-requests",
+      "repository": "commerce.payment-requests-specification"
+    },
+    {
+      "domain": "payments",
+      "repository": "commerce.payments-specification"
+    },
+    {
+      "domain": "price-adjustments",
+      "repository": "commerce.price-adjustments-specification"
+    },
+    {
+      "domain": "recommendations",
+      "repository": "commerce.recommendations-specification"
+    },
+    {
+      "domain": "shipping",
+      "repository": "commerce.shipping-specification"
+    },
+    {
+      "domain": "stores",
+      "repository": "commerce.stores-specification"
+    },
+    {
+      "domain": "subscriptions",
+      "repository": "commerce.subscriptions-specification"
+    },
+    {
+      "domain": "taxes",
+      "repository": "commerce.taxes-specification"
+    },
+    {
+      "domain": "transactions",
+      "repository": "commerce.transactions-specification"
+    }
+  ],
+  "local": [
+    {
+      "domain": "hosting-nodejs",
+      "path": "schemas/openapi/hosting-nodejs-public-v1.yaml"
+    }
+  ],
+  "legacyTypescript": {
+    "status": "retired-on-rust-port",
+    "sharedDomainCount": 20,
+    "rustOnlyDomains": [
+      "hosting-nodejs"
+    ],
+    "rationale": "The legacy TypeScript catalog contains the 20 remote domains above. hosting-nodejs is intentionally Rust-only because it is generated from the CLI's vendored public hosting specification."
+  }
+}

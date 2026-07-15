@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T22:25:00.564300686+00:00",
+  "generated": "2026-07-15T11:40:00.622620+00:00",
   "domains": {
     "subscriptions": {
       "file": "subscriptions.json",
@@ -14,7 +14,7 @@
     "transactions": {
       "file": "transactions.json",
       "title": "Transactions API",
-      "endpointCount": 7
+      "endpointCount": 17
     },
     "orders": {
       "file": "orders.json",

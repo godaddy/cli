@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 graphql-parser = "0.4"
 indexmap = "2"
