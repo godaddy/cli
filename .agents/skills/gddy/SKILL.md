@@ -1,6 +1,9 @@
 ---
 name: gddy
 description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage domains and DNS records. Load this skill whenever a task involves running `gddy` commands, parsing their JSON output, finding or buying a domain, or editing DNS records (A, CNAME, MX, TXT, etc.) for a domain hosted at GoDaddy. `gddy` is a separate tool from GoDaddy's older `godaddy` CLI (applications, deployments, webhooks) — do not use this skill for that tool, and don't trigger for other registrars or DNS providers (Cloudflare, Route 53, Namecheap, etc.) unless GoDaddy is explicitly involved.
+version: 0.1.0
+author: GoDaddy
+tags: [godaddy, gddy, cli, domains, dns]
 ---
 
 # gddy — GoDaddy domains & DNS CLI
