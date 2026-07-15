@@ -281,7 +281,7 @@
           "$ref": "#/$defs/LegacyCardDetailData"
         },
         "number": {
-          "description": "Card number",
+          "description": "Card number. On create, supply the full PAN. In GET responses, returns a masked representation (e.g. ****9990) — not the full card number.\n",
           "type": "string"
         },
         "numberHashed": {
@@ -690,6 +690,87 @@
         "feeType"
       ],
       "title": "Fee",
+      "type": "object"
+    },
+    "FinancialInstrument": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A card or bank account stored on file, optionally associated with an owner reference. Vault context (stored for reuse) is expressed by this resource and its `status` — nested `card` and `bankAccount` reuse the standard funding-source models (`PaymentCard`, `BankAccount`), the same types used for one-time charges.\nThe `type` field identifies the persisted instrument kind (CARD or BANK_ACCOUNT) and determines which detail object is present in responses (`card` or `bankAccount`).\nOn create, supply exactly one input source: `card` with `type` CARD, `bankAccount` with `type` BANK_ACCOUNT, or `nonce` alone (the server resolves the nonce to a card or bank account before persistence — `type` is assigned in the response). `tokenContext` is required on create. Write-only fields (`nonce`, `tokenContext`, and raw card/bank account numbers) are accepted on create and never returned in responses.\n",
+      "properties": {
+        "bankAccount": {
+          "$ref": "#/$defs/BankAccount"
+        },
+        "card": {
+          "$ref": "#/$defs/PaymentCard"
+        },
+        "createdAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            }
+          ],
+          "description": "Time the instrument was created. Sortable via list query parameter `sortBy=CREATED_AT`.\n",
+          "example": "2024-01-15T10:30:00Z",
+          "readOnly": true
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "nonce": {
+          "description": "Single-use tokenization nonce from a compliant card-capture SDK — alternative to supplying `card` or `bankAccount` directly (PCI-out-of-scope path). The server resolves this to a card or bank account before persistence; it is not a stored instrument type.\n",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
+          "format": "uuid",
+          "type": "string",
+          "writeOnly": true,
+          "x-sensitivity": {
+            "classification": "restricted"
+          }
+        },
+        "ownerReference": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/OwnerReference"
+            }
+          ],
+          "description": "External owner reference attached to this instrument",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "status": {
+          "description": "Status of the financial instrument. Currently accepted values: ACTIVE, INACTIVE.\n",
+          "example": "ACTIVE",
+          "readOnly": true,
+          "type": "string"
+        },
+        "tokenContext": {
+          "$ref": "#/$defs/TokenContext"
+        },
+        "tokens": {
+          "description": "Per-store charge handles. Populated on create when `tokenContext` is provided, and on list when `includeToken` is true (scoped to the required `storeId`). Each item includes the chargeable JWT in `token`. Use GET /financial-instruments/{id}/tokens to retrieve tokens explicitly.\n",
+          "items": {
+            "$ref": "#/$defs/Token"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "type": {
+          "description": "Discriminator representing the persisted instrument kind. Always present in responses. Required on create when supplying `card` or `bankAccount`; may be omitted when supplying `nonce` (the server assigns the type after resolving the nonce). Currently accepted values: CARD, BANK_ACCOUNT.\n",
+          "example": "CARD",
+          "type": "string"
+        },
+        "updatedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            }
+          ],
+          "description": "Time the instrument was last updated. Sortable via list query parameter `sortBy=UPDATED_AT`.\n",
+          "example": "2024-01-15T10:30:00Z",
+          "readOnly": true
+        }
+      },
+      "title": "Financial Instrument",
       "type": "object"
     },
     "FundingSource": {
@@ -2869,6 +2950,41 @@
       "type": "array",
       "x-auto-generated": true
     },
+    "OwnerReference": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument/owner-reference.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "External owner reference attached to a financial instrument, identifying the owner within an external system.",
+      "properties": {
+        "id": {
+          "description": "Alphanumeric owner identifier (e.g. numeric customer id or UUID without dashes)",
+          "example": "251727828",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9]+$",
+          "type": "string",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "type": {
+          "description": "Letters-only namespace qualifier identifying the owner system (e.g. Shopper, GDCustomer)",
+          "example": "Shopper",
+          "maxLength": 32,
+          "minLength": 1,
+          "pattern": "^[A-Za-z]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "Owner Reference",
+      "type": "object",
+      "x-sensitivity": {
+        "classification": "confidential"
+      }
+    },
     "PaymentCard": {
       "$id": "https://godaddy.com/schemas/commerce/transaction/funding-source/payment-card.v2",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3096,6 +3212,61 @@
         }
       },
       "title": "Tip Amount",
+      "type": "object"
+    },
+    "Token": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument/token.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A per-store charge handle that authorizes charging a stored financial instrument at a specific store. Use the `token` field in fundingSource.token to charge. The JWT encodes store and application scope — clients do not need separate scope fields on this resource.\n",
+      "properties": {
+        "createdAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            }
+          ],
+          "description": "Time the token was created",
+          "example": "2024-01-15T10:30:00Z",
+          "readOnly": true
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "status": {
+          "description": "Status of this token. Currently accepted values: ACTIVE, INACTIVE.\n",
+          "example": "ACTIVE",
+          "type": "string"
+        },
+        "token": {
+          "description": "The chargeable JWT payment token. Use this value in fundingSource.token when creating a transaction. Store and application scope are encoded in the JWT. Always present on mint and get responses. On list, each item in the nested `tokens` array includes the chargeable JWT when `includeToken` is true. Handle as a secret — do not log or expose to end users.\n",
+          "readOnly": true,
+          "type": "string",
+          "x-propagation": {
+            "optional": true
+          },
+          "x-sensitivity": {
+            "classification": "restricted"
+          }
+        }
+      },
+      "title": "Token",
+      "type": "object"
+    },
+    "TokenContext": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument/token-context.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Context for minting a per-store token. Used when vaulting a financial instrument (first token) and when associating an existing instrument with a new store. `storeId` is required. Application identity is derived from the authorization credential — clients do not supply `applicationId`.\n",
+      "properties": {
+        "storeId": {
+          "description": "Store the token is minted for (required)",
+          "example": "storeB",
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId"
+      ],
+      "title": "Token Context",
       "type": "object"
     },
     "TokenVerificationData": {
@@ -3547,6 +3718,22 @@
       "title": "Error Details",
       "type": "object"
     },
+    "financialInstrumentList": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/pagedList"
+        }
+      ],
+      "properties": {
+        "items": {
+          "description": "List of financial instruments matching the query",
+          "items": {
+            "$ref": "#/$defs/FinancialInstrument"
+          },
+          "type": "array"
+        }
+      }
+    },
     "geo-coordinates": {
       "$id": "https://godaddy.com/schema/common/geo-coordinates.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3644,11 +3831,810 @@
           "type": "array"
         }
       }
+    },
+    "token": {
+      "$ref": "#/$defs/Token"
+    },
+    "tokenContext": {
+      "$ref": "#/$defs/TokenContext"
     }
   },
   "baseUrl": "https://api.godaddy.com/v2/commerce",
   "description": "This API is capable of creating, updating and fetching transactions across different stores.",
   "endpoints": [
+    {
+      "description": "Retrieve financial instruments (cards and bank accounts on file) associated with a given owner reference. Only instruments with status ACTIVE are returned. Results are scoped to the required `storeId` for authorization and token retrieval. Optional filters include business, application, and instrument type.\n",
+      "method": "GET",
+      "operationId": "listFinancialInstruments",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "The `id` portion of `ownerReference` (e.g., a UUID or numeric customer ID)\n",
+          "in": "query",
+          "name": "ownerReferenceId",
+          "required": true,
+          "schema": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "The `type` portion of `ownerReference` — letters only (e.g., Shopper, GDCustomer)\n",
+          "in": "query",
+          "name": "ownerReferenceType",
+          "required": true,
+          "schema": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[A-Za-z]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Store scope for authorization, filtering, and token retrieval. Required.\n",
+          "in": "query",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "description": "Filter results to a specific business",
+          "in": "query",
+          "name": "businessId",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "description": "Filter results to a specific application",
+          "in": "query",
+          "name": "applicationId",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter by instrument type. Currently accepted values: CARD, BANK_ACCOUNT. Omit to return both cards and bank accounts.\n",
+          "in": "query",
+          "name": "instrumentType",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "When true, excludes CARD instruments where the card expiry (expMonth/expYear) is in the past. Has no effect on BANK_ACCOUNT instruments.\n",
+          "in": "query",
+          "name": "excludeExpired",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "description": "When true, includes the per-store `tokens` array on each instrument. Each token item includes the chargeable JWT in `token` (scoped to the required `storeId`). Use the JWT in fundingSource.token to charge. Applies to both CARD and BANK_ACCOUNT instruments. When false or omitted, `tokens` is not returned.\n",
+          "in": "query",
+          "name": "includeToken",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "description": "Sort field for results. Maps to FinancialInstrument timestamp properties: CREATED_AT (`createdAt`), UPDATED_AT (`updatedAt`).\n",
+          "in": "query",
+          "name": "sortBy",
+          "required": false,
+          "schema": {
+            "default": "CREATED_AT",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Sort direction. Currently accepted values: ASC, DESC.\n",
+          "in": "query",
+          "name": "sortOrder",
+          "required": false,
+          "schema": {
+            "default": "ASC",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Number of results per page (max 100)",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "totalRequired",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "path": "/financial-instruments",
+      "responses": {
+        "200": {
+          "description": "Financial Instrument List. Returns an empty items array when no instruments match — never 404.",
+          "schema": {
+            "$ref": "#/$defs/financialInstrumentList"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:read"
+      ],
+      "summary": "List financial instruments by owner reference"
+    },
+    {
+      "description": "Vaults a card or bank account on file and mints the first per-store token. Supply exactly one input source: `type` CARD with `card` for raw card details (server-to-server, PCI-in-scope), `type` BANK_ACCOUNT with `bankAccount` for ACH details, or `nonce` alone for a single-use token from a compliant card-capture SDK (PCI-out-of-scope path — the server resolves the nonce to CARD or BANK_ACCOUNT before persistence). `tokenContext` is required (supply `storeId` only — application identity is derived from the authorization credential). The customer consent agreement is derived internally — clients do not send it.\n",
+      "method": "POST",
+      "operationId": "createFinancialInstrument",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/FinancialInstrument"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Financial instrument created. The response includes the first store token (store context was provided in tokenContext).\n",
+          "schema": {
+            "$ref": "#/$defs/FinancialInstrument"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Create a financial instrument"
+    },
+    {
+      "description": "Retrieve a financial instrument by its UUID. Tokens are not included in this response — use GET /financial-instruments/{financialInstrumentId}/tokens to retrieve per-store tokens.\n",
+      "method": "GET",
+      "operationId": "getFinancialInstrument",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}",
+      "responses": {
+        "200": {
+          "description": "Financial instrument found",
+          "schema": {
+            "$ref": "#/$defs/FinancialInstrument"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:read"
+      ],
+      "summary": "Retrieve a financial instrument"
+    },
+    {
+      "description": "Sets a financial instrument to ACTIVE.",
+      "method": "POST",
+      "operationId": "activateFinancialInstrument",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/activate",
+      "responses": {
+        "200": {
+          "description": "Financial instrument activated",
+          "schema": {
+            "$ref": "#/$defs/FinancialInstrument"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Activate a financial instrument"
+    },
+    {
+      "description": "Sets a financial instrument to INACTIVE and cascades deactivation to all per-store tokens — the card can no longer be charged at any store.\n",
+      "method": "POST",
+      "operationId": "deactivateFinancialInstrument",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/deactivate",
+      "responses": {
+        "200": {
+          "description": "Financial instrument deactivated",
+          "schema": {
+            "$ref": "#/$defs/FinancialInstrument"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Deactivate a financial instrument (all stores)"
+    },
+    {
+      "description": "Returns per-store tokens for the instrument. Filter by storeId to retrieve the token for a specific store.\n",
+      "method": "GET",
+      "operationId": "listTokens",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter tokens to a specific store",
+          "in": "query",
+          "name": "storeId",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Number of results per page (max 100)",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "totalRequired",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/tokens",
+      "responses": {
+        "200": {
+          "description": "Token list. Returns an empty items array when no tokens match — never 404.",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/pagedList"
+              }
+            ],
+            "properties": {
+              "items": {
+                "description": "List of tokens associated with the financial instrument",
+                "items": {
+                  "$ref": "#/$defs/token"
+                },
+                "type": "array"
+              }
+            },
+            "title": "Tokens"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:read"
+      ],
+      "summary": "List tokens for a financial instrument"
+    },
+    {
+      "description": "Associates an existing financial instrument with a new store and mints a per-store token. Supply `storeId` in the request body. Application identity is derived from the authorization credential. Store and application scope are encoded in the returned JWT — they are not duplicated as separate fields on the token resource. The resulting token can be used in fundingSource.token to charge the card at that store.\n",
+      "method": "POST",
+      "operationId": "createToken",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/tokens",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/tokenContext"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Token minted",
+          "schema": {
+            "$ref": "#/$defs/token"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Associate a store and mint a token"
+    },
+    {
+      "description": "Retrieve a specific per-store token by its UUID. Useful for status checks and refreshing details after Card Account Updater runs.\n",
+      "method": "GET",
+      "operationId": "getToken",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "description": "Token UUID",
+          "in": "path",
+          "name": "tokenId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/tokens/{tokenId}",
+      "responses": {
+        "200": {
+          "description": "Token found",
+          "schema": {
+            "$ref": "#/$defs/token"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:read"
+      ],
+      "summary": "Retrieve a token"
+    },
+    {
+      "description": "Sets a specific per-store token to ACTIVE.",
+      "method": "POST",
+      "operationId": "activateToken",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "description": "Token UUID",
+          "in": "path",
+          "name": "tokenId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/tokens/{tokenId}/activate",
+      "responses": {
+        "200": {
+          "description": "Token activated",
+          "schema": {
+            "$ref": "#/$defs/token"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Activate a token"
+    },
+    {
+      "description": "Sets a specific per-store token to INACTIVE. The card on file is removed for that store only — other stores are unaffected.\n",
+      "method": "POST",
+      "operationId": "deactivateToken",
+      "parameters": [
+        {
+          "description": "Financial instrument UUID",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "description": "Token UUID",
+          "in": "path",
+          "name": "tokenId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Request Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/financial-instruments/{financialInstrumentId}/tokens/{tokenId}/deactivate",
+      "responses": {
+        "200": {
+          "description": "Token deactivated",
+          "schema": {
+            "$ref": "#/$defs/token"
+          }
+        },
+        "400": {
+          "description": "Bad Request — structurally invalid request (malformed JSON, wrong field type, or missing required field).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — request conflicts with current state (e.g. duplicate token for the same store, or activating an already-active instrument or token).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Unprocessable Entity — valid structure but violates a business rule (e.g. invalid card number, expired nonce, or inconsistent type and detail fields).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.financial-instrument:write"
+      ],
+      "summary": "Deactivate a token (per store)"
+    },
     {
       "description": "Retrieve all the transactions for a specific store using the store ID.",
       "method": "GET",
@@ -4119,5 +5105,5 @@
   ],
   "name": "transactions",
   "title": "Transactions API",
-  "version": "2.1.0"
+  "version": "2.2.1"
 }
