@@ -4,7 +4,7 @@ Use this when the `gddy` CLI cannot be installed or isn't a good fit for the tas
 
 Base URL: `https://api.godaddy.com`
 
-Auth header: `Authorization: Bearer $GODADDY_PAT` (PAT generated from the Personal Access Token page under `https://developer.godaddy.com/docs/api-users/auth`). Legacy `sso-key key:secret` credentials still work for v1/v2 endpoints but not v3, and are deprecated — prefer a PAT for anything new.
+Auth header: `Authorization: Bearer $GDDY_PAT` (PAT generated from the Personal Access Token page under `https://developer.godaddy.com/docs/api-users/auth`). Legacy `sso-key key:secret` credentials still work for v1/v2 endpoints but not v3, and are deprecated — prefer a PAT for anything new.
 
 ## Endpoint reference
 

@@ -18,7 +18,7 @@ claude plugin install gddy@godaddy
 This repo is also compatible with [skills](https://github.com/vercel-labs/skills), a package-manager-style installer for agent skills that isn't tied to Claude Code — it supports Cursor, Codex, Windsurf, opencode, and 70+ other agents in addition to Claude Code:
 
 ```bash
-npx skills add godaddy/cli --skill gddy --agent claude-code
+npx skills add godaddy/cli --skill gddy --agent <agent>
 ```
 
-Swap `--agent claude-code` for whichever agent you use (`cursor`, `codex`, `windsurf`, `opencode`, ...). Run `npx skills add --help` for the full list of supported agents.
+Swap `<agent>` for whichever agent you use (`cursor`, `codex`, `windsurf`, `opencode`, ...). Run `npx skills add --help` for the full list of supported agents.
