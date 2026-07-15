@@ -38,7 +38,7 @@ The `gddy` CLI is self-documenting. Use the following to get more information ab
 
 ## Domain purchase
 
-Domain purchases is a multi-step workflow. Run `gddy guide domain-purchase` for a detailed walkthrough. Always confirm with the user before finalizing a purchase — it's real money, and the action is not reversible.
+Domain purchase is a multi-step workflow. Run `gddy guide domain-purchase` for a detailed walkthrough. Always confirm with the user before finalizing a purchase — it's real money, and the action is not reversible.
 
 ## DNS management
 
