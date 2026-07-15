@@ -1,6 +1,6 @@
 [package]
 name = "godaddy-cli"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 description = "GoDaddy developer CLI"
 license = "Proprietary"
