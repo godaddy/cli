@@ -122,7 +122,7 @@ impl ApplicationClient {
 
     pub async fn create_release(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt } }",
+            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } } }",
             "variables": { "input": input }
         }))
         .await
