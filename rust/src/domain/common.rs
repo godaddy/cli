@@ -146,8 +146,8 @@ pub(crate) fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
 /// single element before calling the setter produces the one pair the API
 /// expects. `[]` stays `[]` so callers can still gate on "no filter given".
 pub(crate) fn comma_joined(values: Vec<String>) -> Vec<String> {
-    if values.is_empty() {
-        Vec::new()
+    if values.len() <= 1 {
+        values
     } else {
         vec![values.join(",")]
     }
