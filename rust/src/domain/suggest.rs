@@ -5,7 +5,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client, string_list, term_for_period};
+use super::common::{
+    api_error, comma_joined, format_money, make_client, string_list, term_for_period,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -137,7 +139,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 req = req.page_size(page_size);
             }
             if !tlds.is_empty() {
-                req = req.tlds(tlds);
+                req = req.tlds(comma_joined(tlds));
             }
             if let Some(n) = length_min.and_then(nonzero) {
                 req = req.length_min(n);
@@ -163,6 +165,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use super::super::common::comma_joined;
     use super::{nonzero, suggestion_to_json};
     use domains_client::types;
 
@@ -173,6 +176,40 @@ mod tests {
         assert_eq!(nonzero(0), None);
         assert_eq!(nonzero(-5), None);
         assert_eq!(nonzero(5).map(|n| n.get()), Some(5));
+    }
+
+    #[tokio::test]
+    async fn tlds_are_sent_as_a_single_comma_joined_query_param() {
+        // Regression for DEVEX-882: the `tlds` query param is OpenAPI `style:
+        // form, explode: false` — one comma-joined value. progenitor's generated
+        // `tlds()` setter always seq-serializes a `Vec` as repeated `tlds=`
+        // pairs, so callers must join multiple `--tlds` occurrences into a
+        // single element before calling it, or the API replies `400
+        // MISMATCH_FORMAT`.
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/suggestions")
+                    .query_param("tlds", "com,net,io");
+                then.status(200)
+                    .json_body(serde_json::json!({ "items": [] }));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let tlds = comma_joined(vec!["com".to_string(), "net".to_string(), "io".to_string()]);
+        client
+            .suggest_domains()
+            .query("pizza")
+            .tlds(tlds)
+            .send()
+            .await
+            .expect("request succeeds");
+
+        mock.assert_async().await;
     }
 
     fn money(value: i64, currency: &str) -> types::SimpleMoney {
