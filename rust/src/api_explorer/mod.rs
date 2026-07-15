@@ -691,10 +691,7 @@ fn call_command() -> RuntimeCommandSpec {
                 .bearer_auth(&token)
                 .header("x-request-id", uuid::Uuid::new_v4().to_string());
 
-            // Apply user-supplied `--header KEY:VALUE` values (repeatable). These
-            // were parsed but never attached to the request, so endpoints that
-            // require a header — e.g. the GraphQL commerce domains need `x-store-id`
-            // — could not be called at all.
+            // Apply user-supplied `--header KEY:VALUE` values (repeatable).
             for h in string_list(&ctx.args, "header") {
                 let (key, val) = split_header(&h).ok_or_else(|| {
                     cli_engine::CliCoreError::message(format!(
