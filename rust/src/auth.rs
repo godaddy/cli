@@ -126,7 +126,7 @@ fn validate_requested_scopes(requested: &[String]) -> Result<()> {
         return Ok(());
     }
     Err(CliCoreError::message(format!(
-        "unknown OAuth scope(s) requested: {} (not registered for the gddy OAuth client)",
+        "unsupported OAuth scope(s) requested: {}",
         unknown.join(", ")
     )))
 }
@@ -241,8 +241,7 @@ mod tests {
             .expect_err("scope is not in the registry");
         assert_eq!(
             err.to_string(),
-            "unknown OAuth scope(s) requested: domains.domain:write \
-             (not registered for the gddy OAuth client)"
+            "unsupported OAuth scope(s) requested: domains.domain:write"
         );
     }
 
@@ -266,8 +265,7 @@ mod tests {
             .expect_err("scope is not in the registry");
         assert_eq!(
             err.to_string(),
-            "unknown OAuth scope(s) requested: bogus:scope \
-             (not registered for the gddy OAuth client)"
+            "unsupported OAuth scope(s) requested: bogus:scope"
         );
     }
 }
