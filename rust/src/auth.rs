@@ -6,6 +6,7 @@ use cli_engine::{
 
 use crate::environments::{self, ResolvedEnv};
 use crate::pat::{self, PatEntry};
+use crate::scopes;
 
 /// Single auth provider that dispatches to env-specific PKCE providers.
 ///
@@ -104,6 +105,32 @@ fn log_resolved_oauth(env: &ResolvedEnv) {
     );
 }
 
+/// Rejects any scope in `requested` that isn't registered in [`scopes`] —
+/// [`scopes::ALL`] plus the standalone [`scopes::OFFLINE_ACCESS`] directive
+/// scope.
+///
+/// A scope missing from that list is, by construction, either misspelled or
+/// was never registered on the CLI's OAuth client (see the "Adding a scope"
+/// steps in the [`scopes`] module docs), so the authorization server would
+/// reject it anyway. Catching it here turns that into a clear, local error
+/// instead of the auth server's `invalid_scope`.
+fn validate_requested_scopes(requested: &[String]) -> Result<()> {
+    let mut seen = std::collections::HashSet::new();
+    let unknown: Vec<&str> = requested
+        .iter()
+        .map(String::as_str)
+        .filter(|scope| *scope != scopes::OFFLINE_ACCESS && !scopes::ALL.contains(scope))
+        .filter(|scope| seen.insert(*scope))
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    Err(CliCoreError::message(format!(
+        "unsupported OAuth scope(s) requested: {}",
+        unknown.join(", ")
+    )))
+}
+
 #[async_trait]
 impl AuthProvider for GoDaddyAuthProvider {
     fn name(&self) -> &str {
@@ -123,6 +150,21 @@ impl AuthProvider for GoDaddyAuthProvider {
         // configured, otherwise fall back to PKCE OAuth scope step-up.
         if let Some(entry) = pat::resolve_pat(req.env).await {
             return Ok(pat_credential(req.env, &entry));
+        }
+        // `Dispatcher::login_with_scopes` (the handler behind `auth login
+        // --scope`) synthesizes its `CredentialRequest` with an empty command
+        // path — no ordinary command routes through `get_credential_for` with
+        // `command` unset. That makes it the one place to validate explicitly
+        // *requested* scopes against the CLI's authoritative registry before
+        // asking the authorization server, so a misspelled or unregistered
+        // `--scope` fails fast with a readable message instead of surfacing as
+        // the auth server's opaque `invalid_scope`. Regular commands'
+        // `with_scopes`-declared scopes, and `api call --scope`'s ad-hoc
+        // catalog-derived scopes, are deliberately not re-validated here — see
+        // the module docs on [`scopes`] for why those fall outside the
+        // registry.
+        if req.command.is_empty() {
+            validate_requested_scopes(&req.meta.scopes)?;
         }
         let provider = self.provider_for(req.env)?;
         provider.get_credential_for(req).await
@@ -168,5 +210,62 @@ impl AuthProvider for GoDaddyAuthProvider {
             envs.extend(provider.list_environments().await.unwrap_or_default());
         }
         Ok(envs.into_iter().collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_requested_scopes_accepts_known_and_empty() {
+        assert!(validate_requested_scopes(&[]).is_ok());
+        assert!(validate_requested_scopes(&[scopes::DOMAINS_READ.to_owned()]).is_ok());
+        assert!(
+            validate_requested_scopes(&[
+                scopes::DOMAINS_READ.to_owned(),
+                scopes::HOSTING_APPS_READ.to_owned(),
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_requested_scopes_accepts_offline_access() {
+        assert!(validate_requested_scopes(&[scopes::OFFLINE_ACCESS.to_owned()]).is_ok());
+    }
+
+    #[test]
+    fn validate_requested_scopes_rejects_unregistered_scope() {
+        let err = validate_requested_scopes(&["domains.domain:write".to_owned()])
+            .expect_err("scope is not in the registry");
+        assert_eq!(
+            err.to_string(),
+            "unsupported OAuth scope(s) requested: domains.domain:write"
+        );
+    }
+
+    #[test]
+    fn validate_requested_scopes_reports_every_unknown_scope() {
+        let err = validate_requested_scopes(&[
+            scopes::DOMAINS_READ.to_owned(),
+            "bogus:scope".to_owned(),
+            "another:bogus".to_owned(),
+        ])
+        .expect_err("two scopes are not in the registry");
+        let message = err.to_string();
+        assert!(message.contains("bogus:scope"));
+        assert!(message.contains("another:bogus"));
+        assert!(!message.contains(scopes::DOMAINS_READ));
+    }
+
+    #[test]
+    fn validate_requested_scopes_dedupes_repeated_unknown_scopes() {
+        let err = validate_requested_scopes(&["bogus:scope".to_owned(), "bogus:scope".to_owned()])
+            .expect_err("scope is not in the registry");
+        assert_eq!(
+            err.to_string(),
+            "unsupported OAuth scope(s) requested: bogus:scope"
+        );
     }
 }
