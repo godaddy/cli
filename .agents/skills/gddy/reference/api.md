@@ -1,6 +1,6 @@
 # GoDaddy Domains API (raw HTTP fallback)
 
-Use this when the `gddy` CLI isn't installed or isn't a good fit for the task (CI pipelines, non-shell languages, etc.). When `gddy` is available, prefer it — it handles auth, quote-token bookkeeping, and idempotency for you. To install `gddy` itself, see the Setup section in SKILL.md.
+Use this when the `gddy` CLI cannot be installed or isn't a good fit for the task (CI pipelines, non-shell languages, etc.). When `gddy` is available, prefer it — it handles auth, quote-token bookkeeping, and idempotency for you. To install `gddy` itself, see the Setup section in SKILL.md.
 
 Base URL: `https://api.godaddy.com`
 
@@ -15,5 +15,5 @@ GoDaddy publishes machine-readable OpenAPI specs — fetch and search these dire
 
 ## Gotchas that won't change even as the API grows
 
-- **Registration is two calls, never one** — mirrors the CLI's `gddy domain quote` / `gddy domain purchase` split. Lock a quote first; it returns a single-use `quoteToken` valid for roughly 10 minutes. Execute the registration against that token with an `Idempotency-Key` header — required, not optional. Retrying with a *new* key can register (and charge for) the domain twice; always reuse the same key when retrying the same logical attempt.
+- **Domain registration is two calls, never one** — mirrors the CLI's `gddy domain quote` / `gddy domain purchase` split (run `gddy guide domain-purchase` for the full walkthrough). Lock a quote first — valid ~10 minutes — then register against it with an `Idempotency-Key` header (required, not optional). Reuse the same key when retrying the same logical attempt; a new key on retry can register and charge for the domain twice.
 - **MCP server** (`https://api.godaddy.com/v1/domains/mcp`, streamable-http) is read-only and needs no authentication — public domain search/availability only, never registration, DNS, or anything account-specific. Full docs: `https://developer.godaddy.com/docs/api-users/mcp`.

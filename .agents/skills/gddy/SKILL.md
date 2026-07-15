@@ -5,11 +5,9 @@ description: Use GoDaddy's beta CLI (`gddy`) to search, register, and manage dom
 
 # gddy — GoDaddy domains & DNS CLI
 
-`gddy` is GoDaddy's beta CLI for domain search, registration, and DNS management. It's a separate, independently-installed tool from GoDaddy's older `godaddy` CLI (applications, deployments, webhooks) — different binary, different install method, different auth and config. Installing or using one doesn't affect the other. For application, deployment, or webhook tasks, use the `godaddy-cli` skill instead of this one.
+`gddy` is GoDaddy's beta CLI for domain search, registration, and DNS management. It's separate from GoDaddy's older `godaddy` CLI. For application, deployment, or webhook tasks, use the `godaddy-cli` skill instead of this one.
 
-Both tools exist side by side because `gddy` is the newer of the two and under active development, with more surface area on its roadmap than what's documented here — it already has early, not-yet-stable support for things like applications and webhooks alongside its domain/DNS focus. Stick to the domain/DNS commands documented in this skill unless you've confirmed a newer capability is ready via `gddy --help`.
-
-It's under active development, and moves faster than its own docs and README — see "When the CLI and the docs disagree" below.
+Both tools exist side by side because `gddy` is the newer of the two, under active development, and ships new features frequently. Run `gddy --help` against your installed release for the authoritative, current command list.
 
 ## Setup
 
@@ -23,41 +21,24 @@ curl -fsSL https://github.com/godaddy/cli/releases/latest/download/install.sh | 
 irm https://github.com/godaddy/cli/releases/latest/download/install.ps1 | iex
 ```
 
-Verify with `gddy --version`. This installs the `gddy` binary alongside any existing `godaddy` CLI — the two are separate tools.
+Verify that installation works by running `gddy --version`.
 
-Authenticate with `gddy auth login` (opens a browser for OAuth). Check state with `gddy auth status`, sign out with `gddy auth logout`. For non-interactive use (CI, scripts), use a Personal Access Token instead — manage one with `gddy pat add/list/remove`, or set the `GDDY_PAT`/`GDDY_PAT_<ENV>` env var directly (checked before OAuth). Note PATs can't do everything: domain purchase specifically requires a customer-scoped OAuth login (see below).
+Authenticate with `gddy auth login` (opens a browser for OAuth). Check state with `gddy auth status`, sign out with `gddy auth logout`. For non-interactive use (CI, scripts), use a Personal Access Token instead — manage one with `gddy pat add/list/remove`, or set the `GDDY_PAT`/`GDDY_PAT_<ENV>` env var directly (checked before OAuth). Note PATs can't do everything: domain purchase specifically requires a customer-scoped OAuth login (see `gddy guide domain-purchase`).
 
 Every command accepts `--env <ote|prod>` to pick environment (default `prod`) and `--debug` for verbose output.
 
-## When the CLI and the docs disagree, trust the CLI
+## Documentation
 
-`gddy`'s own `--help` output reflects the actual installed version; docs and the README can lag behind a release, since it's beta and moves fast. Before relying on a remembered or documented flag shape, especially for anything destructive or paid, run `gddy <command> --help` and trust that over any doc page or README. This matters most for domain purchase, which is a two-step flow that some docs oversimplify (see below).
+The `gddy` CLI is self-documenting. Use the following to get more information about its capabilities:
 
-## Domain purchase: it's a two-step quote-then-purchase flow, not one command
+- The `--help` flag will give you detailed documentation on any command.
+- The `gddy --search <keywords>` will help you find a command.
+- The `gddy tree` command will give you a full listing of all commands.
+- The `gddy guide` command lets you view detailed documentation that explains concepts and outlines complex workflows.
 
-This is the highest-stakes command in the CLI — it charges money and can't be undone — so get the shape right. Some docs and even the README show it as a single `gddy domain purchase <domain> --agree --confirm` call; that's a simplification and doesn't match what the CLI actually does. The real flow locks in registration terms first, then executes against that locked quote:
+## Domain purchase
 
-1. **Quote** — run `gddy domain quote --help` for the full flag list (period, privacy, nameservers, etc. all get baked into the quote token). Returns a single-use `quoteToken` valid for roughly 10 minutes, cached locally alongside the contacts file.
-
-2. **Purchase** — run `gddy domain purchase --help` for the full flag list. `--agree` means "I consent to this quote's required legal agreements" — leave it off once first if you want to see what agreements apply before agreeing. `--confirm` is a separate, explicit acknowledgment that this charges the account. Both are required; there's no lower-friction path, by design. Purchase needs an OAuth login (`gddy auth login`) — a bare PAT is rejected here even though PATs work fine for read commands.
-
-3. Purchase is async. The command waits briefly and reports status; if it's still pending, check back with `gddy domain operation status <operation-id>`. A completed purchase shows up in `gddy domain list`.
-
-Before quoting, contact info needs to exist: `gddy domain contacts init` writes a starter `contacts.toml` template (registrant/admin/billing/tech, all commented out) to the OS config directory. Any role left commented out falls back to the account default; any role you fill in needs all of its required fields (name, email, phone, full address).
-
-Always confirm with the user before running `purchase` — it's real money, and the action is not reversible.
-
-## Domain search and lookup
-
-```bash
-gddy domain suggest "coffee shop" --tlds com --tlds net --length-min 4 --length-max 15
-gddy domain available example.com --check-type fast   # or: full (live registry check, slower)
-gddy domain list --status ACTIVE
-gddy domain get example.com
-gddy domain agreements --tld com --privacy
-```
-
-Global `--limit <N>` caps result counts on list-like commands.
+Domain purchases is a multi-step workflow. Run `gddy guide domain-purchase` for a detailed walkthrough. Always confirm with the user before finalizing a purchase — it's real money, and the action is not reversible.
 
 ## DNS management
 
@@ -72,11 +53,11 @@ gddy dns delete example.com --type A --name www
 
 `add` appends a new record; `set` replaces every record matching that type+name; `delete` removes every record matching that type+name. Type-specific requirements: `MX`/`SRV` need `--priority`; `SRV` also needs `--port`, `--weight`, `--protocol`, `--service`; `CAA` requires `--tag` (`--flag` is optional).
 
-`set` and `delete` are destructive — support `--dry-run` to preview the change and `--reason <text>` for an audit trail. Run with `--dry-run` first and show the user what would change before applying it for real.
+`set` and `delete` are destructive. Run with `--dry-run` first and show the user what would change before applying it for real.
 
 ## Payments
 
-`gddy payments add` opens the browser to the account's payment-methods page — no card data is ever handled by the CLI itself. Purchases fail (403/422) without a valid payment method or Good-as-Gold balance on the account; check the error's `code` field, not just the HTTP status, to tell that apart from other failures.
+`gddy payments add` opens the browser to the account's payment-methods page — no card data is ever handled by the CLI itself. Purchases fail (403/422) without a valid payment method or sufficient account balance; check the error's `code` field, not just the HTTP status, to tell that apart from other failures.
 
 ## Reference material
 
