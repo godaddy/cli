@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/godaddy/cli/compare/v0.1.5...v0.1.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **payment-methods:** rename gddy payments to gddy payment-methods (DEVEX-900) ([#119](https://github.com/godaddy/cli/issues/119)) ([67512bc](https://github.com/godaddy/cli/commit/67512bc39b91a4a45e360ac127b7165c82124439))
+
 ## [0.1.5](https://github.com/godaddy/cli/compare/v0.1.4...v0.1.5) (2026-07-16)
 
 
