@@ -189,8 +189,39 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::super::common::comma_joined;
-    use super::{nonzero, suggestion_to_json};
+    use super::{command, nonzero, suggestion_to_json};
     use domains_client::types;
+
+    /// Builds a standalone `clap::Command` from the real `--limit` arg
+    /// definition (not a re-declared copy), so this exercises the actual
+    /// validation users hit, not a hand-maintained stand-in that could drift
+    /// from it.
+    fn suggest_clap_command() -> clap::Command {
+        clap::Command::new("suggest").args(command().spec.args)
+    }
+
+    #[test]
+    fn limit_rejects_out_of_range_and_negative_values() {
+        for bad in ["0", "51", "-1"] {
+            let err = suggest_clap_command()
+                .try_get_matches_from(["suggest", "coffee", "--limit", bad])
+                .expect_err(&format!("--limit {bad} should have been rejected"));
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "--limit {bad} should fail range validation, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn limit_accepts_the_full_valid_range() {
+        for good in ["1", "50"] {
+            suggest_clap_command()
+                .try_get_matches_from(["suggest", "coffee", "--limit", good])
+                .unwrap_or_else(|e| panic!("--limit {good} should be accepted: {e}"));
+        }
+    }
 
     #[test]
     fn nonzero_maps_zero_and_negative_to_none() {
