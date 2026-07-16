@@ -1336,6 +1336,7 @@ name = "godaddy-cli"
 version = "0.1.4"
 dependencies = [
  "async-trait",
+ "bytes",
  "chrono",
  "clap",
  "cli-engine",

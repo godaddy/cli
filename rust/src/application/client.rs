@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use reqwest::Client;
 use serde_json::{Value, json};
 
@@ -26,6 +27,8 @@ pub enum ClientError {
     GraphQL(String),
     #[error("file size {size} bytes exceeds maximum allowed ({max} bytes)")]
     TooLarge { size: u64, max: u64 },
+    #[error("invalid upload header {0}")]
+    InvalidHeader(String),
 }
 
 /// Result of a successful artifact upload.
@@ -40,14 +43,14 @@ pub struct UploadResult {
 /// Retry/backoff tuning for [`ApplicationClient::upload_artifact`].
 #[derive(Debug, Clone)]
 pub struct UploadOptions {
-    pub max_retries: u32,
+    pub max_attempts: u32,
     pub base_delay_ms: u64,
 }
 
 impl Default for UploadOptions {
     fn default() -> Self {
         Self {
-            max_retries: 3,
+            max_attempts: 3,
             base_delay_ms: 250,
         }
     }
@@ -240,25 +243,31 @@ impl ApplicationClient {
             });
         }
 
-        let mut signed_headers = headers.as_object().cloned().unwrap_or_default();
-        signed_headers.remove("x-amz-meta-upload-id");
+        let body = Bytes::from(bytes);
 
-        let header_map: reqwest::header::HeaderMap = signed_headers
-            .iter()
-            .filter_map(|(k, v)| {
-                let name = reqwest::header::HeaderName::from_bytes(k.as_bytes()).ok()?;
-                let value = reqwest::header::HeaderValue::from_str(v.as_str()?).ok()?;
-                Some((name, value))
-            })
-            .collect();
+        // Skip the unsigned x-amz-meta-upload-id; fail fast on a malformed header (avoids an opaque S3 403).
+        let mut header_map = reqwest::header::HeaderMap::new();
+        for (k, v) in headers.as_object().into_iter().flatten() {
+            if k.eq_ignore_ascii_case("x-amz-meta-upload-id") {
+                continue;
+            }
+            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| ClientError::InvalidHeader(format!("name {k:?}: {e}")))?;
+            let value = v.as_str().ok_or_else(|| {
+                ClientError::InvalidHeader(format!("{k:?} value is not a string"))
+            })?;
+            let value = reqwest::header::HeaderValue::from_str(value)
+                .map_err(|e| ClientError::InvalidHeader(format!("value for {k:?}: {e}")))?;
+            header_map.insert(name, value);
+        }
 
         let mut last_error: Option<ClientError> = None;
 
-        for attempt in 1..=opts.max_retries {
+        for attempt in 1..=opts.max_attempts {
             let request = self
                 .client
                 .put(url)
-                .body(bytes.clone())
+                .body(body.clone())
                 .headers(header_map.clone())
                 .build()?;
             cli_engine::transport::debug_log_reqwest_request(&request);
@@ -305,7 +314,7 @@ impl ApplicationClient {
                         %upload_id,
                         status = status.as_u16(),
                         attempt,
-                        max_retries = opts.max_retries,
+                        max_attempts = opts.max_attempts,
                         error_snippet = %snippet,
                         "artifact upload failed with server error, retrying"
                     );
@@ -318,7 +327,7 @@ impl ApplicationClient {
                     tracing::warn!(
                         %upload_id,
                         attempt,
-                        max_retries = opts.max_retries,
+                        max_attempts = opts.max_attempts,
                         error = %e,
                         "artifact upload failed with network error, retrying"
                     );
@@ -326,7 +335,7 @@ impl ApplicationClient {
                 }
             }
 
-            if attempt < opts.max_retries {
+            if attempt < opts.max_attempts {
                 let delay = opts.base_delay_ms * 3u64.pow(attempt - 1);
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             }
@@ -334,7 +343,7 @@ impl ApplicationClient {
 
         Err(last_error.unwrap_or_else(|| ClientError::Http {
             status: 0,
-            body: format!("upload failed after {} attempts", opts.max_retries),
+            body: format!("upload failed after {} attempts", opts.max_attempts),
         }))
     }
 }
@@ -488,7 +497,7 @@ mod tests {
                 Some(4), // max 4 bytes
                 b"way too big".to_vec(),
                 UploadOptions {
-                    max_retries: 3,
+                    max_attempts: 3,
                     base_delay_ms: 0,
                 },
             )
@@ -520,7 +529,7 @@ mod tests {
                 None,
                 b"data".to_vec(),
                 UploadOptions {
-                    max_retries: 3,
+                    max_attempts: 3,
                     base_delay_ms: 0,
                 },
             )
@@ -552,7 +561,7 @@ mod tests {
                 None,
                 b"data".to_vec(),
                 UploadOptions {
-                    max_retries: 3,
+                    max_attempts: 3,
                     base_delay_ms: 0,
                 },
             )
@@ -596,7 +605,7 @@ mod tests {
                 None,
                 b"hello".to_vec(),
                 UploadOptions {
-                    max_retries: 3,
+                    max_attempts: 3,
                     base_delay_ms: 0,
                 },
             )
@@ -608,5 +617,37 @@ mod tests {
         assert_eq!(result.status, 200);
         assert_eq!(result.size_bytes, 5);
         assert_eq!(result.etag.as_deref(), Some("\"abc123\""));
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_invalid_header_without_uploading() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT).path("/upload");
+                then.status(200);
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-1",
+                &json!({ "bad header name": "x" }), // space in name → invalid
+                None,
+                b"data".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect_err("invalid header should fail before uploading");
+
+        assert!(
+            matches!(err, ClientError::InvalidHeader(_)),
+            "unexpected: {err}"
+        );
+        assert_eq!(mock.hits_async().await, 0);
     }
 }
