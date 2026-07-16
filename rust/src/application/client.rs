@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use reqwest::Client;
 use serde_json::{Value, json};
 
@@ -24,6 +25,35 @@ pub enum ClientError {
     Network(#[from] reqwest::Error),
     #[error("GraphQL errors: {0}")]
     GraphQL(String),
+    #[error("file size {size} bytes exceeds maximum allowed ({max} bytes)")]
+    TooLarge { size: u64, max: u64 },
+    #[error("invalid upload header {0}")]
+    InvalidHeader(String),
+}
+
+/// Result of a successful artifact upload.
+#[derive(Debug, Clone)]
+pub struct UploadResult {
+    pub upload_id: String,
+    pub etag: Option<String>,
+    pub status: u16,
+    pub size_bytes: u64,
+}
+
+/// Retry/backoff tuning for [`ApplicationClient::upload_artifact`].
+#[derive(Debug, Clone)]
+pub struct UploadOptions {
+    pub max_attempts: u32,
+    pub base_delay_ms: u64,
+}
+
+impl Default for UploadOptions {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            base_delay_ms: 250,
+        }
+    }
 }
 
 pub struct ApplicationClient {
@@ -188,36 +218,133 @@ impl ApplicationClient {
         .await
     }
 
+    /// Upload an artifact to a presigned S3 URL.
+    ///
+    /// Validates the size up front, strips the unsigned `x-amz-meta-upload-id`
+    /// header (it is not part of the S3 SigV4 signing string, so sending it can
+    /// break the PUT), and retries transient failures — network errors and 5xx —
+    /// with exponential backoff. 4xx responses are returned immediately.
     pub async fn upload_artifact(
         &self,
         url: &str,
+        upload_id: &str,
         headers: &Value,
+        max_size_bytes: Option<u64>,
         bytes: Vec<u8>,
-    ) -> Result<(), ClientError> {
-        let mut req = self.client.put(url).body(bytes);
-        if let Some(obj) = headers.as_object() {
-            for (k, v) in obj {
-                if let Some(s) = v.as_str() {
-                    req = req.header(k.as_str(), s);
-                }
-            }
-        }
-        let request = req.build()?;
-        cli_engine::transport::debug_log_reqwest_request(&request);
-        let resp = self.client.execute(request).await?;
-
-        let status = resp.status();
-        let resp_headers = resp.headers().clone();
-        let body = resp.bytes().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &resp_headers, &body);
-
-        if !status.is_success() {
-            return Err(ClientError::Http {
-                status: status.as_u16(),
-                body: String::from_utf8_lossy(&body).into_owned(),
+        opts: UploadOptions,
+    ) -> Result<UploadResult, ClientError> {
+        let size_bytes = bytes.len() as u64;
+        if let Some(max) = max_size_bytes
+            && size_bytes > max
+        {
+            return Err(ClientError::TooLarge {
+                size: size_bytes,
+                max,
             });
         }
-        Ok(())
+
+        let body = Bytes::from(bytes);
+
+        // Skip the unsigned x-amz-meta-upload-id; fail fast on a malformed header (avoids an opaque S3 403).
+        let mut header_map = reqwest::header::HeaderMap::new();
+        for (k, v) in headers.as_object().into_iter().flatten() {
+            if k.eq_ignore_ascii_case("x-amz-meta-upload-id") {
+                continue;
+            }
+            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| ClientError::InvalidHeader(format!("name {k:?}: {e}")))?;
+            let value = v.as_str().ok_or_else(|| {
+                ClientError::InvalidHeader(format!("{k:?} value is not a string"))
+            })?;
+            let value = reqwest::header::HeaderValue::from_str(value)
+                .map_err(|e| ClientError::InvalidHeader(format!("value for {k:?}: {e}")))?;
+            header_map.insert(name, value);
+        }
+
+        let mut last_error: Option<ClientError> = None;
+
+        for attempt in 1..=opts.max_attempts {
+            let request = self
+                .client
+                .put(url)
+                .body(body.clone())
+                .headers(header_map.clone())
+                .build()?;
+            cli_engine::transport::debug_log_reqwest_request(&request);
+
+            match self.client.execute(request).await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let resp_headers = resp.headers().clone();
+                    let etag = resp_headers
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_owned());
+                    // Body-read failure is non-fatal — status is authoritative; body is only for the snippet.
+                    let body = resp.bytes().await.unwrap_or_default();
+                    cli_engine::transport::debug_log_reqwest_response(status, &resp_headers, &body);
+
+                    if status.is_success() {
+                        let result = UploadResult {
+                            upload_id: upload_id.to_owned(),
+                            etag,
+                            status: status.as_u16(),
+                            size_bytes,
+                        };
+                        tracing::debug!(
+                            upload_id = %result.upload_id,
+                            status = result.status,
+                            etag = ?result.etag,
+                            size_bytes = result.size_bytes,
+                            attempt,
+                            "artifact upload succeeded"
+                        );
+                        return Ok(result);
+                    }
+
+                    let snippet: String =
+                        String::from_utf8_lossy(&body).chars().take(200).collect();
+                    if !status.is_server_error() {
+                        return Err(ClientError::Http {
+                            status: status.as_u16(),
+                            body: snippet,
+                        });
+                    }
+                    tracing::warn!(
+                        %upload_id,
+                        status = status.as_u16(),
+                        attempt,
+                        max_attempts = opts.max_attempts,
+                        error_snippet = %snippet,
+                        "artifact upload failed with server error, retrying"
+                    );
+                    last_error = Some(ClientError::Http {
+                        status: status.as_u16(),
+                        body: snippet,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        %upload_id,
+                        attempt,
+                        max_attempts = opts.max_attempts,
+                        error = %e,
+                        "artifact upload failed with network error, retrying"
+                    );
+                    last_error = Some(ClientError::Network(e));
+                }
+            }
+
+            if attempt < opts.max_attempts {
+                let delay = opts.base_delay_ms * 3u64.pow(attempt - 1);
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| ClientError::Http {
+            status: 0,
+            body: format!("upload failed after {} attempts", opts.max_attempts),
+        }))
     }
 }
 
@@ -347,5 +474,180 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(data["updateApplication"]["status"], "ACTIVE");
+    }
+
+    // httpmock can't sequence responses, so retries are verified by hit count
+    // (exhaustion) rather than a fail-then-succeed sequence.
+
+    #[tokio::test]
+    async fn upload_rejects_oversize_file_without_uploading() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT).path("/upload");
+                then.status(200);
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-1",
+                &json!({}),
+                Some(4), // max 4 bytes
+                b"way too big".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect_err("oversize should fail before uploading");
+
+        assert!(
+            matches!(err, ClientError::TooLarge { .. }),
+            "unexpected: {err}"
+        );
+        assert_eq!(mock.hits_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn upload_does_not_retry_on_4xx() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT).path("/upload");
+                then.status(403).body("denied");
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-1",
+                &json!({}),
+                None,
+                b"data".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect_err("4xx should fail immediately");
+
+        assert!(
+            matches!(err, ClientError::Http { status: 403, .. }),
+            "unexpected: {err}"
+        );
+        assert_eq!(mock.hits_async().await, 1);
+    }
+
+    #[tokio::test]
+    async fn upload_retries_on_5xx_until_exhausted() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT).path("/upload");
+                then.status(503).body("try later");
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-1",
+                &json!({}),
+                None,
+                b"data".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect_err("exhausted retries should fail");
+
+        assert!(
+            matches!(err, ClientError::Http { status: 503, .. }),
+            "unexpected: {err}"
+        );
+        assert_eq!(mock.hits_async().await, 3);
+    }
+
+    #[tokio::test]
+    async fn upload_strips_meta_upload_id_and_returns_metadata() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/upload")
+                    .header("x-amz-signature", "sig")
+                    // assert x-amz-meta-upload-id was stripped
+                    .matches(|req| {
+                        !req.headers
+                            .iter()
+                            .flatten()
+                            .any(|(k, _)| k.eq_ignore_ascii_case("x-amz-meta-upload-id"))
+                    });
+                then.status(200).header("etag", "\"abc123\"");
+            })
+            .await;
+
+        let result = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-42",
+                &json!({
+                    "x-amz-signature": "sig",
+                    "x-amz-meta-upload-id": "should-be-stripped",
+                }),
+                None,
+                b"hello".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect("upload should succeed");
+
+        mock.assert_async().await;
+        assert_eq!(result.upload_id, "up-42");
+        assert_eq!(result.status, 200);
+        assert_eq!(result.size_bytes, 5);
+        assert_eq!(result.etag.as_deref(), Some("\"abc123\""));
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_invalid_header_without_uploading() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT).path("/upload");
+                then.status(200);
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .upload_artifact(
+                &server.url("/upload"),
+                "up-1",
+                &json!({ "bad header name": "x" }), // space in name → invalid
+                None,
+                b"data".to_vec(),
+                UploadOptions {
+                    max_attempts: 3,
+                    base_delay_ms: 0,
+                },
+            )
+            .await
+            .expect_err("invalid header should fail before uploading");
+
+        assert!(
+            matches!(err, ClientError::InvalidHeader(_)),
+            "unexpected: {err}"
+        );
+        assert_eq!(mock.hits_async().await, 0);
     }
 }
