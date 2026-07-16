@@ -4,7 +4,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use crate::application::client::{ApplicationClient, api_url_for_env};
+use crate::application::client::{ApplicationClient, UploadOptions, api_url_for_env};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 // App-registry mutations declare their scopes so `apps.app-registry:write` is
@@ -1078,6 +1078,8 @@ async fn deploy_extension(
 
     let upload = &upload_data["generateReleaseUploadUrl"];
     let upload_url = upload["url"].as_str().unwrap_or("").to_owned();
+    let upload_id = upload["uploadId"].as_str().unwrap_or("").to_owned();
+    let max_size_bytes = upload["maxSizeBytes"].as_u64();
 
     // Parse required headers from ["key:value"] array
     let mut headers = serde_json::Map::new();
@@ -1092,7 +1094,14 @@ async fn deploy_extension(
     }
 
     client
-        .upload_artifact(&upload_url, &json!(headers), bytes)
+        .upload_artifact(
+            &upload_url,
+            &upload_id,
+            &json!(headers),
+            max_size_bytes,
+            bytes,
+            UploadOptions::default(),
+        )
         .await
         .map_err(client_err)?;
 
