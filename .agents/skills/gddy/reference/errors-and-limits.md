@@ -55,7 +55,7 @@ These are the `code` values you'll actually see while quoting/registering a doma
 |---|---|---|
 | `DOMAIN_NOT_AVAILABLE` | Someone else registered the name first (race between check and purchase). | Re-check availability, suggest alternatives. |
 | `BILLING_DECLINED` | Payment method on file was charged and declined. | Surface to the user — they need to fix their payment method. |
-| `NO_PAYMENT_PROFILE` | No payment method on the account at all. | Direct the user to `gddy payments add` or the account's payment-methods page. |
+| `NO_PAYMENT_PROFILE` | No payment method on the account at all. | Direct the user to `gddy payment-methods add` or the account's payment-methods page. |
 | `QUOTE_MISMATCH` | The `period` (or other term) at execute time doesn't match what was quoted. | Reuse the exact period from the quote, or fetch a fresh quote. |
 | `INVALID_AGREEMENT_KEYS` | `agreementTypes` sent don't match the TLD's `requiredAgreements` from the quote. | Use the exact keys the quote response returned, not guessed/remembered ones. |
 | `MISSING_CONTACT` | No registrant contact configured on the account. | Set up contacts (`gddy domain contacts init`, then fill in the file) before quoting. |

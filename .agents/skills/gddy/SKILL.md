@@ -58,9 +58,9 @@ gddy dns delete example.com --type A --name www
 
 `set` and `delete` are destructive. Run with `--dry-run` first and show the user what would change before applying it for real.
 
-## Payments
+## Payment Methods
 
-`gddy payments add` opens the browser to the account's payment-methods page — no card data is ever handled by the CLI itself. Purchases fail (403/422) without a valid payment method or sufficient account balance; check the error's `code` field, not just the HTTP status, to tell that apart from other failures.
+`gddy payment-methods add` opens the browser to the account's payment-methods page — no card data is ever handled by the CLI itself. Purchases fail (403/422) without a valid payment method or sufficient account balance; check the error's `code` field, not just the HTTP status, to tell that apart from other failures.
 
 ## Reference material
 
