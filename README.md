@@ -36,20 +36,26 @@ platform (`gddy.exe` on Windows). If you'd rather install by hand, download the
 
 ## Output Contract
 
-All executable commands emit JSON envelopes:
+Regular executable commands in JSON mode emit GoDaddy JSON envelopes:
 
 ```json
-{"ok":true,"command":"gddy env get","result":{"environment":"ote"},"next_actions":[...]}
+{"command":"gddy env get","next_actions":[],"ok":true,"result":{"apiUrl":"https://api.godaddy.com","env":"prod"}}
 ```
 
 ```json
-{"ok":false,"command":"gddy application info demo","error":{"message":"Application 'demo' not found","code":"NOT_FOUND"},"fix":"Use discovery commands such as: gddy application list or gddy actions list.","next_actions":[...]}
+{"command":"gddy env get","error":{"code":"ERROR","message":"unknown environment \"not-an-environment\"; known: ote, prod"},"next_actions":[],"ok":false}
 ```
 
-`--help` remains standard CLI help text.
-`--output` has been removed; all executable command paths return JSON envelopes.
-Use `--pretty` to format envelopes with 2-space indentation for human readability.
-Long-running operations can stream typed NDJSON events with `--follow`, ending with a terminal `result` or `error` event.
+Regular command envelopes, including errors, are written to stdout. Failed
+commands retain a non-zero exit code. `--help` and `--version` remain standard
+CLI text, and non-JSON diagnostics retain their original stream.
+
+JSON is the default for non-interactive output. Use `--output
+<json|human|toon>` to select a format; `--json`, `--human`, and `--toon` are
+shorthands. Human and TOON output pass through without GoDaddy JSON-envelope
+adaptation. JSON envelopes use two-space indentation by default. `--pretty` is
+not registered. Streaming commands are outside this regular-command adapter;
+terminal `result` and `error` events are tracked separately.
 
 ## Root Discovery
 
@@ -61,9 +67,10 @@ Returns environment/auth snapshots and the full command tree.
 
 ## Global Options
 
-- `-e, --env <environment>`: validate target environment (`ote`, `prod`)
+- `--env <environment>`: validate target environment (`ote`, `prod`)
 - `--debug`: enable debug logging (stderr only)
-- `--pretty`: pretty-print JSON envelopes (2-space indentation)
+- `--output <json|human|toon>`: select the output format
+- `--json`, `--human`, `--toon`: output-format shorthands
 
 ## Commands
 
@@ -95,7 +102,7 @@ Returns environment/auth snapshots and the full command tree.
 - `gddy application init [--name <name>] [--description <description>] [--url <url>] [--proxy-url <proxyUrl>] [--scopes <scopes>] [--config <path>] [--environment <env>]`
   - `--url` and `--proxy-url` must be publicly-resolvable `http(s)` URLs. `localhost`, loopback (`127.0.0.1`, `::1`), link-local, and RFC1918 private IPs are rejected. For local development, expose a tunnel (e.g. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [ngrok](https://ngrok.com/)) and register the tunnel hostname.
 - `gddy application release <name> --release-version <version> [--description <description>] [--config <path>] [--environment <env>]`
-- `gddy application deploy <name> [--config <path>] [--environment <env>] [--follow]`
+- `gddy application deploy <name> [--config <path>] [--environment <env>]`
 
 #### Application Add
 

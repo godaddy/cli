@@ -8,7 +8,7 @@ tags: [godaddy, cli, commerce, applications, deploy]
 
 # Using the GoDaddy CLI
 
-The `godaddy` CLI is an agent-first tool. Every command returns a single JSON envelope to stdout. There is no plain text mode, no `--json` flag, and no table output. Parse stdout as JSON.
+The `godaddy` CLI is an agent-first tool. Regular executable commands in JSON mode return a single GoDaddy JSON envelope to stdout. Help and version output remain text, non-JSON formats pass through in their native shape, and streaming commands are outside the regular envelope adapter.
 
 ## Quick Start
 
@@ -32,18 +32,21 @@ godaddy application info <name>
 
 ## Output Contract
 
-### Every response is JSON
+### Regular command responses are JSON
 
-Every command writes exactly one JSON object to stdout followed by a newline. Parse it directly. Debug/verbose messages go to stderr only.
+Regular commands write one JSON object to stdout followed by a newline. This includes error envelopes, which are written to stdout while retaining a non-zero exit code. Help, version, and non-JSON diagnostics retain their text format and original stream.
 
 ### Success
 
 ```json
 {
   "ok": true,
-  "command": "godaddy application list",
-  "result": { ... },
-  "next_actions": [ ... ]
+  "command": "gddy env get",
+  "result": {
+    "apiUrl": "https://api.godaddy.com",
+    "env": "prod"
+  },
+  "next_actions": []
 }
 ```
 
@@ -52,19 +55,16 @@ Every command writes exactly one JSON object to stdout followed by a newline. Pa
 ```json
 {
   "ok": false,
-  "command": "godaddy application info demo",
+  "command": "gddy env get",
   "error": {
-    "message": "Application 'demo' not found",
-    "code": "NOT_FOUND"
+    "message": "unknown environment \"not-an-environment\"; known: ote, prod",
+    "code": "ERROR"
   },
-  "fix": "Use discovery commands such as: godaddy application list or godaddy actions list.",
-  "next_actions": [ ... ]
+  "next_actions": []
 }
 ```
 
-Check `ok` first. On failure, read `error.code` for programmatic handling and `fix` for the suggested recovery step.
-
-Error codes: `NOT_FOUND`, `AUTH_REQUIRED`, `VALIDATION_ERROR`, `NETWORK_ERROR`, `CONFIG_ERROR`, `SECURITY_BLOCKED`, `COMMAND_NOT_FOUND`, `UNSUPPORTED_OPTION`, `UNEXPECTED_ERROR`.
+Check `ok` first. On failure, read `error.code` and `error.message`; error codes are command-specific.
 
 ### next_actions (HATEOAS)
 
@@ -124,12 +124,14 @@ If `truncated` is `true`, the complete data is at the `full_output` file path. R
 
 | Flag | Alias | Effect |
 |------|-------|--------|
-| `--pretty` | | Pretty-print JSON with 2-space indentation |
-| `--env <env>` | `-e` | Override environment for this command (`ote` or `prod`) |
-| `--verbose` | `-v` | Log HTTP requests/responses to stderr |
-| `--debug` | `-vv` | Full verbose output to stderr |
+| `--env <env>` | | Override environment for this command (`ote` or `prod`) |
+| `--debug` | | Enable debug logging on stderr |
+| `--output <format>` | `-o` | Select `json`, `human`, or `toon` output |
+| `--json` | | Shorthand for `--output json` |
+| `--human` | | Shorthand for `--output human` |
+| `--toon` | | Shorthand for `--output toon` |
 
-These can appear anywhere in the command. They do not affect the JSON structure — only formatting and stderr diagnostics.
+These options can appear anywhere in the command. The GoDaddy adapter applies to regular commands only when cli-engine renders JSON. JSON envelopes use two-space indentation by default; `--pretty` is not registered.
 
 ## Discovery
 
@@ -246,11 +248,8 @@ All `add` commands accept `--config <path>` and `--environment <env>` to target 
 godaddy application release <name> --release-version 1.0.0
 godaddy application release <name> --release-version 1.0.0 --description "Initial release"
 
-# Deploy
+# Deploy (this command streams progress)
 godaddy application deploy <name>
-
-# Deploy with streaming progress (NDJSON)
-godaddy application deploy <name> --follow
 ```
 
 Release and deploy accept `--config <path>` and `--environment <env>`.
@@ -321,28 +320,10 @@ Returns up to 50 events inline; use `full_output` path for the complete list (19
 
 ## NDJSON Streaming
 
-When `--follow` is used (currently on `deploy`), output is multiple JSON lines instead of one envelope. Each line has a `type` field:
-
-```
-{"type":"start","command":"godaddy application deploy my-app --follow","ts":"..."}
-{"type":"step","name":"security-scan","status":"started","ts":"..."}
-{"type":"step","name":"security-scan","status":"completed","ts":"..."}
-{"type":"step","name":"bundle","status":"started","extension_name":"my-widget","ts":"..."}
-{"type":"progress","name":"bundle","percent":50,"ts":"..."}
-{"type":"step","name":"bundle","status":"completed","ts":"..."}
-{"type":"result","ok":true,"command":"...","result":{...},"next_actions":[...]}
-```
-
-The **last line is always terminal** (`type: "result"` or `type: "error"`). It has the same shape as a standard envelope. If you only care about the final outcome, read the last line.
-
-Stream event types:
-| Type | Meaning | Terminal? |
-|------|---------|-----------|
-| `start` | Stream begun | No |
-| `step` | Step lifecycle (started/completed/failed) | No |
-| `progress` | Progress update (percent, message) | No |
-| `result` | Success envelope | Yes |
-| `error` | Error envelope | Yes |
+Streaming commands are not adapted by the regular-command output envelope.
+Their terminal `result` and `error` event contract is tracked separately and is
+not guaranteed by the current binary. Do not assume the final line has the
+regular envelope shape.
 
 ## Typical Workflows
 
@@ -361,7 +342,7 @@ godaddy application add action --name my-action \        # 4. Add action
 godaddy application validate my-app                      # 5. Validate
 godaddy application release my-app \                     # 6. Release
   --release-version 1.0.0
-godaddy application deploy my-app --follow               # 7. Deploy
+godaddy application deploy my-app                        # 7. Deploy
 godaddy application enable my-app --store-id <storeId>   # 8. Enable
 ```
 
@@ -373,7 +354,7 @@ godaddy application update my-app --description "New"    # 2. Update
 godaddy application validate my-app                      # 3. Validate
 godaddy application release my-app \                     # 4. Bump version
   --release-version 1.1.0
-godaddy application deploy my-app --follow               # 5. Deploy
+godaddy application deploy my-app                        # 5. Deploy
 ```
 
 ### Diagnose failures
@@ -388,10 +369,10 @@ godaddy application info <n>       # 5. App status?
 
 ## Parsing Tips
 
-1. **Always parse stdout as JSON.** The only non-JSON output is `--help` text.
+1. **Parse regular command stdout as JSON when using JSON mode.** Help, version, and explicitly selected non-JSON formats are not GoDaddy envelopes.
 2. **Check `ok` first.** Branch on `true`/`false` before reading `result` or `error`.
 3. **Use `next_actions`** to discover what to do next. Fill template params from context.
-4. **Exit code**: 0 = success, 1 = error. But always prefer the JSON `ok` field.
-5. **stderr is diagnostic only.** Verbose/debug output goes there. Never parse stderr for data.
+4. **Exit code**: 0 = success, non-zero = error. Check the JSON `ok` field as well.
+5. **Error envelopes use stdout.** stderr is reserved for tracing and non-envelope diagnostics.
 6. **Truncated lists**: check `truncated` field. Read `full_output` file for complete data.
-7. **Streaming**: for `--follow` commands, parse each line as an independent JSON object. The last line is the final result.
+7. **Streaming**: do not assume a terminal public envelope until that separate contract is implemented.

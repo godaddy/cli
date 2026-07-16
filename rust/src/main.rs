@@ -11,6 +11,7 @@ mod environments;
 mod extension;
 mod hosting;
 mod next_action;
+mod output_envelope;
 mod output_schema;
 mod pat;
 mod payments;
@@ -19,7 +20,7 @@ mod scopes;
 mod update;
 mod webhook;
 
-use std::{process::ExitCode, sync::Arc};
+use std::{ffi::OsString, io::Write, process::ExitCode, sync::Arc};
 
 use clap::Arg;
 use cli_engine::{BuildInfo, Cli, CliConfig};
@@ -112,5 +113,48 @@ async fn main() -> ExitCode {
             .with_module(webhook::module()),
     );
 
-    cli.execute().await
+    let args = std::env::args_os().collect::<Vec<OsString>>();
+    let command = output_envelope::command_path(cli.root_command(), &args);
+    let mut engine_stdout = Vec::new();
+    let mut engine_stderr = Vec::new();
+
+    let exit_code = match cli
+        .execute_from(args, &mut engine_stdout, &mut engine_stderr)
+        .await
+    {
+        Ok(code) => code,
+        Err(error) => {
+            tracing::error!(%error, "failed to execute command");
+            return ExitCode::from(1);
+        }
+    };
+
+    let is_success = exit_code == ExitCode::SUCCESS;
+    let rendered = if is_success {
+        &engine_stdout
+    } else {
+        &engine_stderr
+    };
+    let rendered = String::from_utf8_lossy(rendered);
+
+    if let Some(adapted) = output_envelope::adapt(&rendered, &command, is_success) {
+        if std::io::stdout()
+            .lock()
+            .write_all(adapted.as_bytes())
+            .is_err()
+        {
+            return ExitCode::from(1);
+        }
+    } else {
+        let write_result = if is_success {
+            std::io::stdout().lock().write_all(&engine_stdout)
+        } else {
+            std::io::stderr().lock().write_all(&engine_stderr)
+        };
+        if write_result.is_err() {
+            return ExitCode::from(1);
+        }
+    }
+
+    exit_code
 }
