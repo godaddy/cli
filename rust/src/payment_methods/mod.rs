@@ -1,4 +1,4 @@
-//! `gddy payments` — payment method management.
+//! `gddy payment-methods` — payment method management.
 
 use cli_engine::{
     CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextActionParam,
@@ -14,13 +14,13 @@ fn map_env_err(e: environments::EnvError) -> CliCoreError {
 }
 
 pub fn module() -> Module {
-    Module::new("Payments", |_ctx| {
+    Module::new("Payment Methods", |_ctx| {
         RuntimeGroupSpec::new(
-            GroupSpec::new("payments", "Manage payment methods").with_long(
+            GroupSpec::new("payment-methods", "Manage payment methods").with_long(
                 "Manage the payment methods on your GoDaddy account.\n\
                      A saved payment method is required before you can run \
                      `gddy domain purchase`.\n\
-                     Use `gddy payments add` to open the GoDaddy payment methods \
+                     Use `gddy payment-methods add` to open the GoDaddy payment methods \
                      page in your browser.",
             ),
         )
@@ -38,7 +38,7 @@ fn add_command() -> RuntimeCommandSpec {
             "Opens your default browser to the GoDaddy payment methods management page.\n\
                  Note: only credit card or Good-as-Gold can be used for domain purchases.",
         )
-        .with_system("payments")
+        .with_system("payment-methods")
         .with_tier(Tier::Mutate)
         .no_auth(true),
         |ctx| async move {

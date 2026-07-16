@@ -13,7 +13,7 @@ mod hosting;
 mod next_action;
 mod output_schema;
 mod pat;
-mod payments;
+mod payment_methods;
 mod quote_cache;
 mod scopes;
 mod update;
@@ -47,7 +47,7 @@ async fn main() -> ExitCode {
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
                  • application — build, configure, and deploy platform applications\n  \
                  • hosting  — manage Node.js PaaS applications (create, upload, deploy)\n  \
-                 • payments — manage the payment methods used for purchases\n\
+                 • payment-methods — manage the payment methods used for purchases\n\
                  \n\
                  Most commands need authentication; run `gddy auth login` first, or use a PAT via `gddy pat add` / `GDDY_PAT` for non-interactive workflows (or just run a\n\
                  command and follow the prompt). Use `--env` to target an environment and\n\
@@ -107,7 +107,7 @@ async fn main() -> ExitCode {
             .with_module(env::module())
             .with_module(hosting::module())
             .with_module(pat::module())
-            .with_module(payments::module())
+            .with_module(payment_methods::module())
             .with_module(update::module())
             .with_module(webhook::module()),
     );
