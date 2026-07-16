@@ -2,7 +2,7 @@ use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
     StreamSender, Tier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::application::client::{ApplicationClient, api_url_for_env};
 use crate::next_action::next_action;
@@ -106,6 +106,72 @@ async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<App
 
 fn client_err(e: crate::application::client::ClientError) -> cli_engine::CliCoreError {
     cli_engine::CliCoreError::message(e.to_string())
+}
+
+/// Builds the terminal `{"type":"error",...}` event for a streaming command,
+/// reusing `cli_engine::build_error_envelope` so the `code`/`message` match
+/// what a non-streaming command would have rendered for the same error.
+fn deploy_error_event(err: &cli_engine::CliCoreError) -> Value {
+    let envelope = cli_engine::build_error_envelope(err, "applications");
+    // `build_error_envelope` always populates `.error` with a non-empty code;
+    // this fallback only guards against a future change to that guarantee.
+    let (code, message) = envelope
+        .error
+        .map(|e| (e.code, e.message))
+        .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
+    json!({
+        "type": "error",
+        "ok": false,
+        "error": { "code": code, "message": message },
+        "next_actions": [],
+    })
+}
+
+/// Emit the terminal error event on a streaming command, then return the
+/// error so the handler can still fail the run via `?`.
+async fn fail_deploy(
+    sender: &StreamSender,
+    err: cli_engine::CliCoreError,
+) -> cli_engine::CliCoreError {
+    sender.send(deploy_error_event(&err)).await;
+    err
+}
+
+/// Builds the terminal `{"type":"result",...}` event for a successful
+/// `application deploy` run.
+fn deploy_result_event(
+    name: &str,
+    application_id: &str,
+    release_id: &str,
+    extensions: usize,
+) -> Value {
+    json!({
+        "type": "result",
+        "ok": true,
+        "result": {
+            "application": name,
+            "applicationId": application_id,
+            "releaseId": release_id,
+            "extensions": extensions,
+            "status": "ACTIVE",
+        },
+        "next_actions": [next_action(
+            "application info --name <name>",
+            "Inspect the deployed application",
+        )],
+    })
+}
+
+/// Wrap a fallible step: on `Err`, emit the terminal error event before
+/// propagating, so every failure path produces exactly one terminal line.
+async fn tap_deploy_err<T>(
+    sender: &StreamSender,
+    result: cli_engine::Result<T>,
+) -> cli_engine::Result<T> {
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => Err(fail_deploy(sender, e).await),
+    }
 }
 
 fn arg_str<'a>(ctx: &'a cli_engine::CommandContext, key: &str) -> &'a str {
@@ -662,7 +728,7 @@ fn ui_extension_entry(
     source: &str,
     kind: &str,
     targets: &[crate::config::ExtensionTarget],
-) -> cli_engine::Result<serde_json::Value> {
+) -> cli_engine::Result<Value> {
     if targets.len() > 1 {
         return Err(cli_engine::CliCoreError::message(format!(
             "UI extension '{name}' has {} targets, but only one target is supported per extension during release",
@@ -678,9 +744,7 @@ fn ui_extension_entry(
 
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
 /// `uiExtensions` input. Mirrors the TS release mapping (single target each).
-fn build_ui_extensions(
-    config: &crate::config::Config,
-) -> cli_engine::Result<Vec<serde_json::Value>> {
+fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
     let mut out = Vec::new();
     let Some(exts) = &config.extensions else {
         return Ok(out);
@@ -760,12 +824,12 @@ fn release_command() -> RuntimeCommandSpec {
                 &crate::config::config_path(Some(&ctx.middleware.env)),
             ) {
                 Ok(config) => {
-                    let actions: Vec<serde_json::Value> = config
+                    let actions: Vec<Value> = config
                         .actions
                         .iter()
                         .map(|a| json!({ "name": a.name, "url": a.url }))
                         .collect();
-                    let subscriptions: Vec<serde_json::Value> = config
+                    let subscriptions: Vec<Value> = config
                         .subscriptions
                         .as_ref()
                         .map(|s| {
@@ -827,7 +891,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .unwrap_or("")
                 .to_owned();
             let env = ctx.middleware.env.clone();
-            let token = ctx.credential().await?.token;
+            let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
             let base_url = api_url_for_env(&env);
             let client = ApplicationClient::new(base_url, token);
 
@@ -840,9 +904,13 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .send(json!({ "type": "step", "name": "config.read", "status": "started" }))
                 .await;
             let config_path = crate::config::config_path(Some(&env));
-            let config = crate::config::read_config(&config_path).map_err(|e| {
-                cli_engine::CliCoreError::message(format!("config read failed: {e}"))
-            })?;
+            let config = tap_deploy_err(
+                &sender,
+                crate::config::read_config(&config_path).map_err(|e| {
+                    cli_engine::CliCoreError::message(format!("config read failed: {e}"))
+                }),
+            )
+            .await?;
             sender
                 .send(json!({ "type": "step", "name": "config.read", "status": "completed", "path": config_path.display().to_string() }))
                 .await;
@@ -851,15 +919,19 @@ fn deploy_command() -> RuntimeCommandSpec {
             sender
                 .send(json!({ "type": "step", "name": "application.lookup", "status": "started" }))
                 .await;
-            let app_data = client
-                .get_application_with_releases(&name)
-                .await
-                .map_err(client_err)?;
+            let app_data = tap_deploy_err(
+                &sender,
+                client
+                    .get_application_with_releases(&name)
+                    .await
+                    .map_err(client_err),
+            )
+            .await?;
             let app = &app_data["application"];
             if app.is_null() {
-                return Err(cli_engine::CliCoreError::message(format!(
-                    "application '{name}' not found"
-                )));
+                let err =
+                    cli_engine::CliCoreError::message(format!("application '{name}' not found"));
+                return Err(fail_deploy(&sender, err).await);
             }
             let application_id = app["id"].as_str().unwrap_or("").to_owned();
             sender
@@ -876,9 +948,10 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .and_then(|e| e["node"]["id"].as_str())
                 .map(str::to_owned);
             let Some(release_id) = release_id else {
-                return Err(cli_engine::CliCoreError::message(format!(
+                let err = cli_engine::CliCoreError::message(format!(
                     "application '{name}' has no releases — create one first with: gddy application release --application-id {application_id} --version 0.0.1"
-                )));
+                ));
+                return Err(fail_deploy(&sender, err).await);
             };
             sender
                 .send(json!({ "type": "step", "name": "release.lookup", "status": "completed", "releaseId": release_id }))
@@ -892,22 +965,45 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .await;
 
             for (i, ext) in extensions.iter().enumerate() {
-                deploy_extension(
-                    &client,
+                tap_deploy_err(
                     &sender,
-                    &application_id,
-                    &release_id,
-                    ext,
-                    i + 1,
-                    total,
+                    deploy_extension(
+                        &client,
+                        &sender,
+                        &application_id,
+                        &release_id,
+                        ext,
+                        i + 1,
+                        total,
+                    )
+                    .await,
                 )
                 .await?;
             }
 
-            finalize_deploy_activation(&client, &sender, &application_id, &release_id).await?;
+            tap_deploy_err(
+                &sender,
+                finalize_deploy_activation(&client, &sender, &application_id, &release_id).await,
+            )
+            .await?;
 
             sender
-                .send(json!({ "type": "step", "name": "deploy", "status": "completed", "name": name, "extensions": total }))
+                .send(json!({
+                    "type": "step",
+                    "name": "deploy",
+                    "status": "completed",
+                    "application": name,
+                    "extensions": total,
+                }))
+                .await;
+
+            sender
+                .send(deploy_result_event(
+                    &name,
+                    &application_id,
+                    &release_id,
+                    total,
+                ))
                 .await;
             Ok(())
         },
@@ -1479,6 +1575,81 @@ mod tests {
         assert!(
             err.to_string().contains("only one target is supported"),
             "unexpected error: {err}"
+        );
+    }
+
+    /// `deploy --follow` must end with exactly one terminal line. `StreamSender`
+    /// has no public constructor outside cli-engine, so the send itself can't
+    /// be unit-tested here — instead this locks down the shape of the payload
+    /// that gets sent, which is where the actual logic (error-code derivation)
+    /// lives.
+    #[test]
+    fn deploy_error_event_falls_back_to_error_code_for_a_plain_message() {
+        let err = cli_engine::CliCoreError::message("application 'foo' not found");
+        let event = super::deploy_error_event(&err);
+
+        assert_eq!(event["type"], "error");
+        assert_eq!(event["ok"], false);
+        assert_eq!(event["error"]["code"], "ERROR");
+        assert_eq!(event["error"]["message"], "application 'foo' not found");
+        assert_eq!(event["next_actions"], serde_json::json!([]));
+    }
+
+    #[derive(Debug)]
+    struct CodedTestError;
+
+    impl std::fmt::Display for CodedTestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "upstream rejected the release")
+        }
+    }
+
+    impl std::error::Error for CodedTestError {}
+
+    impl cli_engine::DetailedError for CodedTestError {
+        fn error_code(&self) -> std::borrow::Cow<'static, str> {
+            "RELEASE_REJECTED".into()
+        }
+
+        fn error_system(&self) -> Option<std::borrow::Cow<'static, str>> {
+            Some("applications".into())
+        }
+
+        fn error_request_id(&self) -> Option<std::borrow::Cow<'static, str>> {
+            None
+        }
+    }
+
+    /// Proves `deploy_error_event` actually passes through a real error code
+    /// (via `build_error_envelope`) rather than always falling back — the
+    /// fallback-only case above wouldn't catch a regression that hardcoded
+    /// `"ERROR"`.
+    #[test]
+    fn deploy_error_event_passes_through_a_real_error_code() {
+        let err = cli_engine::CliCoreError::with_detailed_error(CodedTestError);
+        let event = super::deploy_error_event(&err);
+
+        assert_eq!(event["error"]["code"], "RELEASE_REJECTED");
+        assert_eq!(event["error"]["message"], "upstream rejected the release");
+    }
+
+    #[test]
+    fn deploy_result_event_is_ok_with_summary_fields() {
+        let event = super::deploy_result_event("my-app", "app-123", "rel-456", 2);
+
+        assert_eq!(event["type"], "result");
+        assert_eq!(event["ok"], true);
+        assert_eq!(event["result"]["application"], "my-app");
+        assert_eq!(event["result"]["applicationId"], "app-123");
+        assert_eq!(event["result"]["releaseId"], "rel-456");
+        assert_eq!(event["result"]["extensions"], 2);
+        assert_eq!(event["result"]["status"], "ACTIVE");
+        assert!(
+            !event["next_actions"]
+                .as_array()
+                .expect("next_actions is an array")
+                .is_empty(),
+            "expected at least one next action, got: {event}"
         );
     }
 }
