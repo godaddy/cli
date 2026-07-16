@@ -205,7 +205,7 @@ mod tests {
         for bad in ["0", "51", "-1"] {
             let err = suggest_clap_command()
                 .try_get_matches_from(["suggest", "coffee", "--limit", bad])
-                .expect_err(&format!("--limit {bad} should have been rejected"));
+                .expect_err("out-of-range --limit should be rejected");
             assert_eq!(
                 err.kind(),
                 clap::error::ErrorKind::ValueValidation,
@@ -219,7 +219,7 @@ mod tests {
         for good in ["1", "50"] {
             suggest_clap_command()
                 .try_get_matches_from(["suggest", "coffee", "--limit", good])
-                .unwrap_or_else(|e| panic!("--limit {good} should be accepted: {e}"));
+                .expect("value within the valid --limit range should be accepted");
         }
     }
 
