@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/godaddy/cli/compare/v0.1.4...v0.1.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* **auth:** validate requested OAuth scopes against the CLI's registry (DEVEX-894) ([#108](https://github.com/godaddy/cli/issues/108)) ([6abd2ee](https://github.com/godaddy/cli/commit/6abd2ee7b52be482f68a137a8527dc469da261a0))
+
 ## [0.1.4](https://github.com/godaddy/cli/compare/v0.1.3...v0.1.4) (2026-07-15)
 
 
