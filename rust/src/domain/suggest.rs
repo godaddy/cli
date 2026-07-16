@@ -103,11 +103,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Limit suggestions to these TLDs (repeatable)"),
             )
             .with_arg(
-                // Local override of the engine's global `--limit`
+                // Local override of the engine's global `--limit`, typed
+                // `i64` to match it: clap's `global(true)` propagates a
+                // parsed value up into every ancestor `ArgMatches` under the
+                // shared `"limit"` id, and cli-engine's global-flag parsing
+                // always reads the root value back out as `i64` — a
+                // differently-typed local override (e.g. `u64`) panics there
+                // with a downcast mismatch. `allow_negative_numbers` (not the
+                // broader `allow_hyphen_values`) lets a negative value reach
+                // the range check below without also swallowing a following
+                // flag's name as this arg's value when one is omitted. The
+                // v3 suggestions endpoint hard-caps `pageSize` at 50
+                // (DEVEX-883), so this command validates the bound itself
+                // via clap instead of forwarding an out-of-range value the
+                // server rejects with a raw `400 VALUE_OVER`, or silently
+                // clamping it.
                 clap::Arg::new("limit")
                     .long("limit")
                     .value_name("N")
-                    .allow_hyphen_values(true)
+                    .allow_negative_numbers(true)
                     .value_parser(clap::value_parser!(i64).range(1..=50))
                     .help("Maximum suggestions to return (1-50)"),
             )
@@ -180,9 +194,10 @@ mod tests {
 
     #[test]
     fn nonzero_maps_zero_and_negative_to_none() {
-        // `--limit`/`--length-min`/`--length-max` arrive as 0 when unset —
-        // must be "no param", never a panic (regression for the suggest
-        // crash).
+        // None of `--limit`/`--length-min`/`--length-max` have a clap
+        // default, so they're simply absent from `ctx.args` when unset —
+        // `nonzero` must still map 0/negative to "no param" rather than
+        // panic, as a safety net (regression for the suggest crash).
         assert_eq!(nonzero(0), None);
         assert_eq!(nonzero(-5), None);
         assert_eq!(nonzero(5).map(|n| n.get()), Some(5));
