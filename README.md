@@ -107,10 +107,10 @@ Returns environment/auth snapshots and the full command tree.
 - `gddy application add extension checkout --name <name> --handle <handle> --source <source> --target <targets>`
 - `gddy application add extension blocks --source <source>`
 
-### Payments
+### Payment Methods
 
-- `gddy payments`
-- `gddy payments add` — opens your default browser to the GoDaddy payment methods management page. Only credit card or Good-as-Gold can be used for domain purchases.
+- `gddy payment-methods`
+- `gddy payment-methods add` — opens your default browser to the GoDaddy payment methods management page. Only credit card or Good-as-Gold can be used for domain purchases.
 
 ### Webhooks
 

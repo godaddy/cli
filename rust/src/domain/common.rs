@@ -205,7 +205,7 @@ fn format_api_error(
     if status == 402 {
         msg.push_str(
             "\n\nThis usually means your account has no usable payment method. Add one with \
-             `gddy payments add` (a credit card or Good-as-Gold balance is required for domain \
+             `gddy payment-methods add` (a credit card or Good-as-Gold balance is required for domain \
              purchases), then try again.",
         );
     }
@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn payment_required_error_points_to_payments_add() {
+    fn payment_required_error_points_to_payment_methods_add() {
         let msg = format_api_error(
             "domain purchase",
             402,
@@ -439,7 +439,7 @@ mod tests {
             false,
         );
         assert!(msg.contains("402 Payment Required"), "{msg}");
-        assert!(msg.contains("gddy payments add"), "{msg}");
+        assert!(msg.contains("gddy payment-methods add"), "{msg}");
     }
 
     #[test]

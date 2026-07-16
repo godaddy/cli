@@ -146,7 +146,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  `purchase` accepts the token, records your consent to the quote's legal \
                  agreements (--agree), then registers and waits for the registry to \
                  finish. A usable payment method must be on file — add one with \
-                 `gddy payments add`.\n\
+                 `gddy payment-methods add`.\n\
                  \n\
                  Typical flow:\n  \
                  1. gddy domain quote example.com          # review price + agreements\n  \
