@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.4](https://github.com/godaddy/cli/compare/v0.1.3...v0.1.4) (2026-07-15)
+
+
+### Features
+
+* **api-catalog:** add drift guards for the embedded catalog (DEVX-549) ([#98](https://github.com/godaddy/cli/issues/98)) ([3605d8e](https://github.com/godaddy/cli/commit/3605d8e96a8c4c895da1821e1258c8f01bec8254))
+
+
+### Bug Fixes
+
+* **api-call:** apply headers, error on non-2xx, GraphQL errors, output shape (DEVX-546) ([#97](https://github.com/godaddy/cli/issues/97)) ([29529c6](https://github.com/godaddy/cli/commit/29529c61dcdcbced7a6214616f19b31153acc2c5))
+* **api-catalog:** resolve discriminator.mapping refs to #/$defs pointers (DEVX-548) ([#96](https://github.com/godaddy/cli/issues/96)) ([0b9d565](https://github.com/godaddy/cli/commit/0b9d56542b84e3e93bb0497f5c99291e6237f0eb))
+* **application deploy:** activate release and promote app to ACTIVE (DEVEX-704) ([#103](https://github.com/godaddy/cli/issues/103)) ([87457ef](https://github.com/godaddy/cli/commit/87457ef6545a51db005205972f2436068604284d))
+* **domain:** comma-join repeatable TLD flags before sending as query params (DEVEX-882) ([#106](https://github.com/godaddy/cli/issues/106)) ([ada4a93](https://github.com/godaddy/cli/commit/ada4a93700f9a9d80e5bf8b8b1adb3dcc8aa6ac3))
+* **release:** include actions, subscriptions, UI extensions in release (DEVX-540) ([#100](https://github.com/godaddy/cli/issues/100)) ([afd8d9b](https://github.com/godaddy/cli/commit/afd8d9beda13a130bc959cdbfc1925b251ec9e1b))
+
 ## [0.1.3](https://github.com/godaddy/cli/compare/v0.1.2...v0.1.3) (2026-07-11)
 
 

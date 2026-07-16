@@ -177,8 +177,8 @@
       "description": "Polymorphic pricing configuration for a subscription plan. The pricingModel field acts as the discriminator to determine which pricing schema applies.\n",
       "discriminator": {
         "mapping": {
-          "FIXED_RECURRING": "./FixedRecurringPricing.yaml",
-          "FREE": "./FreePricing.yaml"
+          "FIXED_RECURRING": "#/$defs/FixedRecurringPricing",
+          "FREE": "#/$defs/FreePricing"
         },
         "propertyName": "pricingModel"
       },

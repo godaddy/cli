@@ -122,8 +122,20 @@ impl ApplicationClient {
 
     pub async fn create_release(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt } }",
+            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } } }",
             "variables": { "input": input }
+        }))
+        .await
+    }
+
+    pub async fn activate_release(
+        &self,
+        application_id: &str,
+        release_id: &str,
+    ) -> Result<Value, ClientError> {
+        self.query(json!({
+            "query": "mutation ActivateRelease($applicationId: ID!, $releaseId: ID!) { activateRelease(applicationId: $applicationId, releaseId: $releaseId) { id version description status activatedAt createdAt updatedAt } }",
+            "variables": { "applicationId": application_id, "releaseId": release_id }
         }))
         .await
     }
@@ -220,7 +232,9 @@ pub fn api_url_for_env(env: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::api_url_for_env;
+    use httpmock::prelude::*;
+
+    use super::*;
 
     #[test]
     fn api_url_for_builtins_resolve_to_a_url() {
@@ -242,5 +256,96 @@ mod tests {
         // Don't hard-code the scheme: a built-in's URL is overridable (a dev
         // may point the default at an http:// local proxy).
         assert!(url.contains("://"), "{url:?}");
+    }
+
+    #[tokio::test]
+    async fn activate_release_posts_mutation_with_ids() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .matches(|req| {
+                        req.body
+                            .as_ref()
+                            .map(|b| {
+                                let body = String::from_utf8_lossy(b);
+                                body.contains("activateRelease")
+                                    && body.contains("app-123")
+                                    && body.contains("rel-456")
+                            })
+                            .unwrap_or(false)
+                    });
+                then.status(200).json_body(json!({
+                    "data": { "activateRelease": { "id": "rel-456", "status": "ACTIVE" } }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .activate_release("app-123", "rel-456")
+            .await
+            .expect("activate release");
+
+        mock.assert_async().await;
+        assert_eq!(data["activateRelease"]["status"], "ACTIVE");
+    }
+
+    #[tokio::test]
+    async fn activate_release_surfaces_graphql_errors() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/apps/app-registry-subgraph");
+                // GraphQL reports failures as HTTP 200 with an `errors` array.
+                then.status(200).json_body(json!({
+                    "errors": [{ "message": "release not found" }]
+                }));
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .activate_release("app-123", "missing")
+            .await
+            .expect_err("graphql errors should surface");
+
+        mock.assert_async().await;
+        assert!(
+            matches!(err, ClientError::GraphQL(msg) if msg.contains("release not found")),
+            "expected GraphQL error variant"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_application_promotes_to_active() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .matches(|req| {
+                        req.body
+                            .as_ref()
+                            .map(|b| {
+                                let body = String::from_utf8_lossy(b);
+                                body.contains("updateApplication")
+                                    && body.contains(r#""status":"ACTIVE""#)
+                            })
+                            .unwrap_or(false)
+                    });
+                then.status(200).json_body(json!({
+                    "data": { "updateApplication": { "id": "app-1", "status": "ACTIVE" } }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .update_application("app-1", json!({ "status": "ACTIVE" }))
+            .await
+            .expect("update application");
+
+        mock.assert_async().await;
+        assert_eq!(data["updateApplication"]["status"], "ACTIVE");
     }
 }
