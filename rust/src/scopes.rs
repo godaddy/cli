@@ -119,6 +119,136 @@ declare_scopes! {
     HOSTING_LOGS_READ => "hosting.paas.logs:read",
 }
 
+/// A requestable scope, its human description, and whether it is requested at
+/// login by default. Backs `gddy auth scopes`. Descriptions are hand-ported
+/// from the doc comments above — the only part of this table that can't be
+/// derived at runtime; which commands use a scope is instead derived live via
+/// [`command_scopes`].
+pub struct ScopeInfo {
+    pub scope: &'static str,
+    pub description: &'static str,
+    pub default: bool,
+}
+
+/// Every requestable scope, described for `gddy auth scopes`. Keep in sync
+/// with the constants above (`scope_registry_covers_every_declared_scope`
+/// enforces the constant side of this; `scope_registry_default_flag_matches_default_oauth_scopes`
+/// enforces that the `default` flag exactly matches
+/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
+    ScopeInfo {
+        scope: APP_REGISTRY_READ,
+        description: "Read the caller's registered applications",
+        default: true,
+    },
+    ScopeInfo {
+        scope: APP_REGISTRY_WRITE,
+        description: "Create, update, or archive the caller's registered applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: DOMAINS_READ,
+        description: "Read domains, availability, suggestions, quotes, and DNS records",
+        default: true,
+    },
+    ScopeInfo {
+        scope: DOMAINS_DNS_UPDATE,
+        description: "Create, replace, or delete DNS records",
+        default: false,
+    },
+    ScopeInfo {
+        scope: DOMAINS_CREATE,
+        description: "Register a domain",
+        default: false,
+    },
+    ScopeInfo {
+        scope: DOMAINS_NAMESERVER_UPDATE,
+        description: "Replace a domain's nameservers",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPS_READ,
+        description: "Read Node.js Hosting apps",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPS_CREATE,
+        description: "Create a Node.js Hosting app",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPS_UPDATE,
+        description: "Update a Node.js Hosting app",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPS_DELETE,
+        description: "Delete a Node.js Hosting app",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_CODE_WRITE,
+        description: "Upload code to a Node.js Hosting app",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_DEPLOY_EXECUTE,
+        description: "Trigger a Node.js Hosting deploy",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SECRETS_WRITE,
+        description: "Write Node.js Hosting app secrets",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_LOGS_READ,
+        description: "Read Node.js Hosting app logs",
+        default: false,
+    },
+    ScopeInfo {
+        scope: OFFLINE_ACCESS,
+        description: "Request a refresh token",
+        default: true,
+    },
+];
+
+/// Every leaf command's space-separated invocation path (e.g. `"domain
+/// purchase"`) paired with the scopes it declares via `.with_scopes`.
+///
+/// Derived by walking each module's real command tree via
+/// [`cli_engine::build_module_group`] — the same tree `main` mounts — so this
+/// can never drift from what the CLI actually registers. Backs both `gddy
+/// auth scopes` and [`tests::scope_registry_non_default_entries_are_wired_to_a_command`].
+pub(crate) fn command_scopes() -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    for module in crate::all_modules() {
+        walk_group(
+            &cli_engine::build_module_group(&module),
+            Vec::new(),
+            &mut out,
+        );
+    }
+    out
+}
+
+fn walk_group(
+    group: &cli_engine::RuntimeGroupSpec,
+    prefix: Vec<String>,
+    out: &mut Vec<(String, Vec<String>)>,
+) {
+    let mut path = prefix;
+    path.push(group.group.name.clone());
+    for command in &group.commands {
+        let mut cmd_path = path.clone();
+        cmd_path.push(command.spec.name.clone());
+        out.push((cmd_path.join(" "), command.spec.metadata().scopes.clone()));
+    }
+    for sub in &group.groups {
+        walk_group(sub, path.clone(), out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +274,67 @@ mod tests {
                 "malformed scope {scope:?} (expected `resource:action`)"
             );
         }
+    }
+
+    /// [`SCOPE_REGISTRY`] must describe every scope requiring OAuth client
+    /// registration — `ALL` plus the standalone directive scopes
+    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scopes` would silently omit a
+    /// scope an agent needs to plan an eager login around.
+    #[test]
+    fn scope_registry_covers_every_declared_scope() {
+        let registered: std::collections::HashSet<&str> =
+            SCOPE_REGISTRY.iter().map(|info| info.scope).collect();
+        for scope in ALL.iter().copied().chain([OFFLINE_ACCESS]) {
+            assert!(
+                registered.contains(scope),
+                "scope {scope:?} is declared but missing from SCOPE_REGISTRY"
+            );
+        }
+    }
+
+    /// Every non-default scope in [`SCOPE_REGISTRY`] must be wired to at
+    /// least one live command via `.with_scopes`, or it's dead — declared and
+    /// registered on the OAuth client but unreachable by any command, which
+    /// is either a stale entry or a scope some command forgot to declare.
+    /// Default scopes are exempt: they're requested at login by default
+    /// regardless of which commands request them.
+    #[test]
+    fn scope_registry_non_default_entries_are_wired_to_a_command() {
+        let used: std::collections::HashSet<String> = command_scopes()
+            .into_iter()
+            .flat_map(|(_, scopes)| scopes)
+            .collect();
+        for info in SCOPE_REGISTRY {
+            assert!(
+                info.default || used.contains(info.scope),
+                "scope {:?} is in SCOPE_REGISTRY with default: false but no \
+                 command declares it via .with_scopes",
+                info.scope
+            );
+        }
+    }
+
+    /// [`SCOPE_REGISTRY`]'s `default` flag must exactly match
+    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`] — the module doc on
+    /// [`SCOPE_REGISTRY`] used to call this out as an unenforced invariant;
+    /// this is that check. If they drift, `gddy auth scopes --defaults-only`
+    /// would misdescribe which scopes actually get requested at login.
+    #[test]
+    fn scope_registry_default_flag_matches_default_oauth_scopes() {
+        let default_in_registry: std::collections::HashSet<&str> = SCOPE_REGISTRY
+            .iter()
+            .filter(|info| info.default)
+            .map(|info| info.scope)
+            .collect();
+        let default_oauth_scopes: std::collections::HashSet<&str> =
+            crate::environments::DEFAULT_OAUTH_SCOPES
+                .iter()
+                .copied()
+                .collect();
+        assert_eq!(
+            default_in_registry, default_oauth_scopes,
+            "SCOPE_REGISTRY's `default` flags must match \
+             crate::environments::DEFAULT_OAUTH_SCOPES exactly"
+        );
     }
 }
