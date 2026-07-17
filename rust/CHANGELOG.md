@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/godaddy/cli/compare/v0.1.8...v0.1.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **application deploy:** guarantee a terminal result/error NDJSON event (DEVX-544) ([#114](https://github.com/godaddy/cli/issues/114)) ([1d0fb2d](https://github.com/godaddy/cli/commit/1d0fb2d3d04b9ef5201d0322b2104e6e638f4573))
+* **domain:** show renewal price consistently across available/quote/suggest (GDDEVPLAT-133) ([#125](https://github.com/godaddy/cli/issues/125)) ([71e4eea](https://github.com/godaddy/cli/commit/71e4eea5da9a6d8a547560e40b211229f9213166))
+
 ## [0.1.8](https://github.com/godaddy/cli/compare/v0.1.7...v0.1.8) (2026-07-17)
 
 
