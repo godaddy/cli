@@ -349,7 +349,9 @@ mod tests {
     fn default_fields_includes_renewal_price() {
         // Regression for GDDEVPLAT-133: `renewalPrice` was computed and present
         // in `--output json` but silently dropped from the default table view.
+        // An exact field match (not a substring check) so a future field like
+        // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
-        assert!(fields.contains("renewalPrice"), "{fields}");
+        assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
     }
 }
