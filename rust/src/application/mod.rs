@@ -1,5 +1,6 @@
 pub mod client;
 mod commands;
+pub mod public_url;
 
 use cli_engine::{Module, Stage};
 
