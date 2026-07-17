@@ -7,7 +7,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client, string_list};
+use super::common::{api_error, format_money, make_client, string_list, validate_domain_name};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -228,12 +228,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Custom nameserver (repeatable); omit to use GoDaddy defaults"),
             ),
         |ctx| async move {
-            let domain = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+            let domain = validate_domain_name(
+                ctx.args.get("domain").and_then(|v| v.as_str()).unwrap_or(""),
+            )?;
             let period = ctx.args.get("period").and_then(|v| v.as_u64()).unwrap_or(1);
             let privacy = ctx
                 .args

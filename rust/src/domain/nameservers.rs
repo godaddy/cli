@@ -1,14 +1,14 @@
 //! `gddy domain nameservers` — manage a domain's nameservers (v3).
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
-    Tier,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, NextActionParam, Result,
+    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, make_client, string_list};
+use super::common::{api_error, make_client, string_list, validate_domain_name};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
@@ -53,13 +53,22 @@ pub(super) fn group() -> RuntimeGroupSpec {
                     .help("Nameserver host (repeatable; replaces the full set)"),
             ),
         |ctx| async move {
-            let domain = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
-            let hosts = string_list(&ctx, "nameserver");
+            let domain = validate_domain_name(
+                ctx.args
+                    .get("domain")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+            )?;
+            // `validate_domain_name` only judges shape, not which argument it
+            // came from — add that context here so a bad `--nameserver` value
+            // isn't reported as if it were the (already-valid) target domain.
+            let hosts = string_list(&ctx, "nameserver")
+                .into_iter()
+                .map(|h| {
+                    validate_domain_name(&h)
+                        .map_err(|e| CliCoreError::message(format!("--nameserver {e}")))
+                })
+                .collect::<Result<Vec<String>>>()?;
             let debug = !ctx.middleware.debug.is_empty();
 
             let client = make_client(&ctx).await?;
