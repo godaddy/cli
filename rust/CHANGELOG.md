@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/godaddy/cli/compare/v0.1.7...v0.1.8) (2026-07-17)
+
+
+### Bug Fixes
+
+* **domain suggest:** validate --limit against the v3 API's 50-suggestion cap (DEVEX-883) ([#117](https://github.com/godaddy/cli/issues/117)) ([c409719](https://github.com/godaddy/cli/commit/c409719be3344ede4eb3ffe1e487c13e4f023f1a))
+
 ## [0.1.7](https://github.com/godaddy/cli/compare/v0.1.6...v0.1.7) (2026-07-17)
 
 
