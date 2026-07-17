@@ -83,11 +83,11 @@ impl progenitor_client::ClientHooks<()> for Client {
         request: &mut reqwest::Request,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
-        if let Some(observer) = TRANSPORT_OBSERVER
+        let observer = TRANSPORT_OBSERVER
             .read()
             .expect("lock is never held across a panic")
-            .as_ref()
-        {
+            .clone();
+        if let Some(observer) = observer {
             observer.on_request(request);
         }
         Ok(())
@@ -98,11 +98,12 @@ impl progenitor_client::ClientHooks<()> for Client {
         result: &reqwest::Result<reqwest::Response>,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
+        let observer = TRANSPORT_OBSERVER
+            .read()
+            .expect("lock is never held across a panic")
+            .clone();
         if let Ok(response) = result
-            && let Some(observer) = TRANSPORT_OBSERVER
-                .read()
-                .expect("lock is never held across a panic")
-                .as_ref()
+            && let Some(observer) = observer
         {
             observer.on_response(response.status(), response.headers());
         }
