@@ -318,13 +318,13 @@ fn init_command() -> RuntimeCommandSpec {
                 clap::Arg::new("url")
                     .long("url")
                     .value_name("URL")
-                    .help("Application URL (must be public HTTPS)"),
+                    .help("Application URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("proxy-url")
                     .long("proxy-url")
                     .value_name("URL")
-                    .help("Proxy URL (must be public HTTPS)"),
+                    .help("Proxy URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("scopes")
