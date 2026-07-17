@@ -190,7 +190,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields(
-                "domain,available,price,currency,period,quoteToken,expiresAt,agreements",
+                "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
             )
             .with_output_schema::<DomainQuoteResult>()
             .with_scopes(&[DOMAINS_READ])
@@ -327,13 +327,31 @@ pub(super) fn command() -> RuntimeCommandSpec {
             } else {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
+                // `domain suggest` accepts a seed domain, so the domain just
+                // quoted is a valid query to copy/paste directly.
+                let resolved_domain = quote.domain.clone().unwrap_or_else(|| domain.clone());
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
-                        .with_param("query", NextActionParam::required()),
+                        .with_param("query", NextActionParam::value(resolved_domain)),
                 );
             }
 
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command;
+
+    #[test]
+    fn default_fields_includes_renewal_price() {
+        // Regression for GDDEVPLAT-133: `renewalPrice` was computed and present
+        // in `--output json` but silently dropped from the default table view.
+        // An exact field match (not a substring check) so a future field like
+        // `renewalPrice1Year` can't produce a false pass here.
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
 }
