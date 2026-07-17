@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use reqwest::Client;
 use serde_json::{Value, json};
 
@@ -192,7 +193,7 @@ impl ApplicationClient {
         &self,
         url: &str,
         headers: &Value,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     ) -> Result<(), ClientError> {
         let mut req = self.client.put(url).body(bytes);
         if let Some(obj) = headers.as_object() {
@@ -347,5 +348,42 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(data["updateApplication"]["status"], "ACTIVE");
+    }
+
+    #[tokio::test]
+    async fn upload_artifact_accepts_reusable_shared_payload() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/artifact")
+                    .body("shared extension bundle");
+                then.status(200);
+            })
+            .await;
+        let client = ApplicationClient::new(server.base_url(), "test-token");
+        let payload = Bytes::from(b"shared extension bundle".to_vec());
+        let first_upload = payload.clone();
+        let second_upload = payload.clone();
+        assert_eq!(first_upload.as_ptr(), second_upload.as_ptr());
+
+        client
+            .upload_artifact(
+                &format!("{}/artifact", server.base_url()),
+                &json!({}),
+                first_upload,
+            )
+            .await
+            .expect("first upload");
+        client
+            .upload_artifact(
+                &format!("{}/artifact", server.base_url()),
+                &json!({}),
+                second_upload,
+            )
+            .await
+            .expect("second upload");
+
+        mock.assert_hits_async(2).await;
     }
 }

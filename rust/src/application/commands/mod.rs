@@ -1001,6 +1001,26 @@ fn resolve_upload_targets(
     }
 }
 
+fn upload_completed_event(
+    extension_name: &str,
+    target: &Option<String>,
+    is_final_target: bool,
+    index: usize,
+    total: usize,
+) -> serde_json::Value {
+    let mut event = json!({
+        "type": "progress",
+        "name": "extension.upload",
+        "status": "completed",
+        "extensionName": extension_name,
+        "target": target,
+    });
+    if is_final_target {
+        event["percent"] = json!(index * 100 / total.max(1));
+    }
+    event
+}
+
 /// Parse a comma-separated `--target` value into extension targets, trimming
 /// whitespace and dropping empty entries.
 fn parse_targets(raw: &str) -> Vec<crate::config::ExtensionTarget> {
@@ -1099,12 +1119,12 @@ async fn deploy_extension(
         }))
         .await;
 
-    let bytes = bundle.bytes;
+    let bytes = bytes::Bytes::from(bundle.bytes);
 
     // Upload the bundle once per configured target (blocks -> "blocks";
     // embed/checkout -> each target, or a single untargeted upload).
     let upload_targets = resolve_upload_targets(ext_type, &ext.targets);
-    for target in &upload_targets {
+    for (target_index, target) in upload_targets.iter().enumerate() {
         sender
             .send(json!({ "type": "progress", "name": "extension.upload", "status": "started", "extensionName": ext_name, "target": target }))
             .await;
@@ -1144,19 +1164,15 @@ async fn deploy_extension(
             .map_err(client_err)?;
 
         sender
-            .send(json!({ "type": "progress", "name": "extension.upload", "status": "completed", "extensionName": ext_name, "target": target }))
+            .send(upload_completed_event(
+                ext_name,
+                target,
+                target_index + 1 == upload_targets.len(),
+                index,
+                total,
+            ))
             .await;
     }
-
-    sender
-        .send(json!({
-            "type": "progress",
-            "name": "extension",
-            "status": "completed",
-            "extensionName": ext_name,
-            "percent": (index * 100 / total.max(1)),
-        }))
-        .await;
 
     Ok(())
 }
@@ -1542,6 +1558,25 @@ mod tests {
                 &["a".to_owned(), "b".to_owned()]
             ),
             vec![Some("a".to_owned()), Some("b".to_owned())]
+        );
+    }
+
+    #[test]
+    fn final_target_completion_preserves_legacy_upload_event() {
+        let target = Some("admin.product.detail".to_owned());
+
+        let event = super::upload_completed_event("widget", &target, true, 1, 1);
+
+        assert_eq!(
+            event,
+            serde_json::json!({
+                "type": "progress",
+                "name": "extension.upload",
+                "status": "completed",
+                "extensionName": "widget",
+                "target": "admin.product.detail",
+                "percent": 100,
+            })
         );
     }
 
