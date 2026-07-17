@@ -105,6 +105,11 @@
       "file": "hosting-nodejs.json",
       "title": "Node.js Hosting Public API",
       "endpointCount": 15
+    },
+    "domains": {
+      "file": "domains.json",
+      "title": "Domain Lifecycle Management API",
+      "endpointCount": 15
     }
   }
 }

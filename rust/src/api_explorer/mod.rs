@@ -154,6 +154,7 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
         "hosting-nodejs",
         include_str!("../../schemas/api/hosting-nodejs.json"),
     ),
+    ("domains", include_str!("../../schemas/api/domains.json")),
 ];
 
 fn catalog() -> &'static [Domain] {
@@ -506,33 +507,6 @@ fn search_command() -> RuntimeCommandSpec {
     )
 }
 
-fn extract_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
-    let normalized = path.trim_start_matches('.');
-    if normalized.is_empty() {
-        return Some(value);
-    }
-    let mut current = value;
-    let mut remaining = normalized;
-    while !remaining.is_empty() {
-        if remaining.starts_with('[') {
-            let end = remaining.find(']')?;
-            let idx: usize = remaining[1..end].parse().ok()?;
-            current = current.get(idx)?;
-            remaining = remaining[end + 1..].trim_start_matches('.');
-        } else {
-            let (key, rest) = match (remaining.find('.'), remaining.find('[')) {
-                (Some(d), Some(b)) if b < d => (&remaining[..b], &remaining[b..]),
-                (Some(d), _) => (&remaining[..d], &remaining[d + 1..]),
-                (None, Some(b)) => (&remaining[..b], &remaining[b..]),
-                (None, None) => (remaining, ""),
-            };
-            current = current.get(key)?;
-            remaining = rest;
-        }
-    }
-    Some(current)
-}
-
 fn call_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("call", "Make an authenticated API request")
@@ -544,10 +518,10 @@ fn call_command() -> RuntimeCommandSpec {
                  before the request is sent. Supply the request body as raw JSON (`--body \
                  '{...}'`), as individual fields (`--field key=value`, repeatable), or \
                  from a JSON file (`--file body.json`); `--file` takes precedence over \
-                 `--body`, and `--field` values are merged on top of either. Use `--query \
-                 .path[0].field` to extract a value from the response JSON, and `--include` \
-                 to see response headers alongside the body. Use `api describe <endpoint>` \
-                 first to inspect required parameters and scopes.",
+                 `--body`, and `--field` values are merged on top of either. Use the global \
+                 `--expr`/`--filter` flags (JMESPath) to extract or filter response data, and \
+                 `--include` to see response headers alongside the body. Use \
+                 `api describe <endpoint>` first to inspect required parameters and scopes.",
             )
             .with_system("api")
             .with_tier(Tier::Mutate)
@@ -594,13 +568,6 @@ fn call_command() -> RuntimeCommandSpec {
                     .value_name("KEY:VALUE")
                     .num_args(0..)
                     .help("Extra request headers"),
-            )
-            .with_arg(
-                clap::Arg::new("query")
-                    .long("query")
-                    .short('q')
-                    .value_name("PATH")
-                    .help("Extract a value from the response JSON (e.g. .data[0].id)"),
             )
             .with_arg(
                 clap::Arg::new("include")
@@ -790,22 +757,13 @@ fn call_command() -> RuntimeCommandSpec {
                 )));
             }
 
-            let query_path = ctx.args.get("query").and_then(|v| v.as_str());
-            let output = if let Some(path) = query_path {
-                extract_json_path(&body, path)
-                    .cloned()
-                    .unwrap_or(json!(null))
-            } else {
-                body
-            };
-
             // Identify the call and its outcome in the result envelope.
             let mut result = json!({
                 "endpoint": endpoint,
                 "method": method,
                 "status": status,
                 "status_text": status_text,
-                "data": output,
+                "data": body,
             });
             if let Some(headers) = response_headers {
                 result["headers"] = Value::Object(headers);
