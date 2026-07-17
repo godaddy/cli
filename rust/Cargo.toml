@@ -44,7 +44,6 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
 iso_currency = "0.5.3"
-url = "2"
 
 [dev-dependencies]
 httpmock = "0.7"
