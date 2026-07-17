@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.10](https://github.com/godaddy/cli/compare/v0.1.9...v0.1.10) (2026-07-17)
+
+
+### Bug Fixes
+
+* **application init:** align with TS config seeding and validation ([#126](https://github.com/godaddy/cli/issues/126)) (DEVEX-707) ([1cfcda2](https://github.com/godaddy/cli/commit/1cfcda210edb305615a92ae433e11833392bcd85))
+* **domain:** validate domain and nameserver hostname shape before the API call ([#127](https://github.com/godaddy/cli/issues/127)) ([9348495](https://github.com/godaddy/cli/commit/934849587684cc4f221b94bae1f162c95aa69a66))
+
 ## [0.1.9](https://github.com/godaddy/cli/compare/v0.1.8...v0.1.9) (2026-07-17)
 
 
