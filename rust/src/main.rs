@@ -16,16 +16,37 @@ mod pat;
 mod payment_methods;
 mod quote_cache;
 mod scopes;
+mod scopes_cmd;
 mod update;
 mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
 
 use clap::Arg;
-use cli_engine::{BuildInfo, Cli, CliConfig};
+use cli_engine::{BuildInfo, Cli, CliConfig, Module};
 
 use crate::env::get_env;
 use crate::next_action::next_action;
+
+/// The full set of `gddy` command modules, shared between `main`'s
+/// [`CliConfig`] wiring and anything that needs to walk the real command
+/// tree standalone (e.g. `auth scopes`'s live scope→command correlation via
+/// [`cli_engine::build_module_group`]), so both draw from exactly one list.
+pub(crate) fn all_modules() -> Vec<Module> {
+    vec![
+        actions_catalog::module(),
+        api_explorer::module(),
+        application::module(),
+        dns::module(),
+        domain::module(),
+        env::module(),
+        hosting::module(),
+        pat::module(),
+        payment_methods::module(),
+        update::module(),
+        webhook::module(),
+    ]
+}
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -60,6 +81,7 @@ async fn main() -> ExitCode {
             )
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
+            .with_auth_extra_commands([scopes_cmd::auth_scopes_command()])
             .with_register_flags(Arc::new(|cmd| {
                 cmd.arg(
                     Arg::new("env")
@@ -99,17 +121,7 @@ async fn main() -> ExitCode {
                 Ok(())
             }))
             .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
-            .with_module(actions_catalog::module())
-            .with_module(api_explorer::module())
-            .with_module(application::module())
-            .with_module(dns::module())
-            .with_module(domain::module())
-            .with_module(env::module())
-            .with_module(hosting::module())
-            .with_module(pat::module())
-            .with_module(payment_methods::module())
-            .with_module(update::module())
-            .with_module(webhook::module()),
+            .with_modules(all_modules()),
     );
 
     cli.execute().await
