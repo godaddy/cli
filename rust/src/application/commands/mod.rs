@@ -158,7 +158,8 @@ fn deploy_result_event(
         "next_actions": [next_action(
             "application info --name <name>",
             "Inspect the deployed application",
-        )],
+        )
+        .with_param("name", NextActionParam::value(name))],
     })
 }
 
@@ -1644,12 +1645,10 @@ mod tests {
         assert_eq!(event["result"]["releaseId"], "rel-456");
         assert_eq!(event["result"]["extensions"], 2);
         assert_eq!(event["result"]["status"], "ACTIVE");
-        assert!(
-            !event["next_actions"]
-                .as_array()
-                .expect("next_actions is an array")
-                .is_empty(),
-            "expected at least one next action, got: {event}"
+        assert_eq!(
+            event["next_actions"][0]["params"]["name"],
+            serde_json::json!({ "value": "my-app" }),
+            "deployed application name should prefill the next action: {event}"
         );
     }
 }
