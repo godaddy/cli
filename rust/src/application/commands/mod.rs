@@ -22,19 +22,16 @@ output_schema!(ApplicationSummary {
     "proxyUrl": "string", optional;
 });
 
-output_schema!(ApplicationCredentials {
+output_schema!(ApplicationInit {
     "id": "string";
-    "clientId": "string";
-    "clientSecret": "string";
     "name": "string";
-    "label": "string", optional;
-    "description": "string", optional;
     "status": "string";
-    "url": "string", optional;
-    "proxyUrl": "string", optional;
+    "clientId": "string";
+    "url": "string";
+    "proxyUrl": "string";
     "authorizationScopes": "[]string";
-    "secret": "string", optional;
-    "publicKey": "string", optional;
+    "oauthGrantTypes": "[]string";
+    "filesWritten": "object";
 });
 
 output_schema!(ApplicationUpdate {
@@ -297,13 +294,12 @@ fn init_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationCredentials>()
+            .with_output_schema::<ApplicationInit>()
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
                     .short('n')
                     .value_name("NAME")
-                    .required(true)
                     .help("Application name (used as label if --label is not set)"),
             )
             .with_arg(
@@ -316,50 +312,100 @@ fn init_command() -> RuntimeCommandSpec {
                 clap::Arg::new("description")
                     .long("description")
                     .value_name("TEXT")
-                    .required(true)
                     .help("Application description"),
             )
             .with_arg(
                 clap::Arg::new("url")
                     .long("url")
                     .value_name("URL")
-                    .required(true)
-                    .help("Application URL (must be public HTTPS)"),
+                    .help("Application URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("proxy-url")
                     .long("proxy-url")
                     .value_name("URL")
-                    .help("Proxy URL (defaults to url)"),
+                    .help("Proxy URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("scopes")
                     .long("scopes")
                     .value_name("SCOPES")
                     .help("Comma-separated authorization scopes"),
+            )
+            .with_arg(
+                clap::Arg::new("config")
+                    .long("config")
+                    .short('c')
+                    .value_name("PATH")
+                    .help("Read defaults from this config file"),
             ),
         |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let label = ctx
-                .args
-                .get("label")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&name)
-                .to_owned();
-            let description = arg_str(&ctx, "description").to_owned();
-            let url = arg_str(&ctx, "url").to_owned();
-            let proxy_url = ctx
-                .args
-                .get("proxy-url")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&url)
-                .to_owned();
-            let scopes: Vec<String> = ctx
-                .args
-                .get("scopes")
-                .and_then(|v| v.as_str())
-                .map(|s| s.split(',').map(|p| p.trim().to_owned()).collect())
-                .unwrap_or_else(|| vec!["apps.app-registry:read".to_owned()]);
+            let env = ctx.middleware.env.clone();
+            let config_path = crate::config::config_path(Some(&env));
+
+            // Seed defaults only from an explicit --config; a bad/missing --config is fatal.
+            let existing = match ctx.args.get("config").and_then(|v| v.as_str()) {
+                Some(path) => Some(
+                    crate::config::read_config(std::path::Path::new(path)).map_err(|e| {
+                        cli_engine::CliCoreError::message(format!("invalid config: {e}"))
+                    })?,
+                ),
+                None => None,
+            };
+
+            // Resolve each field: CLI flag, else the existing config's value, else a default.
+            let flag = |key: &str| ctx.args.get(key).and_then(|v| v.as_str());
+            let name = flag("name")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.name.clone()))
+                .unwrap_or_default();
+            let description = flag("description")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().and_then(|c| c.description.clone()))
+                .unwrap_or_default();
+            let url = flag("url")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.url.clone()))
+                .unwrap_or_default();
+            let proxy_url = flag("proxy-url")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.proxy_url.clone()))
+                .unwrap_or_default();
+            let scopes: Vec<String> = flag("scopes")
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|p| !p.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .or_else(|| existing.as_ref().map(|c| c.authorization_scopes.clone()))
+                .unwrap_or_default();
+            let label = flag("label").unwrap_or(&name).to_owned();
+
+            for (message, empty) in [
+                ("Application name is required", name.is_empty()),
+                (
+                    "Application description is required",
+                    description.is_empty(),
+                ),
+                ("Application URL is required", url.is_empty()),
+                ("Proxy URL is required", proxy_url.is_empty()),
+                ("Authorization scopes are required", scopes.is_empty()),
+            ] {
+                if empty {
+                    return Err(cli_engine::CliCoreError::message(message));
+                }
+            }
+
+            for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
+                if !crate::application::public_url::is_public_routable_url(u) {
+                    return Err(cli_engine::CliCoreError::message(format!(
+                        "Invalid application configuration: {field} must be a publicly-resolvable \
+                         http(s) URL (localhost, loopback, and private IPs are not allowed)"
+                    )));
+                }
+            }
 
             let client = make_client(&ctx).await?;
             let data = client
@@ -375,31 +421,76 @@ fn init_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
 
             let app = &data["createApplication"];
+            // Credentials/secrets the API returns (all selected by create_application).
             let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
+            let client_secret = app["clientSecret"].as_str().unwrap_or("").to_owned();
+            let secret = app["secret"].as_str().unwrap_or("").to_owned();
+            let public_key = app["publicKey"].as_str().unwrap_or("").to_owned();
 
-            // Write godaddy.toml for the created application
-            let config_path = crate::config::config_path(Some(ctx.middleware.env.as_str()));
+            // Best-effort local writes: app create already succeeded. Only paths that
+            // actually write are included in filesWritten.
             let config = crate::config::Config {
                 name: name.clone(),
                 client_id: client_id.clone(),
                 description: Some(description.clone()),
                 version: "0.0.0".to_owned(),
                 url: url.clone(),
-                proxy_url,
-                authorization_scopes: scopes,
+                proxy_url: proxy_url.clone(),
+                authorization_scopes: scopes.clone(),
                 actions: vec![],
-                subscriptions: None,
+                subscriptions: Some(crate::config::SubscriptionsConfig { webhook: vec![] }),
                 dependencies: vec![],
                 extensions: None,
             };
-            crate::config::write_config(&config_path, &config)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let cwd = match std::env::current_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    tracing::debug!(
+                        error = %e,
+                        "current_dir failed; filesWritten paths will be relative"
+                    );
+                    std::path::PathBuf::new()
+                }
+            };
 
-            Ok(CommandResult::new(app.clone()).with_next_actions(vec![
-                next_action(
-                    "application add action --name <name> --url <url>",
-                    "Add an action to godaddy.toml",
-                ),
+            let mut files_written = serde_json::Map::new();
+            if let Err(e) = crate::config::write_config(&config_path, &config) {
+                tracing::warn!(error = %e, path = %config_path.display(), "failed to write config; continuing");
+            } else {
+                files_written.insert(
+                    "config".to_owned(),
+                    json!(cwd.join(&config_path).display().to_string()),
+                );
+            }
+
+            let env_file_path = crate::config::env_path(Some(&env));
+            if let Err(e) = crate::config::write_env_file(
+                Some(&env),
+                &secret,
+                &public_key,
+                &client_id,
+                &client_secret,
+            ) {
+                tracing::warn!(error = %e, path = %env_file_path.display(), "failed to write env file; continuing");
+            } else {
+                files_written.insert(
+                    "env".to_owned(),
+                    json!(cwd.join(&env_file_path).display().to_string()),
+                );
+            }
+
+            let result = json!({
+                "id": app["id"].as_str().unwrap_or("").to_owned(),
+                "name": name,
+                "status": app["status"].as_str().unwrap_or("").to_owned(),
+                "clientId": client_id,
+                "url": url,
+                "proxyUrl": proxy_url,
+                "authorizationScopes": scopes,
+                "oauthGrantTypes": ["authorization_code", "client_credentials"],
+                "filesWritten": files_written,
+            });
+            Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
                     "application validate",
                     "Validate the generated godaddy.toml",
