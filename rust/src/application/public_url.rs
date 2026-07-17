@@ -12,6 +12,7 @@ use url::{Host, Url};
 ///  - RFC1918 private IPv4 ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
 ///  - CGNAT / shared address space `100.64.0.0/10` (RFC 6598)
 ///  - IPv6 unique local addresses `fc00::/7` (RFC 4193)
+///  - IPv6 reserved `fe00::/9` (not globally routable)
 ///
 /// Enforced client-side so users get an actionable error immediately rather than
 /// an opaque 403 from the upstream WAF.
@@ -44,10 +45,12 @@ pub fn is_public_routable_url(value: &str) -> bool {
         Some(Host::Ipv6(addr)) => {
             let seg0 = addr.segments()[0];
             let is_unique_local = (seg0 & 0xfe00) == 0xfc00; // fc00::/7
+            let is_reserved_fe00 = (seg0 & 0xff80) == 0xfe00; // fe00::/9
             !(addr.is_loopback()
                 || addr.is_unspecified()
                 || addr.is_unicast_link_local()
-                || is_unique_local)
+                || is_unique_local
+                || is_reserved_fe00)
         }
         None => false,
     }
@@ -105,6 +108,11 @@ mod tests {
     fn rejects_unique_local_ipv6() {
         assert!(!is_public_routable_url("https://[fc00::1]"));
         assert!(!is_public_routable_url("https://[fd12:3456:789a::1]"));
-        assert!(is_public_routable_url("https://[fe00::1]"));
+    }
+
+    #[test]
+    fn rejects_reserved_fe00_ipv6() {
+        assert!(!is_public_routable_url("https://[fe00::1]"));
+        assert!(!is_public_routable_url("https://[fe7f::1]"));
     }
 }

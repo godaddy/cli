@@ -427,7 +427,8 @@ fn init_command() -> RuntimeCommandSpec {
             let secret = app["secret"].as_str().unwrap_or("").to_owned();
             let public_key = app["publicKey"].as_str().unwrap_or("").to_owned();
 
-            // Write godaddy.toml for the created application
+            // Best-effort local writes: app create already succeeded. Only paths that
+            // actually write are included in filesWritten.
             let config = crate::config::Config {
                 name: name.clone(),
                 client_id: client_id.clone(),
@@ -441,21 +442,6 @@ fn init_command() -> RuntimeCommandSpec {
                 dependencies: vec![],
                 extensions: None,
             };
-            if let Err(e) = crate::config::write_config(&config_path, &config) {
-                tracing::warn!(error = %e, "failed to write godaddy.toml; continuing");
-            }
-
-            // Best-effort: a failed .env write shouldn't fail the already-created app.
-            if let Err(e) = crate::config::write_env_file(
-                Some(&env),
-                &secret,
-                &public_key,
-                &client_id,
-                &client_secret,
-            ) {
-                tracing::warn!(error = %e, "failed to write .env; continuing");
-            }
-
             let cwd = match std::env::current_dir() {
                 Ok(dir) => dir,
                 Err(e) => {
@@ -466,10 +452,33 @@ fn init_command() -> RuntimeCommandSpec {
                     std::path::PathBuf::new()
                 }
             };
-            let files_written = json!({
-                "config": cwd.join(&config_path).display().to_string(),
-                "env": cwd.join(crate::config::env_path(Some(&env))).display().to_string(),
-            });
+
+            let mut files_written = serde_json::Map::new();
+            if let Err(e) = crate::config::write_config(&config_path, &config) {
+                tracing::warn!(error = %e, path = %config_path.display(), "failed to write config; continuing");
+            } else {
+                files_written.insert(
+                    "config".to_owned(),
+                    json!(cwd.join(&config_path).display().to_string()),
+                );
+            }
+
+            let env_file_path = crate::config::env_path(Some(&env));
+            if let Err(e) = crate::config::write_env_file(
+                Some(&env),
+                &secret,
+                &public_key,
+                &client_id,
+                &client_secret,
+            ) {
+                tracing::warn!(error = %e, path = %env_file_path.display(), "failed to write env file; continuing");
+            } else {
+                files_written.insert(
+                    "env".to_owned(),
+                    json!(cwd.join(&env_file_path).display().to_string()),
+                );
+            }
+
             let result = json!({
                 "id": app["id"].as_str().unwrap_or("").to_owned(),
                 "name": name,
