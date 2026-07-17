@@ -6,7 +6,7 @@ use cli_engine::{
 
 use domains_client::types;
 
-use super::common::{api_error, make_client};
+use super::common::{api_error, make_client, validate_domain_name};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -29,12 +29,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Domain to look up (must be in your account), e.g. example.com"),
             ),
         |ctx| async move {
-            let domain = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+            let domain = validate_domain_name(
+                ctx.args
+                    .get("domain")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+            )?;
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
             let detail = match client

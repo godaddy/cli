@@ -5,7 +5,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, headline_price, make_client};
+use super::common::{api_error, format_money, headline_price, make_client, validate_domain_name};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -53,12 +53,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Optimize for speed (fast) or accuracy (full)"),
             ),
         |ctx| async move {
-            let domain = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+            let domain = validate_domain_name(
+                ctx.args
+                    .get("domain")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+            )?;
             // --check-type fast|full → v3 optimizeFor SPEED|ACCURACY.
             let optimize_for = match ctx.args.get("check-type").and_then(|v| v.as_str()) {
                 Some("fast") => Some(types::OptimizationTarget::Speed),
