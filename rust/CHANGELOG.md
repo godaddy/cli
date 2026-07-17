@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/godaddy/cli/compare/v0.1.6...v0.1.7) (2026-07-17)
+
+
+### Features
+
+* **auth:** add live OAuth scope registry via `gddy auth scopes` (DEVEX-886, DEVEX-891) ([#116](https://github.com/godaddy/cli/issues/116)) ([cb16cc9](https://github.com/godaddy/cli/commit/cb16cc9dfa1fcc717e71b70a5c94e41e0c787bcf))
+
 ## [0.1.6](https://github.com/godaddy/cli/compare/v0.1.5...v0.1.6) (2026-07-16)
 
 
