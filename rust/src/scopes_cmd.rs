@@ -84,6 +84,7 @@ pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
             .with_system("auth")
             .with_tier(Tier::Read)
             .with_output_schema::<ScopeEntry>()
+            .with_default_fields("scope,description,commands,default")
             .no_auth(true)
             .with_arg(
                 clap::Arg::new("command")

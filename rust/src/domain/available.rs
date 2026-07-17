@@ -36,7 +36,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("domain,available,definitive,price,currency")
+            .with_default_fields("domain,available,definitive,price,renewalPrice,currency,period")
             .with_output_schema::<DomainAvailableResult>()
             .with_scopes(&[DOMAINS_READ])
             .with_arg(
@@ -79,8 +79,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Emit the required identity fields concretely (never JSON null): the
             // domain falls back to the known input, and missing booleans read as
             // false — matching how availability is treated for the next action.
+            let resolved_domain = body.domain.clone().unwrap_or_else(|| domain.clone());
             let mut result = json!({
-                "domain": body.domain.clone().unwrap_or_else(|| domain.clone()),
+                "domain": resolved_domain,
                 "available": body.available.unwrap_or(false),
                 "definitive": body.definitive.unwrap_or(false),
             });
@@ -107,14 +108,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if body.available.unwrap_or(false) {
                 Ok(cmd.with_next_actions(vec![
                     next_action("domain quote <domain>", "Price a registration")
-                        .with_param("domain", NextActionParam::required()),
+                        .with_param("domain", NextActionParam::value(resolved_domain)),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![
+                    // `domain suggest` accepts a seed domain, so the domain just
+                    // checked as taken is a valid query to copy/paste directly.
                     next_action("domain suggest <query>", "Find alternatives")
-                        .with_param("query", NextActionParam::required()),
+                        .with_param("query", NextActionParam::value(resolved_domain)),
                 ]))
             }
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command;
+
+    #[test]
+    fn default_fields_includes_renewal_price() {
+        // Regression for GDDEVPLAT-133: `renewalPrice` was computed and present
+        // in `--output json` but silently dropped from the default table view.
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.contains("renewalPrice"), "{fields}");
+    }
 }
