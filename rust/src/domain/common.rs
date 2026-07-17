@@ -119,6 +119,20 @@ pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
     Ok(trimmed.to_owned())
 }
 
+/// Validate every value of a repeatable `--nameserver`-style flag as a
+/// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
+/// with the flag's own name — used by both `quote` (the registration
+/// profile's nameservers) and `nameservers set` (the target domain's
+/// nameservers) so a bad host isn't reported as if it were some other
+/// (already-valid) domain argument.
+pub(super) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>> {
+    raw.into_iter()
+        .map(|h| {
+            validate_domain_name(&h).map_err(|e| CliCoreError::message(format!("--nameserver {e}")))
+        })
+        .collect()
+}
+
 /// A single RFC 1035/1123 "LDH label": 1-63 bytes, alphanumeric, interior
 /// hyphens only (not leading/trailing).
 fn is_ldh_label(label: &str) -> bool {
@@ -583,6 +597,35 @@ mod tests {
         assert_eq!(
             validate_domain_name(input).expect("valid unicode domain"),
             input
+        );
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_rejects_bad_shape_with_flag_context() {
+        // Regression: `quote`'s and `nameservers set`'s `--nameserver` values
+        // must go through the same shape check as a domain arg, but the error
+        // must say `--nameserver`, not claim the bad value is "the domain".
+        let err = validate_nameserver_hosts(vec!["bad ns".to_string()])
+            .expect_err("malformed host should be rejected");
+        let msg = err.to_string();
+        assert!(msg.starts_with("--nameserver "), "{msg}");
+        assert!(msg.contains("bad ns"), "{msg}");
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_passes_through_valid_hosts_unchanged() {
+        let hosts = vec!["ns1.example.com".to_string(), "ns2.example.com".to_string()];
+        assert_eq!(
+            validate_nameserver_hosts(hosts.clone()).expect("valid hosts"),
+            hosts
+        );
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_empty_list_stays_empty() {
+        assert_eq!(
+            validate_nameserver_hosts(Vec::new()).expect("empty is valid"),
+            Vec::<String>::new()
         );
     }
 
