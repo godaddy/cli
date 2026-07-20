@@ -230,7 +230,7 @@ impl ApplicationClient {
         upload_id: &str,
         headers: &Value,
         max_size_bytes: Option<u64>,
-        bytes: Vec<u8>,
+        bytes: Bytes,
         opts: UploadOptions,
     ) -> Result<UploadResult, ClientError> {
         let size_bytes = bytes.len() as u64;
@@ -242,8 +242,6 @@ impl ApplicationClient {
                 max,
             });
         }
-
-        let body = Bytes::from(bytes);
 
         // Skip the unsigned x-amz-meta-upload-id; fail fast on a malformed header (avoids an opaque S3 403).
         let mut header_map = reqwest::header::HeaderMap::new();
@@ -267,7 +265,7 @@ impl ApplicationClient {
             let request = self
                 .client
                 .put(url)
-                .body(body.clone())
+                .body(bytes.clone())
                 .headers(header_map.clone())
                 .build()?;
             cli_engine::transport::debug_log_reqwest_request(&request);
@@ -495,7 +493,7 @@ mod tests {
                 "up-1",
                 &json!({}),
                 Some(4), // max 4 bytes
-                b"way too big".to_vec(),
+                Bytes::from_static(b"way too big"),
                 UploadOptions {
                     max_attempts: 3,
                     base_delay_ms: 0,
@@ -527,7 +525,7 @@ mod tests {
                 "up-1",
                 &json!({}),
                 None,
-                b"data".to_vec(),
+                Bytes::from_static(b"data"),
                 UploadOptions {
                     max_attempts: 3,
                     base_delay_ms: 0,
@@ -559,7 +557,7 @@ mod tests {
                 "up-1",
                 &json!({}),
                 None,
-                b"data".to_vec(),
+                Bytes::from_static(b"data"),
                 UploadOptions {
                     max_attempts: 3,
                     base_delay_ms: 0,
@@ -603,7 +601,7 @@ mod tests {
                     "x-amz-meta-upload-id": "should-be-stripped",
                 }),
                 None,
-                b"hello".to_vec(),
+                Bytes::from_static(b"hello"),
                 UploadOptions {
                     max_attempts: 3,
                     base_delay_ms: 0,
@@ -635,7 +633,7 @@ mod tests {
                 "up-1",
                 &json!({ "bad header name": "x" }), // space in name → invalid
                 None,
-                b"data".to_vec(),
+                Bytes::from_static(b"data"),
                 UploadOptions {
                     max_attempts: 3,
                     base_delay_ms: 0,
@@ -649,5 +647,42 @@ mod tests {
             "unexpected: {err}"
         );
         assert_eq!(mock.hits_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn upload_artifact_accepts_reusable_shared_payload() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/artifact")
+                    .body("shared extension bundle");
+                then.status(200);
+            })
+            .await;
+        let client = ApplicationClient::new(server.base_url(), "test-token");
+        let payload = Bytes::from_static(b"shared extension bundle");
+        let first_upload = payload.clone();
+        let second_upload = payload.clone();
+        assert_eq!(first_upload.as_ptr(), second_upload.as_ptr());
+
+        for (upload_id, bytes) in [("upload-1", first_upload), ("upload-2", second_upload)] {
+            client
+                .upload_artifact(
+                    &server.url("/artifact"),
+                    upload_id,
+                    &json!({}),
+                    None,
+                    bytes,
+                    UploadOptions {
+                        max_attempts: 1,
+                        base_delay_ms: 0,
+                    },
+                )
+                .await
+                .expect("upload shared payload");
+        }
+
+        mock.assert_hits_async(2).await;
     }
 }

@@ -1135,34 +1135,90 @@ async fn finalize_deploy_activation(
 }
 
 /// Collect extension source files from config, returning (name, source_path, ext_type) triples.
-fn collect_extensions(
-    config: &crate::config::Config,
-) -> Vec<(String, String, crate::extension::ExtensionType)> {
+/// One deployable extension: its name, source entry-point, type, and the
+/// configured target surfaces (empty for blocks / untargeted extensions).
+struct ExtensionDeploy {
+    name: String,
+    source: String,
+    ext_type: crate::extension::ExtensionType,
+    targets: Vec<String>,
+}
+
+fn collect_extensions(config: &crate::config::Config) -> Vec<ExtensionDeploy> {
     let mut result = Vec::new();
     if let Some(exts) = &config.extensions {
         for e in &exts.embed {
-            result.push((
-                e.name.clone(),
-                e.source.clone(),
-                crate::extension::ExtensionType::Embed,
-            ));
+            result.push(ExtensionDeploy {
+                name: e.name.clone(),
+                source: e.source.clone(),
+                ext_type: crate::extension::ExtensionType::Embed,
+                targets: e.targets.iter().map(|t| t.target.clone()).collect(),
+            });
         }
         for e in &exts.checkout {
-            result.push((
-                e.name.clone(),
-                e.source.clone(),
-                crate::extension::ExtensionType::Checkout,
-            ));
+            result.push(ExtensionDeploy {
+                name: e.name.clone(),
+                source: e.source.clone(),
+                ext_type: crate::extension::ExtensionType::Checkout,
+                targets: e.targets.iter().map(|t| t.target.clone()).collect(),
+            });
         }
         if let Some(blocks) = &exts.blocks {
-            result.push((
-                "blocks".to_owned(),
-                blocks.source.clone(),
-                crate::extension::ExtensionType::Blocks,
-            ));
+            result.push(ExtensionDeploy {
+                name: "blocks".to_owned(),
+                source: blocks.source.clone(),
+                ext_type: crate::extension::ExtensionType::Blocks,
+                targets: Vec::new(),
+            });
         }
     }
     result
+}
+
+/// Resolve the upload target(s) for one extension. A blocks extension always
+/// uploads to the `blocks` target; embed/checkout upload once per configured
+/// target, or a single untargeted upload (`None`) when none are configured.
+fn resolve_upload_targets(
+    ext_type: crate::extension::ExtensionType,
+    targets: &[String],
+) -> Vec<Option<String>> {
+    match ext_type {
+        crate::extension::ExtensionType::Blocks => vec![Some("blocks".to_owned())],
+        _ if targets.is_empty() => vec![None],
+        _ => targets.iter().cloned().map(Some).collect(),
+    }
+}
+
+fn upload_completed_event(
+    extension_name: &str,
+    target: &Option<String>,
+    is_final_target: bool,
+    index: usize,
+    total: usize,
+) -> Value {
+    let mut event = json!({
+        "type": "progress",
+        "name": "extension.upload",
+        "status": "completed",
+        "extensionName": extension_name,
+        "target": target,
+    });
+    if is_final_target {
+        event["percent"] = json!(index * 100 / total.max(1));
+    }
+    event
+}
+
+/// Parse a comma-separated `--target` value into extension targets, trimming
+/// whitespace and dropping empty entries.
+fn parse_targets(raw: &str) -> Vec<crate::config::ExtensionTarget> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| crate::config::ExtensionTarget {
+            target: s.to_owned(),
+        })
+        .collect()
 }
 
 async fn deploy_extension(
@@ -1170,10 +1226,14 @@ async fn deploy_extension(
     sender: &StreamSender,
     application_id: &str,
     release_id: &str,
-    (ext_name, source_path, ext_type): &(String, String, crate::extension::ExtensionType),
+    ext: &ExtensionDeploy,
     index: usize,
     total: usize,
 ) -> cli_engine::Result<()> {
+    let ext_name = &ext.name;
+    let source_path = &ext.source;
+    let ext_type = ext.ext_type;
+
     // ---- Bundle ----
     sender
         .send(json!({
@@ -1187,7 +1247,7 @@ async fn deploy_extension(
 
     let source = std::path::Path::new(source_path);
     let ext_dir = source.parent().unwrap_or(std::path::Path::new("."));
-    let bundle = crate::extension::bundle_extension(source, *ext_type, ext_dir)
+    let bundle = crate::extension::bundle_extension(source, ext_type, ext_dir)
         .await
         .map_err(|e| {
             cli_engine::CliCoreError::message(format!("bundle failed for '{ext_name}': {e}"))
@@ -1247,61 +1307,69 @@ async fn deploy_extension(
         }))
         .await;
 
-    let bytes = bundle.bytes;
+    let bytes = bytes::Bytes::from(bundle.bytes);
 
-    // Get presigned upload URL
-    sender
-        .send(json!({ "type": "progress", "name": "extension.upload", "status": "started", "extensionName": ext_name }))
-        .await;
+    // Upload the bundle once per configured target (blocks -> "blocks";
+    // embed/checkout -> each target, or a single untargeted upload).
+    let upload_targets = resolve_upload_targets(ext_type, &ext.targets);
+    for (target_index, target) in upload_targets.iter().enumerate() {
+        sender
+            .send(json!({ "type": "progress", "name": "extension.upload", "status": "started", "extensionName": ext_name, "target": target }))
+            .await;
 
-    let upload_data = client
-        .generate_upload_url(json!({
+        let mut upload_input = json!({
             "applicationId": application_id,
             "releaseId": release_id,
             "contentType": "JS",
-            "target": ext_name,
-        }))
-        .await
-        .map_err(client_err)?;
+        });
+        if let Some(t) = target {
+            upload_input["target"] = json!(t);
+        }
 
-    let upload = &upload_data["generateReleaseUploadUrl"];
-    let upload_url = upload["url"].as_str().unwrap_or("").to_owned();
-    let upload_id = upload["uploadId"].as_str().unwrap_or("").to_owned();
-    let max_size_bytes = upload["maxSizeBytes"].as_u64();
+        let upload_data = client
+            .generate_upload_url(upload_input)
+            .await
+            .map_err(client_err)?;
 
-    // Parse required headers from ["key:value"] array
-    let mut headers = serde_json::Map::new();
-    if let Some(arr) = upload["requiredHeaders"].as_array() {
-        for h in arr {
-            if let Some(s) = h.as_str()
-                && let Some((k, v)) = s.split_once(':')
-            {
-                headers.insert(k.trim().to_owned(), json!(v.trim()));
+        let upload = &upload_data["generateReleaseUploadUrl"];
+        let upload_url = upload["url"].as_str().unwrap_or("").to_owned();
+        let upload_id = upload["uploadId"].as_str().unwrap_or("").to_owned();
+        let max_size_bytes = upload["maxSizeBytes"].as_u64();
+
+        // Parse required headers from ["key:value"] array
+        let mut headers = serde_json::Map::new();
+        if let Some(arr) = upload["requiredHeaders"].as_array() {
+            for h in arr {
+                if let Some(s) = h.as_str()
+                    && let Some((k, v)) = s.split_once(':')
+                {
+                    headers.insert(k.trim().to_owned(), json!(v.trim()));
+                }
             }
         }
+
+        client
+            .upload_artifact(
+                &upload_url,
+                &upload_id,
+                &json!(headers),
+                max_size_bytes,
+                bytes.clone(),
+                UploadOptions::default(),
+            )
+            .await
+            .map_err(client_err)?;
+
+        sender
+            .send(upload_completed_event(
+                ext_name,
+                target,
+                target_index + 1 == upload_targets.len(),
+                index,
+                total,
+            ))
+            .await;
     }
-
-    client
-        .upload_artifact(
-            &upload_url,
-            &upload_id,
-            &json!(headers),
-            max_size_bytes,
-            bytes,
-            UploadOptions::default(),
-        )
-        .await
-        .map_err(client_err)?;
-
-    sender
-        .send(json!({
-            "type": "progress",
-            "name": "extension.upload",
-            "status": "completed",
-            "extensionName": ext_name,
-            "percent": (index * 100 / total.max(1)),
-        }))
-        .await;
 
     Ok(())
 }
@@ -1463,11 +1531,23 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                     .long("source")
                     .required(true)
                     .help("Path to the JavaScript entry-point file for this extension"),
+            )
+            .with_arg(
+                clap::Arg::new("target")
+                    .long("target")
+                    .required(true)
+                    .help("Comma-separated target surface(s) for this extension"),
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let handle = arg_str(&ctx, "handle").to_owned();
             let source = arg_str(&ctx, "source").to_owned();
+            let targets = parse_targets(arg_str(&ctx, "target"));
+            if targets.is_empty() {
+                return Err(cli_engine::CliCoreError::message(
+                    "at least one --target is required (comma-separated)",
+                ));
+            }
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1482,7 +1562,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 name: name.clone(),
                 handle: handle.clone(),
                 source,
-                targets: vec![],
+                targets,
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1520,11 +1600,23 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                     .long("source")
                     .required(true)
                     .help("Path to the JavaScript entry-point file for this extension"),
+            )
+            .with_arg(
+                clap::Arg::new("target")
+                    .long("target")
+                    .required(true)
+                    .help("Comma-separated target surface(s) for this extension"),
             ),
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let handle = arg_str(&ctx, "handle").to_owned();
             let source = arg_str(&ctx, "source").to_owned();
+            let targets = parse_targets(arg_str(&ctx, "target"));
+            if targets.is_empty() {
+                return Err(cli_engine::CliCoreError::message(
+                    "at least one --target is required (comma-separated)",
+                ));
+            }
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1539,7 +1631,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 name: name.clone(),
                 handle: handle.clone(),
                 source,
-                targets: vec![],
+                targets,
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1630,6 +1722,58 @@ mod tests {
             message.contains("provider"),
             "expected an auth-provider resolution error, got: {}",
             output.rendered
+        );
+    }
+
+    #[test]
+    fn parse_targets_trims_splits_and_drops_empties() {
+        let parsed = super::parse_targets(" a , b ,, c ");
+        let got: Vec<String> = parsed.into_iter().map(|t| t.target).collect();
+        assert_eq!(got, vec!["a", "b", "c"]);
+        assert!(super::parse_targets("   ").is_empty());
+        assert!(super::parse_targets("").is_empty());
+    }
+
+    #[test]
+    fn resolve_upload_targets_by_type() {
+        use crate::extension::ExtensionType;
+
+        // Blocks always uploads to the fixed "blocks" target.
+        assert_eq!(
+            super::resolve_upload_targets(ExtensionType::Blocks, &[]),
+            vec![Some("blocks".to_owned())]
+        );
+        // Embed/checkout with no targets: a single untargeted upload.
+        assert_eq!(
+            super::resolve_upload_targets(ExtensionType::Embed, &[]),
+            vec![None]
+        );
+        // Embed/checkout with targets: one upload per target.
+        assert_eq!(
+            super::resolve_upload_targets(
+                ExtensionType::Checkout,
+                &["a".to_owned(), "b".to_owned()]
+            ),
+            vec![Some("a".to_owned()), Some("b".to_owned())]
+        );
+    }
+
+    #[test]
+    fn final_target_completion_preserves_legacy_upload_event() {
+        let target = Some("admin.product.detail".to_owned());
+
+        let event = super::upload_completed_event("widget", &target, true, 1, 1);
+
+        assert_eq!(
+            event,
+            serde_json::json!({
+                "type": "progress",
+                "name": "extension.upload",
+                "status": "completed",
+                "extensionName": "widget",
+                "target": "admin.product.detail",
+                "percent": 100,
+            })
         );
     }
 
