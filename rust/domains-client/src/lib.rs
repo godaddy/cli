@@ -42,8 +42,30 @@ pub enum BuildError {
     Http(#[from] reqwest::Error),
 }
 
-/// Bridges generated requests/responses into cli-engine's `--debug transport`
-/// logger.
+/// Observes every generated request/response, independent of any particular
+/// logging backend. This crate has no compile-time dependency on cli-engine
+/// (or any other framework) — the *caller* pushes an implementation in via
+/// [`set_transport_observer`] rather than this crate pulling one in.
+pub trait TransportObserver: Send + Sync {
+    fn on_request(&self, request: &reqwest::Request);
+    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap);
+}
+
+static TRANSPORT_OBSERVER: std::sync::RwLock<Option<std::sync::Arc<dyn TransportObserver>>> =
+    std::sync::RwLock::new(None);
+
+/// Registers (or clears, with `None`) the process-wide transport observer.
+/// The main crate calls this with an adapter around its own logging
+/// framework — e.g. cli-engine's `--debug transport` bridge — before making
+/// any request through a [`Client`].
+pub fn set_transport_observer(observer: Option<std::sync::Arc<dyn TransportObserver>>) {
+    *TRANSPORT_OBSERVER
+        .write()
+        .expect("lock is never held across a panic") = observer;
+}
+
+/// Bridges generated requests/responses into the registered
+/// [`TransportObserver`], if any.
 ///
 /// progenitor generates every call as `client.pre(...)`, `client.exec(...)`,
 /// `client.post(...)` (see [`progenitor_client::ClientHooks`]); the default
@@ -53,15 +75,21 @@ pub enum BuildError {
 ///
 /// `post` only gets `&reqwest::Result<Response>` (a reference, pre-body-read),
 /// so response bodies aren't capturable here without consuming the body ahead
-/// of the generated code's own deserialization — this logs status/headers
-/// only for responses; request bodies log in full via `pre`.
+/// of the generated code's own deserialization — this reports status/headers
+/// only for responses; request bodies are reported in full via `pre`.
 impl progenitor_client::ClientHooks<()> for Client {
     async fn pre<E>(
         &self,
         request: &mut reqwest::Request,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
-        cli_engine::transport::debug_log_reqwest_request(request);
+        let observer = TRANSPORT_OBSERVER
+            .read()
+            .expect("lock is never held across a panic")
+            .clone();
+        if let Some(observer) = observer {
+            observer.on_request(request);
+        }
         Ok(())
     }
 
@@ -70,12 +98,14 @@ impl progenitor_client::ClientHooks<()> for Client {
         result: &reqwest::Result<reqwest::Response>,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
-        if let Ok(response) = result {
-            cli_engine::transport::debug_log_reqwest_response(
-                response.status(),
-                response.headers(),
-                &[],
-            );
+        let observer = TRANSPORT_OBSERVER
+            .read()
+            .expect("lock is never held across a panic")
+            .clone();
+        if let Ok(response) = result
+            && let Some(observer) = observer
+        {
+            observer.on_response(response.status(), response.headers());
         }
         Ok(())
     }
@@ -646,55 +676,61 @@ mod tests {
         mock.assert_async().await;
     }
 
-    // --- ClientHooks / --debug transport bridge ------------------------------
+    // --- ClientHooks / TransportObserver bridge ------------------------------
 
     #[derive(Debug, Default)]
-    struct RecordingLogger {
-        events: std::sync::Mutex<Vec<cli_engine::transport::TransportLogEvent>>,
+    struct RecordingObserver {
+        requests: std::sync::Mutex<Vec<String>>,
+        responses: std::sync::Mutex<Vec<u16>>,
     }
 
-    impl cli_engine::transport::TransportLogger for RecordingLogger {
-        fn debug(&self, event: &cli_engine::transport::TransportLogEvent) {
-            self.events
+    impl TransportObserver for RecordingObserver {
+        fn on_request(&self, request: &reqwest::Request) {
+            self.requests
                 .lock()
                 .expect("lock is never held across a panic")
-                .push(event.clone());
+                .push(request.method().to_string());
+        }
+
+        fn on_response(&self, status: reqwest::StatusCode, _headers: &reqwest::header::HeaderMap) {
+            self.responses
+                .lock()
+                .expect("lock is never held across a panic")
+                .push(status.as_u16());
         }
     }
 
-    // Serializes tests that mutate the process-wide default transport logger.
-    // An async-aware lock, not a `std::sync::Mutex` — the guard is held across
+    // Serializes tests that mutate the process-wide transport observer. An
+    // async-aware lock, not a `std::sync::Mutex` — the guard is held across
     // this test's `.await` points (clippy::await_holding_lock), which is only
     // sound with a lock that yields the executor instead of blocking a thread.
-    static TRANSPORT_LOGGER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    static TRANSPORT_OBSERVER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-    // Restores the noop logger on drop so a panicking assertion below can't
-    // leak a test's logger into later tests in this binary. Declared after
-    // acquiring `TRANSPORT_LOGGER_TEST_LOCK` so the reset runs while the lock
-    // is still held.
-    struct RestoreDefaultTransportLogger;
+    // Clears the observer on drop so a panicking assertion below can't leak
+    // a test's observer into later tests in this binary. Declared after
+    // acquiring `TRANSPORT_OBSERVER_TEST_LOCK` so the reset runs while the
+    // lock is still held.
+    struct ClearTransportObserver;
 
-    impl Drop for RestoreDefaultTransportLogger {
+    impl Drop for ClearTransportObserver {
         fn drop(&mut self) {
-            cli_engine::transport::set_default_transport_logger(std::sync::Arc::new(
-                cli_engine::transport::NoopTransportLogger,
-            ));
+            set_transport_observer(None);
         }
     }
 
     // Generated calls thread every request/response through `ClientHooks`,
-    // which this crate implements (see above) to call cli-engine's
-    // `debug_log_reqwest_request`/`debug_log_reqwest_response` bridge — the
-    // mechanism that makes `--debug transport` show HTTP traffic for a
-    // progenitor-generated client. Assert the bridge actually fires, not just
-    // that the request/response round-trips.
+    // which this crate implements (see above) to forward to whatever
+    // `TransportObserver` the caller has registered — the extension point
+    // that lets the main crate bridge to its own `--debug transport` logging
+    // without this crate depending on that framework. Assert the bridge
+    // actually fires, not just that the request/response round-trips.
     #[tokio::test]
-    async fn client_hooks_feed_the_debug_transport_bridge() {
-        let _test_lock = TRANSPORT_LOGGER_TEST_LOCK.lock().await;
-        let _restore = RestoreDefaultTransportLogger;
+    async fn client_hooks_feed_the_registered_observer() {
+        let _test_lock = TRANSPORT_OBSERVER_TEST_LOCK.lock().await;
+        let _clear = ClearTransportObserver;
 
-        let logger = std::sync::Arc::new(RecordingLogger::default());
-        cli_engine::transport::set_default_transport_logger(logger.clone());
+        let observer = std::sync::Arc::new(RecordingObserver::default());
+        set_transport_observer(Some(observer.clone()));
 
         let server = MockServer::start_async().await;
         let mock = server
@@ -712,21 +748,21 @@ mod tests {
             .expect("request succeeds");
         mock.assert_async().await;
 
-        let events = logger
-            .events
+        let requests = observer
+            .requests
             .lock()
             .expect("lock is never held across a panic");
         assert!(
-            events
-                .iter()
-                .any(|e| e.fields.get("method").map(String::as_str) == Some("GET")),
-            "expected a request event, got: {events:?}"
+            requests.iter().any(|m| m == "GET"),
+            "expected a request event, got: {requests:?}"
         );
+        let responses = observer
+            .responses
+            .lock()
+            .expect("lock is never held across a panic");
         assert!(
-            events
-                .iter()
-                .any(|e| e.fields.get("status").map(String::as_str) == Some("200")),
-            "expected a response event, got: {events:?}"
+            responses.contains(&200),
+            "expected a response event, got: {responses:?}"
         );
     }
 }

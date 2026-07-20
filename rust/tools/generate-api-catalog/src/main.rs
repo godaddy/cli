@@ -2260,7 +2260,7 @@ components:
         let manifest = load_source_manifest().expect("load source manifest");
         let expected = manifest.expected_domains();
 
-        assert_eq!(expected.len(), 21);
+        assert_eq!(expected.len(), 22);
         assert_eq!(manifest.remote.len(), 20);
         assert_eq!(
             manifest
@@ -2268,11 +2268,11 @@ components:
                 .iter()
                 .map(|source| source.domain.as_str())
                 .collect::<Vec<_>>(),
-            ["hosting-nodejs"]
+            ["hosting-nodejs", "domains"]
         );
         assert_eq!(
             manifest.legacy_typescript.rust_only_domains,
-            ["hosting-nodejs"]
+            ["hosting-nodejs", "domains"]
         );
     }
 

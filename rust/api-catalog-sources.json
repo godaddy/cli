@@ -86,14 +86,19 @@
     {
       "domain": "hosting-nodejs",
       "path": "schemas/openapi/hosting-nodejs-public-v1.yaml"
+    },
+    {
+      "domain": "domains",
+      "path": "domains-client/openapi/domains.oas3.json"
     }
   ],
   "legacyTypescript": {
     "status": "retired-on-rust-port",
     "sharedDomainCount": 20,
     "rustOnlyDomains": [
-      "hosting-nodejs"
+      "hosting-nodejs",
+      "domains"
     ],
-    "rationale": "The legacy TypeScript catalog contains the 20 remote domains above. hosting-nodejs is intentionally Rust-only because it is generated from the CLI's vendored public hosting specification."
+    "rationale": "The legacy TypeScript catalog contains the 20 remote domains above. hosting-nodejs and domains are intentionally Rust-only: each is generated from a vendored, manually-curated local spec (hosting-nodejs's public OpenAPI doc; domains' merged v1+v3 spec, which is also progenitor's source of truth for the typed domains-client crate)."
   }
 }

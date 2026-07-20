@@ -957,7 +957,6 @@ name = "domains-client"
 version = "0.1.10"
 dependencies = [
  "bytes",
- "cli-engine",
  "futures",
  "httpmock",
  "openapiv3",
