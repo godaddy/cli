@@ -455,9 +455,10 @@ fn update_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("update", "Update an application")
             .with_long(
-                "Update the label or description of a GoDaddy developer-platform application \
-                by its ID. At least one of --label or --description must be provided. \
-                Use `application info --name <name>` to retrieve the application ID.",
+                "Update the label, description, or status of a GoDaddy developer-platform \
+                application by its ID. At least one of --label, --description, or --status \
+                must be provided. Use `application info --name <name>` to retrieve the \
+                application ID.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -481,6 +482,13 @@ fn update_command() -> RuntimeCommandSpec {
                     .long("description")
                     .value_name("TEXT")
                     .help("New description"),
+            )
+            .with_arg(
+                clap::Arg::new("status")
+                    .long("status")
+                    .value_name("STATUS")
+                    .value_parser(["ACTIVE", "INACTIVE"])
+                    .help("Application status (ACTIVE or INACTIVE)"),
             ),
         |ctx| async move {
             let id = arg_str(&ctx, "id").to_owned();
@@ -490,6 +498,14 @@ fn update_command() -> RuntimeCommandSpec {
             }
             if let Some(desc) = ctx.args.get("description").and_then(|v| v.as_str()) {
                 input.insert("description".to_owned(), json!(desc));
+            }
+            if let Some(status) = ctx.args.get("status").and_then(|v| v.as_str()) {
+                input.insert("status".to_owned(), json!(status));
+            }
+            if input.is_empty() {
+                return Err(cli_engine::CliCoreError::message(
+                    "Provide one of: --label, --description, --status",
+                ));
             }
             let client = make_client(&ctx).await?;
             let data = client
@@ -1503,6 +1519,35 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
 #[cfg(test)]
 mod tests {
     use cli_engine::{Cli, CliConfig, Stage};
+
+    use super::update_command;
+
+    fn update_clap_command() -> clap::Command {
+        clap::Command::new("update").args(update_command().spec.args)
+    }
+
+    #[test]
+    fn status_rejects_values_outside_active_inactive() {
+        for bad in ["active", "DISABLED", "PENDING"] {
+            let err = update_clap_command()
+                .try_get_matches_from(["update", "--id", "app-1", "--status", bad])
+                .expect_err("invalid --status should be rejected");
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::InvalidValue,
+                "--status {bad:?} should fail possible-value validation, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_accepts_active_and_inactive() {
+        for good in ["ACTIVE", "INACTIVE"] {
+            update_clap_command()
+                .try_get_matches_from(["update", "--id", "app-1", "--status", good])
+                .expect("ACTIVE|INACTIVE --status should be accepted");
+        }
+    }
 
     /// API commands must stay fail-closed: `application list` calls the backend,
     /// so it must require authentication. Built with **no auth provider
