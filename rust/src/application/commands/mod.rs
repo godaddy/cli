@@ -475,12 +475,15 @@ fn update_command() -> RuntimeCommandSpec {
                 clap::Arg::new("label")
                     .long("label")
                     .value_name("LABEL")
+                    // CommandSpec has no ArgGroup; this enforces "at least one" at parse time.
+                    .required_unless_present_any(["description", "status"])
                     .help("New label"),
             )
             .with_arg(
                 clap::Arg::new("description")
                     .long("description")
                     .value_name("TEXT")
+                    .required_unless_present_any(["label", "status"])
                     .help("New description"),
             )
             .with_arg(
@@ -488,6 +491,7 @@ fn update_command() -> RuntimeCommandSpec {
                     .long("status")
                     .value_name("STATUS")
                     .value_parser(["ACTIVE", "INACTIVE"])
+                    .required_unless_present_any(["label", "description"])
                     .help("Application status (ACTIVE or INACTIVE)"),
             ),
         |ctx| async move {
@@ -501,11 +505,6 @@ fn update_command() -> RuntimeCommandSpec {
             }
             if let Some(status) = ctx.args.get("status").and_then(|v| v.as_str()) {
                 input.insert("status".to_owned(), json!(status));
-            }
-            if input.is_empty() {
-                return Err(cli_engine::CliCoreError::message(
-                    "Provide one of: --label, --description, --status",
-                ));
             }
             let client = make_client(&ctx).await?;
             let data = client
@@ -1523,7 +1522,7 @@ mod tests {
     use super::update_command;
 
     fn update_clap_command() -> clap::Command {
-        clap::Command::new("update").args(update_command().spec.args)
+        update_command().spec.clap_command()
     }
 
     #[test]
@@ -1547,6 +1546,48 @@ mod tests {
                 .try_get_matches_from(["update", "--id", "app-1", "--status", good])
                 .expect("ACTIVE|INACTIVE --status should be accepted");
         }
+    }
+
+    #[test]
+    fn update_requires_at_least_one_field() {
+        let err = update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1"])
+            .expect_err("update with only --id should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument,
+            "expected MissingRequiredArgument, got: {err}"
+        );
+    }
+
+    #[test]
+    fn update_accepts_any_single_field() {
+        update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--label", "New"])
+            .expect("--label alone should be accepted");
+        update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--description", "Desc"])
+            .expect("--description alone should be accepted");
+        update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--status", "ACTIVE"])
+            .expect("--status alone should be accepted");
+    }
+
+    #[test]
+    fn update_accepts_multiple_fields() {
+        update_clap_command()
+            .try_get_matches_from([
+                "update",
+                "--id",
+                "app-1",
+                "--label",
+                "New",
+                "--description",
+                "Desc",
+                "--status",
+                "INACTIVE",
+            ])
+            .expect("multiple update fields should be allowed together");
     }
 
     /// API commands must stay fail-closed: `application list` calls the backend,
