@@ -44,11 +44,7 @@ output_schema!(PatRemoveResult {
 });
 
 /// PAT prefix advertised by GoDaddy. A valid PAT starts with this string.
-pub const PAT_PREFIX: &str = "gd_pat_";
-
-/// The base portion of the advertised prefix, used when validating the
-/// `gd_pat_<entropy>_<crc>` structure.
-const PAT_PREFIX_BODY: &str = "gd_pat";
+const PAT_PREFIX: &str = "gd_pat_";
 
 /// Default env-var PAT applied to any environment.
 pub const PAT_ENV_VAR: &str = "GDDY_PAT";
@@ -122,21 +118,17 @@ fn save_registry(path: &std::path::Path, registry: &PatRegistry) -> Result<(), C
     registry.save(path)
 }
 
-/// Validate that `token` looks like a GoDaddy PAT: `gd_pat_<base62>_<8 hex crc>`.
+/// Validate that `token` looks like a GoDaddy PAT. This only checks for the
+/// `gd_pat_` prefix plus at least one character of content after it with no
+/// embedded whitespace, so that we are not overly tied to the implementation
+/// details of the token format while still rejecting untrimmed values (e.g.
+/// `gd_pat_abc\n` from an env var or file with a trailing newline) that would
+/// otherwise be sent as a garbage Bearer token.
 #[must_use]
 pub fn is_valid_pat(token: &str) -> bool {
-    let Some((body, crc)) = token.rsplit_once('_') else {
-        return false;
-    };
-    if crc.len() != 8 || !crc.chars().all(|c| c.is_ascii_hexdigit()) {
-        return false;
-    }
-    let Some((prefix, entropy)) = body.rsplit_once('_') else {
-        return false;
-    };
-    prefix == PAT_PREFIX_BODY
-        && !entropy.is_empty()
-        && entropy.chars().all(|c| c.is_ascii_alphanumeric())
+    token
+        .strip_prefix(PAT_PREFIX)
+        .is_some_and(|rest| !rest.is_empty() && !rest.chars().any(char::is_whitespace))
 }
 
 /// Returns the last four characters of a PAT. If the token is four characters or
@@ -350,9 +342,9 @@ fn add_command() -> RuntimeCommandSpec {
             let name = string_arg(&ctx.args, "name");
             let token = resolve_token_arg(&ctx.args).await?;
             if !is_valid_pat(&token) {
-                return Err(CliCoreError::message(format!(
-                    "token does not look like a GoDaddy PAT (expected `{PAT_PREFIX}...`); refusing to store it"
-                )));
+                return Err(CliCoreError::message(
+                    "token doesn't look like a GoDaddy PAT; refusing to store it. Run `gddy guide auth` for details on creating PATs.",
+                ));
             }
 
             let entry = PatEntry { token, name };
@@ -484,23 +476,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_malformed_pats() {
+    fn rejects_tokens_without_the_pat_prefix() {
         assert!(!is_valid_pat(""));
         assert!(!is_valid_pat("notapat"));
-        assert!(!is_valid_pat("gd_pat_"));
-        assert!(!is_valid_pat("gd_pat_abc")); // missing crc
-        assert!(!is_valid_pat("gd_pat_abc_xyz")); // crc too short
-        assert!(!is_valid_pat("gd_pat_abc_zzzzzzzz")); // crc not hex
-        assert!(!is_valid_pat("gd_pat_ab!c_12345678")); // invalid char in entropy
+        assert!(!is_valid_pat("gd_pat")); // missing trailing underscore
+        assert!(!is_valid_pat("gd_pat_")); // nothing after the prefix
     }
 
     #[test]
-    fn accepts_well_formed_pat() {
+    fn rejects_tokens_containing_whitespace_after_the_prefix() {
+        // An untrimmed env var or file (e.g. a trailing newline) should not be
+        // treated as valid — it would otherwise be sent as a garbage Bearer
+        // token. This covers both whitespace-only tails and whitespace
+        // embedded alongside real-looking content.
+        assert!(!is_valid_pat("gd_pat_ "));
+        assert!(!is_valid_pat("gd_pat_\n"));
+        assert!(!is_valid_pat("gd_pat_\t\t"));
+        assert!(!is_valid_pat("gd_pat_abc123\n"));
+        assert!(!is_valid_pat("gd_pat_ abc123"));
+        assert!(!is_valid_pat("gd_pat_abc 123"));
+    }
+
+    #[test]
+    fn accepts_any_non_empty_value_after_the_prefix() {
+        // The CLI does not assume a stable shape beyond the prefix, so these
+        // (including the exact strings from DEVEX-889's bug report) all pass.
         assert!(is_valid_pat("gd_pat_abc123_1234abcd"));
         assert!(is_valid_pat("gd_pat_aA0bB1cC2_abcdef12"));
-        // entropy may be long
+        assert!(is_valid_pat("gd_pat_1234567890abcdef1234567890abcdef"));
+        assert!(is_valid_pat("gd_pat_YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo="));
         assert!(is_valid_pat(
-            "gd_pat_abcdefghijklmnopqrstuvwxyz0123456789_abcdef12"
+            "gd_pat_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"
         ));
     }
 

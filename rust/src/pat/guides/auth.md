@@ -21,16 +21,10 @@ Your browser opens to the GoDaddy login screen. After you approve the CLI, an ac
 
 ### Creating a PAT
 
-1. Sign in to the GoDaddy Developer Portal.
-2. Open **Personal Access Tokens**.
-3. Choose a name, the scopes you need, and an expiration (up to 365 days).
-4. Copy the plaintext token immediately — it is shown only once.
-
-The token looks like:
-
-```text
-gd_pat_<base62>_<8-hex-crc>
-```
+1. Sign in to the [Personal Access Token page](https://developer.godaddy.com/personal-access-token).
+2. Click **+ Generate Token**.
+3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (see the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes) — e.g. `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
+4. Click **Generate Token**. The token is shown once in a "Copy your new token" dialog — copy it immediately. You can't retrieve it again from the Personal Access Token page; if you lose it, revoke it and generate a new one.
 
 ### Storing a PAT in the CLI
 
@@ -62,7 +56,7 @@ Remove the PAT for an environment:
 gddy pat remove --env prod
 ```
 
-Removing the PAT from the CLI does **not** revoke it in the Developer Portal.
+Removing the PAT from the CLI does **not** revoke it in the Developer Portal. To revoke it for real, go to the [Personal Access Token page](https://developer.godaddy.com/personal-access-token), click the trash icon next to the token, and confirm.
 
 ### Using PATs in CI
 
@@ -104,5 +98,5 @@ The GoDaddy API gateway exchanges the PAT for a short-lived access token and enf
 
 - Treat PATs like passwords. Do not commit them to source control.
 - Prefer `GDDY_PAT_<ENV>` environment variables in CI over storing PATs in the registry file.
-- Regenerate leaked or suspected PATs in the Developer Portal immediately.
-- The CLI validates PAT format before storing, but does **not** contact the API to verify a PAT is still active.
+- Regenerate leaked PATs on the [Personal Access Token page](https://developer.godaddy.com/personal-access-token) immediately.
+- The CLI only validates PAT format before storing, but it does **not** contact the API to verify the PAT is still active or has the scopes you need.
