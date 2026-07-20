@@ -2,6 +2,7 @@ mod actions_catalog;
 mod api_explorer;
 mod application;
 mod auth;
+mod auth_login;
 mod config;
 mod contacts;
 mod dns;
@@ -11,6 +12,7 @@ mod environments;
 mod extension;
 mod hosting;
 mod next_action;
+pub mod onboarding;
 mod output_schema;
 mod pat;
 mod payment_methods;
@@ -80,7 +82,7 @@ async fn main() -> ExitCode {
                     .with_date(env!("GDDY_BUILD_DATE")),
             )
             .with_default_auth_provider("godaddy")
-            .with_auth_provider(auth_provider)
+            .with_auth_provider(auth_provider.clone())
             .with_auth_extra_commands([scopes_cmd::auth_scopes_command()])
             .with_register_flags(Arc::new(|cmd| {
                 cmd.arg(
@@ -123,6 +125,17 @@ async fn main() -> ExitCode {
             .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
             .with_modules(all_modules()),
     );
+
+    let args: Vec<String> = std::env::args().collect();
+    if auth_login::args::parse(
+        &cli,
+        &args,
+        &cli_engine::default_output_format(environments::APP_ID),
+    )
+    .is_some()
+    {
+        return auth_login::run(&cli, auth_provider.as_ref(), args).await;
+    }
 
     cli.execute().await
 }
