@@ -1,6 +1,6 @@
 [package]
 name = "godaddy-cli"
-version = "0.1.4"
+version = "0.1.10"
 edition = "2024"
 description = "GoDaddy developer CLI"
 license = "Proprietary"
@@ -17,9 +17,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dependencies]
 async-trait = "0.1"
+bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.5", features = ["std", "string"] }
-cli-engine = { features = ["pkce-auth"], version = "0.4.2" }
+cli-engine = { features = ["pkce-auth"], version = "0.4.6" }
 dirs = "6"
 domains-client = { path = "domains-client" }
 fancy-regex = "0.14"
@@ -39,10 +40,10 @@ tokio = { version = "1", features = ["full"] }
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
 iso_currency = "0.5.3"
-bytes = "1.12.1"
 
 [dev-dependencies]
 httpmock = "0.7"

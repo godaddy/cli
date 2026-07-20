@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.1.10](https://github.com/godaddy/cli/compare/v0.1.9...v0.1.10) (2026-07-17)
+
+
+### Bug Fixes
+
+* **application init:** align with TS config seeding and validation ([#126](https://github.com/godaddy/cli/issues/126)) (DEVEX-707) ([1cfcda2](https://github.com/godaddy/cli/commit/1cfcda210edb305615a92ae433e11833392bcd85))
+* **domain:** validate domain and nameserver hostname shape before the API call ([#127](https://github.com/godaddy/cli/issues/127)) ([9348495](https://github.com/godaddy/cli/commit/934849587684cc4f221b94bae1f162c95aa69a66))
+
+## [0.1.9](https://github.com/godaddy/cli/compare/v0.1.8...v0.1.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **application deploy:** guarantee a terminal result/error NDJSON event (DEVX-544) ([#114](https://github.com/godaddy/cli/issues/114)) ([1d0fb2d](https://github.com/godaddy/cli/commit/1d0fb2d3d04b9ef5201d0322b2104e6e638f4573))
+* **domain:** show renewal price consistently across available/quote/suggest (GDDEVPLAT-133) ([#125](https://github.com/godaddy/cli/issues/125)) ([71e4eea](https://github.com/godaddy/cli/commit/71e4eea5da9a6d8a547560e40b211229f9213166))
+
+## [0.1.8](https://github.com/godaddy/cli/compare/v0.1.7...v0.1.8) (2026-07-17)
+
+
+### Bug Fixes
+
+* **domain suggest:** validate --limit against the v3 API's 50-suggestion cap (DEVEX-883) ([#117](https://github.com/godaddy/cli/issues/117)) ([c409719](https://github.com/godaddy/cli/commit/c409719be3344ede4eb3ffe1e487c13e4f023f1a))
+
+## [0.1.7](https://github.com/godaddy/cli/compare/v0.1.6...v0.1.7) (2026-07-17)
+
+
+### Features
+
+* **auth:** add live OAuth scope registry via `gddy auth scopes` (DEVEX-886, DEVEX-891) ([#116](https://github.com/godaddy/cli/issues/116)) ([cb16cc9](https://github.com/godaddy/cli/commit/cb16cc9dfa1fcc717e71b70a5c94e41e0c787bcf))
+
+## [0.1.6](https://github.com/godaddy/cli/compare/v0.1.5...v0.1.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **payment-methods:** rename gddy payments to gddy payment-methods (DEVEX-900) ([#119](https://github.com/godaddy/cli/issues/119)) ([67512bc](https://github.com/godaddy/cli/commit/67512bc39b91a4a45e360ac127b7165c82124439))
+
+## [0.1.5](https://github.com/godaddy/cli/compare/v0.1.4...v0.1.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* **auth:** validate requested OAuth scopes against the CLI's registry (DEVEX-894) ([#108](https://github.com/godaddy/cli/issues/108)) ([6abd2ee](https://github.com/godaddy/cli/commit/6abd2ee7b52be482f68a137a8527dc469da261a0))
+
 ## [0.1.4](https://github.com/godaddy/cli/compare/v0.1.3...v0.1.4) (2026-07-15)
 
 

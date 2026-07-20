@@ -27,8 +27,9 @@ output_schema!(DomainSuggestResult {
 
 /// Convert a count-style flag value to the `NonZeroU64` the suggest query params
 /// expect, or `None` when it's absent/zero/negative (so the param is simply
-/// omitted). Total — never panics — because the value can arrive as `0` (e.g. the
-/// engine's global `--limit` default is `0`), which must mean "unset", not abort.
+/// omitted). Used for `--limit`/`--length-min`/`--length-max`, which are
+/// already clap-validated to be positive when present; total — never panics —
+/// anyway, since `0`/negative simply means "unset".
 fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
     u64::try_from(n).ok().and_then(std::num::NonZeroU64::new)
 }
@@ -79,9 +80,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::new("suggest", "Suggest available domains for a query")
             .with_long(
                 "Suggest available domains from a seed word, phrase, or domain. \
-                 Narrow results with --tlds (repeatable) and bound the name length \
-                 with --length-min/--length-max. The global --limit caps how many \
-                 suggestions are requested and shown.",
+                 Narrow results with --tlds (repeatable), bound the name length \
+                 with --length-min/--length-max, and cap the count with --limit \
+                 (1-50).",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
@@ -101,9 +102,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .action(clap::ArgAction::Append)
                     .help("Limit suggestions to these TLDs (repeatable)"),
             )
-            // Note: no per-command `--limit` — cli-engine registers a global
-            // `--limit` (client-side result cap). We reuse its value as the v3
-            // `pageSize` below, so a single `--limit` drives both.
+            .with_arg(
+                // Local override of the engine's global `--limit`, typed
+                // `i64` to match it: clap's `global(true)` propagates a
+                // parsed value up into every ancestor `ArgMatches` under the
+                // shared `"limit"` id, and cli-engine's global-flag parsing
+                // always reads the root value back out as `i64` — a
+                // differently-typed local override (e.g. `u64`) panics there
+                // with a downcast mismatch. `allow_negative_numbers` (not the
+                // broader `allow_hyphen_values`) lets a negative value reach
+                // the range check below without also swallowing a following
+                // flag's name as this arg's value when one is omitted. The
+                // v3 suggestions endpoint hard-caps `pageSize` at 50
+                // (DEVEX-883), so this command validates the bound itself
+                // via clap instead of forwarding an out-of-range value the
+                // server rejects with a raw `400 VALUE_OVER`, or silently
+                // clamping it.
+                clap::Arg::new("limit")
+                    .long("limit")
+                    .value_name("N")
+                    .allow_negative_numbers(true)
+                    .value_parser(clap::value_parser!(i64).range(1..=50))
+                    .help("Maximum suggestions to return (1-50)"),
+            )
             .with_arg(
                 clap::Arg::new("length-min")
                     .long("length-min")
@@ -126,9 +147,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .unwrap_or("")
                 .to_owned();
             let tlds = string_list(&ctx, "tlds");
-            // The engine's global `--limit` (0 when unset) doubles as the v3
-            // server-side pageSize; `nonzero` maps 0/absent to "no pageSize".
-            let limit = nonzero(ctx.middleware.limit);
+            let limit = ctx
+                .args
+                .get("limit")
+                .and_then(|v| v.as_i64())
+                .and_then(nonzero);
             let length_min = ctx.args.get("length-min").and_then(|v| v.as_i64());
             let length_max = ctx.args.get("length-max").and_then(|v| v.as_i64());
 
@@ -166,13 +189,46 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::super::common::comma_joined;
-    use super::{nonzero, suggestion_to_json};
+    use super::{command, nonzero, suggestion_to_json};
     use domains_client::types;
+
+    /// Builds a standalone `clap::Command` from the real `--limit` arg
+    /// definition (not a re-declared copy), so this exercises the actual
+    /// validation users hit, not a hand-maintained stand-in that could drift
+    /// from it.
+    fn suggest_clap_command() -> clap::Command {
+        clap::Command::new("suggest").args(command().spec.args)
+    }
+
+    #[test]
+    fn limit_rejects_out_of_range_and_negative_values() {
+        for bad in ["0", "51", "-1"] {
+            let err = suggest_clap_command()
+                .try_get_matches_from(["suggest", "coffee", "--limit", bad])
+                .expect_err("out-of-range --limit should be rejected");
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "--limit {bad} should fail range validation, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn limit_accepts_the_full_valid_range() {
+        for good in ["1", "50"] {
+            suggest_clap_command()
+                .try_get_matches_from(["suggest", "coffee", "--limit", good])
+                .expect("value within the valid --limit range should be accepted");
+        }
+    }
 
     #[test]
     fn nonzero_maps_zero_and_negative_to_none() {
-        // The engine's global `--limit` arrives as 0 when unset — must be "no
-        // pageSize", never a panic (regression for the suggest crash).
+        // None of `--limit`/`--length-min`/`--length-max` have a clap
+        // default, so they're simply absent from `ctx.args` when unset —
+        // `nonzero` must still map 0/negative to "no param" rather than
+        // panic, as a safety net (regression for the suggest crash).
         assert_eq!(nonzero(0), None);
         assert_eq!(nonzero(-5), None);
         assert_eq!(nonzero(5).map(|n| n.get()), Some(5));

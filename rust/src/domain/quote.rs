@@ -7,7 +7,10 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client, string_list};
+use super::common::{
+    api_error, format_money, make_client, string_list, validate_domain_name,
+    validate_nameserver_hosts,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -190,7 +193,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields(
-                "domain,available,price,currency,period,quoteToken,expiresAt,agreements",
+                "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
             )
             .with_output_schema::<DomainQuoteResult>()
             .with_scopes(&[DOMAINS_READ])
@@ -228,12 +231,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .help("Custom nameserver (repeatable); omit to use GoDaddy defaults"),
             ),
         |ctx| async move {
-            let domain = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+            let domain = validate_domain_name(
+                ctx.args.get("domain").and_then(|v| v.as_str()).unwrap_or(""),
+            )?;
             let period = ctx.args.get("period").and_then(|v| v.as_u64()).unwrap_or(1);
             let privacy = ctx
                 .args
@@ -245,7 +245,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .get("no-renew")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let name_servers = string_list(&ctx, "nameserver");
+            let name_servers = validate_nameserver_hosts(string_list(&ctx, "nameserver"))?;
             let debug = !ctx.middleware.debug.is_empty();
             let period_nz =
                 std::num::NonZeroU64::new(period).expect("clap value_parser enforces period >= 1");
@@ -327,13 +327,31 @@ pub(super) fn command() -> RuntimeCommandSpec {
             } else {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
+                // `domain suggest` accepts a seed domain, so the domain just
+                // quoted is a valid query to copy/paste directly.
+                let resolved_domain = quote.domain.clone().unwrap_or_else(|| domain.clone());
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
-                        .with_param("query", NextActionParam::required()),
+                        .with_param("query", NextActionParam::value(resolved_domain)),
                 );
             }
 
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command;
+
+    #[test]
+    fn default_fields_includes_renewal_price() {
+        // Regression for GDDEVPLAT-133: `renewalPrice` was computed and present
+        // in `--output json` but silently dropped from the default table view.
+        // An exact field match (not a substring check) so a future field like
+        // `renewalPrice1Year` can't produce a false pass here.
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
 }

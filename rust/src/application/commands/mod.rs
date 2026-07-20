@@ -2,9 +2,9 @@ use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
     StreamSender, Tier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
-use crate::application::client::{ApplicationClient, api_url_for_env};
+use crate::application::client::{ApplicationClient, UploadOptions, api_url_for_env};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 // App-registry mutations declare their scopes so `apps.app-registry:write` is
@@ -22,19 +22,16 @@ output_schema!(ApplicationSummary {
     "proxyUrl": "string", optional;
 });
 
-output_schema!(ApplicationCredentials {
+output_schema!(ApplicationInit {
     "id": "string";
-    "clientId": "string";
-    "clientSecret": "string";
     "name": "string";
-    "label": "string", optional;
-    "description": "string", optional;
     "status": "string";
-    "url": "string", optional;
-    "proxyUrl": "string", optional;
+    "clientId": "string";
+    "url": "string";
+    "proxyUrl": "string";
     "authorizationScopes": "[]string";
-    "secret": "string", optional;
-    "publicKey": "string", optional;
+    "oauthGrantTypes": "[]string";
+    "filesWritten": "object";
 });
 
 output_schema!(ApplicationUpdate {
@@ -106,6 +103,73 @@ async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<App
 
 fn client_err(e: crate::application::client::ClientError) -> cli_engine::CliCoreError {
     cli_engine::CliCoreError::message(e.to_string())
+}
+
+/// Builds the terminal `{"type":"error",...}` event for a streaming command,
+/// reusing `cli_engine::build_error_envelope` so the `code`/`message` match
+/// what a non-streaming command would have rendered for the same error.
+fn deploy_error_event(err: &cli_engine::CliCoreError) -> Value {
+    let envelope = cli_engine::build_error_envelope(err, "applications");
+    // `build_error_envelope` always populates `.error` with a non-empty code;
+    // this fallback only guards against a future change to that guarantee.
+    let (code, message) = envelope
+        .error
+        .map(|e| (e.code, e.message))
+        .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
+    json!({
+        "type": "error",
+        "ok": false,
+        "error": { "code": code, "message": message },
+        "next_actions": [],
+    })
+}
+
+/// Emit the terminal error event on a streaming command, then return the
+/// error so the handler can still fail the run via `?`.
+async fn fail_deploy(
+    sender: &StreamSender,
+    err: cli_engine::CliCoreError,
+) -> cli_engine::CliCoreError {
+    sender.send(deploy_error_event(&err)).await;
+    err
+}
+
+/// Builds the terminal `{"type":"result",...}` event for a successful
+/// `application deploy` run.
+fn deploy_result_event(
+    name: &str,
+    application_id: &str,
+    release_id: &str,
+    extensions: usize,
+) -> Value {
+    json!({
+        "type": "result",
+        "ok": true,
+        "result": {
+            "application": name,
+            "applicationId": application_id,
+            "releaseId": release_id,
+            "extensions": extensions,
+            "status": "ACTIVE",
+        },
+        "next_actions": [next_action(
+            "application info --name <name>",
+            "Inspect the deployed application",
+        )
+        .with_param("name", NextActionParam::value(name))],
+    })
+}
+
+/// Wrap a fallible step: on `Err`, emit the terminal error event before
+/// propagating, so every failure path produces exactly one terminal line.
+async fn tap_deploy_err<T>(
+    sender: &StreamSender,
+    result: cli_engine::Result<T>,
+) -> cli_engine::Result<T> {
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => Err(fail_deploy(sender, e).await),
+    }
 }
 
 fn arg_str<'a>(ctx: &'a cli_engine::CommandContext, key: &str) -> &'a str {
@@ -230,13 +294,12 @@ fn init_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationCredentials>()
+            .with_output_schema::<ApplicationInit>()
             .with_arg(
                 clap::Arg::new("name")
                     .long("name")
                     .short('n')
                     .value_name("NAME")
-                    .required(true)
                     .help("Application name (used as label if --label is not set)"),
             )
             .with_arg(
@@ -249,50 +312,100 @@ fn init_command() -> RuntimeCommandSpec {
                 clap::Arg::new("description")
                     .long("description")
                     .value_name("TEXT")
-                    .required(true)
                     .help("Application description"),
             )
             .with_arg(
                 clap::Arg::new("url")
                     .long("url")
                     .value_name("URL")
-                    .required(true)
-                    .help("Application URL (must be public HTTPS)"),
+                    .help("Application URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("proxy-url")
                     .long("proxy-url")
                     .value_name("URL")
-                    .help("Proxy URL (defaults to url)"),
+                    .help("Proxy URL (must be public HTTP(S))"),
             )
             .with_arg(
                 clap::Arg::new("scopes")
                     .long("scopes")
                     .value_name("SCOPES")
                     .help("Comma-separated authorization scopes"),
+            )
+            .with_arg(
+                clap::Arg::new("config")
+                    .long("config")
+                    .short('c')
+                    .value_name("PATH")
+                    .help("Read defaults from this config file"),
             ),
         |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let label = ctx
-                .args
-                .get("label")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&name)
-                .to_owned();
-            let description = arg_str(&ctx, "description").to_owned();
-            let url = arg_str(&ctx, "url").to_owned();
-            let proxy_url = ctx
-                .args
-                .get("proxy-url")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&url)
-                .to_owned();
-            let scopes: Vec<String> = ctx
-                .args
-                .get("scopes")
-                .and_then(|v| v.as_str())
-                .map(|s| s.split(',').map(|p| p.trim().to_owned()).collect())
-                .unwrap_or_else(|| vec!["apps.app-registry:read".to_owned()]);
+            let env = ctx.middleware.env.clone();
+            let config_path = crate::config::config_path(Some(&env));
+
+            // Seed defaults only from an explicit --config; a bad/missing --config is fatal.
+            let existing = match ctx.args.get("config").and_then(|v| v.as_str()) {
+                Some(path) => Some(
+                    crate::config::read_config(std::path::Path::new(path)).map_err(|e| {
+                        cli_engine::CliCoreError::message(format!("invalid config: {e}"))
+                    })?,
+                ),
+                None => None,
+            };
+
+            // Resolve each field: CLI flag, else the existing config's value, else a default.
+            let flag = |key: &str| ctx.args.get(key).and_then(|v| v.as_str());
+            let name = flag("name")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.name.clone()))
+                .unwrap_or_default();
+            let description = flag("description")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().and_then(|c| c.description.clone()))
+                .unwrap_or_default();
+            let url = flag("url")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.url.clone()))
+                .unwrap_or_default();
+            let proxy_url = flag("proxy-url")
+                .map(str::to_owned)
+                .or_else(|| existing.as_ref().map(|c| c.proxy_url.clone()))
+                .unwrap_or_default();
+            let scopes: Vec<String> = flag("scopes")
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|p| !p.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .or_else(|| existing.as_ref().map(|c| c.authorization_scopes.clone()))
+                .unwrap_or_default();
+            let label = flag("label").unwrap_or(&name).to_owned();
+
+            for (message, empty) in [
+                ("Application name is required", name.is_empty()),
+                (
+                    "Application description is required",
+                    description.is_empty(),
+                ),
+                ("Application URL is required", url.is_empty()),
+                ("Proxy URL is required", proxy_url.is_empty()),
+                ("Authorization scopes are required", scopes.is_empty()),
+            ] {
+                if empty {
+                    return Err(cli_engine::CliCoreError::message(message));
+                }
+            }
+
+            for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
+                if !crate::application::public_url::is_public_routable_url(u) {
+                    return Err(cli_engine::CliCoreError::message(format!(
+                        "Invalid application configuration: {field} must be a publicly-resolvable \
+                         http(s) URL (localhost, loopback, and private IPs are not allowed)"
+                    )));
+                }
+            }
 
             let client = make_client(&ctx).await?;
             let data = client
@@ -308,31 +421,76 @@ fn init_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
 
             let app = &data["createApplication"];
+            // Credentials/secrets the API returns (all selected by create_application).
             let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
+            let client_secret = app["clientSecret"].as_str().unwrap_or("").to_owned();
+            let secret = app["secret"].as_str().unwrap_or("").to_owned();
+            let public_key = app["publicKey"].as_str().unwrap_or("").to_owned();
 
-            // Write godaddy.toml for the created application
-            let config_path = crate::config::config_path(Some(ctx.middleware.env.as_str()));
+            // Best-effort local writes: app create already succeeded. Only paths that
+            // actually write are included in filesWritten.
             let config = crate::config::Config {
                 name: name.clone(),
                 client_id: client_id.clone(),
                 description: Some(description.clone()),
                 version: "0.0.0".to_owned(),
                 url: url.clone(),
-                proxy_url,
-                authorization_scopes: scopes,
+                proxy_url: proxy_url.clone(),
+                authorization_scopes: scopes.clone(),
                 actions: vec![],
-                subscriptions: None,
+                subscriptions: Some(crate::config::SubscriptionsConfig { webhook: vec![] }),
                 dependencies: vec![],
                 extensions: None,
             };
-            crate::config::write_config(&config_path, &config)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+            let cwd = match std::env::current_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    tracing::debug!(
+                        error = %e,
+                        "current_dir failed; filesWritten paths will be relative"
+                    );
+                    std::path::PathBuf::new()
+                }
+            };
 
-            Ok(CommandResult::new(app.clone()).with_next_actions(vec![
-                next_action(
-                    "application add action --name <name> --url <url>",
-                    "Add an action to godaddy.toml",
-                ),
+            let mut files_written = serde_json::Map::new();
+            if let Err(e) = crate::config::write_config(&config_path, &config) {
+                tracing::warn!(error = %e, path = %config_path.display(), "failed to write config; continuing");
+            } else {
+                files_written.insert(
+                    "config".to_owned(),
+                    json!(cwd.join(&config_path).display().to_string()),
+                );
+            }
+
+            let env_file_path = crate::config::env_path(Some(&env));
+            if let Err(e) = crate::config::write_env_file(
+                Some(&env),
+                &secret,
+                &public_key,
+                &client_id,
+                &client_secret,
+            ) {
+                tracing::warn!(error = %e, path = %env_file_path.display(), "failed to write env file; continuing");
+            } else {
+                files_written.insert(
+                    "env".to_owned(),
+                    json!(cwd.join(&env_file_path).display().to_string()),
+                );
+            }
+
+            let result = json!({
+                "id": app["id"].as_str().unwrap_or("").to_owned(),
+                "name": name,
+                "status": app["status"].as_str().unwrap_or("").to_owned(),
+                "clientId": client_id,
+                "url": url,
+                "proxyUrl": proxy_url,
+                "authorizationScopes": scopes,
+                "oauthGrantTypes": ["authorization_code", "client_credentials"],
+                "filesWritten": files_written,
+            });
+            Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
                     "application validate",
                     "Validate the generated godaddy.toml",
@@ -662,7 +820,7 @@ fn ui_extension_entry(
     source: &str,
     kind: &str,
     targets: &[crate::config::ExtensionTarget],
-) -> cli_engine::Result<serde_json::Value> {
+) -> cli_engine::Result<Value> {
     if targets.len() > 1 {
         return Err(cli_engine::CliCoreError::message(format!(
             "UI extension '{name}' has {} targets, but only one target is supported per extension during release",
@@ -678,9 +836,7 @@ fn ui_extension_entry(
 
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
 /// `uiExtensions` input. Mirrors the TS release mapping (single target each).
-fn build_ui_extensions(
-    config: &crate::config::Config,
-) -> cli_engine::Result<Vec<serde_json::Value>> {
+fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
     let mut out = Vec::new();
     let Some(exts) = &config.extensions else {
         return Ok(out);
@@ -760,12 +916,12 @@ fn release_command() -> RuntimeCommandSpec {
                 &crate::config::config_path(Some(&ctx.middleware.env)),
             ) {
                 Ok(config) => {
-                    let actions: Vec<serde_json::Value> = config
+                    let actions: Vec<Value> = config
                         .actions
                         .iter()
                         .map(|a| json!({ "name": a.name, "url": a.url }))
                         .collect();
-                    let subscriptions: Vec<serde_json::Value> = config
+                    let subscriptions: Vec<Value> = config
                         .subscriptions
                         .as_ref()
                         .map(|s| {
@@ -827,7 +983,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .unwrap_or("")
                 .to_owned();
             let env = ctx.middleware.env.clone();
-            let token = ctx.credential().await?.token;
+            let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
             let base_url = api_url_for_env(&env);
             let client = ApplicationClient::new(base_url, token);
 
@@ -840,9 +996,13 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .send(json!({ "type": "step", "name": "config.read", "status": "started" }))
                 .await;
             let config_path = crate::config::config_path(Some(&env));
-            let config = crate::config::read_config(&config_path).map_err(|e| {
-                cli_engine::CliCoreError::message(format!("config read failed: {e}"))
-            })?;
+            let config = tap_deploy_err(
+                &sender,
+                crate::config::read_config(&config_path).map_err(|e| {
+                    cli_engine::CliCoreError::message(format!("config read failed: {e}"))
+                }),
+            )
+            .await?;
             sender
                 .send(json!({ "type": "step", "name": "config.read", "status": "completed", "path": config_path.display().to_string() }))
                 .await;
@@ -851,15 +1011,19 @@ fn deploy_command() -> RuntimeCommandSpec {
             sender
                 .send(json!({ "type": "step", "name": "application.lookup", "status": "started" }))
                 .await;
-            let app_data = client
-                .get_application_with_releases(&name)
-                .await
-                .map_err(client_err)?;
+            let app_data = tap_deploy_err(
+                &sender,
+                client
+                    .get_application_with_releases(&name)
+                    .await
+                    .map_err(client_err),
+            )
+            .await?;
             let app = &app_data["application"];
             if app.is_null() {
-                return Err(cli_engine::CliCoreError::message(format!(
-                    "application '{name}' not found"
-                )));
+                let err =
+                    cli_engine::CliCoreError::message(format!("application '{name}' not found"));
+                return Err(fail_deploy(&sender, err).await);
             }
             let application_id = app["id"].as_str().unwrap_or("").to_owned();
             sender
@@ -876,9 +1040,10 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .and_then(|e| e["node"]["id"].as_str())
                 .map(str::to_owned);
             let Some(release_id) = release_id else {
-                return Err(cli_engine::CliCoreError::message(format!(
+                let err = cli_engine::CliCoreError::message(format!(
                     "application '{name}' has no releases — create one first with: gddy application release --application-id {application_id} --version 0.0.1"
-                )));
+                ));
+                return Err(fail_deploy(&sender, err).await);
             };
             sender
                 .send(json!({ "type": "step", "name": "release.lookup", "status": "completed", "releaseId": release_id }))
@@ -892,22 +1057,45 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .await;
 
             for (i, ext) in extensions.iter().enumerate() {
-                deploy_extension(
-                    &client,
+                tap_deploy_err(
                     &sender,
-                    &application_id,
-                    &release_id,
-                    ext,
-                    i + 1,
-                    total,
+                    deploy_extension(
+                        &client,
+                        &sender,
+                        &application_id,
+                        &release_id,
+                        ext,
+                        i + 1,
+                        total,
+                    )
+                    .await,
                 )
                 .await?;
             }
 
-            finalize_deploy_activation(&client, &sender, &application_id, &release_id).await?;
+            tap_deploy_err(
+                &sender,
+                finalize_deploy_activation(&client, &sender, &application_id, &release_id).await,
+            )
+            .await?;
 
             sender
-                .send(json!({ "type": "step", "name": "deploy", "status": "completed", "name": name, "extensions": total }))
+                .send(json!({
+                    "type": "step",
+                    "name": "deploy",
+                    "status": "completed",
+                    "application": name,
+                    "extensions": total,
+                }))
+                .await;
+
+            sender
+                .send(deploy_result_event(
+                    &name,
+                    &application_id,
+                    &release_id,
+                    total,
+                ))
                 .await;
             Ok(())
         },
@@ -1007,7 +1195,7 @@ fn upload_completed_event(
     is_final_target: bool,
     index: usize,
     total: usize,
-) -> serde_json::Value {
+) -> Value {
     let mut event = json!({
         "type": "progress",
         "name": "extension.upload",
@@ -1145,6 +1333,8 @@ async fn deploy_extension(
 
         let upload = &upload_data["generateReleaseUploadUrl"];
         let upload_url = upload["url"].as_str().unwrap_or("").to_owned();
+        let upload_id = upload["uploadId"].as_str().unwrap_or("").to_owned();
+        let max_size_bytes = upload["maxSizeBytes"].as_u64();
 
         // Parse required headers from ["key:value"] array
         let mut headers = serde_json::Map::new();
@@ -1159,7 +1349,14 @@ async fn deploy_extension(
         }
 
         client
-            .upload_artifact(&upload_url, &json!(headers), bytes.clone())
+            .upload_artifact(
+                &upload_url,
+                &upload_id,
+                &json!(headers),
+                max_size_bytes,
+                bytes.clone(),
+                UploadOptions::default(),
+            )
             .await
             .map_err(client_err)?;
 
@@ -1623,6 +1820,79 @@ mod tests {
         assert!(
             err.to_string().contains("only one target is supported"),
             "unexpected error: {err}"
+        );
+    }
+
+    /// `deploy --follow` must end with exactly one terminal line. `StreamSender`
+    /// has no public constructor outside cli-engine, so the send itself can't
+    /// be unit-tested here — instead this locks down the shape of the payload
+    /// that gets sent, which is where the actual logic (error-code derivation)
+    /// lives.
+    #[test]
+    fn deploy_error_event_falls_back_to_error_code_for_a_plain_message() {
+        let err = cli_engine::CliCoreError::message("application 'foo' not found");
+        let event = super::deploy_error_event(&err);
+
+        assert_eq!(event["type"], "error");
+        assert_eq!(event["ok"], false);
+        assert_eq!(event["error"]["code"], "ERROR");
+        assert_eq!(event["error"]["message"], "application 'foo' not found");
+        assert_eq!(event["next_actions"], serde_json::json!([]));
+    }
+
+    #[derive(Debug)]
+    struct CodedTestError;
+
+    impl std::fmt::Display for CodedTestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "upstream rejected the release")
+        }
+    }
+
+    impl std::error::Error for CodedTestError {}
+
+    impl cli_engine::DetailedError for CodedTestError {
+        fn error_code(&self) -> std::borrow::Cow<'static, str> {
+            "RELEASE_REJECTED".into()
+        }
+
+        fn error_system(&self) -> Option<std::borrow::Cow<'static, str>> {
+            Some("applications".into())
+        }
+
+        fn error_request_id(&self) -> Option<std::borrow::Cow<'static, str>> {
+            None
+        }
+    }
+
+    /// Proves `deploy_error_event` actually passes through a real error code
+    /// (via `build_error_envelope`) rather than always falling back — the
+    /// fallback-only case above wouldn't catch a regression that hardcoded
+    /// `"ERROR"`.
+    #[test]
+    fn deploy_error_event_passes_through_a_real_error_code() {
+        let err = cli_engine::CliCoreError::with_detailed_error(CodedTestError);
+        let event = super::deploy_error_event(&err);
+
+        assert_eq!(event["error"]["code"], "RELEASE_REJECTED");
+        assert_eq!(event["error"]["message"], "upstream rejected the release");
+    }
+
+    #[test]
+    fn deploy_result_event_is_ok_with_summary_fields() {
+        let event = super::deploy_result_event("my-app", "app-123", "rel-456", 2);
+
+        assert_eq!(event["type"], "result");
+        assert_eq!(event["ok"], true);
+        assert_eq!(event["result"]["application"], "my-app");
+        assert_eq!(event["result"]["applicationId"], "app-123");
+        assert_eq!(event["result"]["releaseId"], "rel-456");
+        assert_eq!(event["result"]["extensions"], 2);
+        assert_eq!(event["result"]["status"], "ACTIVE");
+        assert_eq!(
+            event["next_actions"][0]["params"]["name"],
+            serde_json::json!({ "value": "my-app" }),
+            "deployed application name should prefill the next action: {event}"
         );
     }
 }

@@ -129,8 +129,6 @@ mod tests {
                 "example.com",
                 "--nameserver",
                 "ns1.example.net",
-                "--reason",
-                "test",
                 "--output",
                 "json",
             ],

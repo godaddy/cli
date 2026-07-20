@@ -79,6 +79,73 @@ pub(super) fn term_for_period(
     prices.iter().find(|p| p.period == Some(period))
 }
 
+/// Validate that `raw` (trimmed) is syntactically a valid domain name. Rejects
+/// the shapes from DEVEX-885's bug report — embedded whitespace, null bytes, a
+/// "protocol://" prefix, a "/path" suffix — via `url::Host::parse`'s WHATWG
+/// forbidden-host-code-point + IDNA checks, then layers RFC 1035/1123 shape
+/// rules a real domain always satisfies: not a bare IP literal, >=2
+/// dot-separated LDH labels, each 1-63 bytes, total <=253 bytes, and a TLD
+/// that isn't all-numeric (ICANN disallows those). Returns the original
+/// trimmed input — not `Host::parse`'s ASCII/punycode form — so an
+/// already-working Unicode domain's wire format is unchanged.
+pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CliCoreError::message("domain name is required"));
+    }
+    // `url::Host::parse`'s error `Display` is a single generic string
+    // ("invalid international domain name") regardless of what's actually
+    // wrong (a space, a "://" prefix, a "/path" suffix, ...), so it isn't
+    // worth including — it would just read as a confusing non-sequitur.
+    let host = url::Host::parse(trimmed)
+        .map_err(|_| CliCoreError::message(format!("{trimmed:?} is not a valid domain name")))?;
+    let url::Host::Domain(ascii) = host else {
+        return Err(CliCoreError::message(format!(
+            "{trimmed:?} is an IP address, not a domain name"
+        )));
+    };
+    let labels: Vec<&str> = ascii.split('.').collect();
+    let shape_ok = labels.len() >= 2
+        && ascii.len() <= 253
+        && labels.iter().all(|l| is_ldh_label(l))
+        && !labels
+            .last()
+            .is_some_and(|tld| tld.bytes().all(|b| b.is_ascii_digit()));
+    if !shape_ok {
+        return Err(CliCoreError::message(format!(
+            "{trimmed:?} doesn't look like a valid domain name (expected something like example.com)"
+        )));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Validate every value of a repeatable `--nameserver`-style flag as a
+/// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
+/// with the flag's own name — used by both `quote` (the registration
+/// profile's nameservers) and `nameservers set` (the target domain's
+/// nameservers) so a bad host isn't reported as if it were some other
+/// (already-valid) domain argument.
+pub(super) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>> {
+    raw.into_iter()
+        .map(|h| {
+            validate_domain_name(&h).map_err(|e| CliCoreError::message(format!("--nameserver {e}")))
+        })
+        .collect()
+}
+
+/// A single RFC 1035/1123 "LDH label": 1-63 bytes, alphanumeric, interior
+/// hyphens only (not leading/trailing).
+fn is_ldh_label(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 63
+        && bytes[0] != b'-'
+        && bytes[bytes.len() - 1] != b'-'
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-')
+}
+
 /// Whether an async domain-operation status is terminal (no further polling).
 /// Only `COMPLETED`/`FAILED` are terminal; every other status (e.g. `SUBMITTED`,
 /// `PENDING`, `CONFIRMED`, `EXECUTING`) is treated as still in progress.
@@ -205,7 +272,7 @@ fn format_api_error(
     if status == 402 {
         msg.push_str(
             "\n\nThis usually means your account has no usable payment method. Add one with \
-             `gddy payments add` (a credit card or Good-as-Gold balance is required for domain \
+             `gddy payment-methods add` (a credit card or Good-as-Gold balance is required for domain \
              purchases), then try again.",
         );
     }
@@ -429,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn payment_required_error_points_to_payments_add() {
+    fn payment_required_error_points_to_payment_methods_add() {
         let msg = format_api_error(
             "domain purchase",
             402,
@@ -439,7 +506,7 @@ mod tests {
             false,
         );
         assert!(msg.contains("402 Payment Required"), "{msg}");
-        assert!(msg.contains("gddy payments add"), "{msg}");
+        assert!(msg.contains("gddy payment-methods add"), "{msg}");
     }
 
     #[test]
@@ -458,6 +525,108 @@ mod tests {
         assert!(msg.contains("registrant address line 2"), "{msg}");
         assert!(msg.contains("is too short"), "{msg}");
         assert!(msg.contains("leave it blank to omit"), "{msg}");
+    }
+
+    #[test]
+    fn validate_domain_name_rejects_devex_885_repro_cases() {
+        // Every case from the DEVEX-885 bug report except the trailing-space
+        // one (which is accepted-after-trim; see the test below).
+        for bad in [
+            "not a domain",
+            "https://test.com",
+            "test.com/page",
+            "test\u{0}evil.com",
+        ] {
+            assert!(
+                validate_domain_name(bad).is_err(),
+                "{bad:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_domain_name_trims_whitespace_instead_of_rejecting() {
+        assert_eq!(
+            validate_domain_name("test.com ").expect("trimmed to valid"),
+            "test.com"
+        );
+        assert_eq!(
+            validate_domain_name("  test.com").expect("trimmed to valid"),
+            "test.com"
+        );
+    }
+
+    #[test]
+    fn validate_domain_name_rejects_empty_or_whitespace_only() {
+        assert!(validate_domain_name("").is_err());
+        assert!(validate_domain_name("   ").is_err());
+    }
+
+    #[test]
+    fn validate_domain_name_rejects_ip_literals() {
+        assert!(validate_domain_name("1.2.3.4").is_err());
+        assert!(validate_domain_name("::1").is_err());
+    }
+
+    #[test]
+    fn validate_domain_name_rejects_missing_or_numeric_tld() {
+        assert!(validate_domain_name("example").is_err());
+        assert!(validate_domain_name("example.123").is_err());
+    }
+
+    #[test]
+    fn validate_domain_name_rejects_leading_or_trailing_hyphen_labels() {
+        assert!(validate_domain_name("-example.com").is_err());
+        assert!(validate_domain_name("example-.com").is_err());
+    }
+
+    #[test]
+    fn validate_domain_name_accepts_well_formed_domains_unchanged() {
+        for good in ["example.com", "xn--fsq.com", "ns1.example.co.uk"] {
+            assert_eq!(validate_domain_name(good).expect("valid domain"), good);
+        }
+    }
+
+    #[test]
+    fn validate_domain_name_accepts_unicode_and_returns_original_not_punycode() {
+        // A real Unicode domain must pass (IDNA-processed for the shape check)
+        // but the returned string is the user's original input, not
+        // `Host::parse`'s ASCII/punycode form — no wire-format change for
+        // domains that already work today.
+        let input = "café.com";
+        assert_eq!(
+            validate_domain_name(input).expect("valid unicode domain"),
+            input
+        );
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_rejects_bad_shape_with_flag_context() {
+        // Regression: `quote`'s and `nameservers set`'s `--nameserver` values
+        // must go through the same shape check as a domain arg, but the error
+        // must say `--nameserver`, not claim the bad value is "the domain".
+        let err = validate_nameserver_hosts(vec!["bad ns".to_string()])
+            .expect_err("malformed host should be rejected");
+        let msg = err.to_string();
+        assert!(msg.starts_with("--nameserver "), "{msg}");
+        assert!(msg.contains("bad ns"), "{msg}");
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_passes_through_valid_hosts_unchanged() {
+        let hosts = vec!["ns1.example.com".to_string(), "ns2.example.com".to_string()];
+        assert_eq!(
+            validate_nameserver_hosts(hosts.clone()).expect("valid hosts"),
+            hosts
+        );
+    }
+
+    #[test]
+    fn validate_nameserver_hosts_empty_list_stays_empty() {
+        assert_eq!(
+            validate_nameserver_hosts(Vec::new()).expect("empty is valid"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

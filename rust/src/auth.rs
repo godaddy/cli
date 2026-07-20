@@ -268,4 +268,19 @@ mod tests {
             "unsupported OAuth scope(s) requested: bogus:scope"
         );
     }
+
+    /// PAT scopes are opaque and enforced entirely server-side (see
+    /// `src/pat/guides/auth.md`); the CLI must never fabricate a scopes list
+    /// for a PAT-backed credential, or `gddy auth status`/an eager-login
+    /// planner built on it would report scopes the CLI has no actual
+    /// visibility into.
+    #[test]
+    fn pat_credential_has_empty_scopes() {
+        let entry = PatEntry {
+            token: "gdapikeyabc123".to_owned(),
+            name: "work".to_owned(),
+        };
+        let credential = pat_credential("prod", &entry);
+        assert!(credential.scopes.is_empty());
+    }
 }
