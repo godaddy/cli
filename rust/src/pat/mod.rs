@@ -118,12 +118,16 @@ fn save_registry(path: &std::path::Path, registry: &PatRegistry) -> Result<(), C
     registry.save(path)
 }
 
-/// Validate that `token` looks like a GoDaddy PAT. This only checks for that
-/// prefix plus at least one character of content after it so that we are not
-/// overly tied to the implementation details of the token format.
+/// Validate that `token` looks like a GoDaddy PAT. This only checks for the
+/// `gd_pat_` prefix plus at least one non-whitespace character of content
+/// after it, so that we are not overly tied to the implementation details of
+/// the token format while still rejecting untrimmed env-var values (e.g.
+/// `gd_pat_\n`) that would otherwise be sent as a garbage Bearer token.
 #[must_use]
 pub fn is_valid_pat(token: &str) -> bool {
-    token.len() > PAT_PREFIX.len() && token.starts_with(PAT_PREFIX)
+    token
+        .strip_prefix(PAT_PREFIX)
+        .is_some_and(|rest| rest.chars().any(|c| !c.is_whitespace()))
 }
 
 /// Returns the last four characters of a PAT. If the token is four characters or
@@ -476,6 +480,15 @@ mod tests {
         assert!(!is_valid_pat("notapat"));
         assert!(!is_valid_pat("gd_pat")); // missing trailing underscore
         assert!(!is_valid_pat("gd_pat_")); // nothing after the prefix
+    }
+
+    #[test]
+    fn rejects_whitespace_only_content_after_the_prefix() {
+        // An untrimmed env var (e.g. a trailing newline) should not be treated
+        // as valid — it would otherwise be sent as a garbage Bearer token.
+        assert!(!is_valid_pat("gd_pat_ "));
+        assert!(!is_valid_pat("gd_pat_\n"));
+        assert!(!is_valid_pat("gd_pat_\t\t"));
     }
 
     #[test]
