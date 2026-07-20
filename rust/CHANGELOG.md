@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.11](https://github.com/godaddy/cli/compare/v0.1.10...v0.1.11) (2026-07-20)
+
+
+### Bug Fixes
+
+* **api-explorer:** remove broken --query flag, add domains catalog source (DEVEX-898) ([#124](https://github.com/godaddy/cli/issues/124)) ([c07994a](https://github.com/godaddy/cli/commit/c07994a9fa7c141b10db610cca20eea383b7565e))
+* **application update:** restore --status `ACTIVE | INACTIVE` ([#132](https://github.com/godaddy/cli/issues/132)) [DEVEX-709] ([565e0d7](https://github.com/godaddy/cli/commit/565e0d75d956d18823338605eac0198964167128))
+* **extensions:** restore UI extension targets on add + deploy (DEVX-541) ([#107](https://github.com/godaddy/cli/issues/107)) ([247f712](https://github.com/godaddy/cli/commit/247f71254c1916b0126384e81af325863be84957))
+
 ## [0.1.10](https://github.com/godaddy/cli/compare/v0.1.9...v0.1.10) (2026-07-17)
 
 
