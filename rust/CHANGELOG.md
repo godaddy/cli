@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/godaddy/cli/compare/v0.1.11...v0.1.12) (2026-07-20)
+
+
+### Bug Fixes
+
+* **pat:** stop over-specifying PAT shape in error and docs (DEVEX-889) ([#131](https://github.com/godaddy/cli/issues/131)) ([92144a3](https://github.com/godaddy/cli/commit/92144a3f3a1ac041b86ac26eb1a7eb06999d503d))
+
 ## [0.1.11](https://github.com/godaddy/cli/compare/v0.1.10...v0.1.11) (2026-07-20)
 
 
