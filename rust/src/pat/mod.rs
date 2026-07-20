@@ -119,15 +119,16 @@ fn save_registry(path: &std::path::Path, registry: &PatRegistry) -> Result<(), C
 }
 
 /// Validate that `token` looks like a GoDaddy PAT. This only checks for the
-/// `gd_pat_` prefix plus at least one non-whitespace character of content
-/// after it, so that we are not overly tied to the implementation details of
-/// the token format while still rejecting untrimmed env-var values (e.g.
-/// `gd_pat_\n`) that would otherwise be sent as a garbage Bearer token.
+/// `gd_pat_` prefix plus at least one character of content after it with no
+/// embedded whitespace, so that we are not overly tied to the implementation
+/// details of the token format while still rejecting untrimmed values (e.g.
+/// `gd_pat_abc\n` from an env var or file with a trailing newline) that would
+/// otherwise be sent as a garbage Bearer token.
 #[must_use]
 pub fn is_valid_pat(token: &str) -> bool {
     token
         .strip_prefix(PAT_PREFIX)
-        .is_some_and(|rest| rest.chars().any(|c| !c.is_whitespace()))
+        .is_some_and(|rest| !rest.is_empty() && !rest.chars().any(char::is_whitespace))
 }
 
 /// Returns the last four characters of a PAT. If the token is four characters or
@@ -483,12 +484,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_whitespace_only_content_after_the_prefix() {
-        // An untrimmed env var (e.g. a trailing newline) should not be treated
-        // as valid — it would otherwise be sent as a garbage Bearer token.
+    fn rejects_tokens_containing_whitespace_after_the_prefix() {
+        // An untrimmed env var or file (e.g. a trailing newline) should not be
+        // treated as valid — it would otherwise be sent as a garbage Bearer
+        // token. This covers both whitespace-only tails and whitespace
+        // embedded alongside real-looking content.
         assert!(!is_valid_pat("gd_pat_ "));
         assert!(!is_valid_pat("gd_pat_\n"));
         assert!(!is_valid_pat("gd_pat_\t\t"));
+        assert!(!is_valid_pat("gd_pat_abc123\n"));
+        assert!(!is_valid_pat("gd_pat_ abc123"));
+        assert!(!is_valid_pat("gd_pat_abc 123"));
     }
 
     #[test]
