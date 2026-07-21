@@ -17,6 +17,16 @@ output_schema!(EnvActive {
     "apiUrl": "string";
 });
 
+// `env set` always returns an "action" ("activated" for real, "would
+// activate" under --dry-run) — a dedicated schema, rather than adding
+// `action` to `EnvActive`, since `EnvActive` is shared with `env get`, which
+// never has an action concept.
+output_schema!(EnvSetResult {
+    "env": "string";
+    "apiUrl": "string";
+    "action": "string";
+});
+
 output_schema!(EnvInfo {
     "env": "string";
     "apiUrl": "string";
@@ -148,7 +158,7 @@ pub fn module() -> Module {
                 .with_system("env")
                 .with_tier(Tier::Mutate)
                 .handles_dry_run(true)
-                .with_output_schema::<EnvActive>()
+                .with_output_schema::<EnvSetResult>()
                 .no_auth(true)
                 .with_arg(
                     // Distinct id from the global `--env` flag (also id "env");

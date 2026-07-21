@@ -209,7 +209,7 @@ fn split_header(raw: &str) -> Option<(&str, &str)> {
 /// arg — this decides per-invocation whether `--dry-run` should actually
 /// short-circuit the request. Case-insensitive.
 fn is_mutating_method(method: &str) -> bool {
-    !matches!(method.to_ascii_uppercase().as_str(), "GET" | "HEAD")
+    !(method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD"))
 }
 
 /// Parse a response body as JSON when possible, otherwise preserve it as raw
