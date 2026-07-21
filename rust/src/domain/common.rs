@@ -282,7 +282,7 @@ pub(crate) async fn api_error(
 /// Build the user-facing message for an unexpected API response. Pure so the
 /// HTTP 402 → payment-method guidance and the `--debug` request-id line are
 /// unit-testable.
-fn format_api_error(
+pub(crate) fn format_api_error(
     action: &str,
     status: u16,
     status_display: &str,
@@ -315,14 +315,17 @@ fn format_api_error(
     msg
 }
 
-/// A Domains API validation error body. Tolerates both the v1 shape
-/// (`{"fields":[...]}`) and the v3 shape (`{"error":{"fields":[...]}}`).
+/// A Domains API validation error body. Tolerates the v1 field-level shape
+/// (`{"fields":[...]}` or `{"error":{"fields":[...]}}`) and the v3 top-level
+/// shape (`{"name","message","correlationId","details":[{"issue","description"}]}`).
 #[derive(serde::Deserialize)]
 struct ApiErrorBody {
     #[serde(default)]
     fields: Vec<ApiFieldError>,
     #[serde(default)]
     error: Option<ApiErrorEnvelope>,
+    #[serde(default)]
+    details: Vec<ApiDetailError>,
 }
 
 #[derive(serde::Deserialize)]
@@ -339,6 +342,30 @@ struct ApiFieldError {
     path: String,
 }
 
+#[derive(serde::Deserialize)]
+struct ApiDetailError {
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    issue: String,
+}
+
+impl ApiDetailError {
+    /// The human-readable `description` when present; the v3 spec documents it
+    /// as unstable ("MAY change... MUST NOT depend on this value") and often
+    /// absent, so fall back to the stable `issue` code rather than dropping the
+    /// detail entirely.
+    fn render(&self) -> Option<&str> {
+        if !self.description.is_empty() {
+            Some(self.description.as_str())
+        } else if !self.issue.is_empty() {
+            Some(self.issue.as_str())
+        } else {
+            None
+        }
+    }
+}
+
 /// Render a structured validation error as a plain-English bullet list, or `None`
 /// when `body` isn't a field-level validation error.
 fn friendly_field_errors(body: &str) -> Option<String> {
@@ -348,14 +375,25 @@ fn friendly_field_errors(body: &str) -> Option<String> {
     } else {
         parsed.error.map(|e| e.fields).unwrap_or_default()
     };
-    if fields.is_empty() {
-        return None;
+    if !fields.is_empty() {
+        let lines: Vec<String> = fields
+            .iter()
+            .map(|f| format!("  • {}", describe_field_error(f)))
+            .collect();
+        return Some(format!("some fields are invalid:\n{}", lines.join("\n")));
     }
-    let lines: Vec<String> = fields
-        .iter()
-        .map(|f| format!("  • {}", describe_field_error(f)))
-        .collect();
-    Some(format!("some fields are invalid:\n{}", lines.join("\n")))
+    if !parsed.details.is_empty() {
+        let lines: Vec<String> = parsed
+            .details
+            .iter()
+            .filter_map(ApiDetailError::render)
+            .map(|text| format!("  • {text}"))
+            .collect();
+        if !lines.is_empty() {
+            return Some(format!("some fields are invalid:\n{}", lines.join("\n")));
+        }
+    }
+    None
 }
 
 fn describe_field_error(f: &ApiFieldError) -> String {
@@ -655,6 +693,54 @@ mod tests {
             validate_nameserver_hosts(Vec::new()).expect("empty is valid"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn v3_top_level_details_render_as_plain_english() {
+        // The real body a DNS write returns on a name-exclusivity conflict: no
+        // `fields`/`error` envelope at all, just a top-level `details[]`.
+        let body = r#"{"correlationId":"abc-123","details":[{"description":"Duplicate data provided for record name, www.","issue":"DUPLICATE_RECORD"}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(
+            msg.contains("Duplicate data provided for record name, www."),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn v3_details_with_no_description_fall_back_to_the_issue_code() {
+        // `description` is documented as unstable and often omitted; `issue` is
+        // the stable code. A detail with only `issue` must still render
+        // something useful, not fall through to the generic opaque message.
+        let body = r#"{"correlationId":"abc-123","details":[{"issue":"INVALID_NAMESERVER"}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(msg.contains("INVALID_NAMESERVER"), "{msg}");
+
+        // Both empty → no friendly rendering, falls through to the generic message.
+        let body = r#"{"correlationId":"abc-123","details":[{}],"message":"Request failed validation","name":"VALIDATION_ERROR"}"#;
+        let msg = format_api_error(
+            "dns set",
+            422,
+            "422 Unprocessable Entity",
+            body,
+            None,
+            false,
+        );
+        assert!(!msg.contains("some fields are invalid"), "{msg}");
     }
 
     #[test]
