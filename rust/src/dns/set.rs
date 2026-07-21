@@ -364,7 +364,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Destructive)
             .handles_dry_run(true)
-            .with_default_fields("domain,type,name,replaced,created,deleted,action")
+            .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
             .with_output_schema::<DnsSetResult>()
             .with_scopes(&[DOMAINS_DNS_UPDATE]),
         )
@@ -599,10 +599,10 @@ mod tests {
     fn dry_run_set_preview_survives_default_field_projection() {
         let plan = plan_set(&["r1".to_string()], &["9.9.9.9".to_string()]);
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        let default_fields = "domain,type,name,replaced,created,deleted,action";
+        let default_fields = "domain,type,name,replaced,created,deleted,action,plan";
         let projected = cli_engine::output::filter_fields(&preview, default_fields);
         for field in [
-            "domain", "type", "name", "replaced", "created", "deleted", "action",
+            "domain", "type", "name", "replaced", "created", "deleted", "action", "plan",
         ] {
             assert!(
                 !projected[field].is_null(),

@@ -119,7 +119,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Destructive)
         .handles_dry_run(true)
-        .with_default_fields("domain,type,name,deleted,failed,action")
+        .with_default_fields("domain,type,name,deleted,failed,action,records")
         .with_output_schema::<DnsDeleteResult>()
         .with_scopes(&[DOMAINS_DNS_UPDATE])
         .with_arg(
@@ -307,9 +307,11 @@ mod tests {
     fn dry_run_delete_preview_survives_default_field_projection() {
         let existing = vec![test_record("r1", "1.2.3.4")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
-        let default_fields = "domain,type,name,deleted,failed,action";
+        let default_fields = "domain,type,name,deleted,failed,action,records";
         let projected = cli_engine::output::filter_fields(&preview, default_fields);
-        for field in ["domain", "type", "name", "deleted", "failed", "action"] {
+        for field in [
+            "domain", "type", "name", "deleted", "failed", "action", "records",
+        ] {
             assert!(
                 !projected[field].is_null(),
                 "{field:?} was stripped by default_fields; preview: {projected}"
