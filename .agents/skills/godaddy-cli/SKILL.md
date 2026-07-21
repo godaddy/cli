@@ -124,7 +124,6 @@ If `truncated` is `true`, the complete data is at the `full_output` file path. R
 
 | Flag | Alias | Effect |
 |------|-------|--------|
-| `--pretty` | | Pretty-print JSON with 2-space indentation |
 | `--env <env>` | `-e` | Override environment for this command (`ote` or `prod`) |
 | `--verbose` | `-v` | Log HTTP requests/responses to stderr |
 | `--debug` | `-vv` | Full verbose output to stderr |
