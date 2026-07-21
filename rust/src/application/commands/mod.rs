@@ -5,7 +5,7 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::application::client::{ApplicationClient, UploadOptions, api_url_for_env};
-use crate::next_action::next_action;
+use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 // App-registry mutations declare their scopes so `apps.app-registry:write` is
 // requested on demand (OAuth step-up), not granted at every login — it's a
@@ -157,7 +157,7 @@ fn deploy_result_event(
             "application info --name <name>",
             "Inspect the deployed application",
         )
-        .with_param("name", NextActionParam::value(name))],
+        .with_param("name", required_value(name))],
     })
 }
 
@@ -254,30 +254,31 @@ fn info_command() -> RuntimeCommandSpec {
             let name = arg_str(&ctx, "name").to_owned();
             let client = make_client(&ctx).await?;
             let data = client.get_application(&name).await.map_err(client_err)?;
-            Ok(
-                CommandResult::new(data["application"].clone()).with_next_actions(vec![
-                    next_action(
-                        "application release --application-id <id> --version <ver>",
-                        "Create a release",
-                    ),
-                    next_action(
-                        format!("application deploy --name {name}"),
-                        "Deploy this application",
-                    )
-                    .with_param(
-                        "name",
-                        NextActionParam {
-                            value: Some(name.clone()),
-                            required: true,
-                            ..Default::default()
-                        },
-                    ),
-                    next_action(
-                        "application update --id <id>",
-                        "Update application metadata",
-                    ),
-                ]),
-            )
+            let app = &data["application"];
+            if app.is_null() {
+                return Err(cli_engine::CliCoreError::message(format!(
+                    "application '{name}' not found"
+                )));
+            }
+            let app_id = app["id"].as_str().unwrap_or("").to_owned();
+            Ok(CommandResult::new(app.clone()).with_next_actions(vec![
+                next_action(
+                    "application release --application-id <application-id> --version <version>",
+                    "Create a release",
+                )
+                .with_param("application-id", required_value(app_id.clone()))
+                .with_param("version", NextActionParam::required()),
+                next_action(
+                    "application deploy --name <name>",
+                    "Deploy this application",
+                )
+                .with_param("name", required_value(name)),
+                next_action(
+                    "application update --id <id>",
+                    "Update application metadata",
+                )
+                .with_param("id", required_value(app_id)),
+            ]))
         },
     )
 }
@@ -481,8 +482,9 @@ fn init_command() -> RuntimeCommandSpec {
                 );
             }
 
+            let app_id = app["id"].as_str().unwrap_or("").to_owned();
             let result = json!({
-                "id": app["id"].as_str().unwrap_or("").to_owned(),
+                "id": app_id,
                 "name": name,
                 "status": app["status"].as_str().unwrap_or("").to_owned(),
                 "clientId": client_id,
@@ -494,21 +496,16 @@ fn init_command() -> RuntimeCommandSpec {
             });
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
-                    format!("application validate {name}"),
+                    "application validate <name>",
                     "Validate the remote application state",
                 )
-                .with_param(
-                    "name",
-                    NextActionParam {
-                        value: Some(name.clone()),
-                        required: true,
-                        ..Default::default()
-                    },
-                ),
+                .with_param("name", required_value(name)),
                 next_action(
-                    "application release --application-id <id> --version 0.0.1",
+                    "application release --application-id <application-id> --version <version>",
                     "Create the first release",
-                ),
+                )
+                .with_param("application-id", required_value(app_id))
+                .with_param("version", required_value("0.0.1")),
             ]))
         },
     )
@@ -565,38 +562,34 @@ fn validate_command() -> RuntimeCommandSpec {
 
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
             let (valid, errors, warnings) = validate_remote_application(app);
+
+            // Only suggest a release once the app is valid; otherwise point back to
+            // `info` to review the reported problems.
+            let mut next_actions = Vec::new();
+            if valid {
+                next_actions.push(
+                    next_action(
+                        "application release --application-id <application-id> --version <version>",
+                        "Create a release after validation",
+                    )
+                    .with_param("application-id", required_value(app_id))
+                    .with_param("version", NextActionParam::required()),
+                );
+            }
+            next_actions.push(
+                next_action(
+                    "application info --name <name>",
+                    "Inspect application details",
+                )
+                .with_param("name", required_value(name)),
+            );
+
             Ok(CommandResult::new(json!({
                 "valid": valid,
                 "errors": errors,
                 "warnings": warnings,
             }))
-            .with_next_actions(vec![
-                next_action(
-                    format!("application release --application-id {app_id} --version <ver>"),
-                    "Create a release after validation",
-                )
-                .with_param(
-                    "application-id",
-                    NextActionParam {
-                        value: Some(app_id),
-                        required: true,
-                        ..Default::default()
-                    },
-                )
-                .with_param("version", NextActionParam::required()),
-                next_action(
-                    format!("application info --name {name}"),
-                    "Inspect application details",
-                )
-                .with_param(
-                    "name",
-                    NextActionParam {
-                        value: Some(name),
-                        required: true,
-                        ..Default::default()
-                    },
-                ),
-            ]))
+            .with_next_actions(next_actions))
         },
     )
 }
@@ -668,29 +661,15 @@ fn update_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["updateApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        format!("application info --name {name}"),
+                        "application info --name <name>",
                         "Inspect updated application",
                     )
-                    .with_param(
-                        "name",
-                        NextActionParam {
-                            value: Some(name.clone()),
-                            required: true,
-                            ..Default::default()
-                        },
-                    ),
+                    .with_param("name", required_value(name.clone())),
                     next_action(
-                        format!("application deploy --name {name}"),
+                        "application deploy --name <name>",
                         "Deploy updated application",
                     )
-                    .with_param(
-                        "name",
-                        NextActionParam {
-                            value: Some(name),
-                            required: true,
-                            ..Default::default()
-                        },
-                    ),
+                    .with_param("name", required_value(name)),
                 ]),
             )
         },
@@ -733,37 +712,13 @@ fn enable_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["enableStoreApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        format!("application disable {name} --store-id {store_id}"),
+                        "application disable <name> --store-id <store-id>",
                         "Disable the application on the same store",
                     )
-                    .with_param(
-                        "name",
-                        NextActionParam {
-                            value: Some(name.clone()),
-                            required: true,
-                            ..Default::default()
-                        },
-                    )
-                    .with_param(
-                        "store-id",
-                        NextActionParam {
-                            value: Some(store_id.clone()),
-                            required: true,
-                            ..Default::default()
-                        },
-                    ),
-                    next_action(
-                        format!("application info --name {name}"),
-                        "Inspect application",
-                    )
-                    .with_param(
-                        "name",
-                        NextActionParam {
-                            value: Some(name),
-                            required: true,
-                            ..Default::default()
-                        },
-                    ),
+                    .with_param("name", required_value(name.clone()))
+                    .with_param("store-id", required_value(store_id)),
+                    next_action("application info --name <name>", "Inspect application")
+                        .with_param("name", required_value(name)),
                 ]),
             )
         },
@@ -807,37 +762,13 @@ fn disable_command() -> RuntimeCommandSpec {
                 CommandResult::new(data["disableStoreApplication"].clone()).with_next_actions(
                     vec![
                         next_action(
-                            format!("application enable {name} --store-id {store_id}"),
+                            "application enable <name> --store-id <store-id>",
                             "Re-enable the application on the same store",
                         )
-                        .with_param(
-                            "name",
-                            NextActionParam {
-                                value: Some(name.clone()),
-                                required: true,
-                                ..Default::default()
-                            },
-                        )
-                        .with_param(
-                            "store-id",
-                            NextActionParam {
-                                value: Some(store_id.clone()),
-                                required: true,
-                                ..Default::default()
-                            },
-                        ),
-                        next_action(
-                            format!("application info --name {name}"),
-                            "Inspect application",
-                        )
-                        .with_param(
-                            "name",
-                            NextActionParam {
-                                value: Some(name),
-                                required: true,
-                                ..Default::default()
-                            },
-                        ),
+                        .with_param("name", required_value(name.clone()))
+                        .with_param("store-id", required_value(store_id)),
+                        next_action("application info --name <name>", "Inspect application")
+                            .with_param("name", required_value(name)),
                     ],
                 ),
             )
@@ -1811,7 +1742,7 @@ mod tests {
             "status": "ACTIVE",
         }));
         assert!(!valid);
-        assert_eq!(errors, vec!["Application URL is required"]);
+        assert_eq!(errors, vec!["Application URL is required".to_owned()]);
         assert!(warnings.is_empty());
     }
 
@@ -1826,7 +1757,10 @@ mod tests {
         assert!(errors.is_empty());
         assert_eq!(
             warnings,
-            vec!["Proxy URL is not set", "Application is currently inactive",]
+            vec![
+                "Proxy URL is not set".to_owned(),
+                "Application is currently inactive".to_owned(),
+            ]
         );
     }
 
@@ -2099,7 +2033,7 @@ mod tests {
         assert_eq!(event["result"]["status"], "ACTIVE");
         assert_eq!(
             event["next_actions"][0]["params"]["name"],
-            serde_json::json!({ "value": "my-app" }),
+            serde_json::json!({ "value": "my-app", "required": true }),
             "deployed application name should prefill the next action: {event}"
         );
     }
