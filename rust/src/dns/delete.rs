@@ -18,6 +18,7 @@ output_schema!(DnsDeleteResult {
     "deleted": "number";
     "failed": "number";
     "action": "string";
+    "records": "[]object", optional;
 });
 
 /// Build the `delete` result from per-record delete outcomes (each matched

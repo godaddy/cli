@@ -27,6 +27,7 @@ output_schema!(DnsSetResult {
     "created": "number";
     "deleted": "number";
     "action": "string";
+    "plan": "[]object", optional;
 });
 
 /// One reconcile action for `dns set` over v3's per-record endpoints.
