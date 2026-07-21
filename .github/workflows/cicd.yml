@@ -2,7 +2,7 @@ name: CICD
 on: 
   push:
     branches:
-      - 'main'
+      - 'original'
   pull_request:
     branches:
      - '*'
