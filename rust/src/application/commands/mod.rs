@@ -505,7 +505,7 @@ fn init_command() -> RuntimeCommandSpec {
                     "Create the first release",
                 )
                 .with_param("application-id", required_value(app_id))
-                .with_param("version", required_value("0.0.1")),
+                .with_param("version", NextActionParam::required()),
             ]))
         },
     )
