@@ -155,9 +155,13 @@ fn dry_run_set_preview(domain: &str, record_type: &str, name: &str, plan: &[SetA
         "domain": domain,
         "type": record_type,
         "name": name,
-        "wouldReplace": count(|a| matches!(a, SetAction::Replace { .. })),
-        "wouldCreate": count(|a| matches!(a, SetAction::Create { .. })),
-        "wouldDelete": count(|a| matches!(a, SetAction::Delete { .. })),
+        // Reuse DnsSetResult's own field names (rather than inventing
+        // "wouldReplace" etc.) so the preview survives the command's
+        // `with_default_fields` projection instead of being silently
+        // stripped down to just domain/type/name.
+        "replaced": count(|a| matches!(a, SetAction::Replace { .. })),
+        "created": count(|a| matches!(a, SetAction::Create { .. })),
+        "deleted": count(|a| matches!(a, SetAction::Delete { .. })),
         "plan": plan_json,
         "action": "would set",
     })
@@ -360,7 +364,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Destructive)
             .handles_dry_run(true)
-            .with_default_fields("domain,type,name,replaced,created,deleted")
+            .with_default_fields("domain,type,name,replaced,created,deleted,action")
             .with_output_schema::<DnsSetResult>()
             .with_scopes(&[DOMAINS_DNS_UPDATE]),
         )
@@ -578,10 +582,33 @@ mod tests {
             &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
         );
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        assert_eq!(preview["wouldReplace"], 2);
-        assert_eq!(preview["wouldCreate"], 0);
-        assert_eq!(preview["wouldDelete"], 1);
+        assert_eq!(preview["replaced"], 2);
+        assert_eq!(preview["created"], 0);
+        assert_eq!(preview["deleted"], 1);
+        assert_eq!(preview["action"], "would set");
         assert_eq!(preview["plan"].as_array().expect("plan array").len(), 3);
+    }
+
+    /// The command's `--output json` path always projects through
+    /// `default_fields` when the user doesn't pass `--fields` — a preview
+    /// field that isn't in that list is silently stripped and never reaches
+    /// the user. Prove the preview's summary fields actually survive it
+    /// (this is exactly the gap a pure call to `dry_run_set_preview` can't
+    /// catch, since it never goes through the projection).
+    #[test]
+    fn dry_run_set_preview_survives_default_field_projection() {
+        let plan = plan_set(&["r1".to_string()], &["9.9.9.9".to_string()]);
+        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        let default_fields = "domain,type,name,replaced,created,deleted,action";
+        let projected = cli_engine::output::filter_fields(&preview, default_fields);
+        for field in [
+            "domain", "type", "name", "replaced", "created", "deleted", "action",
+        ] {
+            assert!(
+                !projected[field].is_null(),
+                "{field:?} was stripped by default_fields; preview: {projected}"
+            );
+        }
     }
 
     // --- write_with_conflict_handling ---------------------------------------

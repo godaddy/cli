@@ -92,8 +92,12 @@ fn dry_run_delete_preview(
         "domain": domain,
         "type": record_type,
         "name": name,
-        "wouldDelete": would_delete,
-        "wouldFail": would_fail,
+        // Reuse DnsDeleteResult's own field names (rather than inventing
+        // "wouldDelete"/"wouldFail") so the preview survives the command's
+        // `with_default_fields` projection instead of being silently
+        // stripped down to just domain/type/name.
+        "deleted": would_delete,
+        "failed": would_fail,
         "records": records,
         "action": "would delete",
     })
@@ -115,7 +119,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Destructive)
         .handles_dry_run(true)
-        .with_default_fields("domain,type,name,deleted,failed")
+        .with_default_fields("domain,type,name,deleted,failed,action")
         .with_output_schema::<DnsDeleteResult>()
         .with_scopes(&[DOMAINS_DNS_UPDATE])
         .with_arg(
@@ -268,8 +272,9 @@ mod tests {
     fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
         let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
-        assert_eq!(preview["wouldDelete"], 2);
-        assert_eq!(preview["wouldFail"], 0);
+        assert_eq!(preview["deleted"], 2);
+        assert_eq!(preview["failed"], 0);
+        assert_eq!(preview["action"], "would delete");
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0]["data"], "1.2.3.4");
@@ -286,9 +291,29 @@ mod tests {
             test_record_without_id("5.6.7.8"),
         ];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
-        assert_eq!(preview["wouldDelete"], 1);
-        assert_eq!(preview["wouldFail"], 1);
+        assert_eq!(preview["deleted"], 1);
+        assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records[1]["status"], "would fail (missing recordId)");
+    }
+
+    /// The command's `--output json` path always projects through
+    /// `default_fields` when the user doesn't pass `--fields` — a preview
+    /// field that isn't in that list is silently stripped and never reaches
+    /// the user. Prove the preview's summary fields actually survive it
+    /// (this is exactly the gap a pure call to `dry_run_delete_preview` can't
+    /// catch, since it never goes through the projection).
+    #[test]
+    fn dry_run_delete_preview_survives_default_field_projection() {
+        let existing = vec![test_record("r1", "1.2.3.4")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        let default_fields = "domain,type,name,deleted,failed,action";
+        let projected = cli_engine::output::filter_fields(&preview, default_fields);
+        for field in ["domain", "type", "name", "deleted", "failed", "action"] {
+            assert!(
+                !projected[field].is_null(),
+                "{field:?} was stripped by default_fields; preview: {projected}"
+            );
+        }
     }
 }
