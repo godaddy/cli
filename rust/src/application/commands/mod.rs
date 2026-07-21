@@ -68,7 +68,8 @@ output_schema!(ApplicationRelease {
 
 output_schema!(ValidationResult {
     "valid": "bool";
-    "path": "string";
+    "errors": "[]string";
+    "warnings": "[]string";
 });
 
 output_schema!(ConfigAction {
@@ -182,8 +183,8 @@ pub fn application_group() -> RuntimeGroupSpec {
             .with_long(
                 "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
                 developer-platform app described by a godaddy.toml manifest in your working \
-                directory. Use `application init` to create one, `application validate` to \
-                check it, and `application deploy` to publish it.",
+                directory. Use `application init` to create one, `application validate <name>` \
+                to check remote application state, and `application deploy` to publish it.",
             )
             .with_alias("app"),
     )
@@ -288,8 +289,9 @@ fn init_command() -> RuntimeCommandSpec {
                 "Register a new GoDaddy developer-platform application and write a \
                 godaddy.toml manifest to the current directory. The manifest captures the \
                 application name, URL, authorization scopes, and any actions or extensions \
-                added later. Run `application validate` to confirm the manifest is valid, \
-                then `application release` to create a versioned release.",
+                added later. Run `application validate <name>` to confirm the remote \
+                application is healthy, then `application release` to create a versioned \
+                release.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -492,8 +494,16 @@ fn init_command() -> RuntimeCommandSpec {
             });
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
-                    "application validate",
-                    "Validate the generated godaddy.toml",
+                    format!("application validate {name}"),
+                    "Validate the remote application state",
+                )
+                .with_param(
+                    "name",
+                    NextActionParam {
+                        value: Some(name.clone()),
+                        required: true,
+                        ..Default::default()
+                    },
                 ),
                 next_action(
                     "application release --application-id <id> --version 0.0.1",
@@ -504,40 +514,89 @@ fn init_command() -> RuntimeCommandSpec {
     )
 }
 
+/// Missing URL is an error; missing proxy URL or INACTIVE status are warnings.
+fn validate_remote_application(app: &Value) -> (bool, Vec<String>, Vec<String>) {
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+
+    let url = app["url"].as_str().unwrap_or("");
+    if url.is_empty() {
+        errors.push("Application URL is required".to_owned());
+    }
+    let proxy_url = app["proxyUrl"].as_str().unwrap_or("");
+    if proxy_url.is_empty() {
+        warnings.push("Proxy URL is not set".to_owned());
+    }
+    if app["status"].as_str() == Some("INACTIVE") {
+        warnings.push("Application is currently inactive".to_owned());
+    }
+
+    (errors.is_empty(), errors, warnings)
+}
+
 fn validate_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("validate", "Validate godaddy.toml config")
+        CommandSpec::new("validate", "Validate remote application state")
             .with_long(
-                "Parse and validate the godaddy.toml manifest in the current directory \
-                (or the path given by --config). Exits non-zero and prints a diagnostic if \
-                the file is missing or malformed. Does not require authentication.",
+                "Fetch a GoDaddy developer-platform application by name and validate its \
+                remote configuration. Reports an error when the application URL is missing, \
+                and warnings when the proxy URL is unset or the application is inactive. \
+                Requires authentication.",
             )
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_output_schema::<ValidationResult>()
-            .no_auth(true)
             .with_arg(
-                clap::Arg::new("config")
-                    .long("config")
-                    .value_name("PATH")
-                    .help("Path to godaddy.toml (defaults to ./godaddy.toml)"),
+                clap::Arg::new("name")
+                    .value_name("NAME")
+                    .required(true)
+                    .help("Application name"),
             ),
         |ctx| async move {
-            let path_str = ctx
-                .args
-                .get("config")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_owned());
-            let path = path_str
-                .as_deref()
-                .map(std::path::Path::new)
-                .map(std::path::Path::to_owned)
-                .unwrap_or_else(|| crate::config::config_path(Some(ctx.middleware.env.as_str())));
-            crate::config::read_config(&path)
-                .map_err(|e| cli_engine::CliCoreError::message(format!("invalid config: {e}")))?;
-            Ok(CommandResult::new(
-                json!({ "valid": true, "path": path.display().to_string() }),
-            ))
+            let name = arg_str(&ctx, "name").to_owned();
+            let client = make_client(&ctx).await?;
+            let data = client.get_application(&name).await.map_err(client_err)?;
+            let app = &data["application"];
+            if app.is_null() {
+                return Err(cli_engine::CliCoreError::message(format!(
+                    "application '{name}' not found"
+                )));
+            }
+
+            let app_id = app["id"].as_str().unwrap_or("").to_owned();
+            let (valid, errors, warnings) = validate_remote_application(app);
+            Ok(CommandResult::new(json!({
+                "valid": valid,
+                "errors": errors,
+                "warnings": warnings,
+            }))
+            .with_next_actions(vec![
+                next_action(
+                    format!("application release --application-id {app_id} --version <ver>"),
+                    "Create a release after validation",
+                )
+                .with_param(
+                    "application-id",
+                    NextActionParam {
+                        value: Some(app_id),
+                        required: true,
+                        ..Default::default()
+                    },
+                )
+                .with_param("version", NextActionParam::required()),
+                next_action(
+                    format!("application info --name {name}"),
+                    "Inspect application details",
+                )
+                .with_param(
+                    "name",
+                    NextActionParam {
+                        value: Some(name),
+                        required: true,
+                        ..Default::default()
+                    },
+                ),
+            ]))
         },
     )
 }
@@ -1404,8 +1463,8 @@ pub fn add_group() -> RuntimeGroupSpec {
                 "Append an action entry to the godaddy.toml manifest in the current \
                     directory. An action is an HTTP endpoint that the platform calls on \
                     behalf of the application; it is identified by a name and a public \
-                    HTTPS URL. The manifest is updated in place; run `application validate` \
-                    to confirm the result.",
+                    HTTPS URL. The manifest is updated in place; run \
+                    `application validate <name>` to confirm remote application state.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1701,11 +1760,74 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
 #[cfg(test)]
 mod tests {
     use cli_engine::{Cli, CliConfig, Stage};
+    use serde_json::json;
 
-    use super::update_command;
+    use super::{update_command, validate_command, validate_remote_application};
 
     fn update_clap_command() -> clap::Command {
         update_command().spec.clap_command()
+    }
+
+    fn validate_clap_command() -> clap::Command {
+        validate_command().spec.clap_command()
+    }
+
+    #[test]
+    fn validate_requires_name() {
+        let err = validate_clap_command()
+            .try_get_matches_from(["validate"])
+            .expect_err("validate without name should be rejected");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument,
+            "expected MissingRequiredArgument, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_positional_name() {
+        validate_clap_command()
+            .try_get_matches_from(["validate", "my-app"])
+            .expect("positional name should be accepted");
+    }
+
+    #[test]
+    fn validate_remote_healthy_app_is_valid() {
+        let (valid, errors, warnings) = validate_remote_application(&json!({
+            "url": "https://example.com",
+            "proxyUrl": "https://proxy.example.com",
+            "status": "ACTIVE",
+        }));
+        assert!(valid);
+        assert!(errors.is_empty());
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn validate_remote_missing_url_is_error() {
+        let (valid, errors, warnings) = validate_remote_application(&json!({
+            "url": "",
+            "proxyUrl": "https://proxy.example.com",
+            "status": "ACTIVE",
+        }));
+        assert!(!valid);
+        assert_eq!(errors, vec!["Application URL is required"]);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn validate_remote_missing_proxy_and_inactive_are_warnings() {
+        let (valid, errors, warnings) = validate_remote_application(&json!({
+            "url": "https://example.com",
+            "proxyUrl": null,
+            "status": "INACTIVE",
+        }));
+        assert!(valid, "warnings alone should not invalidate");
+        assert!(errors.is_empty());
+        assert_eq!(
+            warnings,
+            vec!["Proxy URL is not set", "Application is currently inactive",]
+        );
     }
 
     #[test]
