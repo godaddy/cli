@@ -36,6 +36,7 @@ output_schema!(PatAddResult {
     "name": "string";
     "lastFour": "string";
     "path": "string";
+    "action": "string";
 });
 
 output_schema!(PatRemoveResult {
