@@ -10,12 +10,33 @@ info:
     publish or domain changes, poll GET …/deployments and GET …/status. After
     zip upload, poll GET …/source/status with the returned jobId."
 servers:
+  - url: https://api.godaddy.com/v1/hosting/nodejs
+    description: Production
   - url: /v1/hosting/nodejs
+    description: Relative to the gateway origin the spec is served from
+tags:
+  - name: Apps
+    description: Create, read, update, and delete apps.
+  - name: Deployments
+    description: Publish the latest code, list past deployments, roll back to a
+      previous one, and probe runtime status.
+  - name: Source
+    description: Set the app source from a zip upload or a GitHub repo/branch, and
+      poll the import job.
+  - name: GitHub
+    description: Inspect the GitHub connection and list repos/branches the connected
+      token can access.
+  - name: Secrets
+    description: Manage environment secrets per variant. Values are never returned.
+  - name: Logs
+    description: Read application and build logs.
 paths:
   /apps:
     get:
       operationId: listApps
       summary: List apps
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
@@ -31,9 +52,35 @@ paths:
         "401": &a1
           description: Unauthorized (missing session, invalid API key or Bearer token, or
             insufficient OAuth scope)
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: &a2
+            Retry-After:
+              description: Seconds until the client may retry.
+              schema:
+                type: integer
+            X-RateLimit-Limit:
+              description: Max requests per window for this operation.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Requests remaining in the current window.
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: Seconds until the current window resets.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
     post:
       operationId: createApp
       summary: Create app
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
@@ -53,10 +100,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicAppCreationJob"
         "401": *a1
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/jobs/{jobId}:
     get:
       operationId: getAppCreationStatus
       summary: Get app creation status
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
@@ -78,17 +135,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 120 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}:
     get:
       operationId: getApp
       summary: Get app
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - &a2
+        - &a3
           name: appId
           in: path
           required: true
@@ -104,16 +171,26 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
     patch:
       operationId: patchApp
       summary: Update app metadata
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.apps:update
       parameters:
-        - *a2
+        - *a3
       requestBody:
         required: true
         content:
@@ -130,33 +207,53 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
     delete:
       operationId: deleteApp
       summary: Delete app
+      tags:
+        - Apps
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.apps:delete
       parameters:
-        - *a2
+        - *a3
       responses:
         "204":
           description: App deleted
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/deployments:
     get:
       operationId: listDeployments
       summary: List deployments
+      tags:
+        - Deployments
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - *a2
+        - *a3
         - name: limit
           in: query
           required: false
@@ -175,16 +272,26 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
     post:
       operationId: publishApp
       summary: Publish app (deploy latest code)
+      tags:
+        - Deployments
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.deploy:execute
       parameters:
-        - *a2
+        - *a3
       responses:
         "200":
           description: Publish started
@@ -195,17 +302,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/status:
     get:
       operationId: getAppStatus
       summary: Get app status
+      tags:
+        - Deployments
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - *a2
+        - *a3
       responses:
         "200":
           description: App status
@@ -216,17 +333,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 120 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/source:
     post:
       operationId: uploadAppSource
       summary: Upload app source (zip)
+      tags:
+        - Source
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.code:write
       parameters:
-        - *a2
+        - *a3
       requestBody:
         required: true
         content:
@@ -249,17 +376,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/source/status:
     get:
       operationId: getAppSourceUploadStatus
       summary: Poll zip upload status
+      tags:
+        - Source
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.code:write
       parameters:
-        - *a2
+        - *a3
         - name: jobId
           in: query
           required: true
@@ -275,17 +412,230 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 120 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
+  /apps/{appId}/source/git:
+    post:
+      operationId: startGitImport
+      summary: Import app source from a GitHub repo/branch
+      tags:
+        - Source
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.code:write
+      parameters:
+        - *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicGitImportBody"
+      responses:
+        "202":
+          description: Git import accepted; poll the returned jobId for status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicGitImportResponse"
+        "401": *a1
+        "404":
+          description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
+  /apps/{appId}/source/git/status:
+    get:
+      operationId: getGitImportStatus
+      summary: Poll git import status
+      tags:
+        - Source
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.code:read
+      parameters:
+        - *a3
+        - name: jobId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git import status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicGitImportStatus"
+        "401": *a1
+        "404":
+          description: Not found
+        "429":
+          description: "Too many requests. Limit: 120 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
+  /apps/{appId}/github/status:
+    get:
+      operationId: getGitHubStatus
+      summary: Get GitHub connection status
+      tags:
+        - GitHub
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.github:execute
+      parameters:
+        - *a3
+      responses:
+        "200":
+          description: GitHub connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicGitHubStatus"
+        "401": *a1
+        "404":
+          description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
+  /apps/{appId}/github/repos:
+    get:
+      operationId: listGitHubRepos
+      summary: List accessible GitHub repositories
+      tags:
+        - GitHub
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.github:execute
+      parameters:
+        - *a3
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - created
+              - updated
+              - pushed
+              - full_name
+            default: updated
+      responses:
+        "200":
+          description: Repositories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicGitHubRepos"
+        "401": *a1
+        "404":
+          description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
+  /apps/{appId}/github/branches:
+    get:
+      operationId: listGitHubBranches
+      summary: List branches for a GitHub repository
+      tags:
+        - GitHub
+      security:
+        - cookieAuth: []
+        - apiKeyAuth: []
+        - oauth2:
+            - hosting.paas.github:execute
+      parameters:
+        - *a3
+        - name: owner
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicGitHubBranches"
+        "401": *a1
+        "404":
+          description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/secrets:
     get:
       operationId: listAppSecrets
       summary: List app secrets (metadata only)
+      tags:
+        - Secrets
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.secrets:write
       parameters:
-        - *a2
+        - *a3
         - name: variant
           in: query
           required: false
@@ -304,16 +654,26 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
     post:
       operationId: updateAppSecrets
       summary: Add, update, or delete app secrets
+      tags:
+        - Secrets
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.secrets:write
       parameters:
-        - *a2
+        - *a3
       requestBody:
         required: true
         content:
@@ -330,17 +690,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/logs:
     get:
       operationId: getAppLogs
       summary: Get application logs
+      tags:
+        - Logs
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.logs:read
       parameters:
-        - *a2
+        - *a3
         - name: target
           in: query
           required: true
@@ -376,17 +746,27 @@ paths:
         "401": *a1
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 60 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
   /apps/{appId}/rollback:
     post:
       operationId: rollbackApp
       summary: Rollback to a previous deployment
+      tags:
+        - Deployments
       security:
         - cookieAuth: []
         - apiKeyAuth: []
         - oauth2:
             - hosting.paas.deploy:execute
       parameters:
-        - *a2
+        - *a3
       requestBody:
         required: true
         content:
@@ -405,6 +785,14 @@ paths:
           description: Rollback not enabled
         "404":
           description: Not found
+        "429":
+          description: "Too many requests. Limit: 10 requests per minute per client IP.
+            X-RateLimit-* headers are returned on successful responses as well."
+          headers: *a2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRateLimitError"
 components:
   securitySchemes:
     cookieAuth:
@@ -783,6 +1171,167 @@ components:
       required:
         - status
       additionalProperties: false
+    PublicGitHubStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        user:
+          type: object
+          properties:
+            login:
+              type: string
+            name:
+              nullable: true
+              type: string
+            avatarUrl:
+              type: string
+          required:
+            - login
+            - name
+            - avatarUrl
+          additionalProperties: false
+        scopes:
+          type: array
+          items:
+            type: string
+        appInstalled:
+          type: boolean
+        repositorySelection:
+          type: string
+          enum:
+            - all
+            - selected
+        appInstallUrl:
+          type: string
+        error:
+          type: string
+      required:
+        - connected
+      additionalProperties: false
+    PublicGitHubRepos:
+      type: object
+      properties:
+        repos:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+              name:
+                type: string
+              fullName:
+                type: string
+              private:
+                type: boolean
+              description:
+                nullable: true
+                type: string
+              url:
+                type: string
+              cloneUrl:
+                type: string
+              defaultBranch:
+                type: string
+              updatedAt:
+                type: string
+            required:
+              - id
+              - name
+              - fullName
+              - private
+              - description
+              - url
+              - cloneUrl
+              - defaultBranch
+              - updatedAt
+            additionalProperties: false
+      required:
+        - repos
+      additionalProperties: false
+    PublicGitHubBranches:
+      type: object
+      properties:
+        branches:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              protected:
+                type: boolean
+              commit:
+                type: object
+                properties:
+                  sha:
+                    type: string
+                  url:
+                    type: string
+                required:
+                  - sha
+                  - url
+                additionalProperties: false
+            required:
+              - name
+              - protected
+              - commit
+            additionalProperties: false
+      required:
+        - branches
+      additionalProperties: false
+    PublicGitImportBody:
+      type: object
+      properties:
+        repoFullName:
+          type: string
+          pattern: ^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$
+        repoUrl:
+          type: string
+          format: uri
+        branch:
+          type: string
+          minLength: 1
+          pattern: ^[^\x00-\x1f<> ~^:?*\\[\]]+$
+        isPrivate:
+          type: boolean
+        clearWorkingTree:
+          type: boolean
+      required:
+        - branch
+      additionalProperties: false
+    PublicGitImportResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum:
+            - in_progress
+            - complete
+      required:
+        - jobId
+        - status
+      additionalProperties: false
+    PublicGitImportStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - in_progress
+            - complete
+            - failed
+        message:
+          type: string
+        detail:
+          type: object
+          additionalProperties: {}
+      required:
+        - status
+      additionalProperties: false
     PublicSecretsList:
       type: object
       properties:
@@ -988,4 +1537,20 @@ components:
         - commitHash
         - deploymentId
         - status
+      additionalProperties: false
+    PublicRateLimitError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - RATE_LIMITED
+        detail:
+          type: string
+      required:
+        - error
+        - code
+        - detail
       additionalProperties: false

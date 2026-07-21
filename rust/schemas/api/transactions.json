@@ -206,6 +206,27 @@
       "title": "Bank Account",
       "type": "object"
     },
+    "BankAccountInstrument": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument/bank-account-instrument.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Represents a bank account-based financial instrument stored on file",
+      "properties": {
+        "bankAccount": {
+          "$ref": "#/$defs/BankAccount"
+        },
+        "type": {
+          "description": "Discriminator value for this variant. Always BANK_ACCOUNT.",
+          "example": "BANK_ACCOUNT",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Bank Account Instrument",
+      "type": "object",
+      "x-generic-type": "FinancialInstrument"
+    },
     "CVResultStatus": {
       "$id": "https://godaddy.com/schemas/commerce/transaction/payment-card/cv-result-status.v2",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -381,6 +402,27 @@
       },
       "title": "Card Entry Detail",
       "type": "object"
+    },
+    "CardInstrument": {
+      "$id": "https://godaddy.com/schemas/commerce/financial-instrument/card-instrument.v2",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Represents a card-based financial instrument stored on file",
+      "properties": {
+        "card": {
+          "$ref": "#/$defs/PaymentCard"
+        },
+        "type": {
+          "description": "Discriminator value for this variant. Always CARD.",
+          "example": "CARD",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Card Instrument",
+      "type": "object",
+      "x-generic-type": "FinancialInstrument"
     },
     "CardProcessingInstruction": {
       "$id": "https://godaddy.com/schemas/commerce/transaction/funding-source/card-processing-instruction.v2",
@@ -695,23 +737,29 @@
     "FinancialInstrument": {
       "$id": "https://godaddy.com/schemas/commerce/financial-instrument.v2",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A card or bank account stored on file, optionally associated with an owner reference. Vault context (stored for reuse) is expressed by this resource and its `status` — nested `card` and `bankAccount` reuse the standard funding-source models (`PaymentCard`, `BankAccount`), the same types used for one-time charges.\nThe `type` field identifies the persisted instrument kind (CARD or BANK_ACCOUNT) and determines which detail object is present in responses (`card` or `bankAccount`).\nOn create, supply exactly one input source: `card` with `type` CARD, `bankAccount` with `type` BANK_ACCOUNT, or `nonce` alone (the server resolves the nonce to a card or bank account before persistence — `type` is assigned in the response). `tokenContext` is required on create. Write-only fields (`nonce`, `tokenContext`, and raw card/bank account numbers) are accepted on create and never returned in responses.\n",
+      "description": "A card or bank account stored on file, optionally associated with an owner reference. Vault context (stored for reuse) is expressed by this resource and its `status` — nested `card` and `bankAccount` reuse the standard funding-source models (`PaymentCard`, `BankAccount`), the same types used for one-time charges.\nThe `type` field identifies the persisted instrument kind (CARD or BANK_ACCOUNT) and determines which detail object is present in responses (`card` or `bankAccount`).\nOn create, `type` (CARD or BANK_ACCOUNT) is always required, along with exactly one input source: `card` with `type` CARD, `bankAccount` with `type` BANK_ACCOUNT, or `nonce` alone (the server resolves the nonce to the card or bank account details for the declared `type` before persistence). `tokenContext` is required on create. Write-only fields (`nonce`, `tokenContext`, and raw card/bank account numbers) are accepted on create and never returned in responses.\n",
+      "discriminator": {
+        "mapping": {
+          "BANK_ACCOUNT": "#/$defs/BankAccountInstrument",
+          "CARD": "#/$defs/CardInstrument"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CardInstrument"
+        },
+        {
+          "$ref": "#/$defs/BankAccountInstrument"
+        }
+      ],
       "properties": {
-        "bankAccount": {
-          "$ref": "#/$defs/BankAccount"
-        },
-        "card": {
-          "$ref": "#/$defs/PaymentCard"
-        },
         "createdAt": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/date-time"
-            }
-          ],
           "description": "Time the instrument was created. Sortable via list query parameter `sortBy=CREATED_AT`.\n",
           "example": "2024-01-15T10:30:00Z",
-          "readOnly": true
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
         },
         "id": {
           "$ref": "#/$defs/Uuid"
@@ -719,7 +767,6 @@
         "nonce": {
           "description": "Single-use tokenization nonce from a compliant card-capture SDK — alternative to supplying `card` or `bankAccount` directly (PCI-out-of-scope path). The server resolves this to a card or bank account before persistence; it is not a stored instrument type.\n",
           "example": "550e8400-e29b-41d4-a716-446655440000",
-          "format": "uuid",
           "type": "string",
           "writeOnly": true,
           "x-sensitivity": {
@@ -738,7 +785,7 @@
           }
         },
         "status": {
-          "description": "Status of the financial instrument. Currently accepted values: ACTIVE, INACTIVE.\n",
+          "description": "Status of the financial instrument. Currently accepted values: ACTIVE, INACTIVE.",
           "example": "ACTIVE",
           "readOnly": true,
           "type": "string"
@@ -755,21 +802,21 @@
           "type": "array"
         },
         "type": {
-          "description": "Discriminator representing the persisted instrument kind. Always present in responses. Required on create when supplying `card` or `bankAccount`; may be omitted when supplying `nonce` (the server assigns the type after resolving the nonce). Currently accepted values: CARD, BANK_ACCOUNT.\n",
+          "description": "Discriminator representing the persisted instrument kind. Required on create and always present in responses — supply `type` even when using `nonce`, since the client knows whether the nonce represents a card or bank account. Currently accepted values: CARD, BANK_ACCOUNT.\n",
           "example": "CARD",
           "type": "string"
         },
         "updatedAt": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/date-time"
-            }
-          ],
           "description": "Time the instrument was last updated. Sortable via list query parameter `sortBy=UPDATED_AT`.\n",
           "example": "2024-01-15T10:30:00Z",
-          "readOnly": true
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
         }
       },
+      "required": [
+        "type"
+      ],
       "title": "Financial Instrument",
       "type": "object"
     },
@@ -2956,22 +3003,22 @@
       "description": "External owner reference attached to a financial instrument, identifying the owner within an external system.",
       "properties": {
         "id": {
-          "description": "Alphanumeric owner identifier (e.g. numeric customer id or UUID without dashes)",
+          "description": "Unique identifier of the owner in the external system (e.g. customer id, UUID, or any external reference)",
           "example": "251727828",
           "maxLength": 64,
           "minLength": 1,
-          "pattern": "^[A-Za-z0-9]+$",
+          "pattern": "^[A-Za-z0-9_-]+$",
           "type": "string",
           "x-sensitivity": {
             "classification": "confidential"
           }
         },
         "type": {
-          "description": "Letters-only namespace qualifier identifying the owner system (e.g. Shopper, GDCustomer)",
-          "example": "Shopper",
+          "description": "Namespace qualifier identifying the owner system (e.g. SHOPPER, GD_CUSTOMER)",
+          "example": "SHOPPER",
           "maxLength": 32,
           "minLength": 1,
-          "pattern": "^[A-Za-z]+$",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "type": "string"
         }
       },
@@ -3220,20 +3267,17 @@
       "description": "A per-store charge handle that authorizes charging a stored financial instrument at a specific store. Use the `token` field in fundingSource.token to charge. The JWT encodes store and application scope — clients do not need separate scope fields on this resource.\n",
       "properties": {
         "createdAt": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/date-time"
-            }
-          ],
           "description": "Time the token was created",
           "example": "2024-01-15T10:30:00Z",
-          "readOnly": true
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
         },
         "id": {
           "$ref": "#/$defs/Uuid"
         },
         "status": {
-          "description": "Status of this token. Currently accepted values: ACTIVE, INACTIVE.\n",
+          "description": "Status of this token. Currently accepted values: ACTIVE, INACTIVE.",
           "example": "ACTIVE",
           "type": "string"
         },
@@ -3258,9 +3302,7 @@
       "description": "Context for minting a per-store token. Used when vaulting a financial instrument (first token) and when associating an existing instrument with a new store. `storeId` is required. Application identity is derived from the authorization credential — clients do not supply `applicationId`.\n",
       "properties": {
         "storeId": {
-          "description": "Store the token is minted for (required)",
-          "example": "storeB",
-          "type": "string"
+          "$ref": "#/$defs/Uuid"
         }
       },
       "required": [
@@ -3868,14 +3910,14 @@
           }
         },
         {
-          "description": "The `type` portion of `ownerReference` — letters only (e.g., Shopper, GDCustomer)\n",
+          "description": "The `type` portion of `ownerReference` (e.g., SHOPPER, GD_CUSTOMER)\n",
           "in": "query",
           "name": "ownerReferenceType",
           "required": true,
           "schema": {
             "maxLength": 32,
             "minLength": 1,
-            "pattern": "^[A-Za-z]+$",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
             "type": "string"
           }
         },
@@ -4006,7 +4048,7 @@
       "summary": "List financial instruments by owner reference"
     },
     {
-      "description": "Vaults a card or bank account on file and mints the first per-store token. Supply exactly one input source: `type` CARD with `card` for raw card details (server-to-server, PCI-in-scope), `type` BANK_ACCOUNT with `bankAccount` for ACH details, or `nonce` alone for a single-use token from a compliant card-capture SDK (PCI-out-of-scope path — the server resolves the nonce to CARD or BANK_ACCOUNT before persistence). `tokenContext` is required (supply `storeId` only — application identity is derived from the authorization credential). The customer consent agreement is derived internally — clients do not send it.\n",
+      "description": "Vaults a card or bank account on file and mints the first per-store token. `type` (CARD or BANK_ACCOUNT) is always required. Supply exactly one input source: `card` for raw card details (server-to-server, PCI-in-scope), `bankAccount` for ACH details, or `nonce` for a single-use token from a compliant card-capture SDK (PCI-out-of-scope path — the server resolves the nonce to the card or bank account details for the declared `type` before persistence). `tokenContext` is required (supply `storeId` only — application identity is derived from the authorization credential). The customer consent agreement is derived internally — clients do not send it.\n",
       "method": "POST",
       "operationId": "createFinancialInstrument",
       "parameters": [
@@ -4252,7 +4294,7 @@
       "summary": "Deactivate a financial instrument (all stores)"
     },
     {
-      "description": "Returns per-store tokens for the instrument. Filter by storeId to retrieve the token for a specific store.\n",
+      "description": "Returns per-store tokens for the instrument, scoped to the required storeId.\n",
       "method": "GET",
       "operationId": "listTokens",
       "parameters": [
@@ -4275,10 +4317,10 @@
           }
         },
         {
-          "description": "Filter tokens to a specific store",
+          "description": "Store scope for token retrieval. Required.",
           "in": "query",
           "name": "storeId",
-          "required": false,
+          "required": true,
           "schema": {
             "type": "string"
           }
@@ -5105,5 +5147,5 @@
   ],
   "name": "transactions",
   "title": "Transactions API",
-  "version": "2.2.1"
+  "version": "2.3.0"
 }

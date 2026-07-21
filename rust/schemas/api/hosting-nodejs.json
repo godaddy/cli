@@ -461,6 +461,235 @@
       ],
       "type": "object"
     },
+    "PublicGitHubBranches": {
+      "additionalProperties": false,
+      "properties": {
+        "branches": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "commit": {
+                "additionalProperties": false,
+                "properties": {
+                  "sha": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sha",
+                  "url"
+                ],
+                "type": "object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "protected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "protected",
+              "commit"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "branches"
+      ],
+      "type": "object"
+    },
+    "PublicGitHubRepos": {
+      "additionalProperties": false,
+      "properties": {
+        "repos": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cloneUrl": {
+                "type": "string"
+              },
+              "defaultBranch": {
+                "type": "string"
+              },
+              "description": {
+                "nullable": true,
+                "type": "string"
+              },
+              "fullName": {
+                "type": "string"
+              },
+              "id": {
+                "type": "number"
+              },
+              "name": {
+                "type": "string"
+              },
+              "private": {
+                "type": "boolean"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "fullName",
+              "private",
+              "description",
+              "url",
+              "cloneUrl",
+              "defaultBranch",
+              "updatedAt"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "repos"
+      ],
+      "type": "object"
+    },
+    "PublicGitHubStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "appInstallUrl": {
+          "type": "string"
+        },
+        "appInstalled": {
+          "type": "boolean"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "repositorySelection": {
+          "enum": [
+            "all",
+            "selected"
+          ],
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "user": {
+          "additionalProperties": false,
+          "properties": {
+            "avatarUrl": {
+              "type": "string"
+            },
+            "login": {
+              "type": "string"
+            },
+            "name": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          "required": [
+            "login",
+            "name",
+            "avatarUrl"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "connected"
+      ],
+      "type": "object"
+    },
+    "PublicGitImportBody": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f<> ~^:?*\\\\[\\]]+$",
+          "type": "string"
+        },
+        "clearWorkingTree": {
+          "type": "boolean"
+        },
+        "isPrivate": {
+          "type": "boolean"
+        },
+        "repoFullName": {
+          "pattern": "^[a-zA-Z0-9_.-]+\\/[a-zA-Z0-9_.-]+$",
+          "type": "string"
+        },
+        "repoUrl": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch"
+      ],
+      "type": "object"
+    },
+    "PublicGitImportResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "complete"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "jobId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "PublicGitImportStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "complete",
+            "failed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
     "PublicPatchAppBody": {
       "additionalProperties": false,
       "description": "At least one of name or rootPath must be provided.",
@@ -495,6 +724,29 @@
       "required": [
         "deploymentId",
         "status"
+      ],
+      "type": "object"
+    },
+    "PublicRateLimitError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "RATE_LIMITED"
+          ],
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error",
+        "code",
+        "detail"
       ],
       "type": "object"
     },
@@ -784,7 +1036,7 @@
       "type": "object"
     }
   },
-  "baseUrl": "/v1/hosting/nodejs",
+  "baseUrl": "https://api.godaddy.com/v1/hosting/nodejs",
   "description": "Gateway-integrated API for customer apps. Authenticate with a forwarded customer session (Gasket auth), a developer portal API key (`Authorization: sso-key` on the public gateway URL), or an OAuth Bearer access token. When using Bearer auth, each operation requires the OAuth scope listed on that operation. API keys do not use OAuth scopes. After publish or domain changes, poll GET …/deployments and GET …/status. After zip upload, poll GET …/source/status with the returned jobId.",
   "endpoints": [
     {
@@ -800,6 +1052,12 @@
         },
         "401": {
           "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -827,6 +1085,12 @@
         },
         "401": {
           "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -860,6 +1124,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -893,6 +1163,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -933,6 +1209,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -963,6 +1245,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1007,6 +1295,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1040,12 +1334,188 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
         "hosting.paas.deploy:execute"
       ],
       "summary": "Publish app (deploy latest code)"
+    },
+    {
+      "method": "GET",
+      "operationId": "listGitHubBranches",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "owner",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "repo",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 100,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/github/branches",
+      "responses": {
+        "200": {
+          "description": "Branches",
+          "schema": {
+            "$ref": "#/$defs/PublicGitHubBranches"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.paas.github:execute"
+      ],
+      "summary": "List branches for a GitHub repository"
+    },
+    {
+      "method": "GET",
+      "operationId": "listGitHubRepos",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 100,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "updated",
+            "enum": [
+              "created",
+              "updated",
+              "pushed",
+              "full_name"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/github/repos",
+      "responses": {
+        "200": {
+          "description": "Repositories",
+          "schema": {
+            "$ref": "#/$defs/PublicGitHubRepos"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.paas.github:execute"
+      ],
+      "summary": "List accessible GitHub repositories"
+    },
+    {
+      "method": "GET",
+      "operationId": "getGitHubStatus",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/github/status",
+      "responses": {
+        "200": {
+          "description": "GitHub connection status",
+          "schema": {
+            "$ref": "#/$defs/PublicGitHubStatus"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.paas.github:execute"
+      ],
+      "summary": "Get GitHub connection status"
     },
     {
       "method": "GET",
@@ -1111,6 +1581,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1154,6 +1630,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1199,6 +1681,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1239,6 +1727,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1288,12 +1782,111 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
         "hosting.paas.code:write"
       ],
       "summary": "Upload app source (zip)"
+    },
+    {
+      "method": "POST",
+      "operationId": "startGitImport",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/source/git",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublicGitImportBody"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Git import accepted; poll the returned jobId for status",
+          "schema": {
+            "$ref": "#/$defs/PublicGitImportResponse"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.paas.code:write"
+      ],
+      "summary": "Import app source from a GitHub repo/branch"
+    },
+    {
+      "method": "GET",
+      "operationId": "getGitImportStatus",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "jobId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/source/git/status",
+      "responses": {
+        "200": {
+          "description": "Git import status",
+          "schema": {
+            "$ref": "#/$defs/PublicGitImportStatus"
+          }
+        },
+        "401": {
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+        },
+        "404": {
+          "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.paas.code:read"
+      ],
+      "summary": "Poll git import status"
     },
     {
       "method": "GET",
@@ -1329,6 +1922,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [
@@ -1362,6 +1961,12 @@
         },
         "404": {
           "description": "Not found"
+        },
+        "429": {
+          "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
+          "schema": {
+            "$ref": "#/$defs/PublicRateLimitError"
+          }
         }
       },
       "scopes": [

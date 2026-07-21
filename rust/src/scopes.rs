@@ -109,10 +109,14 @@ declare_scopes! {
     HOSTING_APPS_UPDATE => "hosting.paas.apps:update",
     /// Delete a Node.js Hosting app (`hosting nodejs app delete`).
     HOSTING_APPS_DELETE => "hosting.paas.apps:delete",
-    /// Upload code to a Node.js Hosting app (`hosting nodejs app deploy`/`upload`).
+    /// Upload code to a Node.js Hosting app (`hosting nodejs source upload`).
     HOSTING_CODE_WRITE => "hosting.paas.code:write",
-    /// Trigger a Node.js Hosting deploy (`hosting nodejs app deploy`).
+    /// Poll a git import job (`hosting nodejs source git-status`).
+    HOSTING_CODE_READ => "hosting.paas.code:read",
+    /// Trigger a Node.js Hosting deploy (`hosting nodejs deployment publish`).
     HOSTING_DEPLOY_EXECUTE => "hosting.paas.deploy:execute",
+    /// Manage GitHub connections and browse repos/branches (`hosting nodejs github *`).
+    HOSTING_GITHUB_EXECUTE => "hosting.paas.github:execute",
     /// Write Node.js Hosting app secrets (`hosting nodejs secret set/delete`).
     HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
     /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
@@ -192,6 +196,11 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         default: false,
     },
     ScopeInfo {
+        scope: HOSTING_CODE_READ,
+        description: "View source files, database contents, and git history for your Node.js Hosting apps",
+        default: false,
+    },
+    ScopeInfo {
         scope: HOSTING_DEPLOY_EXECUTE,
         description: "Trigger a Node.js Hosting deploy",
         default: false,
@@ -204,6 +213,11 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_LOGS_READ,
         description: "Read Node.js Hosting app logs",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_GITHUB_EXECUTE,
+        description: "Connect GitHub and import code for your Node.js Hosting apps",
         default: false,
     },
     ScopeInfo {
