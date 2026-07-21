@@ -251,7 +251,7 @@ pub async fn delete_pat(env: &str) -> Result<bool, CliCoreError> {
 
 /// Returns whether a PAT is currently stored for `env`, without removing it.
 /// Used to preview `pat remove --dry-run` without mutating the registry.
-pub async fn has_pat(env: &str) -> Result<bool, CliCoreError> {
+pub fn has_pat(env: &str) -> Result<bool, CliCoreError> {
     let Some(path) = registry_path() else {
         return Ok(false);
     };
@@ -359,10 +359,15 @@ fn add_command() -> RuntimeCommandSpec {
             }
 
             if ctx.dry_run() {
+                // Resolve the registry path too, so a dry-run can't report
+                // success in an environment (no config dir) where a real run
+                // would immediately fail before ever getting this far.
+                let path = registry_path_err()?;
                 return Ok(CommandResult::new(json!({
                     "env": env,
                     "name": name,
                     "lastFour": last_four(&token),
+                    "path": path.display().to_string(),
                     "action": "would store",
                 }))
                 .with_dry_run());
@@ -377,6 +382,7 @@ fn add_command() -> RuntimeCommandSpec {
                 "name": entry.name,
                 "lastFour": last_four(&entry.token),
                 "path": path.display().to_string(),
+                "action": "stored",
             }))
             .with_next_actions(vec![next_action("guide auth", "Learn about PAT auth")]))
         },
@@ -442,7 +448,7 @@ fn remove_command() -> RuntimeCommandSpec {
             environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
 
             if ctx.dry_run() {
-                let status = if has_pat(&env).await? {
+                let status = if has_pat(&env)? {
                     "would remove"
                 } else {
                     "not found"

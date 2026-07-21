@@ -159,6 +159,7 @@ fn dry_run_set_preview(domain: &str, record_type: &str, name: &str, plan: &[SetA
         "wouldCreate": count(|a| matches!(a, SetAction::Create { .. })),
         "wouldDelete": count(|a| matches!(a, SetAction::Delete { .. })),
         "plan": plan_json,
+        "action": "would set",
     })
 }
 

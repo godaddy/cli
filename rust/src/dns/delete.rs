@@ -71,17 +71,31 @@ fn dry_run_delete_preview(
     name: &str,
     existing: &[types::DnsRecord],
 ) -> Value {
+    // Mirror the real execution's per-record split: a record without a
+    // recordId can't actually be deleted (see the handler below), so the
+    // preview must not claim it as a delete.
+    let would_delete = existing.iter().filter(|r| r.record_id.is_some()).count();
+    let would_fail = existing.len() - would_delete;
     let records: Vec<Value> = existing
         .iter()
-        .map(|rec| json!({"recordId": rec.record_id, "data": rec.data}))
+        .map(|rec| {
+            let status = if rec.record_id.is_some() {
+                "would delete"
+            } else {
+                "would fail (missing recordId)"
+            };
+            json!({"recordId": rec.record_id, "data": rec.data, "status": status})
+        })
         .collect();
 
     json!({
         "domain": domain,
         "type": record_type,
         "name": name,
-        "wouldDelete": existing.len(),
+        "wouldDelete": would_delete,
+        "wouldFail": would_fail,
         "records": records,
+        "action": "would delete",
     })
 }
 
@@ -243,13 +257,38 @@ mod tests {
         }
     }
 
+    fn test_record_without_id(data: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            record_id: None,
+            ..test_record("unused", data)
+        }
+    }
+
     #[test]
     fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
         let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
         assert_eq!(preview["wouldDelete"], 2);
+        assert_eq!(preview["wouldFail"], 0);
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0]["data"], "1.2.3.4");
+        assert_eq!(records[0]["status"], "would delete");
+    }
+
+    /// A record without a recordId can't actually be deleted (the real
+    /// handler reports it as a failure) — the preview must not claim it as
+    /// a delete either.
+    #[test]
+    fn dry_run_delete_preview_flags_records_without_a_recordid_as_would_fail() {
+        let existing = vec![
+            test_record("r1", "1.2.3.4"),
+            test_record_without_id("5.6.7.8"),
+        ];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        assert_eq!(preview["wouldDelete"], 1);
+        assert_eq!(preview["wouldFail"], 1);
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[1]["status"], "would fail (missing recordId)");
     }
 }

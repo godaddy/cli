@@ -186,6 +186,7 @@ pub fn module() -> Module {
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
+                    "action": "activated",
                 })))
             },
         ))
