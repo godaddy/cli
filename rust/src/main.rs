@@ -11,6 +11,7 @@ mod environments;
 mod extension;
 mod hosting;
 mod next_action;
+pub mod onboarding;
 mod output_schema;
 mod pat;
 mod payment_methods;

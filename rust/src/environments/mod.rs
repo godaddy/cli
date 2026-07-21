@@ -69,6 +69,7 @@ struct Builtin {
     name: &'static str,
     api_url: &'static str,
     client_id: &'static str,
+    devx_core_url: &'static str,
 }
 
 /// Public-safe, compiled-in environments. `api.ote-godaddy.com` is public, and
@@ -78,11 +79,13 @@ const BUILTINS: &[Builtin] = &[
         name: "ote",
         api_url: "https://api.ote-godaddy.com",
         client_id: "91660d79-c909-426c-b5c8-e0f575e8fcd2",
+        devx_core_url: "https://api.developer.commerce.ote-godaddy.com",
     },
     Builtin {
         name: "prod",
         api_url: "https://api.godaddy.com",
         client_id: "bc87f347-af82-4892-833f-818f54a0e79e",
+        devx_core_url: "https://api.developer.commerce.godaddy.com",
     },
 ];
 
@@ -158,6 +161,25 @@ fn clean_url(raw: &str) -> Option<String> {
         .next()
         .unwrap_or("");
     (!host.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn devx_core_url_with(name: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    var("DEVX_CORE_URL")
+        .and_then(|value| clean_url(&value))
+        .or_else(|| {
+            BUILTINS
+                .iter()
+                .find(|env| env.name == name)
+                .map(|env| env.devx_core_url.to_owned())
+        })
+}
+
+/// Base URL for the DevX Core API gateway for the given environment.
+///
+/// Custom environments must set `DEVX_CORE_URL`; `prod` and `ote` use their
+/// compiled-in endpoints unless that variable overrides them.
+pub fn devx_core_url(name: &str) -> Option<String> {
+    devx_core_url_with(name, |key| std::env::var(key).ok())
 }
 
 /// Scans the raw process argv for a `--env <value>` / `--env=<value>` token.
@@ -767,5 +789,33 @@ mod tests {
             requested_env_from(argv(&["--env=-foo"])),
             Some("-foo".to_owned())
         );
+    }
+
+    #[test]
+    fn devx_core_url_uses_prod_and_ote_builtins() {
+        assert_eq!(
+            devx_core_url_with("prod", |_| None).as_deref(),
+            Some("https://api.developer.commerce.godaddy.com")
+        );
+        assert_eq!(
+            devx_core_url_with("ote", |_| None).as_deref(),
+            Some("https://api.developer.commerce.ote-godaddy.com")
+        );
+    }
+
+    #[test]
+    fn devx_core_url_global_override_wins() {
+        assert_eq!(
+            devx_core_url_with("prod", |key| {
+                (key == "DEVX_CORE_URL").then(|| " http://localhost:4000/ ".to_owned())
+            })
+            .as_deref(),
+            Some("http://localhost:4000")
+        );
+    }
+
+    #[test]
+    fn devx_core_url_custom_env_requires_override() {
+        assert_eq!(devx_core_url_with("dev", |_| None), None);
     }
 }

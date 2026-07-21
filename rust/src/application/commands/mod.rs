@@ -27,6 +27,7 @@ output_schema!(ApplicationInit {
     "name": "string";
     "status": "string";
     "clientId": "string";
+    "orgId": "string";
     "url": "string";
     "proxyUrl": "string";
     "authorizationScopes": "[]string";
@@ -390,10 +391,24 @@ fn init_command() -> RuntimeCommandSpec {
                     .short('c')
                     .value_name("PATH")
                     .help("Read defaults from this config file"),
+            )
+            .with_arg(
+                clap::Arg::new("accept-agreements")
+                    .long("accept-agreements")
+                    .action(clap::ArgAction::SetTrue)
+                    .help(
+                        "Accept GoDaddy Developer agreements non-interactively when \
+                         onboarding is still pending (required for non-TTY)",
+                    ),
             ),
         |ctx| async move {
             let env = ctx.middleware.env.clone();
             let config_path = crate::config::config_path(Some(&env));
+            let accept_agreements = ctx
+                .args
+                .get("accept-agreements")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
 
             // Seed defaults only from an explicit --config; a bad/missing --config is fatal.
             let existing = match ctx.args.get("config").and_then(|v| v.as_str()) {
@@ -459,6 +474,14 @@ fn init_command() -> RuntimeCommandSpec {
                 }
             }
 
+            let credential = ctx.credential().await?;
+            let onboarding = crate::onboarding::ensure_ready_for_app_init(
+                &credential.token,
+                &env,
+                accept_agreements,
+            )
+            .await?;
+
             let client = make_client(&ctx).await?;
             let data = client
                 .create_application(json!({
@@ -467,6 +490,7 @@ fn init_command() -> RuntimeCommandSpec {
                     "description": description,
                     "url": url,
                     "proxyUrl": proxy_url,
+                    "organizationId": &onboarding.org_id,
                     "authorizationScopes": scopes,
                 }))
                 .await
@@ -537,6 +561,7 @@ fn init_command() -> RuntimeCommandSpec {
                 "name": name,
                 "status": app["status"].as_str().unwrap_or("").to_owned(),
                 "clientId": client_id,
+                "orgId": onboarding.org_id,
                 "url": url,
                 "proxyUrl": proxy_url,
                 "authorizationScopes": scopes,
