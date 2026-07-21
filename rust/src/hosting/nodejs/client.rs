@@ -281,10 +281,7 @@ impl HostingClient {
         repo: &str,
         per_page: Option<u32>,
     ) -> Result<Value, ClientError> {
-        let mut query = vec![
-            ("owner", owner.to_owned()),
-            ("repo", repo.to_owned()),
-        ];
+        let mut query = vec![("owner", owner.to_owned()), ("repo", repo.to_owned())];
         if let Some(per_page) = per_page {
             query.push(("per_page", per_page.to_string()));
         }

@@ -647,10 +647,20 @@ fn source_git_command() -> RuntimeCommandSpec {
             if let Some(repo_url) = optional_str(&ctx, "repo-url") {
                 body["repoUrl"] = json!(repo_url);
             }
-            if ctx.args.get("private").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if ctx
+                .args
+                .get("private")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 body["isPrivate"] = json!(true);
             }
-            if ctx.args.get("clear").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if ctx
+                .args
+                .get("clear")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 body["clearWorkingTree"] = json!(true);
             }
             let client = make_client(&ctx, &[CODE_WRITE]).await?;
@@ -752,7 +762,10 @@ fn github_status_command() -> RuntimeCommandSpec {
                 .get_github_status(&app_id)
                 .await
                 .map_err(client_err)?;
-            let connected = data.get("connected").and_then(|v| v.as_bool()).unwrap_or(false);
+            let connected = data
+                .get("connected")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let mut actions = Vec::new();
             if connected {
                 actions.push(
@@ -771,9 +784,7 @@ fn github_status_command() -> RuntimeCommandSpec {
 fn github_repos_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("repos", "List accessible GitHub repositories")
-            .with_long(
-                "List GitHub repositories accessible to the connected account.",
-            )
+            .with_long("List GitHub repositories accessible to the connected account.")
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[GITHUB_EXECUTE])
