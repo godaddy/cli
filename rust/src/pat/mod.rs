@@ -249,6 +249,15 @@ pub async fn delete_pat(env: &str) -> Result<bool, CliCoreError> {
     Ok(existed)
 }
 
+/// Returns whether a PAT is currently stored for `env`, without removing it.
+/// Used to preview `pat remove --dry-run` without mutating the registry.
+pub async fn has_pat(env: &str) -> Result<bool, CliCoreError> {
+    let Some(path) = registry_path() else {
+        return Ok(false);
+    };
+    Ok(load_registry(&path)?.tokens.contains_key(env))
+}
+
 /// List environments that have a PAT in the registry.
 pub async fn list_pats() -> Result<Vec<(String, PatEntry)>, CliCoreError> {
     let Some(path) = registry_path() else {
@@ -311,9 +320,10 @@ fn add_command() -> RuntimeCommandSpec {
             .with_system("pat")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .handles_dry_run(true)
             .no_auth(true)
             .with_output_schema::<PatAddResult>()
-            .with_default_fields("env,name,lastFour,path")
+            .with_default_fields("env,name,lastFour,path,action")
             .with_arg(
                 clap::Arg::new("env")
                     .long("env")
@@ -336,7 +346,8 @@ fn add_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let env = string_arg(&ctx.args, "env");
             // Validate the environment up front so a typo does not stash a PAT
-            // for a non-existent env.
+            // for a non-existent env. Runs unconditionally, including under
+            // `--dry-run`, so `--dry-run` can be used to pre-validate a PAT.
             environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
 
             let name = string_arg(&ctx.args, "name");
@@ -345,6 +356,16 @@ fn add_command() -> RuntimeCommandSpec {
                 return Err(CliCoreError::message(
                     "token doesn't look like a GoDaddy PAT; refusing to store it. Run `gddy guide auth` for details on creating PATs.",
                 ));
+            }
+
+            if ctx.dry_run() {
+                return Ok(CommandResult::new(json!({
+                    "env": env,
+                    "name": name,
+                    "lastFour": last_four(&token),
+                    "action": "would store",
+                }))
+                .with_dry_run());
             }
 
             let entry = PatEntry { token, name };
@@ -403,6 +424,7 @@ fn remove_command() -> RuntimeCommandSpec {
             .with_system("pat")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .handles_dry_run(true)
             .no_auth(true)
             .with_output_schema::<PatRemoveResult>()
             .with_default_fields("env,status")
@@ -418,6 +440,18 @@ fn remove_command() -> RuntimeCommandSpec {
             // Validate the environment up front so a typo produces a clear error
             // instead of silently reporting "not found".
             environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
+
+            if ctx.dry_run() {
+                let status = if has_pat(&env).await? {
+                    "would remove"
+                } else {
+                    "not found"
+                };
+                return Ok(
+                    CommandResult::new(json!({ "env": env, "status": status })).with_dry_run()
+                );
+            }
+
             let existed = delete_pat(&env).await?;
             Ok(CommandResult::new(json!({
                 "env": env,
@@ -473,6 +507,8 @@ async fn resolve_token_arg(
 
 #[cfg(test)]
 mod tests {
+    use cli_engine::{Cli, CliConfig};
+
     use super::*;
 
     #[test]
@@ -657,5 +693,114 @@ mod tests {
     fn env_var_for_uses_uppercase_env_prefix() {
         assert_eq!(env_var_for("prod"), "GDDY_PAT_PROD");
         assert_eq!(env_var_for("ote"), "GDDY_PAT_OTE");
+    }
+
+    /// DEVEX-889: the message should point at `gddy guide auth` and not imply
+    /// the user could type/guess a valid PAT by hand.
+    #[tokio::test]
+    async fn invalid_pat_message_points_to_guide_auth() {
+        let cli =
+            Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
+        let output = cli
+            .run([
+                "gddy", "pat", "add", "--env", "ote", "--token", "garbage", "test",
+            ])
+            .await;
+
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("guide auth"),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            !output.rendered.contains("expected `gd_pat_...`"),
+            "should not imply a literal typed format: {}",
+            output.rendered
+        );
+    }
+
+    /// GDDEVPLAT-81: `--dry-run` must still reject a malformed token instead of
+    /// unconditionally reporting the generic "would execute".
+    #[tokio::test]
+    async fn add_dry_run_still_rejects_a_malformed_token() {
+        let cli =
+            Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
+        let output = cli
+            .run([
+                "gddy",
+                "pat",
+                "add",
+                "--env",
+                "ote",
+                "--token",
+                "garbage",
+                "test",
+                "--dry-run",
+            ])
+            .await;
+
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            !output.rendered.contains("would execute") && !output.rendered.contains("would store"),
+            "a malformed token must be rejected, not previewed: {}",
+            output.rendered
+        );
+    }
+
+    /// GDDEVPLAT-81: a well-formed token previews without being stored.
+    #[tokio::test]
+    async fn add_dry_run_previews_a_valid_token_without_storing() {
+        let cli =
+            Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
+        let output = cli
+            .run([
+                "gddy",
+                "pat",
+                "add",
+                "--env",
+                "ote",
+                "--token",
+                "gd_pat_abc123_1234abcd",
+                "test",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["action"], "would store");
+        assert_eq!(rendered["data"]["lastFour"], "abcd");
+    }
+
+    /// `pat remove --dry-run` previews existence without deleting.
+    #[tokio::test]
+    async fn remove_dry_run_reports_not_found_without_error() {
+        let cli =
+            Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
+        let output = cli
+            .run([
+                "gddy",
+                "pat",
+                "remove",
+                "--env",
+                "ote",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let status = rendered["data"]["status"].as_str().unwrap_or_default();
+        assert!(
+            status == "would remove" || status == "not found",
+            "unexpected status: {rendered}"
+        );
     }
 }

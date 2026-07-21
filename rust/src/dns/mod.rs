@@ -174,4 +174,56 @@ mod tests {
             );
         }
     }
+
+    /// `set`/`delete` opted into handler-driven `--dry-run` (to build a real
+    /// preview via `fetch_records`), which means the handler now runs under
+    /// `--dry-run` too — unlike the generic short-circuit, that must not skip
+    /// the fail-closed `Required`-auth check.
+    #[tokio::test]
+    async fn dns_set_and_delete_dry_run_still_require_auth() {
+        const AUTH_FAILURE_EXIT: i32 = 2;
+        let cases: [&[&str]; 2] = [
+            &[
+                "gddy",
+                "dns",
+                "set",
+                "example.com",
+                "--type",
+                "A",
+                "--name",
+                "www",
+                "--data",
+                "5.6.7.8",
+                "--dry-run",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "dns",
+                "delete",
+                "example.com",
+                "--type",
+                "A",
+                "--name",
+                "www",
+                "--dry-run",
+                "--output",
+                "json",
+            ],
+        ];
+        for args in cases {
+            let cli = Cli::new(
+                CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                    .with_default_auth_provider("godaddy")
+                    .with_module(module()),
+            );
+            let output = cli.run(args.iter().copied()).await;
+            assert_eq!(
+                output.exit_code, AUTH_FAILURE_EXIT,
+                "{args:?} must still fail closed at auth resolution under --dry-run, got: {}",
+                output.rendered
+            );
+        }
+    }
 }

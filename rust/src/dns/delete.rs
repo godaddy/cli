@@ -7,6 +7,8 @@ use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
+use domains_client::types;
+
 use super::records::{arg_str, fetch_records, parse_write_type_arg, verify_with_list_action};
 
 output_schema!(DnsDeleteResult {
@@ -60,6 +62,29 @@ fn summarize_delete_outcomes(
     }))
 }
 
+/// Builds the `dns delete --dry-run` preview from the same matched records the
+/// real execution would delete, so the preview can never drift from what
+/// `delete` would actually do.
+fn dry_run_delete_preview(
+    domain: &str,
+    record_type: &str,
+    name: &str,
+    existing: &[types::DnsRecord],
+) -> Value {
+    let records: Vec<Value> = existing
+        .iter()
+        .map(|rec| json!({"recordId": rec.record_id, "data": rec.data}))
+        .collect();
+
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        "wouldDelete": existing.len(),
+        "records": records,
+    })
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new(
@@ -75,6 +100,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_system("domain")
         .with_tier(Tier::Destructive)
+        .handles_dry_run(true)
         .with_default_fields("domain,type,name,deleted,failed")
         .with_output_schema::<DnsDeleteResult>()
         .with_scopes(&[DOMAINS_DNS_UPDATE])
@@ -116,6 +142,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 debug,
             )
             .await?;
+
+            if ctx.dry_run() {
+                return Ok(CommandResult::new(dry_run_delete_preview(
+                    &domain,
+                    &record_type,
+                    &name,
+                    &existing,
+                ))
+                .with_dry_run());
+            }
 
             let mut outcomes = Vec::with_capacity(existing.len());
             for rec in &existing {
@@ -188,5 +224,32 @@ mod tests {
             err.contains("dns list example.com --type A --name www"),
             "{err}"
         );
+    }
+
+    fn test_record(record_id: &str, data: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            data: data.to_owned(),
+            flag: None,
+            name: "www".to_owned(),
+            port: None,
+            priority: None,
+            protocol: None,
+            record_id: Some(record_id.to_owned()),
+            service: None,
+            tag: None,
+            ttl: 3600,
+            type_: types::DnsRecordType("A".to_owned()),
+            weight: None,
+        }
+    }
+
+    #[test]
+    fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
+        let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        assert_eq!(preview["wouldDelete"], 2);
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0]["data"], "1.2.3.4");
     }
 }

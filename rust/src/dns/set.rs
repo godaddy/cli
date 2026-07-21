@@ -132,6 +132,36 @@ fn summarize_set_outcomes(
     }))
 }
 
+/// Builds the `dns set --dry-run` preview directly from the same reconcile
+/// plan the real execution would apply, so the preview can never drift from
+/// what `set` would actually do. Doesn't attempt to predict a name-exclusivity
+/// conflict (that's only known once a write is actually attempted) — the
+/// preview shows the reconcile plan, not whether `--replace-conflicting-types`
+/// would end up mattering.
+fn dry_run_set_preview(domain: &str, record_type: &str, name: &str, plan: &[SetAction]) -> Value {
+    let count = |predicate: fn(&SetAction) -> bool| plan.iter().filter(|a| predicate(a)).count();
+    let plan_json: Vec<Value> = plan
+        .iter()
+        .map(|action| match action {
+            SetAction::Replace { record_id, data } => {
+                json!({"action": "replace", "recordId": record_id, "data": data})
+            }
+            SetAction::Create { data } => json!({"action": "create", "data": data}),
+            SetAction::Delete { record_id } => json!({"action": "delete", "recordId": record_id}),
+        })
+        .collect();
+
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        "wouldReplace": count(|a| matches!(a, SetAction::Replace { .. })),
+        "wouldCreate": count(|a| matches!(a, SetAction::Create { .. })),
+        "wouldDelete": count(|a| matches!(a, SetAction::Delete { .. })),
+        "plan": plan_json,
+    })
+}
+
 /// Delete each conflicting record — used only by `set --replace-conflicting-types`
 /// to auto-resolve a name-exclusivity conflict before retrying the write.
 /// Returns one `SetOutcome` per record (rather than bailing on the first
@@ -328,6 +358,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Destructive)
+            .handles_dry_run(true)
             .with_default_fields("domain,type,name,replaced,created,deleted")
             .with_output_schema::<DnsSetResult>()
             .with_scopes(&[DOMAINS_DNS_UPDATE]),
@@ -380,8 +411,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .filter_map(|r| r.record_id.clone())
                 .collect();
 
+            let plan = plan_set(&existing_ids, &data);
+            if ctx.dry_run() {
+                return Ok(CommandResult::new(dry_run_set_preview(
+                    &domain,
+                    &record_type,
+                    &name,
+                    &plan,
+                ))
+                .with_dry_run());
+            }
+
             let mut outcomes = Vec::new();
-            for action in plan_set(&existing_ids, &data) {
+            for action in plan {
                 match action {
                     SetAction::Replace {
                         record_id,
@@ -526,6 +568,19 @@ mod tests {
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
+    }
+
+    #[test]
+    fn dry_run_set_preview_matches_the_plan_it_would_execute() {
+        let plan = plan_set(
+            &["r1".to_string(), "r2".to_string(), "r3".to_string()],
+            &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
+        );
+        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        assert_eq!(preview["wouldReplace"], 2);
+        assert_eq!(preview["wouldCreate"], 0);
+        assert_eq!(preview["wouldDelete"], 1);
+        assert_eq!(preview["plan"].as_array().expect("plan array").len(), 3);
     }
 
     // --- write_with_conflict_handling ---------------------------------------
