@@ -359,10 +359,13 @@ fn add_command() -> RuntimeCommandSpec {
             }
 
             if ctx.dry_run() {
-                // Resolve the registry path too, so a dry-run can't report
-                // success in an environment (no config dir) where a real run
+                // Resolve and load the registry too, so a dry-run can't
+                // report success in a state (no config dir, or an existing
+                // pat.toml that fails to parse) where a real run — which
+                // calls save_pat, which loads the registry before writing —
                 // would immediately fail before ever getting this far.
                 let path = registry_path_err()?;
+                load_registry(&path)?;
                 return Ok(CommandResult::new(json!({
                     "env": env,
                     "name": name,
@@ -609,6 +612,18 @@ mod tests {
         assert_eq!(loaded.tokens.len(), 1);
         assert_eq!(loaded.tokens["prod"].name, "CI");
         assert_eq!(loaded.tokens["prod"].token, "gd_pat_abc123_1234abcd");
+    }
+
+    /// `pat add --dry-run` calls this same function so it can't report
+    /// success in a state where a real run (which loads the registry via
+    /// `save_pat`) would immediately fail parsing an existing malformed file.
+    #[test]
+    fn load_registry_rejects_malformed_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("pat.toml");
+        std::fs::write(&path, "this is not valid toml {{{").expect("write");
+        let err = load_registry(&path).expect_err("malformed TOML should be rejected");
+        assert!(err.to_string().contains("pat.toml"), "{err}");
     }
 
     fn test_registry_with(env: &str, token: &str) -> PatRegistry {
