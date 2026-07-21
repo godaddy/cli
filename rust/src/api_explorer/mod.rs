@@ -612,6 +612,13 @@ fn call_command() -> RuntimeCommandSpec {
                 .get("method")
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET");
+            // Validate the method unconditionally, including under
+            // `--dry-run` — otherwise a garbage/malformed method (e.g.
+            // "POST " with trailing whitespace) would return a successful
+            // dry-run preview even though a real run would reject it here.
+            let parsed_method: reqwest::Method = method.parse().map_err(|_| {
+                cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
+            })?;
 
             // `--dry-run` is statically tagged `Tier::Mutate` since the method
             // is only known at runtime, but a GET/HEAD is safe to actually run
@@ -678,12 +685,7 @@ fn call_command() -> RuntimeCommandSpec {
 
             let client = crate::application::client::make_http_client();
             let mut req = client
-                .request(
-                    method.parse().map_err(|_| {
-                        cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
-                    })?,
-                    &url,
-                )
+                .request(parsed_method, &url)
                 .bearer_auth(&token)
                 .header("x-request-id", uuid::Uuid::new_v4().to_string());
 
@@ -962,5 +964,34 @@ mod tests {
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
         assert_eq!(rendered["data"]["action"], "dry-run: would execute");
+    }
+
+    /// A malformed method must still be rejected under `--dry-run`, matching
+    /// what the real path's `method.parse()` would do — a garbage method
+    /// must not previously have returned a fake "would execute" success.
+    #[tokio::test]
+    async fn call_dry_run_rejects_a_malformed_method() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "/v1/example",
+                "--method",
+                "POST ",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("invalid HTTP method"),
+            "{}",
+            output.rendered
+        );
     }
 }
