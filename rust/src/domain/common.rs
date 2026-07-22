@@ -10,10 +10,6 @@ use domains_client::types;
 
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 
-fn map_env_err(e: environments::EnvError) -> CliCoreError {
-    CliCoreError::message(e.to_string())
-}
-
 /// Bridges domains-client's request/response observations into cli-engine's
 /// `--debug transport` logger. domains-client defines the `TransportObserver`
 /// extension point itself and has no compile-time dependency on cli-engine —
@@ -211,7 +207,7 @@ pub(crate) fn make_client_with_cred(
     cred: &Credential,
 ) -> Result<domains_client::Client> {
     ensure_transport_observer_registered();
-    let domains = environments::resolve_domains(env).map_err(map_env_err)?;
+    let domains = environments::resolve_domains(env)?;
     let authorization = format!("Bearer {}", cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
     domains_client::client_with_auth(&domains.base_url, &authorization, USER_AGENT, &request_id)

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use cli_engine::{
     CliCoreError, Credential, CredentialRequest, Result,
@@ -8,47 +10,44 @@ use crate::environments::{self, ResolvedEnv};
 use crate::pat::{self, PatEntry};
 use crate::scopes;
 
-/// Single auth provider that dispatches to env-specific PKCE providers.
-///
-/// Each env's provider is named after the env, so cli-engine's
-/// `PkceAuthProvider` picks up its per-env overrides automatically:
-///   `<PREFIX>_OAUTH_CLIENT_ID`, `<PREFIX>_OAUTH_AUTH_URL`, `<PREFIX>_OAUTH_TOKEN_URL`
-/// where `<PREFIX>` is the env name uppercased with `-` replaced by `_`
-/// (e.g. `OTE_OAUTH_CLIENT_ID`, `DEV_OAUTH_AUTH_URL`). The API base URL and the
-/// per-env defaults come from [`crate::environments`], which also resolves
-/// custom DEV/TEST environments from the local config file (see
-/// `crate::environments::environments_path`).
-#[derive(Debug, Default)]
-pub struct GoDaddyAuthProvider;
+#[derive(Debug)]
+pub struct GoDaddyAuthProvider {
+    provider: PkceAuthProvider,
+}
 
 impl GoDaddyAuthProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            provider: PkceAuthProvider::new(
+                "godaddy",
+                "",
+                "",
+                "",
+                environments::DEFAULT_OAUTH_SCOPES,
+            )
+            .with_app_id(environments::APP_ID)
+            .with_redirect_uri(environments::REDIRECT_URI)
+            .with_environments(Arc::clone(environments::instance())),
+        }
     }
 
-    /// Build a PKCE provider for the given env by resolving its endpoints.
+    /// Resolves `env` and logs the OAuth parameters that will be used
+    /// (see [`log_resolved_oauth`]).
     ///
-    /// Providers are constructed on demand (tokens persist in the OS keychain,
-    /// so there is nothing to cache across a one-shot CLI invocation). Works for
-    /// built-ins as well as any custom env defined via env var or local config.
-    fn provider_for(&self, env: &str) -> Result<PkceAuthProvider> {
-        let resolved =
-            environments::resolve(env).map_err(|e| CliCoreError::message(e.to_string()))?;
-        Ok(build_provider(&resolved))
+    /// Resolves up front (rather than relying solely on `.with_environments`'s
+    /// internal, silently-degrading resolution) so an unknown env surfaces a
+    /// clear error here instead of a confusing OAuth failure later.
+    fn resolve_and_log(&self, env: &str) -> Result<()> {
+        let resolved = environments::resolve(env)?;
+        log_resolved_oauth(&resolved);
+        Ok(())
     }
 }
 
-fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
-    log_resolved_oauth(env);
-    PkceAuthProvider::new(
-        env.name.clone(),
-        env.auth_url.clone(),
-        env.token_url.clone(),
-        env.client_id.clone(),
-        environments::DEFAULT_OAUTH_SCOPES,
-    )
-    .with_app_id(environments::APP_ID)
-    .with_redirect_uri(environments::REDIRECT_URI)
+impl Default for GoDaddyAuthProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Build a `Credential` from a PAT entry.
@@ -141,8 +140,8 @@ impl AuthProvider for GoDaddyAuthProvider {
         if let Some(entry) = pat::resolve_pat(env).await {
             return Ok(pat_credential(env, &entry));
         }
-        let provider = self.provider_for(env)?;
-        provider.get_credential(env, command, tier).await
+        self.resolve_and_log(env)?;
+        self.provider.get_credential(env, command, tier).await
     }
 
     async fn get_credential_for(&self, req: &CredentialRequest<'_>) -> Result<Credential> {
@@ -166,16 +165,16 @@ impl AuthProvider for GoDaddyAuthProvider {
         if req.command.is_empty() {
             validate_requested_scopes(&req.meta.scopes)?;
         }
-        let provider = self.provider_for(req.env)?;
-        provider.get_credential_for(req).await
+        self.resolve_and_log(req.env)?;
+        self.provider.get_credential_for(req).await
     }
 
     async fn status(&self, env: &str) -> Result<Credential> {
         if let Some(entry) = pat::resolve_pat(env).await {
             return Ok(pat_credential(env, &entry));
         }
-        let provider = self.provider_for(env)?;
-        provider.status(env).await
+        self.resolve_and_log(env)?;
+        self.provider.status(env).await
     }
 
     async fn logout(&self, env: &str) -> Result<()> {
@@ -184,17 +183,16 @@ impl AuthProvider for GoDaddyAuthProvider {
         if let Err(err) = pat::delete_pat(env).await {
             tracing::debug!(env, error = %err, "ignoring PAT delete error during logout");
         }
-        let provider = self.provider_for(env)?;
-        provider.logout(env).await
+        self.resolve_and_log(env)?;
+        self.provider.logout(env).await
     }
 
     async fn list_environments(&self) -> Result<Vec<String>> {
-        // Enumerate stored credentials across built-ins + locally-configured
-        // envs (env-var-only envs are excluded from `listable`, matching the
-        // `env list` contract). `listable` falls back to built-ins (logging a
-        // warning) on a malformed local config, so this never fails wholesale.
-        let listable =
-            environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
+        // `PkceAuthProvider::list_environments` only reflects its own
+        // in-memory token cache (keyring/file storage can't be enumerated by
+        // prefix), so this is a single call now that credentials for every
+        // env share one provider instance — no need to loop per env
+        // constructing a fresh (always cache-empty) provider per iteration.
         let mut envs = std::collections::BTreeSet::new();
         match pat::registry_envs().await {
             Ok(pats) => envs.extend(pats),
@@ -205,10 +203,7 @@ impl AuthProvider for GoDaddyAuthProvider {
                 );
             }
         }
-        for resolved in listable {
-            let provider = build_provider(&resolved);
-            envs.extend(provider.list_environments().await.unwrap_or_default());
-        }
+        envs.extend(self.provider.list_environments().await.unwrap_or_default());
         Ok(envs.into_iter().collect())
     }
 }

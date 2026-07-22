@@ -566,9 +566,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli-engine"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f34184dcd279900e0822019ec221e3520ef92cca42025140f5ee5aa5f9578be"
+checksum = "c8a27dd2b1e961082ee9e3045980f862710ea71c523c114d202e05c2bfbd4608"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

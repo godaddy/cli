@@ -3,7 +3,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use crate::environments::{self, EnvError};
+use crate::environments;
 use crate::output_schema::output_schema;
 
 output_schema!(EnvSummary {
@@ -49,19 +49,29 @@ fn gdenv_path() -> std::io::Result<std::path::PathBuf> {
         })
 }
 
-pub fn get_env() -> Option<String> {
+/// Reads the raw, unvalidated `.gdenv` contents. No dependency on
+/// [`environments`] — used by [`environments::instance`]'s own lazy
+/// initializer, so it must not call back into `environments` (which resolves
+/// against the very instance being built, and would deadlock re-entering its
+/// `OnceLock`).
+pub(crate) fn read_gdenv_raw() -> Option<String> {
     gdenv_path()
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .map(|s| s.trim().to_owned())
-        // Ignore empty or unrecognized values (e.g. a hand-edited/corrupted
-        // .gdenv) so callers fall back to DEFAULT_ENV instead of propagating an
-        // unknown environment. `is_known` accepts built-ins plus any env defined
-        // via env var or local config, so a persisted custom env (e.g. "dev")
+        .filter(|s| !s.is_empty())
+}
+
+pub fn get_env() -> Option<String> {
+    read_gdenv_raw()
+        // Ignore an unrecognized value (e.g. a hand-edited/corrupted .gdenv) so
+        // callers fall back to DEFAULT_ENV instead of propagating an unknown
+        // environment. `is_known` accepts built-ins plus any env defined via
+        // env var or local config, so a persisted custom env (e.g. "dev")
         // survives — except a config-only env is dropped if the config file
         // can't be read, since `is_known` then falls back to built-ins +
         // `<ENV>_API_URL` only.
-        .filter(|s| !s.is_empty() && environments::is_known(s))
+        .filter(|s| environments::is_known(s))
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {
@@ -71,10 +81,6 @@ pub fn set_env(env: &str) -> std::io::Result<()> {
         // an actionable message — the raw write error omits it.
         std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
     })
-}
-
-fn map_err(e: EnvError) -> cli_engine::CliCoreError {
-    cli_engine::CliCoreError::message(e.to_string())
 }
 
 fn active_env() -> String {
@@ -104,7 +110,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let current = active_env();
-                let mut resolved = environments::listable().map_err(map_err)?;
+                let mut resolved = environments::listable()?;
                 // If the active env is defined only via `<ENV>_API_URL` (so it's
                 // excluded from `listable`), still show it — otherwise the list
                 // has no `active: true` entry and callers can't tell what's active.
@@ -140,7 +146,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let env = active_env();
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                let resolved = environments::resolve(&env)?;
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
@@ -153,7 +159,11 @@ pub fn module() -> Module {
                     "Switches the active environment and persists the choice to \
                          ~/.gdenv so all subsequent commands use the new environment \
                          without needing `--env`.\n\
-                         The value must be a known environment name (prod or ote).",
+                         The value must be a known environment name (prod or ote).\n\
+                         If a local environments.toml entry for this environment sets \
+                         min_stage/feature_overrides to reveal pre-release commands, \
+                         persisting it here (not a same-invocation `--env`) is what \
+                         makes those commands visible on the next run.",
                 )
                 .with_system("env")
                 .with_tier(Tier::Mutate)
@@ -179,7 +189,7 @@ pub fn module() -> Module {
                 // Resolve up front: validates the env exists (built-in, env
                 // var, or local config) and yields its API URL for the reply.
                 // Runs unconditionally, including under `--dry-run`.
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                let resolved = environments::resolve(&env)?;
                 if ctx.dry_run() {
                     return Ok(CommandResult::new(json!({
                         "env": resolved.name,
@@ -214,7 +224,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let env = active_env();
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                let resolved = environments::resolve(&env)?;
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
