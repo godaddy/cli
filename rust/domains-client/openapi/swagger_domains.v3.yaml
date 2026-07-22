@@ -1035,74 +1035,15 @@ paths:
           $ref: '#/components/responses/422'
         '429':
           $ref: '#/components/responses/429'
+  # NOTE: this path previously also had a `put` (operationId replaceDNSRecord).
+  # It's removed: despite returning 200, it does not perform a single-record
+  # replace — it silently replaces the entire dns-records collection with
+  # [system records] + [the one record in the body], discarding every other
+  # record in the zone. Reproduced live against a test zone; see
+  # https://github.com/godaddy/cli/issues/136. Do not reintroduce without a
+  # confirmed server-side fix and a fresh live check against a real zone with
+  # unrelated records.
   /zones/{zone}/dns-records/{recordId}:
-    put:
-      operationId: replaceDNSRecord
-      tags:
-      - Records
-      summary: Replace a DNS record
-      description: 'Fully replaces an existing DNS resource record identified by
-
-        recordId within the zone. All writable fields (name, type, data,
-
-        ttl) must be supplied; partial updates are not supported on this
-
-        endpoint. Changes are applied synchronously.
-
-
-        GoDaddy-managed system records (SOA and NS) are read-only. When
-
-        recordId refers to such a record, the request fails with
-
-        `409 Conflict` — the record exists but cannot be modified.
-
-        '
-      parameters:
-      - $ref: '#/components/parameters/xRequestId'
-      - $ref: '#/components/parameters/xShopperId'
-      - $ref: '#/components/parameters/zonePath'
-      - $ref: '#/components/parameters/recordId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DNSRecord'
-            examples:
-              apexARecord:
-                summary: Replace apex A record
-                value:
-                  name: '@'
-                  type: A
-                  data: 192.0.2.1
-                  ttl: 3600
-      security:
-      - oauth2:
-        - domains.dns:update
-      responses:
-        '200':
-          description: DNS record replaced.
-          headers:
-            X-Request-Id:
-              $ref: '#/components/headers/xRequestId'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DNSRecord'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '429':
-          $ref: '#/components/responses/429'
     delete:
       operationId: deleteDNSRecord
       tags:
