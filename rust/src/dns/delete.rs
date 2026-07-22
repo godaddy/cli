@@ -100,7 +100,14 @@ fn dry_run_delete_preview(
         "deleted": would_delete,
         "failed": would_fail,
         "records": records,
-        "action": "would delete",
+        // "would delete" reads oddly with nothing matched (0 records, 0
+        // deletes) — call out the no-match case explicitly rather than
+        // implying a delete that has nothing to act on.
+        "action": if existing.is_empty() {
+            "nothing to delete"
+        } else {
+            "would delete"
+        },
     })
 }
 
@@ -296,6 +303,20 @@ mod tests {
         assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records[1]["status"], "would fail (missing recordId)");
+    }
+
+    /// Nothing matched — "would delete" would misleadingly imply a delete
+    /// with no target; the preview should say so plainly instead.
+    #[test]
+    fn dry_run_delete_preview_reports_nothing_to_delete_on_zero_match() {
+        let preview = dry_run_delete_preview("example.com", "A", "www", &[]);
+        assert_eq!(preview["deleted"], 0);
+        assert_eq!(preview["failed"], 0);
+        assert_eq!(preview["action"], "nothing to delete");
+        assert_eq!(
+            preview["records"].as_array().expect("records array").len(),
+            0
+        );
     }
 
     /// The command's `--output json` path always projects through
