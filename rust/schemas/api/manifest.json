@@ -109,7 +109,7 @@
     "domains": {
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
-      "endpointCount": 15
+      "endpointCount": 14
     }
   }
 }

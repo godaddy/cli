@@ -18,7 +18,7 @@ use super::records::{
 };
 
 // `dns set` reconciles over v3's per-record ops; it reports how many records it
-// reused (replaced), created, and deleted to reach the desired set.
+// replaced, created, and deleted to reach the desired set.
 output_schema!(DnsSetResult {
     "domain": "string";
     "type": "string";
@@ -31,9 +31,17 @@ output_schema!(DnsSetResult {
 });
 
 /// One reconcile action for `dns set` over v3's per-record endpoints.
+///
+/// v3 has no atomic single-record replace: `PUT .../dns-records/{recordId}`
+/// responds `200` but silently replaces the *entire* record collection with
+/// just the system records and whatever's in the request body, discarding
+/// everything else in the zone (reproduced live against a test zone; see
+/// <https://github.com/godaddy/cli/issues/136>). So `Replace` is executed as
+/// create-the-new-value-then-delete-the-old-record, never as an in-place PUT.
 #[derive(Debug, PartialEq)]
 enum SetAction {
-    /// Reuse an existing record's id, replacing its value with a new `--data`.
+    /// Create a record for the desired `--data` value, then delete the
+    /// existing record (`record_id`) it's replacing.
     Replace { record_id: String, data: String },
     /// Remove an existing record no longer wanted.
     Delete { record_id: String },
@@ -42,7 +50,7 @@ enum SetAction {
 }
 
 /// Reconcile the existing records for a type+name (their ids, in list order) with
-/// the desired `--data` values: reuse ids for the overlap (`Replace`), `Delete`
+/// the desired `--data` values: pair up the overlap (`Replace`), `Delete`
 /// the surplus existing, `Create` the surplus desired. Pure so the plan — the
 /// least-destructive way to emulate a set-replace over per-record v3 ops — is
 /// unit-testable.
@@ -213,38 +221,7 @@ async fn delete_conflicts(
     outcomes
 }
 
-/// One `set` create/replace call, dispatched by [`send_write`].
-enum WriteCall<'a> {
-    Create,
-    Replace { record_id: &'a str },
-}
-
-async fn send_write(
-    client: &domains_client::Client,
-    domain: &str,
-    call: &WriteCall<'_>,
-    body: types::DnsRecord,
-) -> Result<(), domains_client::Error<()>> {
-    match call {
-        WriteCall::Create => client
-            .create_dns_record()
-            .zone(domain)
-            .body(body)
-            .send()
-            .await
-            .map(|_| ()),
-        WriteCall::Replace { record_id } => client
-            .replace_dns_record()
-            .zone(domain)
-            .record_id(*record_id)
-            .body(body)
-            .send()
-            .await
-            .map(|_| ()),
-    }
-}
-
-/// Context for one `set` create/replace action, bundled to keep
+/// Context for one `set` create action, bundled to keep
 /// [`write_with_conflict_handling`]'s signature within clippy's
 /// argument-count limit.
 struct WriteRequest<'a> {
@@ -257,32 +234,37 @@ struct WriteRequest<'a> {
     debug: bool,
 }
 
-/// Apply one `set` create/replace action, with the same name-exclusivity
-/// conflict handling `add` gets (see [`super::conflicts::describe_write_error`])
-/// plus an opt-in auto-fix: with `--replace-conflicting-types`, a genuine
-/// `DUPLICATE_RECORD` failure deletes the conflicting record(s) and retries the
-/// write once. Returns the delete outcomes (if any) followed by the outcome for
-/// the create/replace itself, so `outcomes.extend(...)` folds both into the same
-/// reconcile summary.
+/// Create one record for `req.value` (a surplus `--data` value, or — via
+/// [`apply_replace`] — the new half of a replace pairing), with the same
+/// name-exclusivity conflict handling `add` gets (see
+/// [`super::conflicts::describe_write_error`]) plus an opt-in auto-fix: with
+/// `--replace-conflicting-types`, a genuine `DUPLICATE_RECORD` failure deletes
+/// the conflicting record(s) and retries the write once. Returns the delete
+/// outcomes (if any) followed by the outcome for the create itself, so
+/// `outcomes.extend(...)` folds both into the same reconcile summary. The
+/// terminal outcome's `kind` is always `"created"` — [`apply_replace`]
+/// relabels it to `"replaced"` when this is the create half of a replace.
 async fn write_with_conflict_handling(
     client: &domains_client::Client,
     req: &WriteRequest<'_>,
-    call: WriteCall<'_>,
 ) -> Vec<SetOutcome> {
-    let (kind, action) = match &call {
-        WriteCall::Create => ("created", "creating DNS record"),
-        WriteCall::Replace { .. } => ("replaced", "replacing DNS record"),
-    };
-    let outcome = |err: Option<String>| SetOutcome::new(kind, req.value.to_string(), err);
+    const ACTION: &str = "creating DNS record";
+    let outcome = |err: Option<String>| SetOutcome::new("created", req.value.to_string(), err);
 
     let body = v3_record(req.name, req.record_type, req.value, req.opts);
-    let err = match send_write(client, req.domain, &call, body).await {
-        Ok(()) => return vec![outcome(None)],
+    let err = match client
+        .create_dns_record()
+        .zone(req.domain)
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(_) => return vec![outcome(None)],
         Err(e) => e,
     };
     let domains_client::Error::UnexpectedResponse(resp) = err else {
         return vec![outcome(Some(
-            api_error(action, req.debug, err).await.to_string(),
+            api_error(ACTION, req.debug, err).await.to_string(),
         ))];
     };
     let status = resp.status();
@@ -295,7 +277,7 @@ async fn write_with_conflict_handling(
 
     if !duplicate_record_issue(&resp_body) {
         let msg = format_api_error(
-            action,
+            ACTION,
             status.as_u16(),
             &status.to_string(),
             &resp_body,
@@ -330,11 +312,81 @@ async fn write_with_conflict_handling(
 
     let mut outcomes = delete_conflicts(client, req.domain, &conflicts, req.debug).await;
     let retry_body = v3_record(req.name, req.record_type, req.value, req.opts);
-    let retry_err = match send_write(client, req.domain, &call, retry_body).await {
-        Ok(()) => None,
-        Err(e) => Some(api_error(action, req.debug, e).await.to_string()),
+    let retry_err = match client
+        .create_dns_record()
+        .zone(req.domain)
+        .body(retry_body)
+        .send()
+        .await
+    {
+        Ok(_) => None,
+        Err(e) => Some(api_error(ACTION, req.debug, e).await.to_string()),
     };
     outcomes.push(outcome(retry_err));
+    outcomes
+}
+
+/// Human-readable `"<TYPE> <DATA>"` label for an existing record id, for
+/// outcome reporting — falls back to the bare id if the record isn't in
+/// `existing` (shouldn't happen; `existing` is what `plan_set` was built from).
+fn record_label(existing: &[types::DnsRecord], record_type: &str, record_id: &str) -> String {
+    existing
+        .iter()
+        .find(|r| r.record_id.as_deref() == Some(record_id))
+        .map(|r| format!("{record_type} {}", r.data))
+        .unwrap_or_else(|| record_id.to_string())
+}
+
+/// Apply one `set` "replace" reconcile action: create the new value via
+/// [`write_with_conflict_handling`], then — only if that succeeded — delete
+/// the record it's replacing. There's no atomic single-record replace in v3
+/// (see the note on [`SetAction::Replace`]), so this create-then-delete pair
+/// is the least-destructive way to emulate one: if the create fails, the old
+/// record is left untouched rather than risking data loss.
+///
+/// Relabels the create outcome's `kind` from `"created"` to `"replaced"` so
+/// `summarize_set_outcomes`'s tallies mean what the user asked for. If the
+/// delete of the old record fails after a successful create, that's reported
+/// as an extra `"cleanup"`-kind outcome — a kind `summarize_set_outcomes`'s
+/// counts don't recognize, so it doesn't inflate replaced/created/deleted,
+/// but its `error` still fails the command and shows up in the breakdown.
+async fn apply_replace(
+    client: &domains_client::Client,
+    req: &WriteRequest<'_>,
+    old_record_id: &str,
+    old_detail: &str,
+) -> Vec<SetOutcome> {
+    let mut outcomes = write_with_conflict_handling(client, req).await;
+    let Some(last) = outcomes.last_mut() else {
+        return outcomes;
+    };
+    last.kind = "replaced";
+    if last.error.is_some() {
+        return outcomes;
+    }
+
+    if let Err(e) = client
+        .delete_dns_record()
+        .zone(req.domain)
+        .record_id(old_record_id)
+        .send()
+        .await
+    {
+        let msg = format!(
+            "the new value was created, but the previous record ({old_detail}) could not be \
+             removed: {}; run `gddy dns list {} --type {} --name {}` to review the current \
+             state and remove it manually if it's still there",
+            api_error("deleting the previous DNS record", req.debug, e).await,
+            req.domain,
+            req.record_type,
+            req.name,
+        );
+        outcomes.push(SetOutcome::new(
+            "cleanup",
+            old_detail.to_string(),
+            Some(msg),
+        ));
+    }
     outcomes
 }
 
@@ -348,10 +400,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Replaces every DNS record for the given type+name pair with the \
                  values supplied via `--data`, discarding any records that were \
-                 there before. v3 has no bulk replace, so this reconciles over \
-                 per-record calls: it reuses existing records for the overlap, \
-                 deletes the surplus, and creates the shortfall (so it is not \
-                 atomic — a mid-run failure is reported per record). This is \
+                 there before. v3 has no bulk or in-place replace, so this \
+                 reconciles over per-record calls: for the overlap it creates \
+                 the replacement value then deletes the record it's replacing, \
+                 it deletes the surplus, and it creates the shortfall (so it is \
+                 not atomic — a mid-run failure is reported per record). This is \
                  destructive and irreversible — use `dns list --type <type> \
                  --name <name>` to review first. Use `dns add` to append without \
                  removing existing records.\n\
@@ -444,16 +497,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             replace_conflicting,
                             debug,
                         };
-                        outcomes.extend(
-                            write_with_conflict_handling(
-                                &client,
-                                &req,
-                                WriteCall::Replace {
-                                    record_id: record_id.as_str(),
-                                },
-                            )
-                            .await,
-                        );
+                        let old_detail = record_label(&existing, &record_type, &record_id);
+                        outcomes
+                            .extend(apply_replace(&client, &req, &record_id, &old_detail).await);
                     }
                     SetAction::Create { data: value } => {
                         let req = WriteRequest {
@@ -465,9 +511,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             replace_conflicting,
                             debug,
                         };
-                        outcomes.extend(
-                            write_with_conflict_handling(&client, &req, WriteCall::Create).await,
-                        );
+                        outcomes.extend(write_with_conflict_handling(&client, &req).await);
                     }
                     SetAction::Delete { record_id } => {
                         let res = client
@@ -482,14 +526,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 Some(api_error("deleting DNS record", debug, e).await.to_string())
                             }
                         };
-                        // Match `delete_conflicts`'s "<TYPE> <DATA>" detail format so a
-                        // partial-failure breakdown doesn't mix raw record ids with
-                        // human-readable values.
-                        let detail = existing
-                            .iter()
-                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
-                            .map(|r| format!("{record_type} {}", r.data))
-                            .unwrap_or_else(|| record_id.clone());
+                        let detail = record_label(&existing, &record_type, &record_id);
                         outcomes.push(SetOutcome::new("deleted", detail, err));
                     }
                 }
@@ -574,6 +611,19 @@ mod tests {
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
+
+        // A `apply_replace`-style "cleanup" outcome (the new value was created
+        // but the old record couldn't be deleted afterward) still fails the
+        // command, but must not be double-counted into `replaced`/`deleted`
+        // since the replace itself already succeeded.
+        let replace_with_cleanup_failure = vec![
+            SetOutcome::new("replaced", "9.9.9.9".into(), None),
+            SetOutcome::new("cleanup", "A 1.2.3.4".into(), Some("still there".into())),
+        ];
+        let err = summarize_set_outcomes("example.com", "A", "www", &replace_with_cleanup_failure)
+            .expect_err("cleanup failure still fails the command");
+        assert!(err.contains("1 of 2"), "{err}");
+        assert!(err.contains("✗ cleanup A 1.2.3.4 — still there"), "{err}");
     }
 
     #[test]
@@ -669,8 +719,7 @@ mod tests {
             replace_conflicting: false,
             debug: false,
         };
-        let outcomes =
-            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
 
         create.assert_async().await;
         assert_eq!(outcomes.len(), 1);
@@ -716,8 +765,7 @@ mod tests {
             replace_conflicting: false,
             debug: false,
         };
-        let outcomes =
-            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
 
         // Only the message outcome — no delete attempted since the flag wasn't set.
         assert_eq!(outcomes.len(), 1);
@@ -771,8 +819,7 @@ mod tests {
             replace_conflicting: true,
             debug: false,
         };
-        let outcomes =
-            write_with_conflict_handling(&client_for(&server), &req, WriteCall::Create).await;
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
 
         delete.assert_async().await;
         // delete_conflicts' outcome must come first, then the retry outcome —
@@ -787,5 +834,131 @@ mod tests {
         // attempt, a failure here is reported generically (no re-diagnosis).
         let err = outcomes[1].error.as_deref().expect("retry still failed");
         assert!(err.contains("Duplicate data provided"), "{err}");
+    }
+
+    // --- apply_replace -------------------------------------------------------
+    //
+    // `set`'s "replace" semantic is create-the-new-value-then-delete-the-old
+    // (v3 has no atomic single-record replace; see GH #136). These exercise:
+    // the happy path (create then delete, one "replaced" outcome), the create
+    // failing (delete must never be attempted — the old record stays intact),
+    // and the delete failing after a successful create (reported as a
+    // separate "cleanup" outcome that still fails the command).
+
+    fn replace_req<'a>(opts: &'a RecordOptions, value: &'a str) -> WriteRequest<'a> {
+        WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "A",
+            value,
+            opts,
+            replace_conflicting: false,
+            debug: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn apply_replace_creates_then_deletes_the_old_record() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(201).json_body(
+                    json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600 }),
+                );
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/old-1");
+                then.status(204);
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = replace_req(&opts, "9.9.9.9");
+        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+
+        create.assert_async().await;
+        delete.assert_async().await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "replaced");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    #[tokio::test]
+    async fn apply_replace_leaves_old_record_alone_when_create_fails() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(500);
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/old-1");
+                then.status(204);
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = replace_req(&opts, "9.9.9.9");
+        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+
+        assert_eq!(
+            delete.hits_async().await,
+            0,
+            "the old record must not be touched when the create fails"
+        );
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "replaced");
+        assert!(outcomes[0].error.is_some());
+    }
+
+    #[tokio::test]
+    async fn apply_replace_reports_cleanup_outcome_when_delete_of_old_record_fails() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(201).json_body(
+                    json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600 }),
+                );
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/old-1");
+                then.status(404).json_body(json!({
+                    "correlationId": "c-1",
+                    "message": "Record not found in DNS zone.",
+                    "name": "RECORD_NOT_FOUND"
+                }));
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = replace_req(&opts, "9.9.9.9");
+        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+
+        create.assert_async().await;
+        delete.assert_async().await;
+        assert_eq!(outcomes.len(), 2);
+        assert_eq!(outcomes[0].kind, "replaced");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+        assert_eq!(outcomes[1].kind, "cleanup");
+        let err = outcomes[1]
+            .error
+            .as_deref()
+            .expect("cleanup failure reported");
+        assert!(err.contains("A 1.2.3.4"), "{err}");
+        assert!(err.contains("dns list"), "{err}");
     }
 }

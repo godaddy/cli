@@ -583,7 +583,7 @@ mod tests {
         assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
     }
 
-    // --- v3: DNS list / replace / delete ------------------------------------
+    // --- v3: DNS list / delete -----------------------------------------------
 
     #[tokio::test]
     async fn list_dns_records_sends_filters_and_parses_collection() {
@@ -624,47 +624,6 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].record_id.as_deref(), Some("rec-1"));
         assert_eq!(items[0].data, "1.2.3.4");
-    }
-
-    #[tokio::test]
-    async fn replace_dns_record_puts_by_record_id() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(PUT)
-                    .path("/v3/domains/zones/example.com/dns-records/rec-1")
-                    .json_body(
-                        json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
-                    );
-                then.status(200).json_body(
-                    json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
-                );
-            })
-            .await;
-
-        client_for(&server)
-            .replace_dns_record()
-            .zone("example.com")
-            .record_id("rec-1")
-            .body(types::DnsRecord {
-                data: "5.6.7.8".to_string(),
-                flag: None,
-                name: "www".to_string(),
-                port: None,
-                priority: None,
-                protocol: None,
-                record_id: None,
-                service: None,
-                tag: None,
-                ttl: 600,
-                type_: types::DnsRecordType("A".to_string()),
-                weight: None,
-            })
-            .send()
-            .await
-            .expect("request succeeds");
-
-        mock.assert_async().await;
     }
 
     #[tokio::test]
