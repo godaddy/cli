@@ -184,16 +184,32 @@ fn requested_env_from_argv() -> Option<String> {
 
 /// Pure scan over an arg iterator — unit-testable without touching the real
 /// process argv. See [`requested_env_from_argv`] for why this exists.
+///
+/// Scans the *entire* argv and keeps the *last* non-empty `--env`/`--env=`
+/// value, rather than stopping at the first match. A global `--env` and a
+/// command-local one sharing the same arg id (e.g. `gddy --env bar pat add
+/// --env foo ...`) can both appear in one invocation; whichever clap
+/// resolves as the effective value (empirically, the last one) is the one
+/// this scan must agree with, or a real env-var-only environment can be
+/// rejected as unknown even though it's the value actually in effect. An
+/// empty value (`--env=` with nothing after the `=`, or `--env` immediately
+/// followed by another flag with nothing captured) is ignored rather than
+/// becoming a literal empty-string candidate.
 fn requested_env_from(mut args: impl Iterator<Item = String>) -> Option<String> {
+    let mut result = None;
     while let Some(arg) = args.next() {
-        if let Some(value) = arg.strip_prefix("--env=") {
-            return Some(value.to_owned());
-        }
-        if arg == "--env" {
-            return args.next();
+        let value = if let Some(v) = arg.strip_prefix("--env=") {
+            Some(v.to_owned())
+        } else if arg == "--env" {
+            args.next()
+        } else {
+            None
+        };
+        if let Some(v) = value.filter(|v| !v.is_empty()) {
+            result = Some(v);
         }
     }
-    None
+    result
 }
 
 /// Builds the compiled-in `ote`/`prod` `Environments`, shared by
@@ -663,5 +679,37 @@ mod tests {
     #[test]
     fn requested_env_from_trailing_env_flag_with_no_value_is_none() {
         assert_eq!(requested_env_from(argv(&["--env"])), None);
+    }
+
+    #[test]
+    fn requested_env_from_keeps_the_last_of_multiple_occurrences() {
+        // A global `--env` and a command-local one sharing the same arg id
+        // can both appear (e.g. `gddy --env bar pat add --env foo ...`);
+        // clap resolves the *last* one as effective, so this scan must too.
+        assert_eq!(
+            requested_env_from(argv(&[
+                "--env",
+                "bar",
+                "pat",
+                "add",
+                "--env",
+                "foo",
+                "test-token"
+            ])),
+            Some("foo".to_owned())
+        );
+    }
+
+    #[test]
+    fn requested_env_from_ignores_an_empty_equals_value() {
+        assert_eq!(requested_env_from(argv(&["--env="])), None);
+    }
+
+    #[test]
+    fn requested_env_from_empty_occurrence_does_not_clobber_an_earlier_real_value() {
+        assert_eq!(
+            requested_env_from(argv(&["--env", "dev", "--env="])),
+            Some("dev".to_owned())
+        );
     }
 }
