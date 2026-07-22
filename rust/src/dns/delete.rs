@@ -7,6 +7,8 @@ use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
+use domains_client::types;
+
 use super::records::{arg_str, fetch_records, parse_write_type_arg, verify_with_list_action};
 
 output_schema!(DnsDeleteResult {
@@ -16,6 +18,7 @@ output_schema!(DnsDeleteResult {
     "deleted": "number";
     "failed": "number";
     "action": "string";
+    "records": "[]object", optional;
 });
 
 /// Build the `delete` result from per-record delete outcomes (each matched
@@ -60,6 +63,47 @@ fn summarize_delete_outcomes(
     }))
 }
 
+/// Builds the `dns delete --dry-run` preview from the same matched records the
+/// real execution would delete, so the preview can never drift from what
+/// `delete` would actually do.
+fn dry_run_delete_preview(
+    domain: &str,
+    record_type: &str,
+    name: &str,
+    existing: &[types::DnsRecord],
+) -> Value {
+    // Mirror the real execution's per-record split: a record without a
+    // recordId can't actually be deleted (see the handler below), so the
+    // preview must not claim it as a delete.
+    let would_delete = existing.iter().filter(|r| r.record_id.is_some()).count();
+    let would_fail = existing.len() - would_delete;
+    let records: Vec<Value> = existing
+        .iter()
+        .map(|rec| {
+            let status = if rec.record_id.is_some() {
+                "would delete"
+            } else {
+                "would fail (missing recordId)"
+            };
+            json!({"recordId": rec.record_id, "data": rec.data, "status": status})
+        })
+        .collect();
+
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        // Reuse DnsDeleteResult's own field names (rather than inventing
+        // "wouldDelete"/"wouldFail") so the preview survives the command's
+        // `with_default_fields` projection instead of being silently
+        // stripped down to just domain/type/name.
+        "deleted": would_delete,
+        "failed": would_fail,
+        "records": records,
+        "action": "would delete",
+    })
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new(
@@ -75,7 +119,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_system("domain")
         .with_tier(Tier::Destructive)
-        .with_default_fields("domain,type,name,deleted,failed")
+        .handles_dry_run(true)
+        .with_default_fields("domain,type,name,deleted,failed,action,records")
         .with_output_schema::<DnsDeleteResult>()
         .with_scopes(&[DOMAINS_DNS_UPDATE])
         .with_arg(
@@ -116,6 +161,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 debug,
             )
             .await?;
+
+            if ctx.dry_run() {
+                return Ok(CommandResult::new(dry_run_delete_preview(
+                    &domain,
+                    &record_type,
+                    &name,
+                    &existing,
+                ))
+                .with_dry_run());
+            }
 
             let mut outcomes = Vec::with_capacity(existing.len());
             for rec in &existing {
@@ -188,5 +243,80 @@ mod tests {
             err.contains("dns list example.com --type A --name www"),
             "{err}"
         );
+    }
+
+    fn test_record(record_id: &str, data: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            data: data.to_owned(),
+            flag: None,
+            name: "www".to_owned(),
+            port: None,
+            priority: None,
+            protocol: None,
+            record_id: Some(record_id.to_owned()),
+            service: None,
+            tag: None,
+            ttl: 3600,
+            type_: types::DnsRecordType("A".to_owned()),
+            weight: None,
+        }
+    }
+
+    fn test_record_without_id(data: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            record_id: None,
+            ..test_record("unused", data)
+        }
+    }
+
+    #[test]
+    fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
+        let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        assert_eq!(preview["deleted"], 2);
+        assert_eq!(preview["failed"], 0);
+        assert_eq!(preview["action"], "would delete");
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0]["data"], "1.2.3.4");
+        assert_eq!(records[0]["status"], "would delete");
+    }
+
+    /// A record without a recordId can't actually be deleted (the real
+    /// handler reports it as a failure) — the preview must not claim it as
+    /// a delete either.
+    #[test]
+    fn dry_run_delete_preview_flags_records_without_a_recordid_as_would_fail() {
+        let existing = vec![
+            test_record("r1", "1.2.3.4"),
+            test_record_without_id("5.6.7.8"),
+        ];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        assert_eq!(preview["deleted"], 1);
+        assert_eq!(preview["failed"], 1);
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[1]["status"], "would fail (missing recordId)");
+    }
+
+    /// The command's `--output json` path always projects through
+    /// `default_fields` when the user doesn't pass `--fields` — a preview
+    /// field that isn't in that list is silently stripped and never reaches
+    /// the user. Prove the preview's summary fields actually survive it
+    /// (this is exactly the gap a pure call to `dry_run_delete_preview` can't
+    /// catch, since it never goes through the projection).
+    #[test]
+    fn dry_run_delete_preview_survives_default_field_projection() {
+        let existing = vec![test_record("r1", "1.2.3.4")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        let default_fields = "domain,type,name,deleted,failed,action,records";
+        let projected = cli_engine::output::filter_fields(&preview, default_fields);
+        for field in [
+            "domain", "type", "name", "deleted", "failed", "action", "records",
+        ] {
+            assert!(
+                !projected[field].is_null(),
+                "{field:?} was stripped by default_fields; preview: {projected}"
+            );
+        }
     }
 }

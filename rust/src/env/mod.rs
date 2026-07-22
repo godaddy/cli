@@ -17,6 +17,16 @@ output_schema!(EnvActive {
     "apiUrl": "string";
 });
 
+// `env set` always returns an "action" ("activated" for real, "would
+// activate" under --dry-run) — a dedicated schema, rather than adding
+// `action` to `EnvActive`, since `EnvActive` is shared with `env get`, which
+// never has an action concept.
+output_schema!(EnvSetResult {
+    "env": "string";
+    "apiUrl": "string";
+    "action": "string";
+});
+
 output_schema!(EnvInfo {
     "env": "string";
     "apiUrl": "string";
@@ -147,7 +157,8 @@ pub fn module() -> Module {
                 )
                 .with_system("env")
                 .with_tier(Tier::Mutate)
-                .with_output_schema::<EnvActive>()
+                .handles_dry_run(true)
+                .with_output_schema::<EnvSetResult>()
                 .no_auth(true)
                 .with_arg(
                     // Distinct id from the global `--env` flag (also id "env");
@@ -167,7 +178,16 @@ pub fn module() -> Module {
                     .to_owned();
                 // Resolve up front: validates the env exists (built-in, env
                 // var, or local config) and yields its API URL for the reply.
+                // Runs unconditionally, including under `--dry-run`.
                 let resolved = environments::resolve(&env).map_err(map_err)?;
+                if ctx.dry_run() {
+                    return Ok(CommandResult::new(json!({
+                        "env": resolved.name,
+                        "apiUrl": resolved.api_url,
+                        "action": "would activate",
+                    }))
+                    .with_dry_run());
+                }
                 set_env(&env).map_err(|e| {
                     cli_engine::CliCoreError::message(format!(
                         "failed to write .gdenv state file: {e}"
@@ -176,6 +196,7 @@ pub fn module() -> Module {
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
+                    "action": "activated",
                 })))
             },
         ))
@@ -242,5 +263,45 @@ mod tests {
                 "apiUrl should be a URL: {entry}"
             );
         }
+    }
+
+    /// `env set --dry-run` never calls `set_env`, so this is safe to run
+    /// without touching the real `~/.gdenv` state file.
+    #[tokio::test]
+    async fn env_set_dry_run_previews_a_valid_environment_without_persisting() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli
+            .run(["gddy", "env", "set", "ote", "--dry-run", "--output", "json"])
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        assert_eq!(json["data"]["env"], "ote");
+        assert_eq!(json["data"]["action"], "would activate");
+    }
+
+    #[tokio::test]
+    async fn env_set_dry_run_still_rejects_an_unknown_environment() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli
+            .run([
+                "gddy",
+                "env",
+                "set",
+                "not-a-real-env",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
     }
 }

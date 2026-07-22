@@ -204,6 +204,14 @@ fn split_header(raw: &str) -> Option<(&str, &str)> {
     raw.split_once(':').map(|(k, v)| (k.trim(), v.trim()))
 }
 
+/// Whether an HTTP method mutates server state, for `--dry-run` gating.
+/// `call`'s tier is fixed at spec-build time, but the method is a runtime
+/// arg — this decides per-invocation whether `--dry-run` should actually
+/// short-circuit the request. Case-insensitive.
+fn is_mutating_method(method: &str) -> bool {
+    !(method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD"))
+}
+
 /// Parse a response body as JSON when possible, otherwise preserve it as raw
 /// UTF-8 text. A non-JSON body (plain text / HTML error page) must not be
 /// silently dropped to `null` — only a truly empty or binary body becomes null.
@@ -525,6 +533,12 @@ fn call_command() -> RuntimeCommandSpec {
             )
             .with_system("api")
             .with_tier(Tier::Mutate)
+            .handles_dry_run(true)
+            // The dry-run-for-mutating-methods branch never needs a token, so
+            // resolution is deferred to the handler (which only calls
+            // `credential_with_scopes` on the path that actually sends a
+            // request) instead of the engine resolving eagerly beforehand.
+            .auth_optional()
             .with_arg(
                 clap::Arg::new("endpoint")
                     .value_name("ENDPOINT")
@@ -598,6 +612,28 @@ fn call_command() -> RuntimeCommandSpec {
                 .get("method")
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET");
+            // Validate the method unconditionally, including under
+            // `--dry-run` — otherwise a garbage/malformed method (e.g.
+            // "POST " with trailing whitespace) would return a successful
+            // dry-run preview even though a real run would reject it here.
+            let parsed_method: reqwest::Method = method.parse().map_err(|_| {
+                cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
+            })?;
+
+            // `--dry-run` is statically tagged `Tier::Mutate` since the method
+            // is only known at runtime, but a GET/HEAD is safe to actually run
+            // (and more useful previewed as real data than as a generic
+            // string) — only short-circuit for methods that would mutate.
+            if ctx.dry_run() && is_mutating_method(method) {
+                return Ok(CommandResult::new(json!({
+                    "command": "api:call",
+                    "action": "dry-run: would execute",
+                    "method": method,
+                    "endpoint": endpoint,
+                }))
+                .with_dry_run());
+            }
+
             // Required scopes = explicit --scope flags, plus the matched catalog
             // endpoint's declared scopes (best-effort: a concrete request path
             // may not match a templated catalog path, in which case only --scope
@@ -649,12 +685,7 @@ fn call_command() -> RuntimeCommandSpec {
 
             let client = crate::application::client::make_http_client();
             let mut req = client
-                .request(
-                    method.parse().map_err(|_| {
-                        cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
-                    })?,
-                    &url,
-                )
+                .request(parsed_method, &url)
                 .bearer_auth(&token)
                 .header("x-request-id", uuid::Uuid::new_v4().to_string());
 
@@ -776,6 +807,8 @@ fn call_command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use cli_engine::{Cli, CliConfig};
+
     use super::merge_required_scopes;
 
     fn v(items: &[&str]) -> Vec<String> {
@@ -860,5 +893,105 @@ mod tests {
         assert_eq!(super::string_list(&args, "scope"), v(&["a", "b"]));
         // Missing key.
         assert!(super::string_list(&args, "absent").is_empty());
+    }
+
+    #[test]
+    fn is_mutating_method_treats_only_get_and_head_as_safe() {
+        assert!(!super::is_mutating_method("GET"));
+        assert!(!super::is_mutating_method("get"));
+        assert!(!super::is_mutating_method("HEAD"));
+        assert!(super::is_mutating_method("POST"));
+        assert!(super::is_mutating_method("PUT"));
+        assert!(super::is_mutating_method("PATCH"));
+        assert!(super::is_mutating_method("DELETE"));
+    }
+
+    /// `call` opted into handler-driven `--dry-run` so a GET/HEAD can execute
+    /// for real under `--dry-run` — but it still requires `Required` auth
+    /// (no `.no_auth()`), so it must stay fail-closed regardless of method.
+    #[tokio::test]
+    async fn call_dry_run_get_still_requires_auth() {
+        const AUTH_FAILURE_EXIT: i32 = 2;
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_default_auth_provider("godaddy")
+                .with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "/v1/example",
+                "--method",
+                "GET",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(
+            output.exit_code, AUTH_FAILURE_EXIT,
+            "a GET falls through to the real request even under --dry-run, so it still needs \
+             auth, got: {}",
+            output.rendered
+        );
+    }
+
+    /// `call` is `auth_optional()` specifically so the dry-run-for-mutating-
+    /// methods branch never triggers credential resolution (previously it did,
+    /// via the engine's `Required`-auth eager resolution before the handler
+    /// even ran) — a POST preview must succeed with no auth provider at all.
+    #[tokio::test]
+    async fn call_dry_run_mutating_method_needs_no_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "/v1/example",
+                "--method",
+                "POST",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["action"], "dry-run: would execute");
+    }
+
+    /// A malformed method must still be rejected under `--dry-run`, matching
+    /// what the real path's `method.parse()` would do — a garbage method
+    /// must not previously have returned a fake "would execute" success.
+    #[tokio::test]
+    async fn call_dry_run_rejects_a_malformed_method() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "/v1/example",
+                "--method",
+                "POST ",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("invalid HTTP method"),
+            "{}",
+            output.rendered
+        );
     }
 }

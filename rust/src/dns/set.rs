@@ -27,6 +27,7 @@ output_schema!(DnsSetResult {
     "created": "number";
     "deleted": "number";
     "action": "string";
+    "plan": "[]object", optional;
 });
 
 /// One reconcile action for `dns set` over v3's per-record endpoints.
@@ -130,6 +131,41 @@ fn summarize_set_outcomes(
         "deleted": deleted,
         "action": "set",
     }))
+}
+
+/// Builds the `dns set --dry-run` preview directly from the same reconcile
+/// plan the real execution would apply, so the preview can never drift from
+/// what `set` would actually do. Doesn't attempt to predict a name-exclusivity
+/// conflict (that's only known once a write is actually attempted) — the
+/// preview shows the reconcile plan, not whether `--replace-conflicting-types`
+/// would end up mattering.
+fn dry_run_set_preview(domain: &str, record_type: &str, name: &str, plan: &[SetAction]) -> Value {
+    let count = |predicate: fn(&SetAction) -> bool| plan.iter().filter(|a| predicate(a)).count();
+    let plan_json: Vec<Value> = plan
+        .iter()
+        .map(|action| match action {
+            SetAction::Replace { record_id, data } => {
+                json!({"action": "replace", "recordId": record_id, "data": data})
+            }
+            SetAction::Create { data } => json!({"action": "create", "data": data}),
+            SetAction::Delete { record_id } => json!({"action": "delete", "recordId": record_id}),
+        })
+        .collect();
+
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        // Reuse DnsSetResult's own field names (rather than inventing
+        // "wouldReplace" etc.) so the preview survives the command's
+        // `with_default_fields` projection instead of being silently
+        // stripped down to just domain/type/name.
+        "replaced": count(|a| matches!(a, SetAction::Replace { .. })),
+        "created": count(|a| matches!(a, SetAction::Create { .. })),
+        "deleted": count(|a| matches!(a, SetAction::Delete { .. })),
+        "plan": plan_json,
+        "action": "would set",
+    })
 }
 
 /// Delete each conflicting record — used only by `set --replace-conflicting-types`
@@ -328,7 +364,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Destructive)
-            .with_default_fields("domain,type,name,replaced,created,deleted")
+            .handles_dry_run(true)
+            .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
             .with_output_schema::<DnsSetResult>()
             .with_scopes(&[DOMAINS_DNS_UPDATE]),
         )
@@ -380,8 +417,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .filter_map(|r| r.record_id.clone())
                 .collect();
 
+            let plan = plan_set(&existing_ids, &data);
+            if ctx.dry_run() {
+                return Ok(CommandResult::new(dry_run_set_preview(
+                    &domain,
+                    &record_type,
+                    &name,
+                    &plan,
+                ))
+                .with_dry_run());
+            }
+
             let mut outcomes = Vec::new();
-            for action in plan_set(&existing_ids, &data) {
+            for action in plan {
                 match action {
                     SetAction::Replace {
                         record_id,
@@ -526,6 +574,42 @@ mod tests {
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
+    }
+
+    #[test]
+    fn dry_run_set_preview_matches_the_plan_it_would_execute() {
+        let plan = plan_set(
+            &["r1".to_string(), "r2".to_string(), "r3".to_string()],
+            &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
+        );
+        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        assert_eq!(preview["replaced"], 2);
+        assert_eq!(preview["created"], 0);
+        assert_eq!(preview["deleted"], 1);
+        assert_eq!(preview["action"], "would set");
+        assert_eq!(preview["plan"].as_array().expect("plan array").len(), 3);
+    }
+
+    /// The command's `--output json` path always projects through
+    /// `default_fields` when the user doesn't pass `--fields` — a preview
+    /// field that isn't in that list is silently stripped and never reaches
+    /// the user. Prove the preview's summary fields actually survive it
+    /// (this is exactly the gap a pure call to `dry_run_set_preview` can't
+    /// catch, since it never goes through the projection).
+    #[test]
+    fn dry_run_set_preview_survives_default_field_projection() {
+        let plan = plan_set(&["r1".to_string()], &["9.9.9.9".to_string()]);
+        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        let default_fields = "domain,type,name,replaced,created,deleted,action,plan";
+        let projected = cli_engine::output::filter_fields(&preview, default_fields);
+        for field in [
+            "domain", "type", "name", "replaced", "created", "deleted", "action", "plan",
+        ] {
+            assert!(
+                !projected[field].is_null(),
+                "{field:?} was stripped by default_fields; preview: {projected}"
+            );
+        }
     }
 
     // --- write_with_conflict_handling ---------------------------------------
