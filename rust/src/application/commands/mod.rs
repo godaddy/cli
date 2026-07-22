@@ -1,6 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
-    StreamSender, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
+    RuntimeGroupSpec, StreamSender, Tier,
 };
 use serde_json::{Value, json};
 
@@ -153,11 +153,7 @@ fn deploy_result_event(
             "extensions": extensions,
             "status": "ACTIVE",
         },
-        "next_actions": [next_action(
-            "application info --name <name>",
-            "Inspect the deployed application",
-        )
-        .with_param("name", required_value(name))],
+        "next_actions": deploy_next_actions(name),
     })
 }
 
@@ -175,6 +171,47 @@ async fn tap_deploy_err<T>(
 
 fn arg_str<'a>(ctx: &'a cli_engine::CommandContext, key: &str) -> &'a str {
     ctx.args.get(key).and_then(|v| v.as_str()).unwrap_or("")
+}
+
+/// Next-actions after mutating local godaddy.toml (add action/subscription/extension).
+fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
+    let name_param = if app_name.is_empty() {
+        NextActionParam::required()
+    } else {
+        required_value(app_name)
+    };
+    vec![
+        next_action(
+            "application validate <name>",
+            "Validate remote application configuration",
+        )
+        .with_param("name", name_param),
+        next_action(
+            "application release --application-id <application-id> --version <version>",
+            "Create a new release",
+        )
+        .with_param("application-id", NextActionParam::required())
+        .with_param("version", NextActionParam::required()),
+    ]
+}
+
+/// Next-actions after a successful deploy.
+fn deploy_next_actions(name: &str) -> Vec<NextAction> {
+    vec![
+        next_action(
+            "application enable <name> --store-id <store-id>",
+            "Enable the application on a store",
+        )
+        .with_param("name", required_value(name))
+        .with_param("store-id", NextActionParam::required()),
+        next_action(
+            "application info --name <name>",
+            "Inspect deployment status",
+        )
+        .with_param("name", required_value(name)),
+        next_action("application deploy --name <name>", "Rerun deployment")
+            .with_param("name", required_value(name)),
+    ]
 }
 
 pub fn application_group() -> RuntimeGroupSpec {
@@ -223,7 +260,7 @@ fn list_command() -> RuntimeCommandSpec {
                 )
                 .with_param("name", NextActionParam::required()),
                 next_action(
-                    "application init --name <name> --description <desc> --url <url>",
+                    "application init --name <name> --description <description> --url <url> --proxy-url <proxy-url> --scopes <scopes>",
                     "Initialize a new application",
                 ),
             ]))
@@ -263,21 +300,33 @@ fn info_command() -> RuntimeCommandSpec {
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
             Ok(CommandResult::new(app.clone()).with_next_actions(vec![
                 next_action(
+                    "application validate <name>",
+                    "Validate application configuration",
+                )
+                .with_param("name", required_value(&name)),
+                next_action(
+                    "application update --id <id> [--label <label>] [--description <description>] [--status <status>]",
+                    "Update application configuration",
+                )
+                .with_param("id", required_value(&app_id))
+                .with_param(
+                    "status",
+                    NextActionParam {
+                        r#enum: vec!["ACTIVE".to_owned(), "INACTIVE".to_owned()],
+                        ..Default::default()
+                    },
+                ),
+                next_action(
                     "application release --application-id <application-id> --version <version>",
                     "Create a release",
                 )
-                .with_param("application-id", required_value(app_id.clone()))
+                .with_param("application-id", required_value(&app_id))
                 .with_param("version", NextActionParam::required()),
                 next_action(
                     "application deploy --name <name>",
                     "Deploy this application",
                 )
-                .with_param("name", required_value(name)),
-                next_action(
-                    "application update --id <id>",
-                    "Update application metadata",
-                )
-                .with_param("id", required_value(app_id)),
+                .with_param("name", required_value(&name)),
             ]))
         },
     )
@@ -496,15 +545,23 @@ fn init_command() -> RuntimeCommandSpec {
             });
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
+                    "application add action --name <name> --url <url>",
+                    "Add first action",
+                ),
+                next_action(
+                    "application add subscription --name <name> --events <events> --url <url>",
+                    "Add webhook subscription",
+                ),
+                next_action(
                     "application validate <name>",
                     "Validate the remote application state",
                 )
-                .with_param("name", required_value(name)),
+                .with_param("name", required_value(&name)),
                 next_action(
                     "application release --application-id <application-id> --version <version>",
                     "Create the first release",
                 )
-                .with_param("application-id", required_value(app_id))
+                .with_param("application-id", required_value(&app_id))
                 .with_param("version", NextActionParam::required()),
             ]))
         },
@@ -572,7 +629,7 @@ fn validate_command() -> RuntimeCommandSpec {
                         "application release --application-id <application-id> --version <version>",
                         "Create a release after validation",
                     )
-                    .with_param("application-id", required_value(app_id))
+                    .with_param("application-id", required_value(&app_id))
                     .with_param("version", NextActionParam::required()),
                 );
             }
@@ -581,7 +638,7 @@ fn validate_command() -> RuntimeCommandSpec {
                     "application info --name <name>",
                     "Inspect application details",
                 )
-                .with_param("name", required_value(name)),
+                .with_param("name", required_value(&name)),
             );
 
             Ok(CommandResult::new(json!({
@@ -664,12 +721,12 @@ fn update_command() -> RuntimeCommandSpec {
                         "application info --name <name>",
                         "Inspect updated application",
                     )
-                    .with_param("name", required_value(name.clone())),
+                    .with_param("name", required_value(&name)),
                     next_action(
                         "application deploy --name <name>",
                         "Deploy updated application",
                     )
-                    .with_param("name", required_value(name)),
+                    .with_param("name", required_value(&name)),
                 ]),
             )
         },
@@ -715,10 +772,13 @@ fn enable_command() -> RuntimeCommandSpec {
                         "application disable <name> --store-id <store-id>",
                         "Disable the application on the same store",
                     )
-                    .with_param("name", required_value(name.clone()))
-                    .with_param("store-id", required_value(store_id)),
-                    next_action("application info --name <name>", "Inspect application")
-                        .with_param("name", required_value(name)),
+                    .with_param("name", required_value(&name))
+                    .with_param("store-id", required_value(&store_id)),
+                    next_action(
+                        "application info --name <name>",
+                        "Inspect application status",
+                    )
+                    .with_param("name", required_value(&name)),
                 ]),
             )
         },
@@ -765,10 +825,13 @@ fn disable_command() -> RuntimeCommandSpec {
                             "application enable <name> --store-id <store-id>",
                             "Re-enable the application on the same store",
                         )
-                        .with_param("name", required_value(name.clone()))
-                        .with_param("store-id", required_value(store_id)),
-                        next_action("application info --name <name>", "Inspect application")
-                            .with_param("name", required_value(name)),
+                        .with_param("name", required_value(&name))
+                        .with_param("store-id", required_value(&store_id)),
+                        next_action(
+                            "application info --name <name>",
+                            "Inspect application status",
+                        )
+                        .with_param("name", required_value(&name)),
                     ],
                 ),
             )
@@ -810,7 +873,12 @@ fn archive_command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             Ok(
                 CommandResult::new(data["archiveApplication"].clone()).with_next_actions(vec![
-                    next_action("application list", "List remaining applications"),
+                    next_action(
+                        "application info --name <name>",
+                        "Inspect archived application",
+                    )
+                    .with_param("name", required_value(&name)),
+                    next_action("application list", "List all applications"),
                 ]),
             )
         },
@@ -949,10 +1017,21 @@ fn release_command() -> RuntimeCommandSpec {
 
             let client = make_client(&ctx).await?;
             let data = client.create_release(input).await.map_err(client_err)?;
+            // Release is keyed by `--application-id`, not name. Do not prefill
+            // `name` from godaddy.toml — that manifest may belong to a different app.
+            let name_param = NextActionParam::required();
             Ok(
                 CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
-                    next_action("application deploy --name <name>", "Deploy this release"),
-                    next_action("application info --name <name>", "Inspect application"),
+                    next_action(
+                        "application deploy --name <name>",
+                        "Deploy the released application",
+                    )
+                    .with_param("name", name_param.clone()),
+                    next_action(
+                        "application info --name <name>",
+                        "Inspect application and latest release",
+                    )
+                    .with_param("name", name_param),
                 ]),
             )
         },
@@ -1425,7 +1504,8 @@ pub fn add_group() -> RuntimeGroupSpec {
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-            Ok(CommandResult::new(json!({ "name": name, "url": url })))
+            Ok(CommandResult::new(json!({ "name": name, "url": url }))
+                .with_next_actions(add_config_next_actions(&config.name)))
         },
     ))
     .with_command(RuntimeCommandSpec::new_with_context(
@@ -1489,9 +1569,10 @@ pub fn add_group() -> RuntimeGroupSpec {
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-            Ok(CommandResult::new(
-                json!({ "name": name, "url": url, "events": events }),
-            ))
+            Ok(
+                CommandResult::new(json!({ "name": name, "url": url, "events": events }))
+                    .with_next_actions(add_config_next_actions(&config.name)),
+            )
         },
     ))
     .with_group(add_extension_group())
@@ -1571,9 +1652,10 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-            Ok(CommandResult::new(
-                json!({ "name": name, "handle": handle, "type": "embed" }),
-            ))
+            Ok(
+                CommandResult::new(json!({ "name": name, "handle": handle, "type": "embed" }))
+                    .with_next_actions(add_config_next_actions(&config.name)),
+            )
         },
     ))
     .with_command(RuntimeCommandSpec::new_with_context(
@@ -1640,9 +1722,10 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-            Ok(CommandResult::new(
-                json!({ "name": name, "handle": handle, "type": "checkout" }),
-            ))
+            Ok(
+                CommandResult::new(json!({ "name": name, "handle": handle, "type": "checkout" }))
+                    .with_next_actions(add_config_next_actions(&config.name)),
+            )
         },
     ))
     .with_command(RuntimeCommandSpec::new_with_context(
@@ -1681,9 +1764,10 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             });
             crate::config::write_config(&path, &config)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-            Ok(CommandResult::new(
-                json!({ "source": source, "type": "blocks" }),
-            ))
+            Ok(
+                CommandResult::new(json!({ "source": source, "type": "blocks" }))
+                    .with_next_actions(add_config_next_actions(&config.name)),
+            )
         },
     ))
 }
@@ -1693,7 +1777,24 @@ mod tests {
     use cli_engine::{Cli, CliConfig, Stage};
     use serde_json::json;
 
-    use super::{update_command, validate_command, validate_remote_application};
+    use super::{
+        add_config_next_actions, deploy_next_actions, update_command, validate_command,
+        validate_remote_application,
+    };
+
+    #[test]
+    fn reused_next_action_helpers_have_expected_size() {
+        assert_eq!(add_config_next_actions("app").len(), 2);
+        assert_eq!(deploy_next_actions("app").len(), 3);
+    }
+
+    #[test]
+    fn add_config_next_actions_skips_empty_name_prefill() {
+        let actions = add_config_next_actions("");
+        let name = &actions[0].params["name"];
+        assert!(name.required);
+        assert_eq!(name.value.as_deref(), None);
+    }
 
     fn update_clap_command() -> clap::Command {
         update_command().spec.clap_command()
@@ -1979,6 +2080,7 @@ mod tests {
         assert_eq!(event["ok"], false);
         assert_eq!(event["error"]["code"], "ERROR");
         assert_eq!(event["error"]["message"], "application 'foo' not found");
+        assert!(event.get("fix").is_none());
         assert_eq!(event["next_actions"], serde_json::json!([]));
     }
 
@@ -2032,9 +2134,21 @@ mod tests {
         assert_eq!(event["result"]["extensions"], 2);
         assert_eq!(event["result"]["status"], "ACTIVE");
         assert_eq!(
-            event["next_actions"][0]["params"]["name"],
+            event["next_actions"].as_array().map(|a| a.len()),
+            Some(3),
+            "deploy should suggest enable, info, and redeploy: {event}"
+        );
+        assert_eq!(
+            event["next_actions"][1]["params"]["name"],
             serde_json::json!({ "value": "my-app", "required": true }),
             "deployed application name should prefill the next action: {event}"
+        );
+        assert!(
+            event["next_actions"][0]["command"]
+                .as_str()
+                .unwrap_or("")
+                .contains("application enable"),
+            "first next action should enable on a store: {event}"
         );
     }
 }
