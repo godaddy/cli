@@ -254,16 +254,13 @@ fn adapt(name: &str, env: Environment) -> cli_engine::Result<ResolvedEnv> {
             ))
         })?;
     let oauth = env.oauth.unwrap_or_default();
-    let auth_url = if oauth.auth_url.is_empty() {
-        derive_auth_url(&api_url)
-    } else {
-        oauth.auth_url
-    };
-    let token_url = if oauth.token_url.is_empty() {
-        derive_token_url(&api_url)
-    } else {
-        oauth.token_url
-    };
+    // `clean_url`, not a bare emptiness check — a blank-but-non-empty or
+    // schemeless override (from a local config entry or an `<ENV>_OAUTH_*`
+    // env var) must fall back to the derived endpoint too, matching the
+    // validation already applied to `api_url`/`domains_api_url`/`account_url`
+    // above.
+    let auth_url = clean_url(&oauth.auth_url).unwrap_or_else(|| derive_auth_url(&api_url));
+    let token_url = clean_url(&oauth.token_url).unwrap_or_else(|| derive_token_url(&api_url));
     let domains_api_url = env
         .extra
         .get("domains_api_url")
@@ -405,6 +402,30 @@ mod tests {
         let resolved = adapt("dev", env).expect("adapts");
         assert_eq!(resolved.auth_url, "https://auth.example.test/authorize");
         assert_eq!(resolved.token_url, "https://auth.example.test/token");
+    }
+
+    #[test]
+    fn adapt_falls_back_to_derived_oauth_urls_when_override_is_blank_or_malformed() {
+        // A blank-but-non-empty or schemeless override (e.g. from
+        // `<ENV>_OAUTH_AUTH_URL=" "`) must not be used as-is — it should be
+        // treated the same as unset, matching the validation already applied
+        // to api_url/domains_api_url/account_url.
+        let env = test_environment(
+            EnvironmentDef::new()
+                .with_client_id("cid")
+                .with_auth_url("   ")
+                .with_token_url("not-a-url")
+                .with_field("api_url", "https://api.example.test"),
+        );
+        let resolved = adapt("dev", env).expect("adapts");
+        assert_eq!(
+            resolved.auth_url,
+            "https://api.example.test/v2/oauth2/authorize"
+        );
+        assert_eq!(
+            resolved.token_url,
+            "https://api.example.test/v2/oauth2/token"
+        );
     }
 
     #[test]
