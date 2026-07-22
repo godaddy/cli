@@ -101,7 +101,8 @@ pub fn module() -> Module {
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List available environments")
                 .with_long(
-                    "Lists the environments the CLI can target (prod, ote). \
+                    "Lists the environments the CLI can target: the built-in prod \
+                         and ote, plus any defined in a local environments.toml. \
                          The currently active environment is marked `active: true`.",
                 )
                 .with_system("env")
