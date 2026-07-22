@@ -170,7 +170,16 @@ fn clean_url(raw: &str) -> Option<String> {
 /// (see [`build_environments`]) before cli-engine ever sees it, which means
 /// finding that name before clap has parsed anything.
 fn requested_env_from_argv() -> Option<String> {
-    requested_env_from(std::env::args().skip(1))
+    // `args_os()` + a lossy conversion, not `args()` — this runs during the
+    // environment singleton's own initialization, before clap ever gets a
+    // chance to handle a malformed argument; `args()` panics outright on a
+    // non-UTF-8 arg (possible on Windows/odd shells), which would crash the
+    // whole CLI for a command that doesn't even use `--env`.
+    requested_env_from(
+        std::env::args_os()
+            .skip(1)
+            .map(|arg| arg.to_string_lossy().into_owned()),
+    )
 }
 
 /// Pure scan over an arg iterator — unit-testable without touching the real
