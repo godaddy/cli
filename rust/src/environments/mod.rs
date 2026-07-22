@@ -262,7 +262,16 @@ fn register(envs: Environments, default_candidate: &str) -> Environments {
             continue;
         }
         let prefix = env_prefix(&candidate);
-        if std::env::var(format!("{prefix}_API_URL")).is_ok() {
+        // `clean_url`, not a bare `.is_ok()` — a set-but-blank
+        // `<PREFIX>_API_URL` (e.g. `""`) would otherwise make cli-engine's
+        // own `--env <name>` validation accept the name, only for `adapt` to
+        // reject it moments later with a confusing "no usable api_url"
+        // error instead of a clean "unknown environment" one.
+        let has_usable_api_url = std::env::var(format!("{prefix}_API_URL"))
+            .ok()
+            .and_then(|v| clean_url(&v))
+            .is_some();
+        if has_usable_api_url {
             envs =
                 envs.with_environment(candidate, EnvironmentDef::new().with_field("api_url", ""));
         }
