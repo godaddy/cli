@@ -344,6 +344,14 @@ fn record_label(existing: &[types::DnsRecord], record_type: &str, record_id: &st
 /// is the least-destructive way to emulate one: if the create fails, the old
 /// record is left untouched rather than risking data loss.
 ///
+/// `old_data` is the record's *current* value, if known — when it already
+/// equals `req.value` (a no-op `set`, e.g. re-running the same command, or
+/// only some of several values actually changed) this is a no-op: creating
+/// the "new" value while the identical old record still exists would fail
+/// with v3's exact-duplicate `DUPLICATE_RECORD` (see
+/// [`super::conflicts::describe_duplicate_record`]), which isn't a real
+/// failure, just this pairing having nothing to do.
+///
 /// Relabels the create outcome's `kind` from `"created"` to `"replaced"` so
 /// `summarize_set_outcomes`'s tallies mean what the user asked for. If the
 /// delete of the old record fails after a successful create, that's reported
@@ -355,7 +363,12 @@ async fn apply_replace(
     req: &WriteRequest<'_>,
     old_record_id: &str,
     old_detail: &str,
+    old_data: Option<&str>,
 ) -> Vec<SetOutcome> {
+    if old_data == Some(req.value) {
+        return vec![SetOutcome::new("replaced", req.value.to_string(), None)];
+    }
+
     let mut outcomes = write_with_conflict_handling(client, req).await;
     let Some(last) = outcomes.last_mut() else {
         return outcomes;
@@ -497,9 +510,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             replace_conflicting,
                             debug,
                         };
+                        let old_record = existing
+                            .iter()
+                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()));
                         let old_detail = record_label(&existing, &record_type, &record_id);
-                        outcomes
-                            .extend(apply_replace(&client, &req, &record_id, &old_detail).await);
+                        outcomes.extend(
+                            apply_replace(
+                                &client,
+                                &req,
+                                &record_id,
+                                &old_detail,
+                                old_record.map(|r| r.data.as_str()),
+                            )
+                            .await,
+                        );
                     }
                     SetAction::Create { data: value } => {
                         let req = WriteRequest {
@@ -879,12 +903,69 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
-        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+        let outcomes = apply_replace(
+            &client_for(&server),
+            &req,
+            "old-1",
+            "A 1.2.3.4",
+            Some("1.2.3.4"),
+        )
+        .await;
 
         create.assert_async().await;
         delete.assert_async().await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].kind, "replaced");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    /// The record being "replaced" already holds the desired value (e.g. a
+    /// re-run of the same `set`, or only some of several `--data` values
+    /// actually changed) — creating it again would hit v3's exact-duplicate
+    /// `DUPLICATE_RECORD` since the old record hasn't been deleted yet, so
+    /// this must short-circuit as a no-op success without any API calls.
+    #[tokio::test]
+    async fn apply_replace_is_a_no_op_when_old_record_already_has_the_desired_value() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(201);
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/old-1");
+                then.status(204);
+            })
+            .await;
+
+        let opts = write_opts();
+        let req = replace_req(&opts, "1.2.3.4");
+        let outcomes = apply_replace(
+            &client_for(&server),
+            &req,
+            "old-1",
+            "A 1.2.3.4",
+            Some("1.2.3.4"),
+        )
+        .await;
+
+        assert_eq!(
+            create.hits_async().await,
+            0,
+            "no create for a no-op replace"
+        );
+        assert_eq!(
+            delete.hits_async().await,
+            0,
+            "no delete for a no-op replace"
+        );
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "replaced");
+        assert_eq!(outcomes[0].detail, "1.2.3.4");
         assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
     }
 
@@ -908,7 +989,14 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
-        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+        let outcomes = apply_replace(
+            &client_for(&server),
+            &req,
+            "old-1",
+            "A 1.2.3.4",
+            Some("1.2.3.4"),
+        )
+        .await;
 
         assert_eq!(
             delete.hits_async().await,
@@ -946,7 +1034,14 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
-        let outcomes = apply_replace(&client_for(&server), &req, "old-1", "A 1.2.3.4").await;
+        let outcomes = apply_replace(
+            &client_for(&server),
+            &req,
+            "old-1",
+            "A 1.2.3.4",
+            Some("1.2.3.4"),
+        )
+        .await;
 
         create.assert_async().await;
         delete.assert_async().await;
