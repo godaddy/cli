@@ -159,7 +159,9 @@ pub fn module() -> Module {
                     "Switches the active environment and persists the choice to \
                          ~/.gdenv so all subsequent commands use the new environment \
                          without needing `--env`.\n\
-                         The value must be a known environment name (prod or ote).\n\
+                         The value must be a known environment name: the built-in prod \
+                         or ote, one defined in a local environments.toml, or one \
+                         defined via a <PREFIX>_API_URL environment variable.\n\
                          If a local environments.toml entry for this environment sets \
                          min_stage/feature_overrides to reveal pre-release commands, \
                          persisting it here (not a same-invocation `--env`) is what \

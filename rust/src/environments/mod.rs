@@ -204,10 +204,37 @@ fn build_environments() -> Environments {
     // validates via `is_known`, which resolves against this very instance and
     // would deadlock re-entering `instance()`'s `OnceLock`
     // mid-initialization.
-    let default = crate::env::read_gdenv_raw().unwrap_or_else(|| DEFAULT_ENV.to_owned());
-    let mut envs = Environments::new(default.clone())
-        .with_app_id(APP_ID)
-        .with_config_file(true);
+    let default_raw = crate::env::read_gdenv_raw().unwrap_or_else(|| DEFAULT_ENV.to_owned());
+    resolve_default_environments(&default_raw)
+}
+
+/// Builds the full `Environments` instance for candidate default
+/// `default_raw`, falling back to [`DEFAULT_ENV`] if it can't actually
+/// resolve. A corrupted/hand-edited `.gdenv`, or one naming a since-removed
+/// custom env, must not become the CLI's real startup default — every other
+/// command relying on the default active environment (via
+/// `ctx.middleware.env`) would then fail with "unknown environment" instead
+/// of falling back, unlike `env::get_env`'s own `is_known` guard. Validated
+/// against `probe` directly (a plain method call on this local instance),
+/// not `instance()`/`resolve()`, so this can't re-enter the singleton's own
+/// initialization. Split out from [`build_environments`] for testability
+/// without touching the real `.gdenv` file or the process-wide singleton.
+fn resolve_default_environments(default_raw: &str) -> Environments {
+    let probe = register(Environments::new(default_raw.to_owned()), default_raw);
+    if probe.resolve(default_raw).is_ok() {
+        probe
+    } else {
+        register(Environments::new(DEFAULT_ENV), default_raw)
+    }
+}
+
+/// Registers the compiled `ote`/`prod` defaults plus any env-var-only
+/// placeholder (see the module doc) onto `envs`. `default_candidate` is the
+/// `.gdenv` value under consideration as the active default — pre-registered
+/// like any other candidate so [`build_environments`] can validate it even
+/// when it's only defined via `<PREFIX>_API_URL`.
+fn register(envs: Environments, default_candidate: &str) -> Environments {
+    let mut envs = envs.with_app_id(APP_ID).with_config_file(true);
     for b in BUILTINS {
         envs = envs.with_environment(
             b.name,
@@ -227,7 +254,10 @@ fn build_environments() -> Environments {
     // gives that layer something to fill in; it's never registered for a
     // name already known via a compiled/file entry, so a real value is
     // never clobbered.
-    for candidate in [default].into_iter().chain(requested_env_from_argv()) {
+    for candidate in [default_candidate.to_owned()]
+        .into_iter()
+        .chain(requested_env_from_argv())
+    {
         if envs.list().contains(&candidate) {
             continue;
         }
@@ -575,6 +605,22 @@ mod tests {
     fn env_prefix_uppercases_and_replaces_hyphen() {
         assert_eq!(env_prefix("ote"), "OTE");
         assert_eq!(env_prefix("prod-us"), "PROD_US");
+    }
+
+    #[test]
+    fn resolve_default_environments_falls_back_to_default_env_for_an_unresolvable_gdenv_value() {
+        // A corrupted/stale `.gdenv` value that resolves to nothing (no
+        // compiled/file entry, no matching `<PREFIX>_API_URL`) must not
+        // become the CLI's real startup default.
+        let envs = resolve_default_environments("totally-bogus-env-name");
+        assert_eq!(envs.default_env(), DEFAULT_ENV);
+        assert!(envs.resolve(DEFAULT_ENV).is_ok());
+    }
+
+    #[test]
+    fn resolve_default_environments_keeps_a_resolvable_gdenv_value() {
+        let envs = resolve_default_environments("prod");
+        assert_eq!(envs.default_env(), "prod");
     }
 
     fn argv(args: &[&str]) -> impl Iterator<Item = String> {
