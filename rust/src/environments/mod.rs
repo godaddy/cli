@@ -201,7 +201,13 @@ fn requested_env_from(mut args: impl Iterator<Item = String>) -> Option<String> 
         let value = if let Some(v) = arg.strip_prefix("--env=") {
             Some(v.to_owned())
         } else if arg == "--env" {
-            args.next()
+            // A space-separated value that itself looks like another flag
+            // (starts with `-`) is not a value at all — clap rejects this
+            // outright ("a value is required for '--env <ENV>' but none was
+            // supplied"), so this scan must not treat it as one either. An
+            // explicit `--env=-foo` is unambiguous and still accepted, same
+            // as clap's own disambiguation rule.
+            args.next().filter(|v| !v.starts_with('-'))
         } else {
             None
         };
@@ -710,6 +716,24 @@ mod tests {
         assert_eq!(
             requested_env_from(argv(&["--env", "dev", "--env="])),
             Some("dev".to_owned())
+        );
+    }
+
+    #[test]
+    fn requested_env_from_space_separated_value_starting_with_dash_is_not_a_value() {
+        // clap rejects `--env --dry-run` outright ("a value is required for
+        // '--env <ENV>' but none was supplied") rather than treating
+        // `--dry-run` as the value; this scan must agree.
+        assert_eq!(requested_env_from(argv(&["--env", "--dry-run"])), None);
+    }
+
+    #[test]
+    fn requested_env_from_equals_form_accepts_a_value_starting_with_dash() {
+        // `--env=-foo` is unambiguous (unlike the space-separated form) and
+        // still accepted, matching clap's own disambiguation rule.
+        assert_eq!(
+            requested_env_from(argv(&["--env=-foo"])),
+            Some("-foo".to_owned())
         );
     }
 }
