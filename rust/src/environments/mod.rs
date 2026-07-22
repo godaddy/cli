@@ -227,7 +227,7 @@ fn build_environments() -> Environments {
     // would deadlock re-entering `instance()`'s `OnceLock`
     // mid-initialization.
     let default_raw = crate::env::read_gdenv_raw().unwrap_or_else(|| DEFAULT_ENV.to_owned());
-    resolve_default_environments(&default_raw)
+    resolve_default_environments(&default_raw, requested_env_from_argv())
 }
 
 /// Builds the full `Environments` instance for candidate default
@@ -239,23 +239,43 @@ fn build_environments() -> Environments {
 /// of falling back, unlike `env::get_env`'s own `is_known` guard. Validated
 /// against `probe` directly (a plain method call on this local instance),
 /// not `instance()`/`resolve()`, so this can't re-enter the singleton's own
-/// initialization. Split out from [`build_environments`] for testability
-/// without touching the real `.gdenv` file or the process-wide singleton.
-fn resolve_default_environments(default_raw: &str) -> Environments {
-    let probe = register(Environments::new(default_raw.to_owned()), default_raw);
+/// initialization. `requested_from_argv` is injected (rather than this
+/// function calling [`requested_env_from_argv`] itself) so it stays
+/// deterministic for unit tests, regardless of what argv the test binary
+/// itself happens to have been invoked with — [`build_environments`] is the
+/// only real caller, and passes the real scan result.
+fn resolve_default_environments(
+    default_raw: &str,
+    requested_from_argv: Option<String>,
+) -> Environments {
+    let probe = register(
+        Environments::new(default_raw.to_owned()),
+        default_raw,
+        requested_from_argv.clone(),
+    );
     if probe.resolve(default_raw).is_ok() {
         probe
     } else {
-        register(Environments::new(DEFAULT_ENV), default_raw)
+        register(
+            Environments::new(DEFAULT_ENV),
+            default_raw,
+            requested_from_argv,
+        )
     }
 }
 
 /// Registers the compiled `ote`/`prod` defaults plus any env-var-only
 /// placeholder (see the module doc) onto `envs`. `default_candidate` is the
-/// `.gdenv` value under consideration as the active default — pre-registered
-/// like any other candidate so [`build_environments`] can validate it even
-/// when it's only defined via `<PREFIX>_API_URL`.
-fn register(envs: Environments, default_candidate: &str) -> Environments {
+/// `.gdenv` value under consideration as the active default, and
+/// `requested_from_argv` the (already-scanned) `--env` value from the
+/// command line, if any — both pre-registered like any other candidate so
+/// [`resolve_default_environments`] can validate them even when only
+/// defined via `<PREFIX>_API_URL`.
+fn register(
+    envs: Environments,
+    default_candidate: &str,
+    requested_from_argv: Option<String>,
+) -> Environments {
     let mut envs = envs.with_app_id(APP_ID).with_config_file(true);
     for b in BUILTINS {
         envs = envs.with_environment(
@@ -278,7 +298,7 @@ fn register(envs: Environments, default_candidate: &str) -> Environments {
     // never clobbered.
     for candidate in [default_candidate.to_owned()]
         .into_iter()
-        .chain(requested_env_from_argv())
+        .chain(requested_from_argv)
     {
         if envs.list().contains(&candidate) {
             continue;
@@ -643,15 +663,27 @@ mod tests {
         // A corrupted/stale `.gdenv` value that resolves to nothing (no
         // compiled/file entry, no matching `<PREFIX>_API_URL`) must not
         // become the CLI's real startup default.
-        let envs = resolve_default_environments("totally-bogus-env-name");
+        let envs = resolve_default_environments("totally-bogus-env-name", None);
         assert_eq!(envs.default_env(), DEFAULT_ENV);
         assert!(envs.resolve(DEFAULT_ENV).is_ok());
     }
 
     #[test]
     fn resolve_default_environments_keeps_a_resolvable_gdenv_value() {
-        let envs = resolve_default_environments("prod");
+        let envs = resolve_default_environments("prod", None);
         assert_eq!(envs.default_env(), "prod");
+    }
+
+    #[test]
+    fn resolve_default_environments_registers_an_injected_argv_env_var_only_candidate() {
+        // `requested_from_argv` is an injected value here, not a real argv
+        // scan — this stays deterministic regardless of what the test
+        // binary itself happens to have been invoked with.
+        let envs = resolve_default_environments("prod", Some("from-argv".to_owned()));
+        assert!(
+            !envs.list().contains(&"from-argv".to_owned()),
+            "no FROM_ARGV_API_URL env var is set, so no placeholder should be registered"
+        );
     }
 
     fn argv(args: &[&str]) -> impl Iterator<Item = String> {
