@@ -104,7 +104,7 @@
     "hosting-nodejs": {
       "file": "hosting-nodejs.json",
       "title": "Node.js Hosting Public API",
-      "endpointCount": 15
+      "endpointCount": 20
     },
     "domains": {
       "file": "domains.json",

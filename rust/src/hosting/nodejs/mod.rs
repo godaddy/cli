@@ -15,7 +15,8 @@ use crate::{
 use crate::scopes::{
     HOSTING_APPS_CREATE as APPS_CREATE, HOSTING_APPS_DELETE as APPS_DELETE,
     HOSTING_APPS_READ as APPS_READ, HOSTING_APPS_UPDATE as APPS_UPDATE,
-    HOSTING_CODE_WRITE as CODE_WRITE, HOSTING_DEPLOY_EXECUTE as DEPLOY_EXECUTE,
+    HOSTING_CODE_READ as CODE_READ, HOSTING_CODE_WRITE as CODE_WRITE,
+    HOSTING_DEPLOY_EXECUTE as DEPLOY_EXECUTE, HOSTING_GITHUB_EXECUTE as GITHUB_EXECUTE,
     HOSTING_LOGS_READ as LOGS_READ, HOSTING_SECRETS_WRITE as SECRETS_WRITE,
 };
 
@@ -60,6 +61,17 @@ fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
+/// Whether a zip-upload or git-import job status is terminal (no further polling).
+fn is_source_job_terminal(status: &str) -> bool {
+    matches!(status, "complete" | "failed")
+}
+
+/// Whether an app-creation job status is terminal. `active` means the app is
+/// provisioned (success), not that work is still running.
+fn is_app_creation_job_terminal(status: &str) -> bool {
+    matches!(status, "active" | "failed")
+}
+
 pub fn nodejs_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("nodejs", "Manage Node.js hosting applications").with_long(
@@ -75,6 +87,7 @@ pub fn nodejs_group() -> RuntimeGroupSpec {
     .with_group(deployment_group())
     .with_command(status_command())
     .with_group(source_group())
+    .with_group(github_group())
     .with_group(secrets_group())
     .with_command(logs_command())
 }
@@ -103,6 +116,15 @@ fn source_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(GroupSpec::new("source", "Upload and track app source"))
         .with_command(source_upload_command())
         .with_command(source_status_command())
+        .with_command(source_git_command())
+        .with_command(source_git_status_command())
+}
+
+fn github_group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(GroupSpec::new("github", "Manage GitHub connections"))
+        .with_command(github_status_command())
+        .with_command(github_repos_command())
+        .with_command(github_branches_command())
 }
 
 fn secrets_group() -> RuntimeGroupSpec {
@@ -337,14 +359,18 @@ fn job_get_command() -> RuntimeCommandSpec {
                 .pointer("/job/status")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let mut actions = vec![
-                next_action(
-                    "hosting nodejs job get --job-id <job-id>",
-                    "Re-check job status",
-                )
-                .with_param("job-id", NextActionParam::value(job_id)),
-            ];
-            if let Some(app_id) = data.pointer("/app/id").and_then(|v| v.as_str()) {
+            let mut actions = Vec::new();
+            if !is_app_creation_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs job get --job-id <job-id>",
+                        "Re-check job status",
+                    )
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "active"
+                && let Some(app_id) = data.pointer("/app/id").and_then(|v| v.as_str())
+            {
                 actions.push(
                     next_action(
                         "hosting nodejs app get --app-id <app-id>",
@@ -352,8 +378,6 @@ fn job_get_command() -> RuntimeCommandSpec {
                     )
                     .with_param("app-id", NextActionParam::value(app_id)),
                 );
-            } else if status == "pending" || status == "active" {
-                // keep poll action only
             }
             Ok(CommandResult::new(data).with_next_actions(actions))
         },
@@ -560,18 +584,329 @@ fn source_status_command() -> RuntimeCommandSpec {
                 .get_source_upload_status(&app_id, &job_id)
                 .await
                 .map_err(client_err)?;
+            let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            let mut actions = Vec::new();
+            if !is_source_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
+                        "Re-check whether the upload has finished",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id.clone()))
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "complete" {
+                actions.push(
+                    next_action(
+                        "hosting nodejs deployment publish --app-id <app-id>",
+                        "Publish after upload completes",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id)),
+                );
+            }
+            Ok(CommandResult::new(data).with_next_actions(actions))
+        },
+    )
+}
+
+fn source_git_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("git", "Import source from a GitHub repository")
+            .with_long(
+                "Import source code from a GitHub repository branch. Returns a job ID; \
+                 poll `hosting nodejs source git-status` until complete, then publish.",
+            )
+            .with_system("hosting")
+            .with_tier(Tier::Mutate)
+            .mutates(true)
+            .with_scopes(&[CODE_WRITE])
+            .with_arg(
+                clap::Arg::new("app-id")
+                    .long("app-id")
+                    .value_name("APP_ID")
+                    .required(true)
+                    .help("Application ID"),
+            )
+            .with_arg(
+                clap::Arg::new("branch")
+                    .long("branch")
+                    .value_name("BRANCH")
+                    .required(true)
+                    .help("Branch to import"),
+            )
+            .with_arg(
+                clap::Arg::new("repo")
+                    .long("repo")
+                    .value_name("OWNER/REPO")
+                    .help("Repository in owner/repo format"),
+            )
+            .with_arg(
+                clap::Arg::new("repo-url")
+                    .long("repo-url")
+                    .value_name("URL")
+                    .help("Repository clone URL"),
+            )
+            .with_arg(
+                clap::Arg::new("private")
+                    .long("private")
+                    .action(clap::ArgAction::SetTrue)
+                    .help("Repository is private"),
+            )
+            .with_arg(
+                clap::Arg::new("clear")
+                    .long("clear")
+                    .action(clap::ArgAction::SetTrue)
+                    .help("Clear working tree before import"),
+            ),
+        |ctx| async move {
+            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            let branch = required_str(&ctx, "branch", "--branch")?;
+            let mut body = json!({ "branch": branch });
+            if let Some(repo) = optional_str(&ctx, "repo") {
+                body["repoFullName"] = json!(repo);
+            }
+            if let Some(repo_url) = optional_str(&ctx, "repo-url") {
+                body["repoUrl"] = json!(repo_url);
+            }
+            if ctx
+                .args
+                .get("private")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                body["isPrivate"] = json!(true);
+            }
+            if ctx
+                .args
+                .get("clear")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                body["clearWorkingTree"] = json!(true);
+            }
+            let client = make_client(&ctx, &[CODE_WRITE]).await?;
+            let data = client
+                .start_git_import(&app_id, body)
+                .await
+                .map_err(client_err)?;
+            let job_id = data.get("jobId").and_then(|v| v.as_str()).unwrap_or("");
+            let action = if job_id.is_empty() {
+                next_action(
+                    "hosting nodejs source git-status --app-id <app-id> --job-id <job-id>",
+                    "Poll git import status",
+                )
+                .with_param("app-id", NextActionParam::value(app_id))
+                .with_param("job-id", NextActionParam::required())
+            } else {
+                next_action(
+                    "hosting nodejs source git-status --app-id <app-id> --job-id <job-id>",
+                    "Poll git import status",
+                )
+                .with_param("app-id", NextActionParam::value(app_id))
+                .with_param("job-id", NextActionParam::value(job_id))
+            };
+            Ok(CommandResult::new(data).with_next_actions(vec![action]))
+        },
+    )
+}
+
+fn source_git_status_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("git-status", "Poll git import job status")
+            .with_long("Poll the status of a GitHub source import job.")
+            .with_system("hosting")
+            .with_tier(Tier::Read)
+            .with_scopes(&[CODE_READ])
+            .with_arg(
+                clap::Arg::new("app-id")
+                    .long("app-id")
+                    .value_name("APP_ID")
+                    .required(true)
+                    .help("Application ID"),
+            )
+            .with_arg(
+                clap::Arg::new("job-id")
+                    .long("job-id")
+                    .value_name("JOB_ID")
+                    .required(true)
+                    .help("Git import job ID"),
+            ),
+        |ctx| async move {
+            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            let job_id = required_str(&ctx, "job-id", "--job-id")?;
+            let client = make_client(&ctx, &[CODE_READ]).await?;
+            let data = client
+                .get_git_import_status(&app_id, &job_id)
+                .await
+                .map_err(client_err)?;
+            let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            let mut actions = Vec::new();
+            if !is_source_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs source git-status --app-id <app-id> --job-id <job-id>",
+                        "Re-check whether the import has finished",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id.clone()))
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "complete" {
+                actions.push(
+                    next_action(
+                        "hosting nodejs deployment publish --app-id <app-id>",
+                        "Publish after import completes",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id)),
+                );
+            }
+            Ok(CommandResult::new(data).with_next_actions(actions))
+        },
+    )
+}
+
+fn github_status_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("status", "Show GitHub connection status")
+            .with_long("Show whether GitHub is connected to a Node.js hosting application.")
+            .with_system("hosting")
+            .with_tier(Tier::Read)
+            .with_scopes(&[GITHUB_EXECUTE])
+            .with_arg(
+                clap::Arg::new("app-id")
+                    .long("app-id")
+                    .value_name("APP_ID")
+                    .required(true)
+                    .help("Application ID"),
+            ),
+        |ctx| async move {
+            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
+            let data = client
+                .get_github_status(&app_id)
+                .await
+                .map_err(client_err)?;
+            let connected = data
+                .get("connected")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let mut actions = Vec::new();
+            if connected {
+                actions.push(
+                    next_action(
+                        "hosting nodejs github repos --app-id <app-id>",
+                        "List accessible GitHub repositories",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id)),
+                );
+            }
+            Ok(CommandResult::new(data).with_next_actions(actions))
+        },
+    )
+}
+
+fn github_repos_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("repos", "List accessible GitHub repositories")
+            .with_long("List GitHub repositories accessible to the connected account.")
+            .with_system("hosting")
+            .with_tier(Tier::Read)
+            .with_scopes(&[GITHUB_EXECUTE])
+            .with_arg(
+                clap::Arg::new("app-id")
+                    .long("app-id")
+                    .value_name("APP_ID")
+                    .required(true)
+                    .help("Application ID"),
+            )
+            .with_arg(
+                clap::Arg::new("per-page")
+                    .long("per-page")
+                    .value_name("N")
+                    .value_parser(clap::value_parser!(u32).range(1..=100))
+                    .help("Repositories per page (1-100)"),
+            )
+            .with_arg(
+                clap::Arg::new("sort")
+                    .long("sort")
+                    .value_name("SORT")
+                    .value_parser(["created", "updated", "pushed", "full_name"])
+                    .help("Sort order (created, updated, pushed, full_name)"),
+            ),
+        |ctx| async move {
+            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            let per_page = optional_u32(&ctx, "per-page");
+            let sort = optional_str(&ctx, "sort");
+            let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
+            let data = client
+                .list_github_repos(&app_id, per_page, sort.as_deref())
+                .await
+                .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
-                    "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
-                    "Poll again while upload is in progress",
+                    "hosting nodejs github branches --app-id <app-id> --owner <owner> --repo <repo>",
+                    "List branches for a repository",
                 )
-                .with_param("app-id", NextActionParam::value(app_id.clone()))
-                .with_param("job-id", NextActionParam::value(job_id)),
+                .with_param("app-id", NextActionParam::value(app_id))
+                .with_param("owner", NextActionParam::required())
+                .with_param("repo", NextActionParam::required()),
+            ]))
+        },
+    )
+}
+
+fn github_branches_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("branches", "List branches for a GitHub repository")
+            .with_long("List branches for a GitHub repository accessible to the connected account.")
+            .with_system("hosting")
+            .with_tier(Tier::Read)
+            .with_scopes(&[GITHUB_EXECUTE])
+            .with_arg(
+                clap::Arg::new("app-id")
+                    .long("app-id")
+                    .value_name("APP_ID")
+                    .required(true)
+                    .help("Application ID"),
+            )
+            .with_arg(
+                clap::Arg::new("owner")
+                    .long("owner")
+                    .value_name("OWNER")
+                    .required(true)
+                    .help("Repository owner (user or org)"),
+            )
+            .with_arg(
+                clap::Arg::new("repo")
+                    .long("repo")
+                    .value_name("REPO")
+                    .required(true)
+                    .help("Repository name"),
+            )
+            .with_arg(
+                clap::Arg::new("per-page")
+                    .long("per-page")
+                    .value_name("N")
+                    .value_parser(clap::value_parser!(u32).range(1..=100))
+                    .help("Branches per page (1-100)"),
+            ),
+        |ctx| async move {
+            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            let owner = required_str(&ctx, "owner", "--owner")?;
+            let repo = required_str(&ctx, "repo", "--repo")?;
+            let per_page = optional_u32(&ctx, "per-page");
+            let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
+            let data = client
+                .list_github_branches(&app_id, &owner, &repo, per_page)
+                .await
+                .map_err(client_err)?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
-                    "hosting nodejs deployment publish --app-id <app-id>",
-                    "Publish after upload completes",
+                    "hosting nodejs source git --app-id <app-id> --repo <owner/repo> --branch <branch>",
+                    "Import source from this repository",
                 )
-                .with_param("app-id", NextActionParam::value(app_id)),
+                .with_param("app-id", NextActionParam::value(app_id))
+                .with_param("repo", NextActionParam::value(format!("{owner}/{repo}")))
+                .with_param("branch", NextActionParam::required()),
             ]))
         },
     )
@@ -712,4 +1047,27 @@ fn logs_command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(data))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_app_creation_job_terminal, is_source_job_terminal};
+
+    #[test]
+    fn source_job_terminal_status_detection() {
+        assert!(is_source_job_terminal("complete"));
+        assert!(is_source_job_terminal("failed"));
+        assert!(!is_source_job_terminal("in_progress"));
+        assert!(!is_source_job_terminal(""));
+        assert!(!is_source_job_terminal("COMPLETE"));
+    }
+
+    #[test]
+    fn app_creation_job_terminal_status_detection() {
+        assert!(is_app_creation_job_terminal("active"));
+        assert!(is_app_creation_job_terminal("failed"));
+        assert!(!is_app_creation_job_terminal("pending"));
+        assert!(!is_app_creation_job_terminal(""));
+        assert!(!is_app_creation_job_terminal("ACTIVE"));
+    }
 }

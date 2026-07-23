@@ -242,6 +242,82 @@ impl HostingClient {
         .await
     }
 
+    pub async fn get_github_status(&self, app_id: &str) -> Result<Value, ClientError> {
+        self.send_json(
+            Method::GET,
+            &format!("/apps/{app_id}/github/status"),
+            &[],
+            None,
+        )
+        .await
+    }
+
+    pub async fn list_github_repos(
+        &self,
+        app_id: &str,
+        per_page: Option<u32>,
+        sort: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut query = Vec::new();
+        if let Some(per_page) = per_page {
+            query.push(("per_page", per_page.to_string()));
+        }
+        if let Some(sort) = sort {
+            query.push(("sort", sort.to_owned()));
+        }
+        self.send_json(
+            Method::GET,
+            &format!("/apps/{app_id}/github/repos"),
+            &query,
+            None,
+        )
+        .await
+    }
+
+    pub async fn list_github_branches(
+        &self,
+        app_id: &str,
+        owner: &str,
+        repo: &str,
+        per_page: Option<u32>,
+    ) -> Result<Value, ClientError> {
+        let mut query = vec![("owner", owner.to_owned()), ("repo", repo.to_owned())];
+        if let Some(per_page) = per_page {
+            query.push(("per_page", per_page.to_string()));
+        }
+        self.send_json(
+            Method::GET,
+            &format!("/apps/{app_id}/github/branches"),
+            &query,
+            None,
+        )
+        .await
+    }
+
+    pub async fn start_git_import(&self, app_id: &str, body: Value) -> Result<Value, ClientError> {
+        self.send_json(
+            Method::POST,
+            &format!("/apps/{app_id}/source/git"),
+            &[],
+            Some(body),
+        )
+        .await
+    }
+
+    pub async fn get_git_import_status(
+        &self,
+        app_id: &str,
+        job_id: &str,
+    ) -> Result<Value, ClientError> {
+        self.send_json(
+            Method::GET,
+            &format!("/apps/{app_id}/source/git/status"),
+            &[("jobId", job_id.to_owned())],
+            None,
+        )
+        .await
+    }
+
     pub async fn get_logs(
         &self,
         app_id: &str,
@@ -347,5 +423,116 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(body["jobId"], "upload-1");
+    }
+
+    #[tokio::test]
+    async fn get_github_status_sends_bearer_auth() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/hosting/nodejs/apps/app-1/github/status")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).json_body(json!({ "connected": true }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .get_github_status("app-1")
+            .await
+            .expect("get github status");
+
+        mock.assert_async().await;
+        assert_eq!(body["connected"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn list_github_repos_sends_query_params() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/hosting/nodejs/apps/app-1/github/repos")
+                    .query_param("per_page", "10")
+                    .query_param("sort", "updated");
+                then.status(200).json_body(json!({ "repos": [] }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .list_github_repos("app-1", Some(10), Some("updated"))
+            .await
+            .expect("list github repos");
+
+        mock.assert_async().await;
+        assert_eq!(body["repos"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn list_github_branches_sends_owner_and_repo() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/hosting/nodejs/apps/app-1/github/branches")
+                    .query_param("owner", "acme")
+                    .query_param("repo", "my-app");
+                then.status(200).json_body(json!({ "branches": [] }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .list_github_branches("app-1", "acme", "my-app", None)
+            .await
+            .expect("list github branches");
+
+        mock.assert_async().await;
+        assert_eq!(body["branches"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn start_git_import_posts_json_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/hosting/nodejs/apps/app-1/source/git")
+                    .json_body(json!({ "branch": "main", "repoFullName": "acme/my-app" }));
+                then.status(202)
+                    .json_body(json!({ "jobId": "git-1", "status": "in_progress" }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .start_git_import(
+                "app-1",
+                json!({ "branch": "main", "repoFullName": "acme/my-app" }),
+            )
+            .await
+            .expect("start git import");
+
+        mock.assert_async().await;
+        assert_eq!(body["jobId"], "git-1");
+    }
+
+    #[tokio::test]
+    async fn get_git_import_status_sends_job_id() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/hosting/nodejs/apps/app-1/source/git/status")
+                    .query_param("jobId", "git-1");
+                then.status(200).json_body(json!({ "status": "complete" }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .get_git_import_status("app-1", "git-1")
+            .await
+            .expect("get git import status");
+
+        mock.assert_async().await;
+        assert_eq!(body["status"], "complete");
     }
 }
