@@ -1,20 +1,12 @@
 # GoDaddy CLI
 
-Agent-first CLI for interacting with GoDaddy Developer Platform.
+Agent-first CLI for interacting with the GoDaddy Developer Platform.
+
+> Looking for the original, TypeScript-based `godaddy` CLI (`@godaddy/cli` on
+> npm)? It's maintained on the `original` branch — including its
+> `godaddy-cli` agent skill, which isn't installable from this branch.
 
 ## Installation
-
-Download the latest release binary from the [releases page](https://github.com/godaddy/cli/releases) and place it on your `PATH`.
-
-```bash
-gddy --help
-```
-
-### Beta (Rust port preview)
-
-The CLI is being rewritten in Rust on the `rust-port` branch with expanded functionality. An experimental **`gddy`** binary is available that can be installed **alongside** the current `godaddy` CLI, so you can try it without disturbing your existing setup.
-
-To install it, run the following.
 
 **macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows):**
 
@@ -30,104 +22,28 @@ irm https://github.com/godaddy/cli/releases/latest/download/install.ps1 | iex
 gddy --version
 ```
 
-Both installers download, checksum-verify, and install the binary for your
-platform (`gddy.exe` on Windows). If you'd rather install by hand, download the
-`gddy-x86_64-pc-windows-msvc.zip` asset from the [latest release](https://github.com/godaddy/cli/releases/latest) and put `gddy.exe` on your `PATH`.
+Both installers download, checksum-verify, and install the binary for your platform. If you'd rather install by hand, download the archives from the [latest release](https://github.com/godaddy/cli/releases/latest) and put the binary on your `PATH`.
 
-## Output Contract
+Once installed, `gddy update check` / `gddy update apply` handles upgrades in place.
 
-All executable commands emit JSON envelopes:
-
-```json
-{"ok":true,"command":"gddy env get","result":{"environment":"ote"},"next_actions":[...]}
-```
-
-```json
-{"ok":false,"command":"gddy application info demo","error":{"message":"Application 'demo' not found","code":"NOT_FOUND"},"fix":"Use discovery commands such as: gddy application list or gddy actions list.","next_actions":[...]}
-```
-
-`--help` remains standard CLI help text.
-`--output` has been removed; all executable command paths return JSON envelopes.
-Use `--pretty` to format envelopes with 2-space indentation for human readability.
-Long-running operations can stream typed NDJSON events with `--follow`, ending with a terminal `result` or `error` event.
-
-## Root Discovery
+## Quickstart
 
 ```bash
-gddy
+gddy                              # environment/auth snapshot + full command tree
+gddy auth login                   # opens a browser for OAuth
+gddy domain available example.com # check a domain, no auth required
+gddy domain list                  # list domains in your account
 ```
 
-Returns environment/auth snapshots and the full command tree.
+Most commands need authentication. You may be taken through an interactive login process if you are not currently logged in, if your login has expired, or if your last auth token needs additional permissions. Run `gddy auth login` to log in explicitly.
 
-## Global Options
+For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead; store the PAT with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
 
-- `-e, --env <environment>`: validate target environment (`ote`, `prod`)
-- `--debug`: enable debug logging (stderr only)
-- `--pretty`: pretty-print JSON envelopes (2-space indentation)
+## What you can do
 
-## Commands
+Use `gddy --help` or `gddy tree` to get a comprehensive list of available commands. Top-level commands include:
 
-### Environment
+- `domain` — list your domains, check availability, get suggestions, and register new ones
+- `dns` — view and edit a domain's DNS records
 
-- `gddy env`
-- `gddy env list`
-- `gddy env get`
-- `gddy env set <environment>`
-- `gddy env info [environment]`
-
-### Authentication
-
-- `gddy auth`
-- `gddy auth login`
-- `gddy auth logout`
-- `gddy auth status`
-
-### Application
-
-- `gddy application` (alias: `gddy app`)
-- `gddy application list` (alias: `gddy app ls`)
-- `gddy application info <name>`
-- `gddy application validate <name>`
-- `gddy application update <name> [--label <label>] [--description <description>] [--status <status>]`
-- `gddy application enable <name> --store-id <storeId>`
-- `gddy application disable <name> --store-id <storeId>`
-- `gddy application archive <name>`
-- `gddy application init [--name <name>] [--description <description>] [--url <url>] [--proxy-url <proxyUrl>] [--scopes <scopes>] [--config <path>] [--environment <env>]`
-  - `--url` and `--proxy-url` must be publicly-resolvable `http(s)` URLs. `localhost`, loopback (`127.0.0.1`, `::1`), link-local, and RFC1918 private IPs are rejected. For local development, expose a tunnel (e.g. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [ngrok](https://ngrok.com/)) and register the tunnel hostname.
-- `gddy application release <name> --release-version <version> [--description <description>] [--config <path>] [--environment <env>]`
-- `gddy application deploy <name> [--config <path>] [--environment <env>] [--follow]`
-
-#### Application Add
-
-- `gddy application add`
-- `gddy application add action --name <name> --url <url>`
-- `gddy application add subscription --name <name> --events <events> --url <url>`
-- `gddy application add extension`
-- `gddy application add extension embed --name <name> --handle <handle> --source <source> --target <targets>`
-- `gddy application add extension checkout --name <name> --handle <handle> --source <source> --target <targets>`
-- `gddy application add extension blocks --source <source>`
-
-### Payment Methods
-
-- `gddy payment-methods`
-- `gddy payment-methods add` — opens your default browser to the GoDaddy payment methods management page. Only credit card or Good-as-Gold can be used for domain purchases.
-
-### Webhooks
-
-- `gddy webhook`
-- `gddy webhook events`
-
-### Actions
-
-- `gddy actions`
-- `gddy actions list`
-- `gddy actions describe <action>`
-
-## Development
-
-```bash
-cd rust
-cargo build
-cargo test
-cargo clippy -- -D warnings
-```
+We're actively working to expand the CLI to cover additional GoDaddy products.
