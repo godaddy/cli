@@ -1,14 +1,10 @@
 # GoDaddy CLI
 
+> **The actively-developed GoDaddy CLI has moved.** See [`gddy`](https://github.com/godaddy/cli/tree/main) on the `main` branch. This branch (`original`) hosts the original `godaddy` CLI for maintenance only.
+
 Agent-first CLI for interacting with GoDaddy Developer Platform.
 
 ## Installation
-
-### Using an AI coding agent?
-
-Point your agent at this README and ask it to install the `gddy` skill for domain search/registration/DNS. Once installed, the skill teaches the agent the CLI's JSON output contract and typical workflows, so it can drive the CLI correctly without guessing at flags. See [.agents/skills/gddy/README.md](./.agents/skills/gddy/README.md) for one-line install commands (Claude Code and 70+ other agents).
-
-### Installing the CLI directly
 
 ```bash
 npm install -g @godaddy/cli
