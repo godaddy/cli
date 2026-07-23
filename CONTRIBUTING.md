@@ -5,6 +5,10 @@ Contributing doesn't just mean submitting pull requests. To get involved you can
 report or triage bugs and participate in discussions on the evolution of each
 project.
 
+This guide covers `gddy`, the Rust CLI in this repository. Looking to
+contribute to the original, TypeScript-based `godaddy` CLI (`@godaddy/cli` on
+npm)? It's maintained on the `original` branch.
+
 ## Answering Questions
 
 One of the most important and immediate ways you can support this project is to

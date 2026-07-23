@@ -2,12 +2,6 @@
 rust/target/
 __pycache__
 
-# Node/TS build artifacts (legacy TS CLI; not part of the Rust port)
-node_modules/
-dist/
-.pnpm-store/
-.npmrc
-
 # Environment files
 .env
 .env.dev
