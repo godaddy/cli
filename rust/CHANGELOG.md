@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.14](https://github.com/godaddy/cli/compare/v0.1.13...v0.1.14) (2026-07-23)
+
+
+### Features
+
+* **env:** consolidate onto cli-engine's shared Environments, wire feature-flag stages (DEVEX-929) ([#145](https://github.com/godaddy/cli/issues/145)) ([a6f48fe](https://github.com/godaddy/cli/commit/a6f48fe3dbbe4996e0ba6b540cc284637ffd698a))
+
+## [0.1.13](https://github.com/godaddy/cli/compare/v0.1.12...v0.1.13) (2026-07-22)
+
+
+### Features
+
+* **dns:** add --replace-conflicting-types flag, fix CNAME conflict errors ([#102](https://github.com/godaddy/cli/issues/102)) ([2c0e576](https://github.com/godaddy/cli/commit/2c0e576048e393af8d35c78ed2bee6cbfa78af4f))
+* **dry-run:** let dry-run validate input and preview real effects ([#141](https://github.com/godaddy/cli/issues/141)) ([6651c6b](https://github.com/godaddy/cli/commit/6651c6be293aa93fc48503a7486353d23d2aadc1))
+
+
+### Bug Fixes
+
+* **application validate:** restore remote application state checks ([#134](https://github.com/godaddy/cli/issues/134)) [DEVEX-708] ([b84ddb0](https://github.com/godaddy/cli/commit/b84ddb05c42c1b66e571818e3759f20e108347a0))
+* **dns:** stop `dns set` from wiping zones via the v3 replace-record PUT ([#143](https://github.com/godaddy/cli/issues/143)) ([90c2408](https://github.com/godaddy/cli/commit/90c240831e20104a7dcc326fc3b7b0a57469af0e))
+
 ## [0.1.12](https://github.com/godaddy/cli/compare/v0.1.11...v0.1.12) (2026-07-20)
 
 

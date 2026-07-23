@@ -1,17 +1,13 @@
 //! `gddy payment-methods` — payment method management.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextActionParam,
-    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
+    CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use crate::environments;
 use crate::next_action::next_action;
-
-fn map_env_err(e: environments::EnvError) -> CliCoreError {
-    CliCoreError::message(e.to_string())
-}
 
 pub fn module() -> Module {
     Module::new("Payment Methods", |_ctx| {
@@ -42,7 +38,7 @@ fn add_command() -> RuntimeCommandSpec {
         .with_tier(Tier::Mutate)
         .no_auth(true),
         |ctx| async move {
-            let env = environments::resolve(&ctx.middleware.env).map_err(map_env_err)?;
+            let env = environments::resolve(&ctx.middleware.env)?;
             let url = format!("{}/payment-methods/add-payment?plid=1", env.account_url);
             let opened = open::that(&url).is_ok();
             Ok(CommandResult::new(json!({

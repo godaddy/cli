@@ -2878,69 +2878,6 @@
       "summary": "Create a DNS record for a zone"
     },
     {
-      "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields (name, type, data,\nttl) must be supplied; partial updates are not supported on this\nendpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be modified.\n",
-      "method": "PUT",
-      "operationId": "replaceDNSRecord",
-      "parameters": [
-        {
-          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
-          "in": "header",
-          "name": "X-Request-Id",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
-          "in": "header",
-          "name": "X-Shopper-Id",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
-          "in": "path",
-          "name": "zone",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "description": "Server-assigned DNS record identifier within the zone.",
-          "in": "path",
-          "name": "recordId",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/v3/domains/zones/{zone}/dns-records/{recordId}",
-      "requestBody": {
-        "contentType": "application/json",
-        "required": true,
-        "schema": {
-          "$ref": "#/$defs/DNSRecord"
-        }
-      },
-      "responses": {
-        "200": {
-          "description": "DNS record replaced.",
-          "schema": {
-            "$ref": "#/$defs/DNSRecord"
-          }
-        }
-      },
-      "scopes": [
-        "domains.dns:update"
-      ],
-      "summary": "Replace a DNS record"
-    },
-    {
       "description": "Permanently removes a DNS resource record from the zone. The\nrecordId must refer to an existing record within the specified\nzone. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be deleted.\n",
       "method": "DELETE",
       "operationId": "deleteDNSRecord",

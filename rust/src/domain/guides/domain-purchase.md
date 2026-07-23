@@ -64,9 +64,6 @@ token has expired or isn't found, just re-run `gddy domain quote`.
   without it and it lists the agreements you must accept.
 - `--confirm` acknowledges that the purchase **charges your account**. Without
   it, the command stops before buying.
-- `--agreed-by <ip>` — the originating IP recorded with your consent. Defaults
-  to `127.0.0.1`; pass your real public IP if you need accurate consent
-  attribution.
 
 ## Contacts
 

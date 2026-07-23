@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Domain Lifecycle Management API
-  version: 3.0.0
+  version: 3.1.0
   x-visibility: public
   description: 'The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities
 
@@ -670,12 +670,8 @@ paths:
                   quoteToken: 7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6
                   consent:
                     agreementTypes:
-                    - DNRA
+                    - API_DPA
                     agreedAt: '2026-06-12T10:02:00Z'
-                    agreedBy:
-                      type: DIRECT
-                      principal: shopper_123
-                      ip: 203.0.113.7
       security:
       - oauth2:
         - domains.domain:create
@@ -695,6 +691,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Registration'
+              examples:
+                accepted:
+                  summary: Registration accepted with server-derived consent
+                  value:
+                    registrationId: 3a8f1c2d-7e6b-4f9a-b1c0-d2e3f4a5b6c7
+                    domain: example.com
+                    period: 1
+                    price:
+                      currencyCode: USD
+                      value: 1199
+                    consent:
+                      agreementTypes:
+                      - API_DPA
+                      agreedAt: '2026-06-12T10:02:00Z'
+                      agreedBy:
+                        type: DIRECT
+                        principal: 550e8400-e29b-41d4-a716-446655440000
+                        ip: 203.0.113.7
+                    status: CONFIRMED
+                    operationId: 9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c
+                    createdAt: '2026-06-12T10:02:05Z'
+                    updatedAt: '2026-06-12T10:02:05Z'
+                    links:
+                    - rel: self
+                      href: /v3/domains/registrations/3a8f1c2d-7e6b-4f9a-b1c0-d2e3f4a5b6c7
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -1014,74 +1035,15 @@ paths:
           $ref: '#/components/responses/422'
         '429':
           $ref: '#/components/responses/429'
+  # NOTE: this path previously also had a `put` (operationId replaceDNSRecord).
+  # It's removed: despite returning 200, it does not perform a single-record
+  # replace — it silently replaces the entire dns-records collection with
+  # [system records] + [the one record in the body], discarding every other
+  # record in the zone. Reproduced live against a test zone; see
+  # https://github.com/godaddy/cli/issues/136. Do not reintroduce without a
+  # confirmed server-side fix and a fresh live check against a real zone with
+  # unrelated records.
   /zones/{zone}/dns-records/{recordId}:
-    put:
-      operationId: replaceDNSRecord
-      tags:
-      - Records
-      summary: Replace a DNS record
-      description: 'Fully replaces an existing DNS resource record identified by
-
-        recordId within the zone. All writable fields (name, type, data,
-
-        ttl) must be supplied; partial updates are not supported on this
-
-        endpoint. Changes are applied synchronously.
-
-
-        GoDaddy-managed system records (SOA and NS) are read-only. When
-
-        recordId refers to such a record, the request fails with
-
-        `409 Conflict` — the record exists but cannot be modified.
-
-        '
-      parameters:
-      - $ref: '#/components/parameters/xRequestId'
-      - $ref: '#/components/parameters/xShopperId'
-      - $ref: '#/components/parameters/zonePath'
-      - $ref: '#/components/parameters/recordId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DNSRecord'
-            examples:
-              apexARecord:
-                summary: Replace apex A record
-                value:
-                  name: '@'
-                  type: A
-                  data: 192.0.2.1
-                  ttl: 3600
-      security:
-      - oauth2:
-        - domains.dns:update
-      responses:
-        '200':
-          description: DNS record replaced.
-          headers:
-            X-Request-Id:
-              $ref: '#/components/headers/xRequestId'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DNSRecord'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '429':
-          $ref: '#/components/responses/429'
     delete:
       operationId: deleteDNSRecord
       tags:
@@ -1415,8 +1377,8 @@ components:
             $ref: '#/components/schemas/error'
     '409':
       description: 'Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired,
-        quote_mismatch, quote_consumed, consent_principal_mismatch), domain state conflicts such as domain_already_exists,
-        and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.
+        quote_mismatch, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable)
+        such as GoDaddy-managed SOA and NS records.
 
         '
       headers:
@@ -1474,7 +1436,7 @@ components:
           description: 'The type of legal agreement. Identifies which agreement text the customer must accept.
 
             '
-          example: DNRA
+          example: API_DPA
           allOf:
           - $ref: '#/components/schemas/AgreementType'
         title:
@@ -1594,16 +1556,14 @@ components:
     Consent:
       title: Consent
       description: 'Customer consent record for a domain operation, capturing which legal agreements were accepted, when,
-        and by whom. This object is self-reported by the caller and treated as supplementary attestation. The server verifies
-        agreedBy.principal against the authenticated identity (auth token + X-Shopper-Id resolution) and rejects with consent_principal_mismatch
-        on disagreement. The persisted consent record is the union of this claimed block and the verified auth context.
+        and by whom. On execute, the caller supplies agreementTypes and agreedAt. The server derives agreedBy from the authenticated
+        request context (OAuth identity, X-Shopper-Id, client IP, and transmission channel).
 
         '
       type: object
       required:
       - agreementTypes
       - agreedAt
-      - agreedBy
       properties:
         agreementTypes:
           type: array
@@ -1615,7 +1575,7 @@ components:
 
             '
           example:
-          - DNRA
+          - API_DPA
         agreedAt:
           description: 'The timestamp at which the principal expressed consent. Should reflect when the customer clicked accept
             or confirmed the operation, not when the API call was made.
@@ -1624,16 +1584,16 @@ components:
           allOf:
           - $ref: '#/components/schemas/date-time'
         agreedBy:
-          $ref: '#/components/schemas/ConsentActor'
+          description: 'Who gave consent and how it was transmitted. Server-derived from the execute request''s auth context.
+
+            '
+          readOnly: true
+          allOf:
+          - $ref: '#/components/schemas/ConsentActor'
     ConsentActor:
       title: Consent Actor
-      description: 'Identifies who gave consent and who transmitted it. One uniform schema for all actor types. Self-reported
-        by the caller and treated as supplementary attestation; the server verifies principal against the resolved auth identity
-        (OAuth token + X-Shopper-Id) and rejects with consent_principal_mismatch on disagreement. The persisted consent record
-        is the union of this block and the verified auth context.
-
-        principal identifies the account holder whose consent is being recorded. actor identifies the automated or intermediary
-        party that transmitted the consent when different from the principal. For DIRECT, actor is omitted.
+      description: 'Identifies who gave consent and how it was transmitted. One uniform schema for all actor types. Populated
+        by the server from the execute request''s authenticated context — not supplied by the caller.
 
         '
       type: object
@@ -1643,7 +1603,8 @@ components:
       - principal
       properties:
         type:
-          description: 'Who transmitted consent relative to the principal.
+          description: 'How consent was transmitted relative to the principal. Server-assigned from the request''s auth and
+            channel context.
 
             '
           example: DIRECT
@@ -1651,22 +1612,21 @@ components:
           - $ref: '#/components/schemas/ConsentActorType'
         principal:
           type: string
-          description: 'The shopper or account ID whose consent is being recorded. Must match the shopper resolved from the
-            OAuth token and X-Shopper-Id header; mismatch returns consent_principal_mismatch.
+          description: 'The resolved customer identifier whose consent is recorded, derived from the auth context on the execute
+            request.
 
             '
-          example: shopper_123
+          example: 550e8400-e29b-41d4-a716-446655440000
         actor:
           type: string
-          description: 'The automated agent or system that transmitted the consent. Omitted for DIRECT. For AGENT, identifies
-            the specific agent instance. For RESELLER, may identify the reseller when distinct from the OAuth token subject.
+          description: 'The party that transmitted the consent when distinct from the principal. Omitted for DIRECT.
 
             '
           example: agent:claude/atlas-1
         ip:
           type: string
-          description: 'The IP address of the principal at the time consent was expressed, if known. Optional — an absent
-            IP with a verified principal is preferred over a fabricated one.
+          description: 'Client IP address captured from the execute request at the time consent was recorded. Omitted when
+            unavailable.
 
             '
           example: 203.0.113.7
@@ -2097,6 +2057,13 @@ components:
 
             '
           example: example.com
+        orderId:
+          type: string
+          description: 'The orderId of the order that created this registration. Present only when the registration is completed.
+            Not present for failed or pending registrations.
+
+            '
+          readOnly: true
         period:
           type: integer
           minimum: 1
@@ -2104,6 +2071,14 @@ components:
           default: 1
           description: Registration period in years. Must match the period in the quote.
           example: 1
+        price:
+          description: 'The locked registration price for the quoted period. Held for the duration of the quoteToken''s TTL.
+            Represents the total amount that will be charged on execute.
+
+            '
+          readOnly: true
+          allOf:
+          - $ref: '#/components/schemas/simple-money'
         profileId:
           description: 'ID of a saved registration profile to use for contacts and preference defaults. Omit to fall back
             to the account-default profile for the domain''s TLD, then to account identity.
@@ -2129,8 +2104,8 @@ components:
           allOf:
           - $ref: '#/components/schemas/uuid'
         consent:
-          description: 'The customer''s consent record for the legal agreements returned in the quote. Must reference the
-            same agreementTypes as the quote.
+          description: 'The customer''s consent for the legal agreements returned in the quote. On execute, supply agreementTypes
+            and agreedAt; agreedBy is server-derived and returned on the persisted record.
 
             '
           allOf:
@@ -2803,20 +2778,32 @@ components:
     AgreementType:
       title: Agreement Type
       description: 'The type of legal agreement that must be accepted prior to executing a domain operation. Additional agreement
-        types may be returned for specific TLDs or product combinations. DNRA — Domain Name Registration Agreement. DNTA —
-        Domain Name Transfer Agreement. DNPA — Domain Name Privacy Agreement. HTTPS_NOTICE — HTTPS notice acknowledgment for
-        eligible TLDs. AURA — AU Domain Agreement for .au TLD registrations and transfers. CIRA — Canadian Internet Registration
-        Authority Agreement for .ca TLD registrations and transfers.
+        types may be returned for specific TLDs or product combinations. API_DPA - API Domain Purchase Agreement. DNTA — Domain
+        Name Transfer Agreement. DNPA — Domain Name Privacy Agreement. HTTPS_NOTICE — HTTPS notice acknowledgment for eligible
+        TLDs. AURA — AU Domain Agreement for .au TLD registrations and transfers. CIRA — Canadian Internet Registration Authority
+        Agreement for .ca TLD registrations and transfers.
 
         '
       type: string
+      enum:
+      - API_DPA
+      - AURA
+      - CIRA
+      - DNPA
+      - DNTA
+      - HTTPS_NOTICE
     ConsentActorType:
       title: Consent Actor Type
-      description: 'Who transmitted consent on behalf of the principal. DIRECT — the principal acted directly; actor is omitted.
-        AGENT — an AI or automation acted on behalf of the principal. RESELLER — a reseller acted on behalf of a shopper.
+      description: 'How consent was transmitted relative to the principal. DIRECT — the principal transmitted consent directly;
+        actor is omitted. AGENT — consent was transmitted by an AI or automation on the principal''s behalf. RESELLER — consent
+        was transmitted by a reseller on the principal''s behalf.
 
         '
       type: string
+      enum:
+      - AGENT
+      - DIRECT
+      - RESELLER
     DomainOperationStatus:
       title: Domain Operation Status
       description: 'The execution state of an asynchronous domain operation. CONFIRMED — operation has been accepted and is
@@ -2826,19 +2813,24 @@ components:
 
         '
       type: string
+      enum:
+      - COMPLETED
+      - CONFIRMED
+      - EXECUTING
+      - FAILED
     DomainStatus:
       title: Domain Status
-      description: 'The lifecycle status of a registered domain. Reflects the domain''s current operational state within the registry
-        and GoDaddy''s management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been cancelled
-        by the user or system, and is not reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace period; recovery
-        fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED - domain registration
-        or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually
-        the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this is usually the result of spam,
-        abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION
-        - domain is pending setup at the registry. PENDING_TRANSFER — an outbound transfer to another registrar is in progress.
-        REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED
-        — domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred
-        to another registrar.
+      description: 'The lifecycle status of a registered domain. Reflects the domain''s current operational state within the
+        registry and GoDaddy''s management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been
+        cancelled by the user or system, and is not be reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace
+        period; recovery fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED
+        - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred
+        or modified - this is usually the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this
+        is usually the result of a spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED
+        - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER — an outbound
+        transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result
+        of a chargeback, fraud, abuse, etc. SUSPENDED — domain has been administratively suspended by the registry or registrar.
+        TRANSFERRED - domain has been transferred to another registrar.
 
         '
       type: string
@@ -2864,6 +2856,8 @@ components:
 
         '
       type: string
+      enum:
+      - REGISTER
     DNSRecordType:
       title: DNS Record Type
       description: 'The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4

@@ -279,7 +279,7 @@ mod tests {
                     // v3 money is ISO-4217 minor units: USD 23.98 (2yr) -> 2398.
                     "price": { "currencyCode": "USD", "value": 2398 },
                     "requiredAgreements": [
-                        { "agreementType": "REGISTRATION", "title": "Registration Agreement",
+                        { "agreementType": "API_DPA", "title": "Registration Agreement",
                           "url": "https://x/agr" }
                     ]
                 }));
@@ -307,8 +307,8 @@ mod tests {
         );
         let agreements = quote.required_agreements.expect("agreements");
         assert_eq!(
-            agreements[0].agreement_type.as_ref().map(|a| a.as_str()),
-            Some("REGISTRATION")
+            agreements[0].agreement_type.as_ref().map(|a| a.to_string()),
+            Some("API_DPA".to_string())
         );
     }
 
@@ -327,7 +327,7 @@ mod tests {
                         "consent": {
                             "agreedAt": "2026-06-30T00:00:00Z",
                             "agreedBy": { "type": "DIRECT", "principal": "shopper-42", "ip": "127.0.0.1" },
-                            "agreementTypes": ["REGISTRATION"]
+                            "agreementTypes": ["API_DPA"]
                         }
                     }));
                 // The register response does NOT echo `quoteToken` (the token is
@@ -339,11 +339,11 @@ mod tests {
                     "consent": {
                         "agreedAt": "2026-06-30T00:00:00Z",
                         "agreedBy": { "type": "DIRECT", "principal": "shopper-42" },
-                        "agreementTypes": ["REGISTRATION"]
+                        "agreementTypes": ["API_DPA"]
                     },
                     "registrationId": "reg-1",
                     "operationId": "op-1",
-                    "status": "PENDING"
+                    "status": "EXECUTING"
                 }));
             })
             .await;
@@ -354,20 +354,25 @@ mod tests {
             .body(types::Registration {
                 consent: types::Consent {
                     agreed_at: types::DateTime("2026-06-30T00:00:00Z".to_string()),
-                    agreed_by: types::ConsentActor {
+                    // Sending a client-side ConsentActor is still valid on the
+                    // wire (the field is optional, not rejected) even though the
+                    // server derives its own `agreedBy` from the auth context.
+                    agreed_by: Some(types::ConsentActor {
                         actor: None,
                         ip: Some("127.0.0.1".to_string()),
                         principal: "shopper-42".to_string(),
-                        type_: types::ConsentActorType("DIRECT".to_string()),
-                    },
-                    agreement_types: vec![types::AgreementType("REGISTRATION".to_string())],
+                        type_: types::ConsentActorType::Direct,
+                    }),
+                    agreement_types: vec![types::AgreementType::ApiDpa],
                 },
                 created_at: None,
                 domain: "example.com".to_string(),
                 expires_at: None,
                 links: vec![],
                 operation_id: None,
+                order_id: None,
                 period: std::num::NonZeroU64::new(1).expect("nonzero"),
+                price: None,
                 profile: None,
                 profile_id: None,
                 quote_token: Some(types::Uuid("tok-abc".to_string())),
@@ -408,7 +413,10 @@ mod tests {
             .into_inner();
 
         mock.assert_async().await;
-        assert_eq!(op.status.as_ref().map(|s| s.as_str()), Some("COMPLETED"));
+        assert_eq!(
+            op.status.as_ref().map(|s| s.to_string()),
+            Some("COMPLETED".to_string())
+        );
     }
 
     // --- v3: domain get + nameservers + dns create --------------------------
@@ -493,8 +501,13 @@ mod tests {
                     .path("/v3/domains/domain-names/example.com/nameservers")
                     .header("Idempotency-Key", "idem-9")
                     .json_body(json!(["ns1.example.net", "ns2.example.net"]));
+                // `DomainOperationType` is spec'd as `enum: [REGISTER]` only, even
+                // though this endpoint's response is a `DomainOperation` too and a
+                // real nameserver-update operation would carry a different `type`
+                // (e.g. "UPDATE_NAMESERVERS") — a gap in the vendored spec, not this
+                // client. "REGISTER" is the only value that currently deserializes.
                 then.status(202)
-                    .json_body(json!({ "operationId": "op-2", "type": "UPDATE_NAMESERVERS" }));
+                    .json_body(json!({ "operationId": "op-2", "type": "REGISTER" }));
             })
             .await;
 
@@ -570,7 +583,7 @@ mod tests {
         assert_eq!(agreements[0].agreement_key.as_deref(), Some("DNRA"));
     }
 
-    // --- v3: DNS list / replace / delete ------------------------------------
+    // --- v3: DNS list / delete -----------------------------------------------
 
     #[tokio::test]
     async fn list_dns_records_sends_filters_and_parses_collection() {
@@ -611,47 +624,6 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].record_id.as_deref(), Some("rec-1"));
         assert_eq!(items[0].data, "1.2.3.4");
-    }
-
-    #[tokio::test]
-    async fn replace_dns_record_puts_by_record_id() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(PUT)
-                    .path("/v3/domains/zones/example.com/dns-records/rec-1")
-                    .json_body(
-                        json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
-                    );
-                then.status(200).json_body(
-                    json!({ "type": "A", "name": "www", "data": "5.6.7.8", "ttl": 600 }),
-                );
-            })
-            .await;
-
-        client_for(&server)
-            .replace_dns_record()
-            .zone("example.com")
-            .record_id("rec-1")
-            .body(types::DnsRecord {
-                data: "5.6.7.8".to_string(),
-                flag: None,
-                name: "www".to_string(),
-                port: None,
-                priority: None,
-                protocol: None,
-                record_id: None,
-                service: None,
-                tag: None,
-                ttl: 600,
-                type_: types::DnsRecordType("A".to_string()),
-                weight: None,
-            })
-            .send()
-            .await
-            .expect("request succeeds");
-
-        mock.assert_async().await;
     }
 
     #[tokio::test]

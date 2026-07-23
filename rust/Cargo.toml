@@ -1,6 +1,6 @@
 [package]
 name = "godaddy-cli"
-version = "0.1.12"
+version = "0.1.14"
 edition = "2024"
 description = "GoDaddy developer CLI"
 license = "Proprietary"
@@ -20,7 +20,7 @@ async-trait = "0.1"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.5", features = ["std", "string"] }
-cli-engine = { features = ["pkce-auth"], version = "0.4.6" }
+cli-engine = { features = ["pkce-auth"], version = "0.4.8" }
 dirs = "6"
 domains-client = { path = "domains-client" }
 fancy-regex = "0.14"

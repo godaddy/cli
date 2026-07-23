@@ -3,7 +3,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use crate::environments::{self, EnvError};
+use crate::environments;
 use crate::output_schema::output_schema;
 
 output_schema!(EnvSummary {
@@ -15,6 +15,16 @@ output_schema!(EnvSummary {
 output_schema!(EnvActive {
     "env": "string";
     "apiUrl": "string";
+});
+
+// `env set` always returns an "action" ("activated" for real, "would
+// activate" under --dry-run) — a dedicated schema, rather than adding
+// `action` to `EnvActive`, since `EnvActive` is shared with `env get`, which
+// never has an action concept.
+output_schema!(EnvSetResult {
+    "env": "string";
+    "apiUrl": "string";
+    "action": "string";
 });
 
 output_schema!(EnvInfo {
@@ -39,19 +49,29 @@ fn gdenv_path() -> std::io::Result<std::path::PathBuf> {
         })
 }
 
-pub fn get_env() -> Option<String> {
+/// Reads the raw, unvalidated `.gdenv` contents. No dependency on
+/// [`environments`] — used by [`environments::instance`]'s own lazy
+/// initializer, so it must not call back into `environments` (which resolves
+/// against the very instance being built, and would deadlock re-entering its
+/// `OnceLock`).
+pub(crate) fn read_gdenv_raw() -> Option<String> {
     gdenv_path()
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .map(|s| s.trim().to_owned())
-        // Ignore empty or unrecognized values (e.g. a hand-edited/corrupted
-        // .gdenv) so callers fall back to DEFAULT_ENV instead of propagating an
-        // unknown environment. `is_known` accepts built-ins plus any env defined
-        // via env var or local config, so a persisted custom env (e.g. "dev")
+        .filter(|s| !s.is_empty())
+}
+
+pub fn get_env() -> Option<String> {
+    read_gdenv_raw()
+        // Ignore an unrecognized value (e.g. a hand-edited/corrupted .gdenv) so
+        // callers fall back to DEFAULT_ENV instead of propagating an unknown
+        // environment. `is_known` accepts built-ins plus any env defined via
+        // env var or local config, so a persisted custom env (e.g. "dev")
         // survives — except a config-only env is dropped if the config file
         // can't be read, since `is_known` then falls back to built-ins +
         // `<ENV>_API_URL` only.
-        .filter(|s| !s.is_empty() && environments::is_known(s))
+        .filter(|s| environments::is_known(s))
 }
 
 pub fn set_env(env: &str) -> std::io::Result<()> {
@@ -61,10 +81,6 @@ pub fn set_env(env: &str) -> std::io::Result<()> {
         // an actionable message — the raw write error omits it.
         std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
     })
-}
-
-fn map_err(e: EnvError) -> cli_engine::CliCoreError {
-    cli_engine::CliCoreError::message(e.to_string())
 }
 
 fn active_env() -> String {
@@ -85,7 +101,8 @@ pub fn module() -> Module {
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List available environments")
                 .with_long(
-                    "Lists the environments the CLI can target (prod, ote). \
+                    "Lists the environments the CLI can target: the built-in prod \
+                         and ote, plus any defined in a local environments.toml. \
                          The currently active environment is marked `active: true`.",
                 )
                 .with_system("env")
@@ -94,7 +111,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let current = active_env();
-                let mut resolved = environments::listable().map_err(map_err)?;
+                let mut resolved = environments::listable()?;
                 // If the active env is defined only via `<ENV>_API_URL` (so it's
                 // excluded from `listable`), still show it — otherwise the list
                 // has no `active: true` entry and callers can't tell what's active.
@@ -130,7 +147,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let env = active_env();
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                let resolved = environments::resolve(&env)?;
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
@@ -143,11 +160,18 @@ pub fn module() -> Module {
                     "Switches the active environment and persists the choice to \
                          ~/.gdenv so all subsequent commands use the new environment \
                          without needing `--env`.\n\
-                         The value must be a known environment name (prod or ote).",
+                         The value must be a known environment name: the built-in prod \
+                         or ote, one defined in a local environments.toml, or one \
+                         defined via a <PREFIX>_API_URL environment variable.\n\
+                         If a local environments.toml entry for this environment sets \
+                         min_stage/feature_overrides to reveal pre-release commands, \
+                         persisting it here (not a same-invocation `--env`) is what \
+                         makes those commands visible on the next run.",
                 )
                 .with_system("env")
                 .with_tier(Tier::Mutate)
-                .with_output_schema::<EnvActive>()
+                .handles_dry_run(true)
+                .with_output_schema::<EnvSetResult>()
                 .no_auth(true)
                 .with_arg(
                     // Distinct id from the global `--env` flag (also id "env");
@@ -167,7 +191,16 @@ pub fn module() -> Module {
                     .to_owned();
                 // Resolve up front: validates the env exists (built-in, env
                 // var, or local config) and yields its API URL for the reply.
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                // Runs unconditionally, including under `--dry-run`.
+                let resolved = environments::resolve(&env)?;
+                if ctx.dry_run() {
+                    return Ok(CommandResult::new(json!({
+                        "env": resolved.name,
+                        "apiUrl": resolved.api_url,
+                        "action": "would activate",
+                    }))
+                    .with_dry_run());
+                }
                 set_env(&env).map_err(|e| {
                     cli_engine::CliCoreError::message(format!(
                         "failed to write .gdenv state file: {e}"
@@ -176,6 +209,7 @@ pub fn module() -> Module {
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
+                    "action": "activated",
                 })))
             },
         ))
@@ -193,7 +227,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let env = active_env();
-                let resolved = environments::resolve(&env).map_err(map_err)?;
+                let resolved = environments::resolve(&env)?;
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
@@ -242,5 +276,45 @@ mod tests {
                 "apiUrl should be a URL: {entry}"
             );
         }
+    }
+
+    /// `env set --dry-run` never calls `set_env`, so this is safe to run
+    /// without touching the real `~/.gdenv` state file.
+    #[tokio::test]
+    async fn env_set_dry_run_previews_a_valid_environment_without_persisting() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli
+            .run(["gddy", "env", "set", "ote", "--dry-run", "--output", "json"])
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        assert_eq!(json["data"]["env"], "ote");
+        assert_eq!(json["data"]["action"], "would activate");
+    }
+
+    #[tokio::test]
+    async fn env_set_dry_run_still_rejects_an_unknown_environment() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli
+            .run([
+                "gddy",
+                "env",
+                "set",
+                "not-a-real-env",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
     }
 }

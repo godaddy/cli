@@ -22,10 +22,8 @@ mod webhook;
 
 use std::{process::ExitCode, sync::Arc};
 
-use clap::Arg;
 use cli_engine::{BuildInfo, Cli, CliConfig, Module};
 
-use crate::env::get_env;
 use crate::next_action::next_action;
 
 /// The full set of `gddy` command modules, shared between `main`'s
@@ -82,32 +80,8 @@ async fn main() -> ExitCode {
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_auth_extra_commands([scopes_cmd::auth_scopes_command()])
-            .with_register_flags(Arc::new(|cmd| {
-                cmd.arg(
-                    Arg::new("env")
-                        .long("env")
-                        .global(true)
-                        .value_name("ENV")
-                        .default_value(
-                            get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned()),
-                        )
-                        .help("Target environment: prod or ote"),
-                )
-            }))
-            .with_apply_flags(Arc::new(|matches, mw| {
-                if let Some(env) = matches.get_one::<String>("env") {
-                    // Validate only an explicitly-provided `--env`. The default
-                    // value comes from `.gdenv`/DEFAULT_ENV (already filtered), so
-                    // validating it unconditionally would let a malformed local
-                    // config fail *every* command — even ones not using `--env`.
-                    if matches.value_source("env") == Some(clap::parser::ValueSource::CommandLine) {
-                        environments::resolve(env)
-                            .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
-                    }
-                    mw.env = env.clone();
-                }
-                Ok(())
-            }))
+            .with_min_stage(cli_engine::Stage::Ga)
+            .with_environments(Arc::clone(environments::instance()))
             .with_root_next_actions(Arc::new(|| {
                 vec![
                     next_action("auth status", "Check authentication status"),
@@ -125,4 +99,61 @@ async fn main() -> ExitCode {
     );
 
     cli.execute().await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use cli_engine::{Cli, CliConfig, Stage, environments::EnvironmentDef};
+
+    /// Regression test for a real bug found while wiring feature-flagging up
+    /// properly: with no `min_stage` override anywhere, cli-engine's own
+    /// default (`Stage::Ga`) silently hid `hosting`/`webhook`/`application`/
+    /// `actions` entirely (`gddy hosting` reported "unknown command"), even
+    /// though the root `--help` text advertises `hosting`/`application` as
+    /// available. Guards that the *global* default stays `Ga` per product
+    /// decision — i.e. these stay hidden absent an environment override.
+    #[tokio::test]
+    async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+        let output = cli.run(["gddy", "hosting", "--help"]).await;
+        assert_ne!(
+            output.exit_code, 0,
+            "hosting should stay hidden at the Ga default: {}",
+            output.rendered
+        );
+    }
+
+    /// The other half of the guard: an environment whose resolved
+    /// `min_stage` is lower than the global default reveals those same
+    /// modules. This is exactly the mechanism `environments.toml`'s
+    /// `min_stage`/`feature_overrides` keys (or `<ENV>_MIN_STAGE`/
+    /// `<ENV>_FEATURE_<KEY>` env vars) are meant to drive — see
+    /// `crate::environments`'s module doc.
+    #[tokio::test]
+    async fn an_environment_min_stage_override_reveals_beta_and_experimental_modules() {
+        let environments = Arc::new(
+            cli_engine::environments::Environments::new("dev").with_environment(
+                "dev",
+                EnvironmentDef::new().with_min_stage(Stage::Experimental),
+            ),
+        );
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_environments(environments)
+                .with_modules(super::all_modules()),
+        );
+        let output = cli.run(["gddy", "hosting", "--help"]).await;
+        assert_eq!(
+            output.exit_code, 0,
+            "hosting should be revealed under an Experimental-min_stage environment: {}",
+            output.rendered
+        );
+    }
 }

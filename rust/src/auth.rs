@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use cli_engine::{
     CliCoreError, Credential, CredentialRequest, Result,
@@ -8,16 +10,27 @@ use crate::environments::{self, ResolvedEnv};
 use crate::pat::{self, PatEntry};
 use crate::scopes;
 
-/// Single auth provider that dispatches to env-specific PKCE providers.
+/// Single auth provider, built per call from gddy's own resolved (and
+/// gddy-specific-derived) endpoints, then wired via `.with_environments` for
+/// the `<ENV>_OAUTH_*` override layer.
 ///
-/// Each env's provider is named after the env, so cli-engine's
-/// `PkceAuthProvider` picks up its per-env overrides automatically:
-///   `<PREFIX>_OAUTH_CLIENT_ID`, `<PREFIX>_OAUTH_AUTH_URL`, `<PREFIX>_OAUTH_TOKEN_URL`
-/// where `<PREFIX>` is the env name uppercased with `-` replaced by `_`
-/// (e.g. `OTE_OAUTH_CLIENT_ID`, `DEV_OAUTH_AUTH_URL`). The API base URL and the
-/// per-env defaults come from [`crate::environments`], which also resolves
-/// custom DEV/TEST environments from the local config file (see
-/// `crate::environments::environments_path`).
+/// cli-engine's shared `Environments` never derives `auth_url`/`token_url`
+/// from `api_url` the way [`crate::environments::adapt`] does — that
+/// derivation is gddy-specific and only happens in this crate's own
+/// resolution. Passing static empty base args to a single, long-lived
+/// `PkceAuthProvider` (as this used to) would mean any environment relying
+/// on that derivation (e.g. the real `dev`/`test` file entries, which only
+/// set `client_id`) tries to hit an empty auth/token URL — a real,
+/// reproduced bug, not a hypothetical one. So each call resolves `env`
+/// through gddy's own adapter first and passes the fully-derived values in
+/// as the provider's base args.
+///
+/// The provider is still always constructed with the fixed name `"godaddy"`
+/// (not `env`), so cli-engine's credential storage key
+/// (`app_id`/`provider_name`/`env`) stays `(app_id, "godaddy", env)`
+/// regardless of how many times this rebuilds the provider — the one-time
+/// credential-key change (and required re-login) from collapsing gddy's
+/// former per-env-named providers happens exactly once, not per call.
 #[derive(Debug, Default)]
 pub struct GoDaddyAuthProvider;
 
@@ -26,22 +39,26 @@ impl GoDaddyAuthProvider {
         Self
     }
 
-    /// Build a PKCE provider for the given env by resolving its endpoints.
+    /// Resolves `env`, logs the OAuth parameters that will be used (see
+    /// [`log_resolved_oauth`]), and builds a `PkceAuthProvider` from the
+    /// fully-derived values.
     ///
-    /// Providers are constructed on demand (tokens persist in the OS keychain,
-    /// so there is nothing to cache across a one-shot CLI invocation). Works for
-    /// built-ins as well as any custom env defined via env var or local config.
+    /// Resolves up front (rather than relying solely on `.with_environments`'s
+    /// internal, silently-degrading resolution) so an unknown env surfaces a
+    /// clear error here instead of a confusing OAuth failure later.
     fn provider_for(&self, env: &str) -> Result<PkceAuthProvider> {
-        let resolved =
-            environments::resolve(env).map_err(|e| CliCoreError::message(e.to_string()))?;
+        let resolved = environments::resolve(env)?;
         Ok(build_provider(&resolved))
     }
 }
 
+/// Builds a `PkceAuthProvider` named `"godaddy"` (not `env` — see
+/// [`GoDaddyAuthProvider`]'s doc) from an already-resolved (and
+/// gddy-specific-derived) environment.
 fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
     log_resolved_oauth(env);
     PkceAuthProvider::new(
-        env.name.clone(),
+        "godaddy",
         env.auth_url.clone(),
         env.token_url.clone(),
         env.client_id.clone(),
@@ -49,6 +66,7 @@ fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
     )
     .with_app_id(environments::APP_ID)
     .with_redirect_uri(environments::REDIRECT_URI)
+    .with_environments(Arc::clone(environments::instance()))
 }
 
 /// Build a `Credential` from a PAT entry.
@@ -191,10 +209,16 @@ impl AuthProvider for GoDaddyAuthProvider {
     async fn list_environments(&self) -> Result<Vec<String>> {
         // Enumerate stored credentials across built-ins + locally-configured
         // envs (env-var-only envs are excluded from `listable`, matching the
-        // `env list` contract). `listable` falls back to built-ins (logging a
-        // warning) on a malformed local config, so this never fails wholesale.
-        let listable =
-            environments::listable().map_err(|e| CliCoreError::message(e.to_string()))?;
+        // `env list` contract). `listable` falls back to built-ins on a
+        // malformed local config, so this never fails wholesale.
+        //
+        // `PkceAuthProvider::list_environments` only reflects its own
+        // in-memory token cache (keyring/file storage can't be enumerated by
+        // prefix), so a freshly-built provider always returns an empty list
+        // here — this loop is a no-op in practice today, same as before this
+        // module built one provider per call. Kept for whenever cli-engine
+        // gains real storage enumeration.
+        let listable = environments::listable()?;
         let mut envs = std::collections::BTreeSet::new();
         match pat::registry_envs().await {
             Ok(pats) => envs.extend(pats),
