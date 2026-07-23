@@ -349,7 +349,7 @@ fn add_command() -> RuntimeCommandSpec {
             // Validate the environment up front so a typo does not stash a PAT
             // for a non-existent env. Runs unconditionally, including under
             // `--dry-run`, so `--dry-run` can be used to pre-validate a PAT.
-            environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
+            environments::resolve(&env)?;
 
             let name = string_arg(&ctx.args, "name");
             let token = resolve_token_arg(&ctx.args).await?;
@@ -449,7 +449,7 @@ fn remove_command() -> RuntimeCommandSpec {
             let env = string_arg(&ctx.args, "env");
             // Validate the environment up front so a typo produces a clear error
             // instead of silently reporting "not found".
-            environments::resolve(&env).map_err(|e| CliCoreError::message(e.to_string()))?;
+            environments::resolve(&env)?;
 
             if ctx.dry_run() {
                 let status = if has_pat(&env)? {
