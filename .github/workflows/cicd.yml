@@ -1,4 +1,4 @@
-name: CICD
+name: TypeScript CICD
 on: 
   push:
     branches:
