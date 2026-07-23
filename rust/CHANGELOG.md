@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/godaddy/cli/compare/v0.1.13...v0.1.14) (2026-07-23)
+
+
+### Features
+
+* **env:** consolidate onto cli-engine's shared Environments, wire feature-flag stages (DEVEX-929) ([#145](https://github.com/godaddy/cli/issues/145)) ([a6f48fe](https://github.com/godaddy/cli/commit/a6f48fe3dbbe4996e0ba6b540cc284637ffd698a))
+
 ## [0.1.13](https://github.com/godaddy/cli/compare/v0.1.12...v0.1.13) (2026-07-22)
 
 

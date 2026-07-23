@@ -1,6 +1,6 @@
 [package]
 name = "domains-client"
-version = "0.1.13"
+version = "0.1.14"
 edition = "2024"
 license = "Proprietary"
 description = "Generated GoDaddy Domains API client (domains list + availability + suggest + DNS records), produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
