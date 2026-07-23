@@ -61,6 +61,17 @@ fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
+/// Whether a zip-upload or git-import job status is terminal (no further polling).
+fn is_source_job_terminal(status: &str) -> bool {
+    matches!(status, "complete" | "failed")
+}
+
+/// Whether an app-creation job status is terminal. `active` means the app is
+/// provisioned (success), not that work is still running.
+fn is_app_creation_job_terminal(status: &str) -> bool {
+    matches!(status, "active" | "failed")
+}
+
 pub fn nodejs_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("nodejs", "Manage Node.js hosting applications").with_long(
@@ -348,14 +359,18 @@ fn job_get_command() -> RuntimeCommandSpec {
                 .pointer("/job/status")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let mut actions = vec![
-                next_action(
-                    "hosting nodejs job get --job-id <job-id>",
-                    "Re-check job status",
-                )
-                .with_param("job-id", NextActionParam::value(job_id)),
-            ];
-            if let Some(app_id) = data.pointer("/app/id").and_then(|v| v.as_str()) {
+            let mut actions = Vec::new();
+            if !is_app_creation_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs job get --job-id <job-id>",
+                        "Re-check job status",
+                    )
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "active"
+                && let Some(app_id) = data.pointer("/app/id").and_then(|v| v.as_str())
+            {
                 actions.push(
                     next_action(
                         "hosting nodejs app get --app-id <app-id>",
@@ -363,8 +378,6 @@ fn job_get_command() -> RuntimeCommandSpec {
                     )
                     .with_param("app-id", NextActionParam::value(app_id)),
                 );
-            } else if status == "pending" || status == "active" {
-                // keep poll action only
             }
             Ok(CommandResult::new(data).with_next_actions(actions))
         },
@@ -571,19 +584,27 @@ fn source_status_command() -> RuntimeCommandSpec {
                 .get_source_upload_status(&app_id, &job_id)
                 .await
                 .map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
-                next_action(
-                    "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
-                    "Poll again while upload is in progress",
-                )
-                .with_param("app-id", NextActionParam::value(app_id.clone()))
-                .with_param("job-id", NextActionParam::value(job_id)),
-                next_action(
-                    "hosting nodejs deployment publish --app-id <app-id>",
-                    "Publish after upload completes",
-                )
-                .with_param("app-id", NextActionParam::value(app_id)),
-            ]))
+            let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            let mut actions = Vec::new();
+            if !is_source_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
+                        "Re-check whether the upload has finished",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id.clone()))
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "complete" {
+                actions.push(
+                    next_action(
+                        "hosting nodejs deployment publish --app-id <app-id>",
+                        "Publish after upload completes",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id)),
+                );
+            }
+            Ok(CommandResult::new(data).with_next_actions(actions))
         },
     )
 }
@@ -719,15 +740,17 @@ fn source_git_status_command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            let mut actions = vec![
-                next_action(
-                    "hosting nodejs source git-status --app-id <app-id> --job-id <job-id>",
-                    "Poll again while import is in progress",
-                )
-                .with_param("app-id", NextActionParam::value(app_id.clone()))
-                .with_param("job-id", NextActionParam::value(job_id)),
-            ];
-            if status == "complete" {
+            let mut actions = Vec::new();
+            if !is_source_job_terminal(status) {
+                actions.push(
+                    next_action(
+                        "hosting nodejs source git-status --app-id <app-id> --job-id <job-id>",
+                        "Re-check whether the import has finished",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id.clone()))
+                    .with_param("job-id", NextActionParam::value(job_id)),
+                );
+            } else if status == "complete" {
                 actions.push(
                     next_action(
                         "hosting nodejs deployment publish --app-id <app-id>",
@@ -1024,4 +1047,27 @@ fn logs_command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(data))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_app_creation_job_terminal, is_source_job_terminal};
+
+    #[test]
+    fn source_job_terminal_status_detection() {
+        assert!(is_source_job_terminal("complete"));
+        assert!(is_source_job_terminal("failed"));
+        assert!(!is_source_job_terminal("in_progress"));
+        assert!(!is_source_job_terminal(""));
+        assert!(!is_source_job_terminal("COMPLETE"));
+    }
+
+    #[test]
+    fn app_creation_job_terminal_status_detection() {
+        assert!(is_app_creation_job_terminal("active"));
+        assert!(is_app_creation_job_terminal("failed"));
+        assert!(!is_app_creation_job_terminal("pending"));
+        assert!(!is_app_creation_job_terminal(""));
+        assert!(!is_app_creation_job_terminal("ACTIVE"));
+    }
 }

@@ -13,5 +13,5 @@ pub fn module() -> Module {
         )
         .with_group(nodejs::nodejs_group())
     })
-    .with_feature_flag("hosting", Stage::Beta)
+    .with_feature_flag("hosting", Stage::Ga)
 }
