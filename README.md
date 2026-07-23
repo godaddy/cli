@@ -31,7 +31,7 @@ Once installed, `gddy update check` / `gddy update apply` handles upgrades in pl
 ```bash
 gddy                              # environment/auth snapshot + full command tree
 gddy auth login                   # opens a browser for OAuth
-gddy domain available example.com # check a domain, no auth required
+gddy domain available example.com # check if a domain is registerable
 gddy domain list                  # list domains in your account
 ```
 
