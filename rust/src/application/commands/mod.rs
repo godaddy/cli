@@ -137,7 +137,7 @@ async fn fail_deploy(
 }
 
 /// Builds the terminal `{"type":"result",...}` event for a successful
-/// `application deploy` run.
+/// `platform app deploy` run.
 fn deploy_result_event(
     name: &str,
     application_id: &str,
@@ -183,12 +183,12 @@ fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
     };
     vec![
         next_action(
-            "application validate <name>",
+            "platform app validate <name>",
             "Validate remote application configuration",
         )
         .with_param("name", name_param),
         next_action(
-            "application release --application-id <application-id> --version <version>",
+            "platform app release --application-id <application-id> --version <version>",
             "Create a new release",
         )
         .with_param("application-id", NextActionParam::required())
@@ -200,31 +200,32 @@ fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
 fn deploy_next_actions(name: &str) -> Vec<NextAction> {
     vec![
         next_action(
-            "application enable <name> --store-id <store-id>",
+            "platform app enable <name> --store-id <store-id>",
             "Enable the application on a store",
         )
         .with_param("name", required_value(name))
         .with_param("store-id", NextActionParam::required()),
         next_action(
-            "application info --name <name>",
+            "platform app info --name <name>",
             "Inspect deployment status",
         )
         .with_param("name", required_value(name)),
-        next_action("application deploy --name <name>", "Rerun deployment")
+        next_action("platform app deploy --name <name>", "Rerun deployment")
             .with_param("name", required_value(name)),
     ]
 }
 
 pub fn application_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("application", "Manage GoDaddy applications")
+        GroupSpec::new("app", "Manage GoDaddy Platform apps")
             .with_long(
                 "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
                 developer-platform app described by a godaddy.toml manifest in your working \
-                directory. Use `application init` to create one, `application validate <name>` \
-                to check remote application state, and `application deploy` to publish it.",
+                directory. Use `gddy platform app init` to create one, `gddy platform app \
+                validate <name>` to check remote application state, and `gddy platform app \
+                deploy` to publish it.",
             )
-            .with_alias("app"),
+            .with_alias("application"),
     )
     .with_command(list_command())
     .with_command(info_command())
@@ -244,7 +245,7 @@ fn list_command() -> RuntimeCommandSpec {
         CommandSpec::new("list", "List all applications")
             .with_long(
                 "List all GoDaddy developer-platform applications visible to the current \
-                account. Use `application info --name <name>` to fetch full details for a \
+                account. Use `gddy platform app info --name <name>` to fetch full details for a \
                 single application.",
             )
             .with_system("applications")
@@ -256,12 +257,12 @@ fn list_command() -> RuntimeCommandSpec {
             let data = client.list_applications().await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
-                    "application info --name <name>",
+                    "platform app info --name <name>",
                     "Get details for a specific application",
                 )
                 .with_param("name", NextActionParam::required()),
                 next_action(
-                    "application init --name <name> --description <description> --url <url> --proxy-url <proxy-url> --scopes <scopes>",
+                    "platform app init --name <name> --description <description> --url <url> --proxy-url <proxy-url> --scopes <scopes>",
                     "Initialize a new application",
                 ),
             ]))
@@ -274,7 +275,8 @@ fn info_command() -> RuntimeCommandSpec {
         CommandSpec::new("info", "Get application details")
             .with_long(
                 "Fetch full details for a single GoDaddy developer-platform application by \
-                name, including status, URLs, and authorization scopes. Use `application list` \
+                name, including status, URLs, and authorization scopes. Use `gddy platform app \
+                list` \
                 to find available names.",
             )
             .with_system("applications")
@@ -301,12 +303,12 @@ fn info_command() -> RuntimeCommandSpec {
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
             Ok(CommandResult::new(app.clone()).with_next_actions(vec![
                 next_action(
-                    "application validate <name>",
+                    "platform app validate <name>",
                     "Validate application configuration",
                 )
                 .with_param("name", required_value(&name)),
                 next_action(
-                    "application update --id <id> [--label <label>] [--description <description>] [--status <status>]",
+                    "platform app update --id <id> [--label <label>] [--description <description>] [--status <status>]",
                     "Update application configuration",
                 )
                 .with_param("id", required_value(&app_id))
@@ -318,13 +320,13 @@ fn info_command() -> RuntimeCommandSpec {
                     },
                 ),
                 next_action(
-                    "application release --application-id <application-id> --version <version>",
+                    "platform app release --application-id <application-id> --version <version>",
                     "Create a release",
                 )
                 .with_param("application-id", required_value(&app_id))
                 .with_param("version", NextActionParam::required()),
                 next_action(
-                    "application deploy --name <name>",
+                    "platform app deploy --name <name>",
                     "Deploy this application",
                 )
                 .with_param("name", required_value(&name)),
@@ -340,8 +342,8 @@ fn init_command() -> RuntimeCommandSpec {
                 "Register a new GoDaddy developer-platform application and write a \
                 godaddy.toml manifest to the current directory. The manifest captures the \
                 application name, URL, authorization scopes, and any actions or extensions \
-                added later. Run `application validate <name>` to confirm the remote \
-                application is healthy, then `application release` to create a versioned \
+                added later. Run `gddy platform app validate <name>` to confirm the remote \
+                application is healthy, then `gddy platform app release` to create a versioned \
                 release.",
             )
             .with_system("applications")
@@ -570,20 +572,20 @@ fn init_command() -> RuntimeCommandSpec {
             });
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
-                    "application add action --name <name> --url <url>",
+                    "platform app add action --name <name> --url <url>",
                     "Add first action",
                 ),
                 next_action(
-                    "application add subscription --name <name> --events <events> --url <url>",
+                    "platform app add subscription --name <name> --events <events> --url <url>",
                     "Add webhook subscription",
                 ),
                 next_action(
-                    "application validate <name>",
+                    "platform app validate <name>",
                     "Validate the remote application state",
                 )
                 .with_param("name", required_value(&name)),
                 next_action(
-                    "application release --application-id <application-id> --version <version>",
+                    "platform app release --application-id <application-id> --version <version>",
                     "Create the first release",
                 )
                 .with_param("application-id", required_value(&app_id))
@@ -651,7 +653,7 @@ fn validate_command() -> RuntimeCommandSpec {
             if valid {
                 next_actions.push(
                     next_action(
-                        "application release --application-id <application-id> --version <version>",
+                        "platform app release --application-id <application-id> --version <version>",
                         "Create a release after validation",
                     )
                     .with_param("application-id", required_value(&app_id))
@@ -660,7 +662,7 @@ fn validate_command() -> RuntimeCommandSpec {
             }
             next_actions.push(
                 next_action(
-                    "application info --name <name>",
+                    "platform app info --name <name>",
                     "Inspect application details",
                 )
                 .with_param("name", required_value(&name)),
@@ -682,7 +684,7 @@ fn update_command() -> RuntimeCommandSpec {
             .with_long(
                 "Update the label, description, or status of a GoDaddy developer-platform \
                 application by its ID. At least one of --label, --description, or --status \
-                must be provided. Use `application info --name <name>` to retrieve the \
+                must be provided. Use `gddy platform app info --name <name>` to retrieve the \
                 application ID.",
             )
             .with_system("applications")
@@ -743,12 +745,12 @@ fn update_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["updateApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        "application info --name <name>",
+                        "platform app info --name <name>",
                         "Inspect updated application",
                     )
                     .with_param("name", required_value(&name)),
                     next_action(
-                        "application deploy --name <name>",
+                        "platform app deploy --name <name>",
                         "Deploy updated application",
                     )
                     .with_param("name", required_value(&name)),
@@ -763,7 +765,7 @@ fn enable_command() -> RuntimeCommandSpec {
         CommandSpec::new("enable", "Enable an application on a store")
             .with_long(
                 "Make a GoDaddy developer-platform application available on a specific \
-                store. Use `application disable` to reverse this. Both the application name \
+                store. Use `gddy platform app disable` to reverse this. Both the application name \
                 and a store ID are required.",
             )
             .with_system("applications")
@@ -794,13 +796,13 @@ fn enable_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["enableStoreApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        "application disable <name> --store-id <store-id>",
+                        "platform app disable <name> --store-id <store-id>",
                         "Disable the application on the same store",
                     )
                     .with_param("name", required_value(&name))
                     .with_param("store-id", required_value(&store_id)),
                     next_action(
-                        "application info --name <name>",
+                        "platform app info --name <name>",
                         "Inspect application status",
                     )
                     .with_param("name", required_value(&name)),
@@ -815,7 +817,7 @@ fn disable_command() -> RuntimeCommandSpec {
         CommandSpec::new("disable", "Disable an application on a store")
             .with_long(
                 "Remove a GoDaddy developer-platform application from a specific store, \
-                making it unavailable there. Use `application enable` to re-enable it. \
+                making it unavailable there. Use `gddy platform app enable` to re-enable it. \
                 Both the application name and a store ID are required.",
             )
             .with_system("applications")
@@ -847,13 +849,13 @@ fn disable_command() -> RuntimeCommandSpec {
                 CommandResult::new(data["disableStoreApplication"].clone()).with_next_actions(
                     vec![
                         next_action(
-                            "application enable <name> --store-id <store-id>",
+                            "platform app enable <name> --store-id <store-id>",
                             "Re-enable the application on the same store",
                         )
                         .with_param("name", required_value(&name))
                         .with_param("store-id", required_value(&store_id)),
                         next_action(
-                            "application info --name <name>",
+                            "platform app info --name <name>",
                             "Inspect application status",
                         )
                         .with_param("name", required_value(&name)),
@@ -870,7 +872,7 @@ fn archive_command() -> RuntimeCommandSpec {
             .with_long(
                 "Archive a GoDaddy developer-platform application by name. Archiving is \
                 irreversible via this CLI; the application will no longer be active. \
-                Use `application list` to confirm the application name before archiving.",
+                Use `gddy platform app list` to confirm the application name before archiving.",
             )
             .with_system("applications")
             .with_tier(Tier::Destructive)
@@ -899,11 +901,11 @@ fn archive_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["archiveApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        "application info --name <name>",
+                        "platform app info --name <name>",
                         "Inspect archived application",
                     )
                     .with_param("name", required_value(&name)),
-                    next_action("application list", "List all applications"),
+                    next_action("platform app list", "List all platform apps"),
                 ]),
             )
         },
@@ -965,7 +967,7 @@ fn release_command() -> RuntimeCommandSpec {
             .with_long(
                 "Tag a new versioned release for a GoDaddy developer-platform application. \
                 The version must follow semver (e.g. 1.2.3). A release is required before \
-                running `application deploy`. Use `application info --name <name>` to \
+                running `gddy platform app deploy`. Use `gddy platform app info --name <name>` to \
                 retrieve the application ID.",
             )
             .with_system("applications")
@@ -1007,7 +1009,7 @@ fn release_command() -> RuntimeCommandSpec {
 
             // Include actions, webhook subscriptions, and UI extensions from
             // godaddy.toml so configured behavior is captured in the release.
-            // Without this, everything added via `application add` was silently
+            // Without this, everything added via `platform app add` was silently
             // dropped. A missing config is non-fatal (empty arrays); a config
             // with too many targets per extension is a hard error.
             let (actions, subscriptions, ui_extensions) = match crate::config::read_config(
@@ -1048,12 +1050,12 @@ fn release_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
                     next_action(
-                        "application deploy --name <name>",
+                        "platform app deploy --name <name>",
                         "Deploy the released application",
                     )
                     .with_param("name", name_param.clone()),
                     next_action(
-                        "application info --name <name>",
+                        "platform app info --name <name>",
                         "Inspect application and latest release",
                     )
                     .with_param("name", name_param),
@@ -1071,7 +1073,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 with esbuild, run the security scanner (rules SEC101–SEC115) on each bundle, \
                 then upload the artifacts to the latest release of the named application. \
                 Progress is streamed as JSON events. A release must exist before deploying; \
-                create one with `application release`.",
+                create one with `gddy platform app release`.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1150,7 +1152,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .map(str::to_owned);
             let Some(release_id) = release_id else {
                 let err = cli_engine::CliCoreError::message(format!(
-                    "application '{name}' has no releases — create one first with: gddy application release --application-id {application_id} --version 0.0.1"
+                    "application '{name}' has no releases — create one first with: gddy platform app release --application-id {application_id} --version 0.0.1"
                 ));
                 return Err(fail_deploy(&sender, err).await);
             };
@@ -1489,7 +1491,7 @@ pub fn add_group() -> RuntimeGroupSpec {
             "Append actions, webhook subscriptions, or UI extensions to the \
                 godaddy.toml manifest in the current directory. These commands do not \
                 require authentication and do not contact the API; run \
-                `application deploy` to publish the updated manifest.",
+                `gddy platform app deploy` to publish the updated manifest.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_with_context(
@@ -1499,7 +1501,7 @@ pub fn add_group() -> RuntimeGroupSpec {
                     directory. An action is an HTTP endpoint that the platform calls on \
                     behalf of the application; it is identified by a name and a public \
                     HTTPS URL. The manifest is updated in place; run \
-                    `application validate <name>` to confirm remote application state.",
+                    `gddy platform app validate <name>` to confirm remote application state.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1539,7 +1541,7 @@ pub fn add_group() -> RuntimeGroupSpec {
                 "Append a webhook subscription entry to the godaddy.toml manifest in \
                     the current directory. A subscription routes platform events to an HTTPS \
                     endpoint. Provide one or more event types with --events; run \
-                    `gddy webhook events` to discover the full list of valid event types.",
+                    `gddy platform webhook events` to discover the full list of valid event types.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1565,7 +1567,7 @@ pub fn add_group() -> RuntimeGroupSpec {
                     .required(true)
                     .help(
                         "One or more event types to subscribe to \
-                            (run `gddy webhook events` to list valid values)",
+                            (run `gddy platform webhook events` to list valid values)",
                     ),
             ),
         |ctx| async move {
@@ -1610,7 +1612,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 directory. Extensions are JavaScript bundles that the platform renders \
                 inside store surfaces. Three types are supported: embed (inline widget), \
                 checkout (checkout-flow widget), and blocks (content blocks). Run \
-                `application deploy` to bundle and upload the registered extensions.",
+                `gddy platform app deploy` to bundle and upload the registered extensions.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_with_context(
@@ -1619,7 +1621,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 "Register an embed UI extension in godaddy.toml. An embed extension is a \
                 JavaScript bundle rendered as an inline widget inside a store surface. \
                 Provide a unique name, a platform handle, and the path to the source \
-                entry-point file. Run `application deploy` to bundle and upload.",
+                entry-point file. Run `gddy platform app deploy` to bundle and upload.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1689,7 +1691,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 "Register a checkout UI extension in godaddy.toml. A checkout extension is \
                 a JavaScript bundle rendered during the store checkout flow. Provide a \
                 unique name, a platform handle, and the path to the source entry-point \
-                file. Run `application deploy` to bundle and upload.",
+                file. Run `gddy platform app deploy` to bundle and upload.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -1759,7 +1761,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 "Register a blocks UI extension in godaddy.toml. A blocks extension is a \
                 JavaScript bundle that provides content blocks within a store. Only one \
                 blocks extension is supported per application; running this command again \
-                will overwrite the existing entry. Run `application deploy` to bundle and \
+                will overwrite the existing entry. Run `gddy platform app deploy` to bundle and \
                 upload.",
             )
             .with_system("applications")
@@ -1955,23 +1957,23 @@ mod tests {
             .expect("multiple update fields should be allowed together");
     }
 
-    /// API commands must stay fail-closed: `application list` calls the backend,
+    /// API commands must stay fail-closed: `platform app list` calls the backend,
     /// so it must require authentication. Built with **no auth provider
     /// registered**, the engine's default `AuthRequirement::Required` must reject
     /// it before the handler runs (no network call). This guards against someone
     /// mistakenly marking an API command `no_auth(true)`, which would let it run
     /// unauthenticated.
     #[tokio::test]
-    async fn application_list_requires_auth() {
+    async fn platform_app_list_requires_auth() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Experimental)
                 .with_default_auth_provider("godaddy")
-                .with_module(super::super::module()),
+                .with_module(crate::platform::module()),
         );
 
         let output = cli
-            .run(["gddy", "application", "list", "--output", "json"])
+            .run(["gddy", "platform", "app", "list", "--output", "json"])
             .await;
 
         // The engine maps auth-resolution failures to exit code 2; together with
@@ -1980,7 +1982,7 @@ mod tests {
         const AUTH_FAILURE_EXIT: i32 = 2;
         assert_eq!(
             output.exit_code, AUTH_FAILURE_EXIT,
-            "application list must fail closed at auth resolution, got: {}",
+            "platform app list must fail closed at auth resolution, got: {}",
             output.rendered
         );
         let json: serde_json::Value =
@@ -2172,7 +2174,7 @@ mod tests {
             event["next_actions"][0]["command"]
                 .as_str()
                 .unwrap_or("")
-                .contains("application enable"),
+                .contains("platform app enable"),
             "first next action should enable on a store: {event}"
         );
     }

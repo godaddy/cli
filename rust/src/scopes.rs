@@ -37,7 +37,7 @@
 //! This registry covers the scopes the CLI requests for *itself* (login defaults
 //! plus per-command step-up). It intentionally does NOT cover scopes that are
 //! user data rather than the CLI's own grants — e.g. the `authorizationScopes`
-//! assigned to a third-party app created via `gddy application create`, or the
+//! assigned to a third-party app created via `gddy platform app init`, or the
 //! ad-hoc scopes `gddy api call --scope …` derives from the API catalog at
 //! runtime.
 
@@ -84,7 +84,7 @@ declare_scopes! {
     APP_REGISTRY_READ => "apps.app-registry:read",
     /// Create/update/archive the caller's registered applications. NOT requested
     /// at login by default (it's a rare operation for most customers); the
-    /// app-registry mutation commands (`application init/update/enable/disable/
+    /// app-registry mutation commands (`platform app init/update/enable/disable/
     /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
     /// requests it on demand (OAuth step-up).
     APP_REGISTRY_WRITE => "apps.app-registry:write",

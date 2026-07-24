@@ -46,4 +46,13 @@ Use `gddy --help` or `gddy tree` to get a comprehensive list of available comman
 - `domain` — list your domains, check availability, get suggestions, and register new ones
 - `dns` — view and edit a domain's DNS records
 
+### Developer Platform
+
+- `platform app` — create, configure, release, and deploy GoDaddy Platform apps
+- `platform actions` — discover the action contracts an app can declare
+- `platform webhook` — inspect webhook event types for app subscriptions
+
+The Developer Platform command tree is currently an Experimental preview. Enable
+Experimental commands in your environment, then begin with `gddy platform app init`.
+
 We're actively working to expand the CLI to cover additional GoDaddy products.
