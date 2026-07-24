@@ -16,7 +16,7 @@ pub fn prompt_accept_agreements<R: BufRead, W: Write>(
         "By continuing, you agree to the GoDaddy Developer terms:"
     )?;
     writeln!(writer)?;
-    writeln!(writer, "  Terms of Service:      {TERMS_OF_USE}")?;
+    writeln!(writer, "  Terms of Use:          {TERMS_OF_USE}")?;
     writeln!(writer, "  Privacy Policy:        {PRIVACY_POLICY}")?;
     writeln!(writer, "  Developer Agreement:   {DEVELOPER_AGREEMENT}")?;
     writeln!(writer)?;
@@ -39,7 +39,7 @@ mod tests {
     use super::prompt_accept_agreements;
 
     #[test]
-    fn prompt_writes_all_links_to_stderr_and_accepts_enter() {
+    fn prompt_writes_all_links_and_accepts_enter() {
         let mut input = Cursor::new(b"\n");
         let mut output = Vec::new();
         assert!(prompt_accept_agreements(&mut input, &mut output).expect("prompt"));

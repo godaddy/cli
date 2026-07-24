@@ -56,7 +56,8 @@ pub async fn ensure_ready_for_app_init(
 ) -> Result<EnsureOutcome, CliCoreError> {
     let Some(base_url) = environments::devx_core_url(env) else {
         return Err(CliCoreError::message(format!(
-            "DevX core URL is not configured for environment `{env}`. Set DEVX_CORE_URL to continue."
+            "DevX core URL is not configured for environment `{env}`. Set {}_DEVX_CORE_URL or DEVX_CORE_URL to continue.",
+            environments::env_prefix(env),
         )));
     };
 
@@ -70,12 +71,12 @@ pub async fn ensure_ready_for_app_init(
     let is_tty = io::stdin().is_terminal();
     let prompt_accepted = if status.status == "PENDING" && is_tty {
         // Keep the stdin lock off the async path so the command future stays `Send`.
-        let accepted = {
+        let prompt_result = {
             let mut stdin = io::stdin().lock();
             let mut stderr = io::stderr();
-            prompt_accept_agreements(&mut stdin, &mut stderr).unwrap_or(false)
+            prompt_accept_agreements(&mut stdin, &mut stderr)
         };
-        Some(accepted)
+        Some(prompt_result.map_err(prompt_error)?)
     } else {
         None
     };
@@ -108,7 +109,7 @@ pub(crate) async fn ensure_ready_for_app_init_with(
     })?;
 
     let prompt_accepted = if status.status == "PENDING" && is_tty {
-        Some(prompt_accept_agreements(reader, stderr).unwrap_or(false))
+        Some(prompt_accept_agreements(reader, stderr).map_err(prompt_error)?)
     } else {
         None
     };
@@ -122,6 +123,12 @@ pub(crate) async fn ensure_ready_for_app_init_with(
         prompt_accepted,
     )
     .await
+}
+
+fn prompt_error(error: io::Error) -> CliCoreError {
+    CliCoreError::message(format!(
+        "Could not collect developer agreement acceptance: {error}"
+    ))
 }
 
 async fn finish_decision(
@@ -156,12 +163,24 @@ async fn finish_decision(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{self, Cursor, Write};
 
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
 
     use super::{EnsureOutcome, ensure_ready_for_app_init_with};
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("writer unavailable"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::other("writer unavailable"))
+        }
+    }
 
     #[tokio::test]
     async fn active_status_is_ready_without_prompt_or_cli() {
@@ -321,5 +340,42 @@ mod tests {
         let prompt = String::from_utf8(stderr).expect("utf8");
         assert!(prompt.contains("terms-of-use"));
         complete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn pending_tty_reports_prompt_io_errors() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": { "id": "org-pending", "status": "PENDING" }
+                }));
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/cli");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": { "organizationId": "org-pending", "status": "ACTIVE" }
+                }));
+            })
+            .await;
+
+        let err = ensure_ready_for_app_init_with(
+            "test-token",
+            &server.base_url(),
+            false,
+            true,
+            &mut Cursor::new(b"\n"),
+            &mut FailingWriter,
+        )
+        .await
+        .expect_err("prompt I/O error must be reported");
+
+        assert!(err.to_string().contains("writer unavailable"));
+        assert_eq!(complete.hits_async().await, 0);
     }
 }

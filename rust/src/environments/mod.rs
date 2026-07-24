@@ -164,8 +164,10 @@ fn clean_url(raw: &str) -> Option<String> {
 }
 
 fn devx_core_url_with(name: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
-    var("DEVX_CORE_URL")
+    let prefix = env_prefix(name);
+    var(&format!("{prefix}_DEVX_CORE_URL"))
         .and_then(|value| clean_url(&value))
+        .or_else(|| var("DEVX_CORE_URL").and_then(|value| clean_url(&value)))
         .or_else(|| {
             BUILTINS
                 .iter()
@@ -176,8 +178,9 @@ fn devx_core_url_with(name: &str, var: impl Fn(&str) -> Option<String>) -> Optio
 
 /// Base URL for the DevX Core API gateway for the given environment.
 ///
-/// Custom environments must set `DEVX_CORE_URL`; `prod` and `ote` use their
-/// compiled-in endpoints unless that variable overrides them.
+/// Custom environments must set `<PREFIX>_DEVX_CORE_URL` (for example,
+/// `DEV_DEVX_CORE_URL`) or the global `DEVX_CORE_URL`. `prod` and `ote` use
+/// their compiled-in endpoints unless either variable overrides them.
 pub fn devx_core_url(name: &str) -> Option<String> {
     devx_core_url_with(name, |key| std::env::var(key).ok())
 }
@@ -811,6 +814,19 @@ mod tests {
             })
             .as_deref(),
             Some("http://localhost:4000")
+        );
+    }
+
+    #[test]
+    fn devx_core_url_per_environment_override_wins_over_global() {
+        assert_eq!(
+            devx_core_url_with("dev", |key| match key {
+                "DEV_DEVX_CORE_URL" => Some("https://dev-core.example.test/".to_owned()),
+                "DEVX_CORE_URL" => Some("https://shared-core.example.test".to_owned()),
+                _ => None,
+            })
+            .as_deref(),
+            Some("https://dev-core.example.test")
         );
     }
 
