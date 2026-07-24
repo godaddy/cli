@@ -14,6 +14,7 @@ mod next_action;
 mod output_schema;
 mod pat;
 mod payment_methods;
+mod platform;
 mod quote_cache;
 mod scopes;
 mod scopes_cmd;
@@ -32,17 +33,15 @@ use crate::next_action::next_action;
 /// [`cli_engine::build_module_group`]), so both draw from exactly one list.
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
-        actions_catalog::module(),
         api_explorer::module(),
-        application::module(),
         dns::module(),
         domain::module(),
         env::module(),
         hosting::module(),
         pat::module(),
         payment_methods::module(),
+        platform::module(),
         update::module(),
-        webhook::module(),
     ]
 }
 
@@ -64,7 +63,7 @@ async fn main() -> ExitCode {
                  • domain   — list your domains, check availability, get suggestions, and register new ones\n  \
                  • dns      — view and edit a domain's DNS records\n  \
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
-                 • application — build, configure, and deploy platform applications\n  \
+                 • platform — build and manage GoDaddy Platform integrations\n  \
                  • hosting  — manage Node.js PaaS applications (create, upload, deploy)\n  \
                  • payment-methods — manage the payment methods used for purchases\n\
                  \n\
@@ -86,7 +85,7 @@ async fn main() -> ExitCode {
                 vec![
                     next_action("auth status", "Check authentication status"),
                     next_action("env get", "Get the current active environment"),
-                    next_action("application list", "List all applications"),
+                    next_action("platform app list", "List all platform apps"),
                     next_action("tree", "Display the full command tree"),
                 ]
             }))
@@ -109,11 +108,9 @@ mod tests {
 
     /// Regression test for a real bug found while wiring feature-flagging up
     /// properly: with no `min_stage` override anywhere, cli-engine's own
-    /// default (`Stage::Ga`) silently hid `hosting`/`webhook`/`application`/
-    /// `actions` entirely (`gddy hosting` reported "unknown command"), even
-    /// though the root `--help` text advertises `hosting`/`application` as
-    /// available. Guards that the *global* default stays `Ga` per product
-    /// decision — i.e. these stay hidden absent an environment override.
+    /// default (`Stage::Ga`) hides `hosting` and the Developer Platform
+    /// namespace entirely. Guards that the *global* default stays `Ga` per
+    /// product decision — i.e. these stay hidden absent an environment override.
     #[tokio::test]
     async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
         let cli = Cli::new(
@@ -125,6 +122,21 @@ mod tests {
         assert_ne!(
             output.exit_code, 0,
             "hosting should stay hidden at the Ga default: {}",
+            output.rendered
+        );
+    }
+
+    #[tokio::test]
+    async fn platform_namespace_is_hidden_at_the_default_min_stage() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+        let output = cli.run(["gddy", "platform", "--help"]).await;
+        assert_ne!(
+            output.exit_code, 0,
+            "platform should stay hidden at the Ga default: {}",
             output.rendered
         );
     }
@@ -155,5 +167,62 @@ mod tests {
             "hosting should be revealed under an Experimental-min_stage environment: {}",
             output.rendered
         );
+    }
+
+    #[tokio::test]
+    async fn platform_namespace_exposes_the_gpa_command_tree() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_modules(super::all_modules()),
+        );
+
+        let tree = cli.run(["gddy", "tree", "--output", "json"]).await;
+        assert_eq!(tree.exit_code, 0, "{}", tree.rendered);
+        for path in [
+            "platform",
+            "platform app",
+            "platform actions",
+            "platform webhook",
+        ] {
+            assert!(
+                tree.rendered.contains(path),
+                "tree should publish {path:?}: {}",
+                tree.rendered
+            );
+        }
+
+        for (command, child) in [
+            (["gddy", "platform", "app", "--help"].as_slice(), "init"),
+            (
+                ["gddy", "platform", "actions", "--help"].as_slice(),
+                "describe",
+            ),
+            (
+                ["gddy", "platform", "webhook", "--help"].as_slice(),
+                "events",
+            ),
+            (
+                ["gddy", "platform", "application", "--help"].as_slice(),
+                "init",
+            ),
+        ] {
+            let output = cli.run(command).await;
+            assert_eq!(output.exit_code, 0, "{}", output.rendered);
+            assert!(
+                output.rendered.contains(child),
+                "help should list {child:?}: {}",
+                output.rendered
+            );
+        }
+
+        for legacy_root in ["application", "actions", "webhook"] {
+            let output = cli.run(["gddy", legacy_root, "--help"]).await;
+            assert_ne!(
+                output.exit_code, 0,
+                "legacy root {legacy_root:?} should not be registered: {}",
+                output.rendered
+            );
+        }
     }
 }

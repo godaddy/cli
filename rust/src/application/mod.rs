@@ -2,9 +2,9 @@ pub mod client;
 mod commands;
 pub mod public_url;
 
-use cli_engine::{Module, Stage};
+use cli_engine::RuntimeGroupSpec;
 
-pub fn module() -> Module {
-    Module::new("GPA", |_ctx| commands::application_group())
-        .with_feature_flag("application", Stage::Experimental)
+/// The app command group, composed below `gddy platform`.
+pub fn group() -> RuntimeGroupSpec {
+    commands::application_group()
 }
