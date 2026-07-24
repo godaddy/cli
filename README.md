@@ -55,15 +55,4 @@ Use `gddy --help` or `gddy tree` to get a comprehensive list of available comman
 The Developer Platform command tree is currently an Experimental preview. Enable
 Experimental commands in your environment, then begin with `gddy platform app init`.
 
-### Migrating platform commands
-
-The Rust CLI uses one unambiguous `platform` namespace for Developer Platform
-work. Update scripts and prompts as follows:
-
-| Before | After |
-| --- | --- |
-| `gddy application init` | `gddy platform app init` |
-| `gddy actions list` | `gddy platform actions list` |
-| `gddy webhook events` | `gddy platform webhook events` |
-
 We're actively working to expand the CLI to cover additional GoDaddy products.
