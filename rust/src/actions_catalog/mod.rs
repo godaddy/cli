@@ -1,6 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, Stage, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
+    Tier,
 };
 use serde_json::json;
 
@@ -60,24 +60,24 @@ fn load_action_schema(name: &str) -> Option<serde_json::Value> {
     serde_json::from_str(json_str).ok()
 }
 
-pub fn module() -> Module {
-    Module::new("GPA", |_ctx| {
-        RuntimeGroupSpec::new(
-            GroupSpec::new("actions", "Discover available GoDaddy action contracts")
-                .with_long(
-                    "Browse the catalog of GoDaddy actions your application can declare.\n\
+/// The action-catalog command group, composed below `gddy platform`.
+pub fn group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(
+        GroupSpec::new("actions", "Discover available GoDaddy action contracts")
+            .with_long(
+                "Browse the catalog of GoDaddy actions your application can declare.\n\
                      An action contract defines the name, and the input/output schema, \
                      of a capability your app exposes to the GoDaddy platform.\n\
-                     Use `gddy actions list` to see all available actions, and \
-                     `gddy actions describe` to inspect a specific action's schema.",
-                ),
-        )
+                     Use `gddy platform actions list` to see all available actions, and \
+                     `gddy platform actions describe` to inspect a specific action's schema.",
+            ),
+    )
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List all available action contracts")
                 .with_long(
                     "Prints the name and short description of every action your \
                      application can declare.\n\
-                     Run `gddy actions describe <ACTION>` to see the full \
+                     Run `gddy platform actions describe <ACTION>` to see the full \
                      input/output schema for a specific action.",
                 )
                 .with_system("actions")
@@ -89,7 +89,10 @@ pub fn module() -> Module {
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
                 Ok(CommandResult::new(json!({ "actions": actions })).with_next_actions(vec![
-                    next_action("actions describe <action>", "See an action's full schema")
+                    next_action(
+                        "platform actions describe <action>",
+                        "See an action's full schema",
+                    )
                         .with_param("action", NextActionParam::required()),
                 ]))
             },
@@ -99,7 +102,7 @@ pub fn module() -> Module {
                 .with_long(
                     "Prints the full JSON schema for the named action contract, \
                      including its expected input fields and the shape of its output.\n\
-                     Run `gddy actions list` for the list of valid action names.",
+                     Run `gddy platform actions list` for the list of valid action names.",
                 )
                 .with_system("actions")
                 .with_tier(Tier::Read)
@@ -122,12 +125,10 @@ pub fn module() -> Module {
                     .to_owned();
                 let schema = load_action_schema(&name).ok_or_else(|| {
                     cli_engine::CliCoreError::message(format!(
-                        "action {name:?} not found; run `gddy actions list` to see available actions"
+                        "action {name:?} not found; run `gddy platform actions list` to see available actions"
                     ))
                 })?;
                 Ok(CommandResult::new(schema))
             },
         ))
-    })
-    .with_feature_flag("actions", Stage::Experimental)
 }
