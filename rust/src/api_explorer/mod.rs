@@ -809,7 +809,7 @@ fn call_command() -> RuntimeCommandSpec {
 mod tests {
     use cli_engine::{Cli, CliConfig};
 
-    use super::merge_required_scopes;
+    use super::{catalog, find_endpoint, merge_required_scopes};
 
     fn v(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_owned()).collect()
@@ -841,6 +841,20 @@ mod tests {
         assert_eq!(
             merge_required_scopes(v(&["a", "a", "b"]), &v(&["b"])),
             v(&["a", "b"])
+        );
+    }
+
+    /// The commerce endpoint's catalog scope is included alongside an explicit
+    /// scope. `call_command` sends this exact list to
+    /// `credential_with_scopes` before it builds the HTTP request, so the PKCE
+    /// provider can perform OAuth step-up before an API 403.
+    #[test]
+    fn commerce_catalog_scope_is_merged_with_an_explicit_scope() {
+        let (_, endpoint) = find_endpoint(catalog(), "/v1/commerce/stores/{storeId}/orders")
+            .expect("orders endpoint exists in the embedded catalog");
+        assert_eq!(
+            merge_required_scopes(v(&["commerce.order:write"]), &endpoint.scopes),
+            v(&["commerce.order:write", "commerce.order:read"]),
         );
     }
 
