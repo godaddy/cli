@@ -149,7 +149,7 @@ impl HostingClient {
             Method::POST,
             &format!("/apps/{app_id}/deployments"),
             &[],
-            None,
+            Some(json!({})),
         )
         .await
     }
@@ -513,6 +513,32 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(body["jobId"], "git-1");
+    }
+
+    #[tokio::test]
+    async fn publish_app_sends_empty_json_body_and_content_length() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/hosting/nodejs/apps/app-1/deployments")
+                    .header("content-type", "application/json")
+                    .header_exists("content-length")
+                    .json_body(json!({}));
+                then.status(200).json_body(json!({
+                    "deploymentId": "dep-1",
+                    "status": "pending"
+                }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .publish_app("app-1")
+            .await
+            .expect("publish app");
+
+        mock.assert_async().await;
+        assert_eq!(body["deploymentId"], "dep-1");
     }
 
     #[tokio::test]

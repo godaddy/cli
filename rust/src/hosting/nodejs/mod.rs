@@ -351,10 +351,11 @@ fn job_get_command() -> RuntimeCommandSpec {
         |ctx| async move {
             let job_id = required_str(&ctx, "job-id", "--job-id")?;
             let client = make_client(&ctx, &[APPS_CREATE]).await?;
-            let data = client
+            let mut data = client
                 .get_app_creation_status(&job_id)
                 .await
                 .map_err(client_err)?;
+            promote_job_fields(&mut data);
             let status = data
                 .pointer("/job/status")
                 .and_then(|v| v.as_str())
@@ -382,6 +383,17 @@ fn job_get_command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(data).with_next_actions(actions))
         },
     )
+}
+
+fn promote_job_fields(data: &mut Value) {
+    let job = data.get("job").cloned();
+    if let (Some(Value::Object(job)), Some(obj)) = (job, data.as_object_mut()) {
+        for key in ["id", "status"] {
+            if let Some(v) = job.get(key) {
+                obj.insert(key.to_owned(), v.clone());
+            }
+        }
+    }
 }
 
 fn deployment_list_command() -> RuntimeCommandSpec {
@@ -993,7 +1005,13 @@ fn secrets_update_command() -> RuntimeCommandSpec {
 fn logs_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("logs", "Get application logs")
-            .with_long("Fetch log entries for a Node.js hosting application.")
+            .with_long(
+                "Fetch log entries for a Node.js hosting application. \
+                 Choose --source to select which stream to read: `stdout` and \
+                 `stderr` are the running app's own output, while `exec` \
+                 covers platform activity around it (source import, npm \
+                 install, and build output all land here, not in stderr).",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[LOGS_READ])
@@ -1017,7 +1035,8 @@ fn logs_command() -> RuntimeCommandSpec {
                     .long("source")
                     .value_name("SOURCE")
                     .required(true)
-                    .help("Log source identifier"),
+                    .value_parser(["stdout", "stderr", "exec"])
+                    .help("Log stream (stdout, stderr, or exec)"),
             )
             .with_arg(
                 clap::Arg::new("since")
@@ -1051,7 +1070,8 @@ fn logs_command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_app_creation_job_terminal, is_source_job_terminal};
+    use super::{is_app_creation_job_terminal, is_source_job_terminal, promote_job_fields};
+    use serde_json::json;
 
     #[test]
     fn source_job_terminal_status_detection() {
@@ -1069,5 +1089,27 @@ mod tests {
         assert!(!is_app_creation_job_terminal("pending"));
         assert!(!is_app_creation_job_terminal(""));
         assert!(!is_app_creation_job_terminal("ACTIVE"));
+    }
+
+    #[test]
+    fn promote_job_fields_lifts_id_and_status_to_top() {
+        let mut data = json!({
+            "job": { "id": "job-1", "status": "active" },
+            "app": { "id": "app-1", "name": "demo" },
+        });
+        promote_job_fields(&mut data);
+        assert_eq!(data["id"], "job-1");
+        assert_eq!(data["status"], "active");
+        assert_eq!(data["job"]["id"], "job-1");
+        assert_eq!(data["app"]["name"], "demo");
+    }
+
+    #[test]
+    fn promote_job_fields_is_noop_without_job() {
+        let mut data = json!({ "app": { "id": "app-1" } });
+        promote_job_fields(&mut data);
+        assert!(data.get("id").is_none());
+        assert!(data.get("status").is_none());
+        assert_eq!(data["app"]["id"], "app-1");
     }
 }
