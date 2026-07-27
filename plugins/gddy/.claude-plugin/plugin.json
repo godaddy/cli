@@ -1,8 +1,0 @@
-{
-  "name": "gddy",
-  "description": "Skill for using GoDaddy's gddy CLI — domain search, registration, and DNS management.",
-  "version": "0.1.0",
-  "author": {
-    "name": "GoDaddy"
-  }
-}
