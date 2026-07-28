@@ -2,10 +2,10 @@ name: CICD
 on:
   push:
     branches:
-      - rust-port
+      - main
   pull_request:
     branches:
-      - rust-port
+      - main
 
 jobs:
   cicd:
