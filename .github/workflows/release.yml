@@ -3,14 +3,12 @@ name: Release
 # Cuts real semver GitHub Releases for the `gddy` binary via release-please,
 # then builds and attaches multi-platform archives to the release it creates.
 #
-# Targets `rust-port` directly (not `main`) — see release-please-config.json
-# and .release-please-manifest.json for context on why. When `rust-port`
-# eventually merges into `main`, repoint the `push` trigger and the action's
-# `target-branch` input below; nothing else needs to change.
+# Targets `main` — see release-please-config.json and
+# .release-please-manifest.json for the release-please state this depends on.
 
 on:
   push:
-    branches: [rust-port]
+    branches: [main]
   workflow_dispatch:
     inputs:
       publish_only:
@@ -40,7 +38,7 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          target-branch: rust-port
+          target-branch: main
 
   build:
     name: Build ${{ matrix.target }}

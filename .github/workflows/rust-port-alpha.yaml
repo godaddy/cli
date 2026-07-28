@@ -1,7 +1,7 @@
-name: rust-port alpha
+name: main alpha
 
-# Publishes a `gddy` alpha binary on every push to the rust-port feature branch
-# so people can try the Rust port alongside the legacy `godaddy` CLI. The Rust
+# Publishes a `gddy` alpha binary on every push to `main`, so people can try
+# the latest build ahead of the next tagged release-please release. The
 # binary is named `gddy` (see rust/Cargo.toml). Output is a single rolling
 # prerelease on the fixed `alpha` tag, overwritten on each push.
 #
@@ -10,7 +10,7 @@ name: rust-port alpha
 
 on:
   push:
-    branches: [rust-port]
+    branches: [main]
   workflow_dispatch:
 
 # Least privilege by default; only the publish job needs `contents: write` to
@@ -24,7 +24,7 @@ permissions:
 # recreates the release/tag, so a cancellation mid-window could leave `alpha`
 # missing. Queuing instead lets each publish finish atomically; the last one wins.
 concurrency:
-  group: rust-port-alpha
+  group: main-alpha
   cancel-in-progress: false
 
 jobs:
@@ -174,8 +174,8 @@ jobs:
           gh release delete alpha --yes --cleanup-tag || true
 
           {
-            printf '**Experimental alpha of the GoDaddy CLI Rust port.** Built from `%s` on %s.\n\n' "$SHORT_SHA" "$BUILT_ON"
-            printf 'Installs as `gddy` so you can try it alongside the legacy `godaddy` CLI. It tracks the tip of the `rust-port` branch and is overwritten on every push — expect breakage.\n\n'
+            printf '**Experimental alpha build of the GoDaddy CLI (`gddy`).** Built from `%s` on %s.\n\n' "$SHORT_SHA" "$BUILT_ON"
+            printf 'Tracks the tip of `main` and is overwritten on every push — expect breakage. For a stable release, use the [latest tagged release](https://github.com/%s/releases/latest) instead.\n\n' "$REPO"
             printf 'Install / update (public repo — no auth needed):\n\n'
             printf 'macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows):\n\n'
             printf '```\n'
@@ -190,7 +190,7 @@ jobs:
           gh release create alpha \
             --prerelease \
             --target "$GITHUB_SHA" \
-            --title "rust-port alpha (${SHORT_SHA})" \
+            --title "main alpha (${SHORT_SHA})" \
             --notes-file alpha-notes.md \
             dist/gddy-x86_64-unknown-linux-gnu.tar.gz \
             dist/gddy-aarch64-unknown-linux-gnu.tar.gz \
