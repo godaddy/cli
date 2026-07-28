@@ -11,6 +11,10 @@ jobs:
   cicd:
     runs-on: ubuntu-latest
     concurrency: ${{ github.workflow }}-${{ github.ref }}
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     defaults:
       run:
         working-directory: rust
@@ -44,6 +48,15 @@ jobs:
 
       - name: Test
         run: cargo test
+
+      - name: Audit dependencies for known vulnerabilities
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          working-directory: rust
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # RUSTSEC-2026-0194/0195: quick-xml DoS advisories, pulled in transitively via
+          # phonenumber's capped version range; no fix available until phonenumber bumps it.
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
 
       - name: Check API catalog for unresolved external $refs
         working-directory: .
