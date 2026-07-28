@@ -2,6 +2,7 @@ import type { FileSystem } from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import { AuthenticationError, ConfigurationError } from "../effect/errors";
 import type { Keychain } from "../effect/services/keychain";
+import { cliTraceHeaders } from "../shared/cli-trace";
 import { getTokenInfoEffect } from "./auth";
 import { envGetEffect, getDevxCoreUrl } from "./environment";
 
@@ -51,6 +52,7 @@ export function checkOnboardingStatusEffect(): Effect.Effect<
           headers: {
             Authorization: `Bearer ${tokenInfo.accessToken}`,
             "Content-Type": "application/json",
+            ...cliTraceHeaders(),
           },
           body: JSON.stringify({}),
         }).then(async (res) => {
@@ -142,6 +144,7 @@ export function completeOnboardingEffect(): Effect.Effect<
           headers: {
             Authorization: `Bearer ${tokenInfo.accessToken}`,
             "Content-Type": "application/json",
+            ...cliTraceHeaders(),
           },
           body: JSON.stringify({}),
         }).then(async (res) => {
