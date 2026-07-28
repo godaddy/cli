@@ -2,6 +2,8 @@ use serde::de::DeserializeOwned;
 
 use super::types::{ApiEnvelope, CliData, CliOnboardingResult, OnboardingStatus, StatusData};
 
+const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
+
 #[derive(Debug, thiserror::Error)]
 pub enum OnboardingError {
     #[error("onboarding request could not be sent")]
@@ -23,7 +25,10 @@ impl OnboardingClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .user_agent(USER_AGENT)
+                .build()
+                .expect("onboarding HTTP client configuration is valid"),
         }
     }
 
@@ -78,7 +83,7 @@ mod tests {
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
 
-    use super::OnboardingClient;
+    use super::{OnboardingClient, USER_AGENT};
     use crate::onboarding::{CliOnboardingResult, OnboardingStatus};
 
     #[tokio::test]
@@ -89,6 +94,7 @@ mod tests {
                 when.method(POST)
                     .path("/api/v1/onboarding/status")
                     .header("authorization", "Bearer test-token")
+                    .header("user-agent", USER_AGENT)
                     .json_body(json!({}));
                 then.status(200).json_body(json!({
                     "success": true,
@@ -120,6 +126,7 @@ mod tests {
                 when.method(POST)
                     .path("/api/v1/onboarding/cli")
                     .header("authorization", "Bearer test-token")
+                    .header("user-agent", USER_AGENT)
                     .json_body(json!({}));
                 then.status(200).json_body(json!({
                     "success": true,
