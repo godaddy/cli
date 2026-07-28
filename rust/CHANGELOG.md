@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.15](https://github.com/godaddy/cli/compare/v0.1.14...v0.1.15) (2026-07-28)
+
+
+### Features
+
+* **application init:** gate creation on onboarding (DEVX-545) ([#139](https://github.com/godaddy/cli/issues/139)) ([afa87e2](https://github.com/godaddy/cli/commit/afa87e235ad995d65907dbc8ac9673c708e621fd))
+* **paas:** add GitHub operations for Node.js Hosting CLI command group ([#135](https://github.com/godaddy/cli/issues/135)) ([1de4b88](https://github.com/godaddy/cli/commit/1de4b881e281626a3b3dd764d1452efbf7f5e9d7))
+* **platform:** namespace Developer Platform commands (DEVX-621) ([#149](https://github.com/godaddy/cli/issues/149)) ([faf89cc](https://github.com/godaddy/cli/commit/faf89cc8ee0ccbd82bfefda9535a569ee629ace0))
+
+
+### Bug Fixes
+
+* **onboarding:** send CLI User-Agent header ([#157](https://github.com/godaddy/cli/issues/157)) ([467c7f7](https://github.com/godaddy/cli/commit/467c7f74bd35948fddbfa6c02529ba6f85d4cbed))
+
+
+### Code Refactoring
+
+* improve agent UX for Node.js Hosting CLI commands ([#153](https://github.com/godaddy/cli/issues/153)) ([ff56ec6](https://github.com/godaddy/cli/commit/ff56ec6c90dbd9242d366202eafaa887794faa77))
+
+
+### Tests
+
+* **api:** cover commerce scope step-up inputs ([#150](https://github.com/godaddy/cli/issues/150)) ([403dc71](https://github.com/godaddy/cli/commit/403dc71674d1edb939c8dcf624ebbe352dc38ed8))
+
 ## [0.1.14](https://github.com/godaddy/cli/compare/v0.1.13...v0.1.14) (2026-07-23)
 
 
