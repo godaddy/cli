@@ -8,6 +8,7 @@ mod dns;
 mod domain;
 mod env;
 mod environments;
+mod error;
 mod extension;
 mod hosting;
 mod next_action;

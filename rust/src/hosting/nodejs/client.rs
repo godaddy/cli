@@ -20,6 +20,20 @@ pub enum ClientError {
     },
 }
 
+impl From<ClientError> for crate::error::GddyError {
+    fn from(value: ClientError) -> Self {
+        match value {
+            ClientError::Http { status, body } => Self::from_http(status, body, "hosting"),
+            ClientError::Network(e) => {
+                Self::network(format!("network error: {e}")).with_system("hosting")
+            }
+            ClientError::Io { path, source } => {
+                Self::validation(format!("failed to read {path}: {source}")).with_system("hosting")
+            }
+        }
+    }
+}
+
 pub struct HostingClient {
     client: Client,
     base_url: String,

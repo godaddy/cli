@@ -48,7 +48,7 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 - Register commands via `Module::new(...)` and wire them in `main.rs`.
 - Use `clap::Arg` for arguments; retrieve via `ctx.args.get("key")`.
 - Return `Ok(CommandResult::new(json!({...})))` for success.
-- Return `Err(cli_engine::CliCoreError::message("..."))` for user-facing errors.
+- Prefer `crate::error::GddyError::{not_found,validation,auth,config,security,network,…}` (and `GddyError::from` for module client errors) so agents get stable `error.code` + top-level `fix`. Use `Err(cli_engine::CliCoreError::message("..."))` only for one-off cases that do not yet have a shared mapping.
 - Streaming commands use `RuntimeCommandSpec::new_streaming` and emit events via `StreamSender`.
 
 ## Key Concepts

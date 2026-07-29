@@ -1,6 +1,6 @@
 //! `dns set` — replace every record for a type+name pair (destructive).
 
-use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, format_api_error, make_client, string_list};
@@ -451,7 +451,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let data = string_list(&ctx, "data");
             let opts = RecordOptions::from_ctx(&ctx);
             let replace_conflicting = arg_bool(&ctx, "replace-conflicting-types");
-            validate_caa_fields(&record_type, &opts).map_err(CliCoreError::message)?;
+            validate_caa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
@@ -471,12 +472,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // if any lacks one, rather than silently dropping it (which would
             // leave it behind and make `set` add records instead of replacing).
             if existing.iter().any(|r| r.record_id.is_none()) {
-                return Err(CliCoreError::message(format!(
+                let message = format!(
                     "some existing {record_type} records for {name} were returned without a \
                      recordId, so `set` can't safely replace the full set. Re-run `gddy dns \
                      list {domain} --type {record_type} --name {name}` and adjust in the \
                      control panel if this persists."
-                )));
+                );
+                let fix = format!(
+                    "Re-run `gddy dns list {domain} --type {record_type} --name {name}` and \
+                     adjust in the control panel if this persists."
+                );
+                return Err(crate::error::GddyError::unexpected(message)
+                    .with_fix(fix)
+                    .into_cli_error());
             }
             let existing_ids: Vec<String> = existing
                 .iter()
@@ -564,7 +572,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         &name,
                     )])
                 })
-                .map_err(CliCoreError::message)
+                .map_err(super::mutate_failed)
         },
     )
 }

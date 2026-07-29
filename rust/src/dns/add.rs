@@ -1,6 +1,6 @@
 //! `dns add` — append new DNS records to a domain without touching existing ones.
 
-use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{make_client, string_list};
@@ -107,7 +107,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let name = arg_str(&ctx, "name").unwrap_or_default();
             let data = string_list(&ctx, "data");
             let opts = RecordOptions::from_ctx(&ctx);
-            validate_caa_fields(&record_type, &opts).map_err(CliCoreError::message)?;
+            validate_caa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
             let records = v3_records(&name, &record_type, &data, &opts);
 
             let debug = !ctx.middleware.debug.is_empty();
@@ -154,7 +155,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         &name,
                     )])
                 })
-                .map_err(CliCoreError::message)
+                .map_err(super::mutate_failed)
         },
     )
 }
