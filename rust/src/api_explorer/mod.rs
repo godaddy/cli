@@ -721,7 +721,7 @@ fn call_command() -> RuntimeCommandSpec {
 
             let request = req
                 .build()
-                .map_err(|e| crate::error::GddyError::unexpected(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::validation(e.to_string()))?;
             cli_engine::transport::debug_log_reqwest_request(&request);
             let resp = client
                 .execute(request)
