@@ -87,6 +87,8 @@ cargo check
 cargo run -p generate-api-catalog
 ```
 
+Adding a pre-release command, or wondering why one is hidden behind the default build? See [`docs/feature-flags.md`](docs/feature-flags.md).
+
 ## Code Review
 
 Any open source project relies heavily on code review to improve software

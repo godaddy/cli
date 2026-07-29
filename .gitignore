@@ -12,11 +12,6 @@ __pycache__
 .env.production.local
 .env.local
 
-# Local development config, extensions, and internal docs
-godaddy.dev.toml
-/extensions/
-docs/
-
 # IDE and OS
 .idea
 .DS_Store
