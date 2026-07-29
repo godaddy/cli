@@ -1,6 +1,6 @@
 # Feature flags
 
-`gddy` ships pre-release commands behind a feature flag system. This doc explains the mechanism and how it's wired up in this repo, so you can add a new flagged command or enable pre-released features for testing.
+`gddy` ships pre-release commands behind a feature flag system. This doc explains the mechanism and how it's wired up in this repo, so you can add a new flagged command or enable pre-release features for testing.
 
 ## The stage ladder
 
