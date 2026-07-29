@@ -104,12 +104,12 @@ async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<App
 }
 
 fn client_err(e: crate::application::client::ClientError) -> cli_engine::CliCoreError {
-    cli_engine::CliCoreError::message(e.to_string())
+    crate::error::GddyError::from(e).into_cli_error()
 }
 
 /// Builds the terminal `{"type":"error",...}` event for a streaming command,
-/// reusing `cli_engine::build_error_envelope` so the `code`/`message` match
-/// what a non-streaming command would have rendered for the same error.
+/// reusing `cli_engine::build_error_envelope` so the `code`/`message`/`fix`
+/// match what a non-streaming command would have rendered for the same error.
 fn deploy_error_event(err: &cli_engine::CliCoreError) -> Value {
     let envelope = cli_engine::build_error_envelope(err, "applications");
     // `build_error_envelope` always populates `.error` with a non-empty code;
@@ -118,12 +118,16 @@ fn deploy_error_event(err: &cli_engine::CliCoreError) -> Value {
         .error
         .map(|e| (e.code, e.message))
         .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
-    json!({
+    let mut event = json!({
         "type": "error",
         "ok": false,
         "error": { "code": code, "message": message },
         "next_actions": [],
-    })
+    });
+    if let Some(fix) = envelope.fix.filter(|f| !f.is_empty()) {
+        event["fix"] = json!(fix);
+    }
+    event
 }
 
 /// Emit the terminal error event on a streaming command, then return the
@@ -296,9 +300,10 @@ fn info_command() -> RuntimeCommandSpec {
             let data = client.get_application(&name).await.map_err(client_err)?;
             let app = &data["application"];
             if app.is_null() {
-                return Err(cli_engine::CliCoreError::message(format!(
+                return Err(crate::error::GddyError::not_found(format!(
                     "application '{name}' not found"
-                )));
+                ))
+                .into_cli_error());
             }
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
             Ok(CommandResult::new(app.clone()).with_next_actions(vec![
@@ -416,7 +421,8 @@ fn init_command() -> RuntimeCommandSpec {
             let existing = match ctx.args.get("config").and_then(|v| v.as_str()) {
                 Some(path) => Some(
                     crate::config::read_config(std::path::Path::new(path)).map_err(|e| {
-                        cli_engine::CliCoreError::message(format!("invalid config: {e}"))
+                        crate::error::GddyError::config(format!("invalid config: {e}"))
+                            .into_cli_error()
                     })?,
                 ),
                 None => None,
@@ -639,9 +645,10 @@ fn validate_command() -> RuntimeCommandSpec {
             let data = client.get_application(&name).await.map_err(client_err)?;
             let app = &data["application"];
             if app.is_null() {
-                return Err(cli_engine::CliCoreError::message(format!(
+                return Err(crate::error::GddyError::not_found(format!(
                     "application '{name}' not found"
-                )));
+                ))
+                .into_cli_error());
             }
 
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
@@ -891,7 +898,8 @@ fn archive_command() -> RuntimeCommandSpec {
             let app_id = app_data["application"]["id"]
                 .as_str()
                 .ok_or_else(|| {
-                    cli_engine::CliCoreError::message(format!("application '{name}' not found"))
+                    crate::error::GddyError::not_found(format!("application '{name}' not found"))
+                        .into_cli_error()
                 })?
                 .to_owned();
             let data = client
@@ -1110,7 +1118,8 @@ fn deploy_command() -> RuntimeCommandSpec {
             let config = tap_deploy_err(
                 &sender,
                 crate::config::read_config(&config_path).map_err(|e| {
-                    cli_engine::CliCoreError::message(format!("config read failed: {e}"))
+                    crate::error::GddyError::config(format!("config read failed: {e}"))
+                        .into_cli_error()
                 }),
             )
             .await?;
@@ -1133,7 +1142,8 @@ fn deploy_command() -> RuntimeCommandSpec {
             let app = &app_data["application"];
             if app.is_null() {
                 let err =
-                    cli_engine::CliCoreError::message(format!("application '{name}' not found"));
+                    crate::error::GddyError::not_found(format!("application '{name}' not found"))
+                        .into_cli_error();
                 return Err(fail_deploy(&sender, err).await);
             }
             let application_id = app["id"].as_str().unwrap_or("").to_owned();
@@ -1402,10 +1412,11 @@ async fn deploy_extension(
                 }
             })
             .collect();
-        return Err(cli_engine::CliCoreError::message(format!(
+        return Err(crate::error::GddyError::security(format!(
             "security scan blocked deployment of '{ext_name}':\n{}",
             blocked_msgs.join("\n")
-        )));
+        ))
+        .into());
     }
 
     sender
@@ -2111,6 +2122,22 @@ mod tests {
         assert_eq!(event["next_actions"], serde_json::json!([]));
     }
 
+    #[test]
+    fn deploy_error_event_includes_fix_from_gddy_error() {
+        let err =
+            crate::error::GddyError::not_found("application 'foo' not found").into_cli_error();
+        let event = super::deploy_error_event(&err);
+
+        assert_eq!(event["error"]["code"], crate::error::codes::NOT_FOUND);
+        assert_eq!(event["error"]["message"], "application 'foo' not found");
+        assert!(
+            event["fix"]
+                .as_str()
+                .is_some_and(|f| f.contains("platform app list")),
+            "expected fix on streaming error event: {event}"
+        );
+    }
+
     #[derive(Debug)]
     struct CodedTestError;
 
@@ -2134,6 +2161,10 @@ mod tests {
         fn error_request_id(&self) -> Option<std::borrow::Cow<'static, str>> {
             None
         }
+
+        fn error_fix(&self) -> Option<std::borrow::Cow<'static, str>> {
+            Some("Check release status and retry.".into())
+        }
     }
 
     /// Proves `deploy_error_event` actually passes through a real error code
@@ -2147,6 +2178,7 @@ mod tests {
 
         assert_eq!(event["error"]["code"], "RELEASE_REJECTED");
         assert_eq!(event["error"]["message"], "upstream rejected the release");
+        assert_eq!(event["fix"], "Check release status and retry.");
     }
 
     #[test]

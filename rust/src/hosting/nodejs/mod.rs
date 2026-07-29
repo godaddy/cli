@@ -39,11 +39,13 @@ async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<HostingCli
 }
 
 fn client_err(e: client::ClientError) -> CliCoreError {
-    CliCoreError::message(e.to_string())
+    crate::error::GddyError::from(e).into_cli_error()
 }
 
 fn required_str(ctx: &CommandContext, key: &str, label: &str) -> Result<String> {
-    optional_str(ctx, key).ok_or_else(|| CliCoreError::message(format!("{label} is required")))
+    optional_str(ctx, key).ok_or_else(|| {
+        crate::error::GddyError::validation(format!("{label} is required")).into_cli_error()
+    })
 }
 
 fn optional_str(ctx: &CommandContext, key: &str) -> Option<String> {
@@ -278,9 +280,10 @@ fn app_update_command() -> RuntimeCommandSpec {
             let name = optional_str(&ctx, "name");
             let root_path = optional_str(&ctx, "root-path");
             if name.is_none() && root_path.is_none() {
-                return Err(CliCoreError::message(
+                return Err(crate::error::GddyError::validation(
                     "at least one of --name or --root-path is required",
-                ));
+                )
+                .into_cli_error());
             }
             let mut body = serde_json::Map::new();
             if let Some(name) = name {
@@ -539,7 +542,10 @@ fn source_upload_command() -> RuntimeCommandSpec {
             let file = required_str(&ctx, "file", "--file")?;
             let path = std::path::Path::new(&file);
             if !path.is_file() {
-                return Err(CliCoreError::message(format!("zip file not found: {file}")));
+                return Err(crate::error::GddyError::validation(format!(
+                    "zip file not found: {file}"
+                ))
+                .into_cli_error());
             }
             let client = make_client(&ctx, &[CODE_WRITE]).await?;
             let data = client
@@ -987,10 +993,16 @@ fn secrets_update_command() -> RuntimeCommandSpec {
             let app_id = required_str(&ctx, "app-id", "--app-id")?;
             let file = required_str(&ctx, "file", "--file")?;
             let content = std::fs::read_to_string(&file).map_err(|e| {
-                CliCoreError::message(format!("failed to read secrets file '{file}': {e}"))
+                crate::error::GddyError::validation(format!(
+                    "failed to read secrets file '{file}': {e}"
+                ))
+                .into_cli_error()
             })?;
             let body: Value = serde_json::from_str(&content).map_err(|e| {
-                CliCoreError::message(format!("invalid JSON in secrets file '{file}': {e}"))
+                crate::error::GddyError::validation(format!(
+                    "invalid JSON in secrets file '{file}': {e}"
+                ))
+                .into_cli_error()
             })?;
             let client = make_client(&ctx, &[SECRETS_WRITE]).await?;
             let data = client

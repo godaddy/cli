@@ -385,7 +385,11 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
                 .iter()
                 .find(|d| d.name == domain_filter)
                 .ok_or_else(|| {
-                    cli_engine::CliCoreError::message(format!("domain '{domain_filter}' not found"))
+                    crate::error::GddyError::not_found(format!(
+                        "domain '{domain_filter}' not found"
+                    ))
+                    .with_fix("Run: gddy api domain list")
+                    .into_cli_error()
                 })?;
             let endpoints: Vec<Value> = domain
                 .endpoints
@@ -440,9 +444,13 @@ fn describe_command() -> RuntimeCommandSpec {
                 .unwrap_or("");
             let catalog = catalog();
             let (domain, ep) = find_endpoint(catalog, query).ok_or_else(|| {
-                cli_engine::CliCoreError::message(format!(
-                    "no endpoint found matching '{query}' — try `api search {query}`"
+                crate::error::GddyError::not_found(format!(
+                    "no endpoint found matching '{query}' — try `gddy api search {query}`"
                 ))
+                .with_fix(format!(
+                    "Run: gddy api search {query} or gddy api endpoint list"
+                ))
+                .into_cli_error()
             })?;
             Ok(CommandResult::new(json!({
                 "domain": domain.name,
@@ -617,7 +625,8 @@ fn call_command() -> RuntimeCommandSpec {
             // "POST " with trailing whitespace) would return a successful
             // dry-run preview even though a real run would reject it here.
             let parsed_method: reqwest::Method = method.parse().map_err(|_| {
-                cli_engine::CliCoreError::message(format!("invalid HTTP method: {method}"))
+                crate::error::GddyError::validation(format!("invalid HTTP method: {method}"))
+                    .into_cli_error()
             })?;
 
             // `--dry-run` is statically tagged `Tier::Mutate` since the method
@@ -653,16 +662,21 @@ fn call_command() -> RuntimeCommandSpec {
 
             if let Some(file_path) = ctx.args.get("file").and_then(|v| v.as_str()) {
                 let content = std::fs::read_to_string(file_path).map_err(|e| {
-                    cli_engine::CliCoreError::message(format!(
+                    crate::error::GddyError::validation(format!(
                         "failed to read file '{file_path}': {e}"
                     ))
+                    .into_cli_error()
                 })?;
                 request_body = Some(serde_json::from_str(&content).map_err(|e| {
-                    cli_engine::CliCoreError::message(format!("invalid JSON in '{file_path}': {e}"))
+                    crate::error::GddyError::validation(format!(
+                        "invalid JSON in '{file_path}': {e}"
+                    ))
+                    .into_cli_error()
                 })?);
             } else if let Some(body_str) = ctx.args.get("body").and_then(|v| v.as_str()) {
                 request_body = Some(serde_json::from_str(body_str).map_err(|e| {
-                    cli_engine::CliCoreError::message(format!("invalid JSON body: {e}"))
+                    crate::error::GddyError::validation(format!("invalid JSON body: {e}"))
+                        .into_cli_error()
                 })?);
             }
 
@@ -671,9 +685,10 @@ fn call_command() -> RuntimeCommandSpec {
                 let body = request_body.get_or_insert_with(|| json!({}));
                 for s in &fields {
                     let eq = s.find('=').ok_or_else(|| {
-                        cli_engine::CliCoreError::message(format!(
+                        crate::error::GddyError::validation(format!(
                             "invalid field format '{s}': expected key=value"
                         ))
+                        .into_cli_error()
                     })?;
                     let key = s[..eq].to_owned();
                     let val = s[eq + 1..].to_owned();
@@ -692,9 +707,10 @@ fn call_command() -> RuntimeCommandSpec {
             // Apply user-supplied `--header KEY:VALUE` values (repeatable).
             for h in string_list(&ctx.args, "header") {
                 let (key, val) = split_header(&h).ok_or_else(|| {
-                    cli_engine::CliCoreError::message(format!(
+                    crate::error::GddyError::validation(format!(
                         "invalid header '{h}': expected KEY:VALUE"
                     ))
+                    .into_cli_error()
                 })?;
                 req = req.header(key, val);
             }
@@ -705,12 +721,12 @@ fn call_command() -> RuntimeCommandSpec {
 
             let request = req
                 .build()
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::validation(e.to_string()))?;
             cli_engine::transport::debug_log_reqwest_request(&request);
             let resp = client
                 .execute(request)
                 .await
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::network(e.to_string()))?;
 
             let status_code = resp.status();
             let status_text = status_code.canonical_reason().unwrap_or("").to_owned();
@@ -723,7 +739,7 @@ fn call_command() -> RuntimeCommandSpec {
             let body_bytes = resp
                 .bytes()
                 .await
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::network(e.to_string()))?;
             cli_engine::transport::debug_log_reqwest_response(
                 status_code,
                 &response_headers_raw,
@@ -749,11 +765,15 @@ fn call_command() -> RuntimeCommandSpec {
             // path and surface those errors instead of reporting a false success.
             let is_graphql = endpoint.contains("graphql") || endpoint.contains("subgraph");
             if is_graphql && let Some(errors) = graphql_errors(&body) {
-                return Err(cli_engine::CliCoreError::message(format!(
-                    "GraphQL request returned {} error(s):\n{}",
-                    errors.len(),
-                    serde_json::to_string_pretty(&json!(errors)).unwrap_or_default(),
-                )));
+                return Err(crate::error::GddyError::from_graphql(
+                    format!(
+                        "GraphQL request returned {} error(s):\n{}",
+                        errors.len(),
+                        serde_json::to_string_pretty(&json!(errors)).unwrap_or_default(),
+                    ),
+                    "api",
+                )
+                .into());
             }
 
             // Scope step-up already ran up front (the token was requested with
@@ -767,11 +787,13 @@ fn call_command() -> RuntimeCommandSpec {
                     .map(|s| format!("--scope {s}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                return Err(cli_engine::CliCoreError::message(format!(
+                return Err(crate::error::GddyError::auth(format!(
                     "403 Forbidden — the authorized token is missing required scope(s): {}. \
                      Re-run `gddy auth login {login_hint}` and try again.",
                     required.join(", "),
-                )));
+                ))
+                .with_fix(format!("Run: gddy auth login {login_hint}"))
+                .into());
             }
 
             // Any other non-2xx is a failure, not a success envelope. Include the
@@ -783,9 +805,12 @@ fn call_command() -> RuntimeCommandSpec {
                     .chars()
                     .take(4000)
                     .collect();
-                return Err(cli_engine::CliCoreError::message(format!(
-                    "{status} {status_text}\n{detail}"
-                )));
+                return Err(crate::error::GddyError::from_http(
+                    status,
+                    format!("{status_text}\n{detail}"),
+                    "api",
+                )
+                .into_cli_error());
             }
 
             // Identify the call and its outcome in the result envelope.

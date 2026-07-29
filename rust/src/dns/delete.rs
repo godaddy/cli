@@ -1,6 +1,6 @@
 //! `dns delete` — remove all records matching a type+name from a domain.
 
-use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client};
@@ -213,7 +213,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         &name,
                     )])
                 })
-                .map_err(CliCoreError::message)
+                .map_err(super::mutate_failed)
         },
     )
 }

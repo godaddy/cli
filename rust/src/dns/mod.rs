@@ -18,7 +18,7 @@
 //! [`Tier::Destructive`] — they overwrite or remove existing records — so
 //! `--dry-run` short-circuits them with a preview.
 
-use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
+use cli_engine::{CliCoreError, GroupSpec, Module, RuntimeGroupSpec};
 
 mod add;
 mod conflicts;
@@ -26,6 +26,16 @@ mod delete;
 mod list;
 mod records;
 mod set;
+
+/// Partial add/set/delete failure: outcomes may mix validation, API, and
+/// transport errors, so this is classified as unexpected with a DNS-specific fix.
+pub(super) fn mutate_failed(message: impl Into<String>) -> CliCoreError {
+    crate::error::GddyError::unexpected(message)
+        .with_fix(
+            "Re-run with only the failed value(s), or use gddy dns list to inspect the current records.",
+        )
+        .into_cli_error()
+}
 
 pub fn module() -> Module {
     Module::new("DNS", |_ctx| {

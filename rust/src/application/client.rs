@@ -31,6 +31,28 @@ pub enum ClientError {
     InvalidHeader(String),
 }
 
+impl From<ClientError> for crate::error::GddyError {
+    fn from(value: ClientError) -> Self {
+        match value {
+            ClientError::Http { status, body } => Self::from_http(status, body, "applications"),
+            ClientError::Network(e) => {
+                Self::network(format!("network error: {e}")).with_system("applications")
+            }
+            ClientError::GraphQL(msg) => {
+                Self::from_graphql(format!("GraphQL errors: {msg}"), "applications")
+            }
+            ClientError::TooLarge { size, max } => Self::validation(format!(
+                "file size {size} bytes exceeds maximum allowed ({max} bytes)"
+            ))
+            .with_system("applications"),
+            ClientError::InvalidHeader(name) => {
+                Self::validation(format!("invalid upload header {name}"))
+                    .with_system("applications")
+            }
+        }
+    }
+}
+
 /// Result of a successful artifact upload.
 #[derive(Debug, Clone)]
 pub struct UploadResult {
