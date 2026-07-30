@@ -638,6 +638,20 @@ fn call_command() -> RuntimeCommandSpec {
                     .into_cli_error()
             })?;
 
+            // Validate unconditionally, including under `--dry-run` (same
+            // rationale as the method check above). `find_endpoint` below can
+            // match a raw operationId, but the request URL is always built
+            // from this literal `endpoint` string, not the matched catalog
+            // path — accepting a bare operationId here would silently build
+            // an invalid URL (e.g. `https://.../listFulfillments`).
+            if !endpoint.starts_with('/') {
+                return Err(crate::error::GddyError::validation(format!(
+                    "endpoint must be a URL path starting with '/', not {endpoint:?} — \
+                     use `api describe {endpoint}` to find the concrete path"
+                ))
+                .into_cli_error());
+            }
+
             // `--dry-run` is statically tagged `Tier::Mutate` since the method
             // is only known at runtime, but a GET/HEAD is safe to actually run
             // (and more useful previewed as real data than as a generic
@@ -1082,6 +1096,34 @@ mod tests {
         assert_ne!(output.exit_code, 0, "{}", output.rendered);
         assert!(
             output.rendered.contains("invalid HTTP method"),
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// A bare operationId (no leading '/') must be rejected rather than
+    /// silently built into an invalid request URL — `find_endpoint` can match
+    /// it for scope lookup, but the URL is always built from the literal
+    /// `endpoint` string, not the matched catalog path.
+    #[tokio::test]
+    async fn call_rejects_an_endpoint_without_a_leading_slash() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "listFulfillments",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("must be a URL path starting with"),
             "{}",
             output.rendered
         );
