@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.16](https://github.com/godaddy/cli/compare/v0.1.15...v0.1.16) (2026-07-30)
+
+
+### Features
+
+* **errors:** map failures to stable codes and top-level fix [DEVEX-945] ([#162](https://github.com/godaddy/cli/issues/162)) ([576641c](https://github.com/godaddy/cli/commit/576641c9416cd2ec2cf85cb1d39d1bfd32ffb93f))
+
+
+### Bug Fixes
+
+* **api-catalog:** distinguish $defs keys for same-file property refs [DEVEX-965] ([#168](https://github.com/godaddy/cli/issues/168)) ([80d3abe](https://github.com/godaddy/cli/commit/80d3abebd25192df226f068f2e0fa6854df6ebd4))
+* **api-catalog:** resync drift, normalize domains base URL, sort + env-aware routing ([#167](https://github.com/godaddy/cli/issues/167)) ([339db2d](https://github.com/godaddy/cli/commit/339db2dab8bea36d8e411dcc5699f184295e857a))
+* **config:** restore godaddy.toml schema validation [DEVEX-714] ([#166](https://github.com/godaddy/cli/issues/166)) ([4cfa3e4](https://github.com/godaddy/cli/commit/4cfa3e4afd22684116e117f4313f58970514115c))
+
 ## [0.1.15](https://github.com/godaddy/cli/compare/v0.1.14...v0.1.15) (2026-07-28)
 
 
