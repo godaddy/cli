@@ -1058,7 +1058,7 @@ fn release_command() -> RuntimeCommandSpec {
                     tracing::warn!(
                         error = %e,
                         path = %config_path.display(),
-                        "skipping godaddy.toml for release; publishing with empty actions, subscriptions, and uiExtensions"
+                        "failed to read config; releasing with empty actions, subscriptions, and uiExtensions"
                     );
                     (Vec::new(), Vec::new(), Vec::new())
                 }

@@ -43,12 +43,15 @@ impl Config {
                 self.version
             ));
         }
-        if !is_absolute_url(&self.url) {
-            errors.push(format!("url must be an absolute URL (got {:?})", self.url));
-        }
-        if !is_absolute_url(&self.proxy_url) {
+        if !is_absolute_http_url(&self.url) {
             errors.push(format!(
-                "proxy_url must be an absolute URL (got {:?})",
+                "url must be an absolute http(s) URL (got {:?})",
+                self.url
+            ));
+        }
+        if !is_absolute_http_url(&self.proxy_url) {
+            errors.push(format!(
+                "proxy_url must be an absolute http(s) URL (got {:?})",
                 self.proxy_url
             ));
         }
@@ -156,8 +159,8 @@ fn is_semver(value: &str) -> bool {
     semver::Version::parse(value).is_ok()
 }
 
-fn is_absolute_url(value: &str) -> bool {
-    url::Url::parse(value).is_ok()
+fn is_absolute_http_url(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
 /// Resolve `endpoint` against `proxy_url` (absolute or proxy-relative).
@@ -168,7 +171,7 @@ fn is_endpoint_url(endpoint: &str, proxy_url: &str) -> bool {
     url::Url::options()
         .base_url(Some(&base))
         .parse(endpoint)
-        .is_ok()
+        .is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
 fn validate_action(errors: &mut Vec<String>, path: &str, action: &ActionConfig, proxy_url: &str) {
@@ -534,16 +537,35 @@ mod tests {
         config.url = "/relative".to_owned();
         let err = config.validate().expect_err("relative url");
         assert!(
-            err.to_string().contains("url must be an absolute URL"),
+            err.to_string()
+                .contains("url must be an absolute http(s) URL"),
             "{err}"
         );
     }
 
     #[test]
-    fn validate_accepts_any_absolute_url_scheme() {
+    fn validate_rejects_non_http_url_schemes() {
         let mut config = valid_config();
         config.url = "ftp://files.example.com/app".to_owned();
-        config.validate().expect("ftp absolute URL should pass");
+        config.proxy_url = "file:///tmp/proxy".to_owned();
+        let err = config.validate().expect_err("non-http schemes");
+        let msg = err.to_string();
+        assert!(msg.contains("url must be an absolute http(s) URL"), "{msg}");
+        assert!(
+            msg.contains("proxy_url must be an absolute http(s) URL"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_non_http_endpoint_scheme() {
+        let mut config = valid_config();
+        config.actions.push(ActionConfig {
+            name: "sync".to_owned(),
+            url: "ftp://files.example.com/sync".to_owned(),
+        });
+        let err = config.validate().expect_err("ftp action endpoint");
+        assert!(err.to_string().contains("actions[0].url"), "{err}");
     }
 
     #[test]
