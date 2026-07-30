@@ -170,12 +170,34 @@ fn catalog() -> &'static [Domain] {
     })
 }
 
+/// True if `concrete`'s path segments structurally match `template`'s: a
+/// `{param}` segment in `template` matches any single non-empty segment in
+/// `concrete` at the same position, every other segment must match
+/// literally (case-insensitive). Matches a real request path with path
+/// params substituted (e.g. `/stores/abc123/orders`) against the catalog's
+/// templated path (`/stores/{storeId}/orders`), which neither exact nor
+/// substring matching can do — a concrete path never literally contains the
+/// `{storeId}` placeholder.
+fn path_matches_template(template: &str, concrete: &str) -> bool {
+    let template_segs: Vec<&str> = template.trim_matches('/').split('/').collect();
+    let concrete_segs: Vec<&str> = concrete.trim_matches('/').split('/').collect();
+    template_segs.len() == concrete_segs.len()
+        && template_segs
+            .iter()
+            .zip(concrete_segs.iter())
+            .all(|(t, c)| {
+                (t.starts_with('{') && t.ends_with('}') && !c.is_empty())
+                    || t.eq_ignore_ascii_case(c)
+            })
+}
+
 fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, &'a Endpoint)> {
     let q = query.to_lowercase();
     catalog.iter().find_map(|domain| {
         domain.endpoints.iter().find_map(|ep| {
             if ep.operation_id.to_lowercase() == q
                 || ep.path.to_lowercase() == q
+                || path_matches_template(&ep.path, query)
                 || ep.path.to_lowercase().contains(&q)
             {
                 Some((domain, ep))
@@ -940,6 +962,18 @@ mod tests {
             base_url,
             "https://fulfillment.api.commerce.ote-godaddy.com/v1/commerce"
         );
+    }
+
+    /// A real request path with path params substituted (as `api call`
+    /// receives — no user passes a literal `{storeId}`) must still match its
+    /// templated catalog path, or every parameterized endpoint would fall
+    /// back to the wrong (generic gateway) base URL and lose scope lookup.
+    #[test]
+    fn concrete_path_matches_its_templated_catalog_path() {
+        let (domain, endpoint) = find_endpoint(catalog(), "/stores/abc123/fulfillments")
+            .expect("concrete path should match the templated catalog path");
+        assert_eq!(domain.name, "fulfillments");
+        assert_eq!(endpoint.operation_id, "listFulfillments");
     }
 
     /// An endpoint the catalog doesn't recognize has no domain to resolve a
