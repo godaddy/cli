@@ -20,6 +20,219 @@ pub struct Config {
     pub extensions: Option<ExtensionsConfig>,
 }
 
+impl Config {
+    /// Validate required field shapes for a `godaddy.toml` manifest.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let mut errors = Vec::new();
+
+        if !is_valid_app_name(&self.name) {
+            errors.push(format!(
+                "name must match /^[a-z0-9-]{{3,255}}$/ (got {:?})",
+                self.name
+            ));
+        }
+        if !is_uuid_v4(&self.client_id) {
+            errors.push(format!(
+                "client_id must be a UUID v4 (got {:?})",
+                self.client_id
+            ));
+        }
+        if !is_semver(&self.version) {
+            errors.push(format!(
+                "version must be a semver string (got {:?})",
+                self.version
+            ));
+        }
+        if !is_absolute_url(&self.url) {
+            errors.push(format!("url must be an absolute URL (got {:?})", self.url));
+        }
+        if !is_absolute_url(&self.proxy_url) {
+            errors.push(format!(
+                "proxy_url must be an absolute URL (got {:?})",
+                self.proxy_url
+            ));
+        }
+        if self.authorization_scopes.is_empty() {
+            errors.push("authorization_scopes must contain at least one scope".to_owned());
+        }
+
+        for (i, action) in self.actions.iter().enumerate() {
+            validate_action(
+                &mut errors,
+                &format!("actions[{i}]"),
+                action,
+                &self.proxy_url,
+            );
+        }
+
+        if let Some(subscriptions) = &self.subscriptions {
+            for (i, sub) in subscriptions.webhook.iter().enumerate() {
+                validate_subscription(
+                    &mut errors,
+                    &format!("subscriptions.webhook[{i}]"),
+                    sub,
+                    &self.proxy_url,
+                );
+            }
+        }
+
+        for (i, deps) in self.dependencies.iter().enumerate() {
+            for (j, dep) in deps.app.iter().enumerate() {
+                validate_dependency(&mut errors, &format!("dependencies[{i}].app[{j}]"), dep);
+            }
+            for (j, dep) in deps.feature.iter().enumerate() {
+                validate_dependency(&mut errors, &format!("dependencies[{i}].feature[{j}]"), dep);
+            }
+        }
+
+        if let Some(extensions) = &self.extensions {
+            for (i, ext) in extensions.embed.iter().enumerate() {
+                validate_named_extension(
+                    &mut errors,
+                    &format!("extensions.embed[{i}]"),
+                    &ext.name,
+                    &ext.handle,
+                    &ext.source,
+                    &ext.targets,
+                );
+            }
+            for (i, ext) in extensions.checkout.iter().enumerate() {
+                validate_named_extension(
+                    &mut errors,
+                    &format!("extensions.checkout[{i}]"),
+                    &ext.name,
+                    &ext.handle,
+                    &ext.source,
+                    &ext.targets,
+                );
+            }
+            if let Some(blocks) = &extensions.blocks {
+                require_non_empty(&mut errors, "extensions.blocks.source", &blocks.source);
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(ConfigError::Validation(errors.join("; ")))
+        }
+    }
+}
+
+const MIN_IDENT_LEN: usize = 3;
+
+fn require_min_len(errors: &mut Vec<String>, path: &str, value: &str, min: usize) {
+    if value.chars().count() < min {
+        errors.push(format!(
+            "{path} must be at least {min} characters (got {value:?})"
+        ));
+    }
+}
+
+fn require_non_empty(errors: &mut Vec<String>, path: &str, value: &str) {
+    if value.is_empty() {
+        errors.push(format!("{path} must be non-empty"));
+    }
+}
+
+/// True when `name` matches `/^[a-z0-9-]{3,255}$/`.
+pub(crate) fn is_valid_app_name(name: &str) -> bool {
+    let len = name.len();
+    (3..=255).contains(&len)
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn is_uuid_v4(value: &str) -> bool {
+    let Ok(id) = uuid::Uuid::parse_str(value) else {
+        return false;
+    };
+    id.get_version() == Some(uuid::Version::Random)
+        && matches!(id.get_variant(), uuid::Variant::RFC4122)
+}
+
+fn is_semver(value: &str) -> bool {
+    semver::Version::parse(value).is_ok()
+}
+
+fn is_absolute_url(value: &str) -> bool {
+    url::Url::parse(value).is_ok()
+}
+
+/// Resolve `endpoint` against `proxy_url` (absolute or proxy-relative).
+fn is_endpoint_url(endpoint: &str, proxy_url: &str) -> bool {
+    let Ok(base) = url::Url::parse(proxy_url) else {
+        return false;
+    };
+    url::Url::options()
+        .base_url(Some(&base))
+        .parse(endpoint)
+        .is_ok()
+}
+
+fn validate_action(errors: &mut Vec<String>, path: &str, action: &ActionConfig, proxy_url: &str) {
+    require_min_len(errors, &format!("{path}.name"), &action.name, MIN_IDENT_LEN);
+    if !is_endpoint_url(&action.url, proxy_url) {
+        errors.push(format!(
+            "{path}.url must be a valid endpoint relative to proxy_url (got {:?})",
+            action.url
+        ));
+    }
+}
+
+fn validate_subscription(
+    errors: &mut Vec<String>,
+    path: &str,
+    sub: &SubscriptionConfig,
+    proxy_url: &str,
+) {
+    require_min_len(errors, &format!("{path}.name"), &sub.name, MIN_IDENT_LEN);
+    if sub.events.is_empty() {
+        errors.push(format!("{path}.events must contain at least one event"));
+    }
+    if !is_endpoint_url(&sub.url, proxy_url) {
+        errors.push(format!(
+            "{path}.url must be a valid endpoint relative to proxy_url (got {:?})",
+            sub.url
+        ));
+    }
+}
+
+fn validate_dependency(errors: &mut Vec<String>, path: &str, dep: &DependencyConfig) {
+    require_min_len(errors, &format!("{path}.name"), &dep.name, MIN_IDENT_LEN);
+    if let Some(version) = &dep.version
+        && !is_semver(version)
+    {
+        errors.push(format!(
+            "{path}.version must be a semver string (got {version:?})"
+        ));
+    }
+}
+
+fn validate_named_extension(
+    errors: &mut Vec<String>,
+    path: &str,
+    name: &str,
+    handle: &str,
+    source: &str,
+    targets: &[ExtensionTarget],
+) {
+    require_min_len(errors, &format!("{path}.name"), name, MIN_IDENT_LEN);
+    require_min_len(errors, &format!("{path}.handle"), handle, MIN_IDENT_LEN);
+    require_non_empty(errors, &format!("{path}.source"), source);
+    if targets.is_empty() {
+        errors.push(format!("{path}.targets must contain at least one target"));
+    }
+    for (i, target) in targets.iter().enumerate() {
+        require_non_empty(
+            errors,
+            &format!("{path}.targets[{i}].target"),
+            &target.target,
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionConfig {
     pub name: String,
@@ -98,6 +311,8 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
     #[error("failed to parse config: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("invalid config: {0}")]
+    Validation(String),
     #[error("failed to serialize config: {0}")]
     Serialize(#[from] toml::ser::Error),
 }
@@ -110,10 +325,12 @@ pub fn read_config(path: &std::path::Path) -> Result<Config, ConfigError> {
     }
     let contents = std::fs::read_to_string(path)?;
     let config: Config = toml::from_str(&contents)?;
+    config.validate()?;
     Ok(config)
 }
 
 pub fn write_config(path: &std::path::Path, config: &Config) -> Result<(), ConfigError> {
+    config.validate()?;
     let contents = toml::to_string_pretty(config)?;
     std::fs::write(path, contents)?;
     Ok(())
@@ -218,6 +435,22 @@ pub fn write_env_file(
 mod tests {
     use super::*;
 
+    fn valid_config() -> Config {
+        Config {
+            name: "my-app".to_owned(),
+            client_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+            description: Some("test".to_owned()),
+            version: "1.2.3".to_owned(),
+            url: "https://example.com".to_owned(),
+            proxy_url: "https://proxy.example.com".to_owned(),
+            authorization_scopes: vec!["openid".to_owned()],
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions: None,
+        }
+    }
+
     #[test]
     fn env_path_matches_convention() {
         use std::path::Path;
@@ -251,5 +484,210 @@ mod tests {
         let result = merge_env_content(Some(existing), "s", "p", "new", "cs");
         assert_eq!(result.matches("GODADDY_CLIENT_ID=").count(), 1);
         assert!(result.contains(r#"GODADDY_CLIENT_ID="new""#));
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_config() {
+        valid_config().validate().expect("valid config should pass");
+    }
+
+    #[test]
+    fn validate_rejects_invalid_name() {
+        let mut config = valid_config();
+        config.name = "AB".to_owned();
+        let err = config.validate().expect_err("uppercase/short name");
+        assert!(err.to_string().contains("name must match"), "{err}");
+    }
+
+    #[test]
+    fn is_valid_app_name_pattern() {
+        assert!(is_valid_app_name("my-app"));
+        assert!(is_valid_app_name("abc"));
+        assert!(is_valid_app_name(&"a".repeat(255)));
+        assert!(!is_valid_app_name(""));
+        assert!(!is_valid_app_name("ab"));
+        assert!(!is_valid_app_name("AB"));
+        assert!(!is_valid_app_name("MyApp"));
+        assert!(!is_valid_app_name("my_app"));
+        assert!(!is_valid_app_name(&"a".repeat(256)));
+    }
+
+    #[test]
+    fn validate_rejects_non_v4_uuid_client_id() {
+        let mut config = valid_config();
+        config.client_id = "550e8400-e29b-11d4-a716-446655440000".to_owned();
+        let err = config.validate().expect_err("uuid v1");
+        assert!(err.to_string().contains("client_id"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_non_semver_version() {
+        let mut config = valid_config();
+        config.version = "1.0".to_owned();
+        let err = config.validate().expect_err("incomplete semver");
+        assert!(err.to_string().contains("version"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_non_absolute_urls() {
+        let mut config = valid_config();
+        config.url = "/relative".to_owned();
+        let err = config.validate().expect_err("relative url");
+        assert!(
+            err.to_string().contains("url must be an absolute URL"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_any_absolute_url_scheme() {
+        let mut config = valid_config();
+        config.url = "ftp://files.example.com/app".to_owned();
+        config.validate().expect("ftp absolute URL should pass");
+    }
+
+    #[test]
+    fn validate_rejects_uuid_with_non_rfc4122_variant() {
+        let mut config = valid_config();
+        config.client_id = "550e8400-e29b-41d4-c716-446655440000".to_owned();
+        let err = config.validate().expect_err("bad uuid variant");
+        assert!(err.to_string().contains("client_id"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_empty_authorization_scopes() {
+        let mut config = valid_config();
+        config.authorization_scopes.clear();
+        let err = config.validate().expect_err("empty scopes");
+        assert!(err.to_string().contains("authorization_scopes"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_short_action_name_and_bad_endpoint() {
+        let mut config = valid_config();
+        config.actions.push(ActionConfig {
+            name: "ab".to_owned(),
+            url: "https://not a url".to_owned(),
+        });
+        let err = config.validate().expect_err("bad action");
+        let msg = err.to_string();
+        assert!(msg.contains("actions[0].name"), "{msg}");
+        assert!(msg.contains("actions[0].url"), "{msg}");
+    }
+
+    #[test]
+    fn validate_accepts_proxy_relative_action_url() {
+        let mut config = valid_config();
+        config.actions.push(ActionConfig {
+            name: "sync".to_owned(),
+            url: "/actions/sync".to_owned(),
+        });
+        config.validate().expect("proxy-relative action url");
+    }
+
+    #[test]
+    fn validate_rejects_subscription_without_events() {
+        let mut config = valid_config();
+        config.subscriptions = Some(SubscriptionsConfig {
+            webhook: vec![SubscriptionConfig {
+                name: "hook".to_owned(),
+                events: vec![],
+                url: "/hooks".to_owned(),
+            }],
+        });
+        let err = config.validate().expect_err("empty events");
+        assert!(err.to_string().contains("events"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_dependency_with_bad_semver() {
+        let mut config = valid_config();
+        config.dependencies.push(DependenciesConfig {
+            app: vec![DependencyConfig {
+                name: "other-app".to_owned(),
+                version: Some("not-semver".to_owned()),
+            }],
+            feature: vec![],
+        });
+        let err = config.validate().expect_err("bad dep version");
+        assert!(
+            err.to_string().contains("dependencies[0].app[0].version"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_embed_without_targets() {
+        let mut config = valid_config();
+        config.extensions = Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "panel".to_owned(),
+                handle: "panel-handle".to_owned(),
+                source: "ext/index.tsx".to_owned(),
+                targets: vec![],
+            }],
+            checkout: vec![],
+            blocks: None,
+        });
+        let err = config.validate().expect_err("missing targets");
+        assert!(err.to_string().contains("targets"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_embed_with_targets() {
+        let mut config = valid_config();
+        config.extensions = Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "panel".to_owned(),
+                handle: "panel-handle".to_owned(),
+                source: "ext/index.tsx".to_owned(),
+                targets: vec![ExtensionTarget {
+                    target: "commerce.product.details".to_owned(),
+                }],
+            }],
+            checkout: vec![],
+            blocks: None,
+        });
+        config.validate().expect("embed with targets should pass");
+    }
+
+    #[test]
+    fn validate_rejects_empty_blocks_source() {
+        let mut config = valid_config();
+        config.extensions = Some(ExtensionsConfig {
+            embed: vec![],
+            checkout: vec![],
+            blocks: Some(BlocksExtensionConfig {
+                source: String::new(),
+            }),
+        });
+        let err = config.validate().expect_err("empty blocks source");
+        assert!(
+            err.to_string().contains("extensions.blocks.source"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn read_config_runs_validation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.name = "x".to_owned();
+        let raw = toml::to_string_pretty(&config).expect("serialize");
+        std::fs::write(&path, raw).expect("write");
+        let err = read_config(&path).expect_err("short name should fail validation on read");
+        assert!(matches!(err, ConfigError::Validation(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn write_config_runs_validation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.name = "x".to_owned();
+        let err = write_config(&path, &config).expect_err("short name should fail on write");
+        assert!(matches!(err, ConfigError::Validation(_)), "got {err:?}");
+        assert!(!path.exists(), "invalid config must not be written");
     }
 }

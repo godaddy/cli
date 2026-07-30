@@ -473,6 +473,15 @@ fn init_command() -> RuntimeCommandSpec {
                 }
             }
 
+            // Reject names that cannot be written to a valid godaddy.toml.
+            if !crate::config::is_valid_app_name(&name) {
+                return Err(crate::error::GddyError::validation(format!(
+                    "Application name must be 3-255 lowercase letters, digits, or hyphens \
+                     (got {name:?})"
+                ))
+                .into_cli_error());
+            }
+
             for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
                 if !crate::application::public_url::is_public_routable_url(u) {
                     return Err(cli_engine::CliCoreError::message(format!(
@@ -1015,13 +1024,14 @@ fn release_command() -> RuntimeCommandSpec {
                 input["description"] = json!(desc);
             }
 
+            let config_path = crate::config::config_path(Some(&ctx.middleware.env));
             // Include actions, webhook subscriptions, and UI extensions from
             // godaddy.toml so configured behavior is captured in the release.
             // Without this, everything added via `platform app add` was silently
-            // dropped. A missing config is non-fatal (empty arrays); a config
-            // with too many targets per extension is a hard error.
+            // dropped. A missing or invalid config is non-fatal (empty arrays);
+            // too many targets per extension is a hard error.
             let (actions, subscriptions, ui_extensions) = match crate::config::read_config(
-                &crate::config::config_path(Some(&ctx.middleware.env)),
+                &config_path,
             ) {
                 Ok(config) => {
                     let actions: Vec<Value> = config
@@ -1044,7 +1054,14 @@ fn release_command() -> RuntimeCommandSpec {
                     let ui_extensions = build_ui_extensions(&config)?;
                     (actions, subscriptions, ui_extensions)
                 }
-                Err(_) => (Vec::new(), Vec::new(), Vec::new()),
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        path = %config_path.display(),
+                        "skipping godaddy.toml for release; publishing with empty actions, subscriptions, and uiExtensions"
+                    );
+                    (Vec::new(), Vec::new(), Vec::new())
+                }
             };
             input["actions"] = json!(actions);
             input["subscriptions"] = json!(subscriptions);
