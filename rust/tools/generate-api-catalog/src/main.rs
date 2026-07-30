@@ -718,10 +718,16 @@ fn derive_defs_key_for_path(ref_str: &str) -> String {
     // A `#/properties/<name>` fragment (optionally nested, e.g. `#/properties/a/properties/b`)
     // selects one property's schema out of the file, not the file's root schema — fold the
     // property path into the key so two refs into the same file for different properties
-    // don't collide under one bare file-stem key.
+    // don't collide under one bare file-stem key. Each segment has its literal `_` doubled
+    // before joining on a single `_`, so a property literally named `a_b` can't collide with
+    // nested segments `a` + `b` (both would otherwise sanitize to the same `a_b` suffix).
     match frag.and_then(|f| f.strip_prefix("#/properties/")) {
         Some(rest) => {
-            let suffix = rest.split("/properties/").collect::<Vec<_>>().join("_");
+            let suffix = rest
+                .split("/properties/")
+                .map(|seg| seg.replace('_', "__"))
+                .collect::<Vec<_>>()
+                .join("_");
             sanitize_defs_key(&format!("{base_key}_{suffix}"))
         }
         None => base_key,
@@ -2281,6 +2287,13 @@ components:
         assert_eq!(
             derive_defs_key_for_path("./models/Foo.yaml#/properties/a/properties/b"),
             "Foo_a_b"
+        );
+        // A literal property named `a_b` must not collide with nested segments `a`
+        // then `b` — both would sanitize to the same "a_b" suffix without escaping
+        // the literal underscore first.
+        assert_ne!(
+            derive_defs_key_for_path("./models/Foo.yaml#/properties/a_b"),
+            derive_defs_key_for_path("./models/Foo.yaml#/properties/a/properties/b")
         );
     }
 

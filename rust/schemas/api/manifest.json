@@ -1,65 +1,45 @@
 {
-  "generated": "2026-07-30T22:27:36.653326688+00:00",
+  "generated": "2026-07-30T22:49:51.251324536+00:00",
   "domains": {
-    "hosting-nodejs": {
-      "file": "hosting-nodejs.json",
-      "title": "Node.js Hosting Public API",
-      "endpointCount": 20
-    },
     "catalog-products": {
       "file": "catalog-products.json",
       "title": "Catalog GraphQL API",
       "endpointCount": 1
     },
-    "orders": {
-      "file": "orders.json",
-      "title": "Order Service",
-      "endpointCount": 15
-    },
-    "channels": {
-      "file": "channels.json",
-      "title": "Channels API",
-      "endpointCount": 8
-    },
-    "subscriptions": {
-      "file": "subscriptions.json",
-      "title": "Commerce Subscription API",
-      "endpointCount": 8
-    },
-    "payment-requests": {
-      "file": "payment-requests.json",
-      "title": "Payment Requests API",
+    "onboarding": {
+      "file": "onboarding.json",
+      "title": "Commerce Onboarding API",
       "endpointCount": 5
+    },
+    "price-adjustments": {
+      "file": "price-adjustments.json",
+      "title": "GoDaddy Price Adjustment API",
+      "endpointCount": 10
     },
     "metafields": {
       "file": "metafields.json",
       "title": "Metafields API",
       "endpointCount": 12
     },
-    "fulfillments": {
-      "file": "fulfillments.json",
-      "title": "Fulfillment Service",
-      "endpointCount": 4
+    "shipping": {
+      "file": "shipping.json",
+      "title": "Shipping Service",
+      "endpointCount": 7
     },
-    "bulk-operations": {
-      "file": "bulk-operations.json",
-      "title": "Bulk Operations API",
-      "endpointCount": 27
+    "orders": {
+      "file": "orders.json",
+      "title": "Order Service",
+      "endpointCount": 15
     },
-    "chargebacks": {
-      "file": "chargebacks.json",
-      "title": "Chargeback Management",
-      "endpointCount": 10
+    "taxes": {
+      "file": "taxes.json",
+      "title": "Tax GraphQL API",
+      "endpointCount": 1
     },
     "customer-profiles": {
       "file": "customer-profiles.json",
       "title": "Customers API",
       "endpointCount": 9
-    },
-    "price-adjustments": {
-      "file": "price-adjustments.json",
-      "title": "GoDaddy Price Adjustment API",
-      "endpointCount": 10
     },
     "recommendations": {
       "file": "recommendations.json",
@@ -71,45 +51,65 @@
       "title": "Commerce Store API",
       "endpointCount": 8
     },
-    "taxes": {
-      "file": "taxes.json",
-      "title": "Tax GraphQL API",
-      "endpointCount": 1
+    "channels": {
+      "file": "channels.json",
+      "title": "Channels API",
+      "endpointCount": 8
     },
-    "transactions": {
-      "file": "transactions.json",
-      "title": "Transactions API",
-      "endpointCount": 17
-    },
-    "onboarding": {
-      "file": "onboarding.json",
-      "title": "Commerce Onboarding API",
-      "endpointCount": 5
-    },
-    "shipping": {
-      "file": "shipping.json",
-      "title": "Shipping Service",
-      "endpointCount": 7
-    },
-    "domains": {
-      "file": "domains.json",
-      "title": "Domain Lifecycle Management API",
-      "endpointCount": 14
-    },
-    "location-addresses": {
-      "file": "location-addresses.json",
-      "title": "Addresses API",
-      "endpointCount": 2
+    "hosting-nodejs": {
+      "file": "hosting-nodejs.json",
+      "title": "Node.js Hosting Public API",
+      "endpointCount": 20
     },
     "payments": {
       "file": "payments.json",
       "title": "Payments API",
       "endpointCount": 43
     },
+    "fulfillments": {
+      "file": "fulfillments.json",
+      "title": "Fulfillment Service",
+      "endpointCount": 4
+    },
+    "domains": {
+      "file": "domains.json",
+      "title": "Domain Lifecycle Management API",
+      "endpointCount": 14
+    },
+    "bulk-operations": {
+      "file": "bulk-operations.json",
+      "title": "Bulk Operations API",
+      "endpointCount": 27
+    },
     "businesses": {
       "file": "businesses.json",
       "title": "Commerce Business API",
       "endpointCount": 8
+    },
+    "transactions": {
+      "file": "transactions.json",
+      "title": "Transactions API",
+      "endpointCount": 17
+    },
+    "chargebacks": {
+      "file": "chargebacks.json",
+      "title": "Chargeback Management",
+      "endpointCount": 10
+    },
+    "subscriptions": {
+      "file": "subscriptions.json",
+      "title": "Commerce Subscription API",
+      "endpointCount": 8
+    },
+    "location-addresses": {
+      "file": "location-addresses.json",
+      "title": "Addresses API",
+      "endpointCount": 2
+    },
+    "payment-requests": {
+      "file": "payment-requests.json",
+      "title": "Payment Requests API",
+      "endpointCount": 5
     }
   }
 }
