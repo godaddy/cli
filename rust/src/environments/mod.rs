@@ -118,12 +118,82 @@ pub fn env_prefix(name: &str) -> String {
 }
 
 fn derive_account_url(env_name: &str) -> String {
-    let host = if env_name == "prod" {
-        "account.godaddy.com".to_owned()
+    if env_name == "prod" {
+        return "https://account.godaddy.com".to_owned();
+    }
+    substitute_env_host("https://account.godaddy.com", env_name)
+        .unwrap_or_else(|| "https://account.godaddy.com".to_owned())
+}
+
+/// Applies GoDaddy's internal-environment hostname convention
+/// (`{env}-godaddy.com`) to a canonical `*.godaddy.com` URL, preserving any
+/// subdomain prefix and the original scheme/path. Returns `None` if the
+/// host isn't under `godaddy.com` — nothing to substitute.
+fn substitute_env_host(url: &str, env_name: &str) -> Option<String> {
+    let lower = url.to_ascii_lowercase();
+    let scheme_len = if lower.starts_with("https://") {
+        8
+    } else if lower.starts_with("http://") {
+        7
     } else {
-        format!("account.{env_name}-godaddy.com")
+        return None;
     };
-    format!("https://{host}")
+    let rest = &url[scheme_len..];
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = &rest[..host_end];
+    let host_lower = host.to_ascii_lowercase();
+    let new_host = if host_lower == "godaddy.com" {
+        format!("{env_name}-godaddy.com")
+    } else {
+        let prefix = host_lower.strip_suffix(".godaddy.com")?;
+        format!("{}.{env_name}-godaddy.com", &host[..prefix.len()])
+    };
+    Some(format!(
+        "{}{}{}",
+        &url[..scheme_len],
+        new_host,
+        &rest[host_end..]
+    ))
+}
+
+/// Resolve the environment-specific base URL for a catalog domain (used by
+/// `api domain list` / `api call`). Checks an explicit override first — a
+/// `<domain>_api_url` key from local config, or a `<PREFIX>_<DOMAIN>_API_URL`
+/// env var read directly here (not through cli-engine's `apply_env_vars`,
+/// which only overrides an extra key already present after the compiled+file
+/// layers merge — see the module doc; gddy's `register()` never pre-seeds
+/// per-domain override keys on the compiled builtins). Checking the env var
+/// directly makes this work uniformly for `prod`/`ote` builtins and custom
+/// dev/test env names alike. Absent an override, falls back to GoDaddy's
+/// `{env}-godaddy.com` hostname convention against `prod_base_url` for any
+/// non-`prod` environment.
+pub fn resolve_catalog_base_url(domain: &str, prod_base_url: &str, env_name: &str) -> String {
+    let override_key = format!("{}_api_url", domain.replace('-', "_"));
+    if let Some(url) = domain_override(&override_key, env_name, |k| std::env::var(k).ok()) {
+        return url;
+    }
+    if env_name == DEFAULT_ENV {
+        return prod_base_url.to_owned();
+    }
+    substitute_env_host(prod_base_url, env_name).unwrap_or_else(|| prod_base_url.to_owned())
+}
+
+/// Pure lookup for [`resolve_catalog_base_url`]'s override, with the env-var
+/// getter injected so tests stay parallel-safe (no real `std::env::set_var`),
+/// matching [`resolve_from_env_var_only`]'s pattern.
+fn domain_override(
+    override_key: &str,
+    env_name: &str,
+    var: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    if let Ok(env) = instance().resolve(env_name)
+        && let Some(v) = env.extra.get(override_key)
+        && let Some(clean) = clean_url(v)
+    {
+        return Some(clean);
+    }
+    let var_name = format!("{}_{}", env_prefix(env_name), override_key.to_uppercase());
+    var(&var_name).and_then(|v| clean_url(&v))
 }
 
 fn derive_auth_url(api_url: &str) -> String {
@@ -617,6 +687,82 @@ mod tests {
         );
         let resolved = adapt("dev", env).expect("adapts");
         assert_eq!(resolved.account_url, "https://account.override.test");
+    }
+
+    #[test]
+    fn substitute_env_host_prefixes_a_bare_domain() {
+        assert_eq!(
+            substitute_env_host("https://godaddy.com", "ote"),
+            Some("https://ote-godaddy.com".to_owned())
+        );
+    }
+
+    #[test]
+    fn substitute_env_host_preserves_subdomain_and_path() {
+        assert_eq!(
+            substitute_env_host(
+                "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
+                "dev"
+            ),
+            Some("https://fulfillment.api.commerce.dev-godaddy.com/v1/commerce".to_owned())
+        );
+    }
+
+    #[test]
+    fn substitute_env_host_returns_none_for_non_godaddy_host() {
+        assert_eq!(substitute_env_host("https://example.com/v1", "ote"), None);
+    }
+
+    #[test]
+    fn domain_override_falls_back_to_env_var_when_no_local_config_entry() {
+        // "fulfillments-catalog-test" is not a compiled builtin and has no
+        // local config entry, so the first (local-config) branch misses and
+        // the injected var getter is consulted directly.
+        let var = |k: &str| {
+            (k == "FULFILLMENTS_CATALOG_TEST_FULFILLMENTS_API_URL")
+                .then(|| "https://fulfillments.example.test".to_owned())
+        };
+        let resolved = domain_override("fulfillments_api_url", "fulfillments-catalog-test", var);
+        assert_eq!(
+            resolved,
+            Some("https://fulfillments.example.test".to_owned())
+        );
+    }
+
+    #[test]
+    fn domain_override_is_none_when_neither_layer_has_it() {
+        let resolved = domain_override("fulfillments_api_url", "fulfillments-catalog-test", |_| {
+            None
+        });
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn resolve_catalog_base_url_returns_prod_unchanged() {
+        let url = resolve_catalog_base_url(
+            "fulfillments",
+            "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
+            "prod",
+        );
+        assert_eq!(
+            url,
+            "https://fulfillment.api.commerce.godaddy.com/v1/commerce"
+        );
+    }
+
+    #[test]
+    fn resolve_catalog_base_url_applies_convention_for_non_prod() {
+        // No override exists anywhere for this made-up env/domain pair, so
+        // this exercises the `{env}-godaddy.com` convention fallback.
+        let url = resolve_catalog_base_url(
+            "fulfillments",
+            "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
+            "ote",
+        );
+        assert_eq!(
+            url,
+            "https://fulfillment.api.commerce.ote-godaddy.com/v1/commerce"
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@
   },
   "servers": [
     {
-      "url": "https://api.ote-godaddy.com",
+      "url": "https://api.godaddy.com",
       "description": "Domains API host"
     }
   ],

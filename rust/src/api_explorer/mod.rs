@@ -159,11 +159,36 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
 
 fn catalog() -> &'static [Domain] {
     CATALOG.get_or_init(|| {
-        DOMAIN_FILES
+        let mut domains: Vec<Domain> = DOMAIN_FILES
             .iter()
             .filter_map(|(_, src)| serde_json::from_str::<Domain>(src).ok())
-            .collect()
+            .collect();
+        // Sorted once here (not per-listing) so every consumer — `api domain
+        // list`, `api search`, `api describe` — sees the same stable order.
+        domains.sort_by(|a, b| a.name.cmp(&b.name));
+        domains
     })
+}
+
+/// True if `concrete`'s path segments structurally match `template`'s: a
+/// `{param}` segment in `template` matches any single non-empty segment in
+/// `concrete` at the same position, every other segment must match
+/// literally (case-insensitive). Matches a real request path with path
+/// params substituted (e.g. `/stores/abc123/orders`) against the catalog's
+/// templated path (`/stores/{storeId}/orders`), which neither exact nor
+/// substring matching can do — a concrete path never literally contains the
+/// `{storeId}` placeholder.
+fn path_matches_template(template: &str, concrete: &str) -> bool {
+    let template_segs: Vec<&str> = template.trim_matches('/').split('/').collect();
+    let concrete_segs: Vec<&str> = concrete.trim_matches('/').split('/').collect();
+    template_segs.len() == concrete_segs.len()
+        && template_segs
+            .iter()
+            .zip(concrete_segs.iter())
+            .all(|(t, c)| {
+                (t.starts_with('{') && t.ends_with('}') && !c.is_empty())
+                    || t.eq_ignore_ascii_case(c)
+            })
 }
 
 fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, &'a Endpoint)> {
@@ -172,6 +197,7 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
         domain.endpoints.iter().find_map(|ep| {
             if ep.operation_id.to_lowercase() == q
                 || ep.path.to_lowercase() == q
+                || path_matches_template(&ep.path, query)
                 || ep.path.to_lowercase().contains(&q)
             {
                 Some((domain, ep))
@@ -327,17 +353,22 @@ fn domain_list_command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("domain,title,endpoints,baseUrl")
             .with_output_schema::<ApiDomain>(),
-        |_ctx| async move {
+        |ctx| async move {
             let catalog = catalog();
             let domains: Vec<Value> = catalog
                 .iter()
                 .map(|d| {
+                    let base_url = crate::environments::resolve_catalog_base_url(
+                        &d.name,
+                        &d.base_url,
+                        &ctx.middleware.env,
+                    );
                     json!({
                         "domain": d.name,
                         "title": d.title,
                         "description": d.description,
                         "endpoints": d.endpoints.len(),
-                        "baseUrl": d.base_url,
+                        "baseUrl": base_url,
                     })
                 })
                 .collect();
@@ -629,6 +660,20 @@ fn call_command() -> RuntimeCommandSpec {
                     .into_cli_error()
             })?;
 
+            // Validate unconditionally, including under `--dry-run` (same
+            // rationale as the method check above). `find_endpoint` below can
+            // match a raw operationId, but the request URL is always built
+            // from this literal `endpoint` string, not the matched catalog
+            // path — accepting a bare operationId here would silently build
+            // an invalid URL (e.g. `https://.../listFulfillments`).
+            if !endpoint.starts_with('/') {
+                return Err(crate::error::GddyError::validation(format!(
+                    "endpoint must be a URL path starting with '/', not {endpoint:?} — \
+                     use `api describe {endpoint}` to find the concrete path"
+                ))
+                .into_cli_error());
+            }
+
             // `--dry-run` is statically tagged `Tier::Mutate` since the method
             // is only known at runtime, but a GET/HEAD is safe to actually run
             // (and more useful previewed as real data than as a generic
@@ -643,18 +688,28 @@ fn call_command() -> RuntimeCommandSpec {
                 .with_dry_run());
             }
 
-            // Required scopes = explicit --scope flags, plus the matched catalog
-            // endpoint's declared scopes (best-effort: a concrete request path
-            // may not match a templated catalog path, in which case only --scope
-            // contributes). These drive OAuth scope step-up at credential time.
+            // Best-effort match against the embedded catalog: a concrete request
+            // path may not match a templated catalog path, in which case scopes
+            // fall back to just --scope and the base URL falls back to the
+            // generic gateway host.
+            let matched = find_endpoint(catalog(), endpoint);
+
+            // Required scopes = explicit --scope flags, plus the matched
+            // endpoint's declared scopes. These drive OAuth scope step-up at
+            // credential time.
             let flag_scopes = string_list(&ctx.args, "scope");
-            let endpoint_scopes = find_endpoint(catalog(), endpoint)
-                .map(|(_, ep)| ep.scopes.as_slice())
-                .unwrap_or(&[]);
+            let endpoint_scopes = matched.map(|(_, ep)| ep.scopes.as_slice()).unwrap_or(&[]);
             let required = merge_required_scopes(flag_scopes, endpoint_scopes);
 
             let token = ctx.credential_with_scopes(&required).await?.token;
-            let base_url = crate::application::client::api_url_for_env(&ctx.middleware.env);
+            let base_url = match matched {
+                Some((domain, _)) => crate::environments::resolve_catalog_base_url(
+                    &domain.name,
+                    &domain.base_url,
+                    &ctx.middleware.env,
+                ),
+                None => crate::application::client::api_url_for_env(&ctx.middleware.env),
+            };
             let url = format!("{base_url}{endpoint}");
 
             // Build request body: -F file > -d body, then merge -f fields on top
@@ -883,6 +938,52 @@ mod tests {
         );
     }
 
+    /// `catalog()` sorts once so every listing (`api domain list`, `api
+    /// search`, `api describe`) sees the same stable, alphabetical order.
+    #[test]
+    fn catalog_domains_are_sorted_alphabetically() {
+        let names: Vec<&str> = catalog().iter().map(|d| d.name.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
+    }
+
+    /// Mirrors `call_command`'s domain-aware base-URL resolution: a matched
+    /// catalog endpoint resolves through its own domain's host (not the
+    /// generic gateway), with per-environment convention substitution.
+    #[test]
+    fn matched_endpoint_resolves_its_own_domain_base_url() {
+        let (domain, _) = find_endpoint(catalog(), "listFulfillments")
+            .expect("listFulfillments exists in the embedded catalog");
+        assert_eq!(domain.name, "fulfillments");
+        let base_url =
+            crate::environments::resolve_catalog_base_url(&domain.name, &domain.base_url, "ote");
+        assert_eq!(
+            base_url,
+            "https://fulfillment.api.commerce.ote-godaddy.com/v1/commerce"
+        );
+    }
+
+    /// A real request path with path params substituted (as `api call`
+    /// receives — no user passes a literal `{storeId}`) must still match its
+    /// templated catalog path, or every parameterized endpoint would fall
+    /// back to the wrong (generic gateway) base URL and lose scope lookup.
+    #[test]
+    fn concrete_path_matches_its_templated_catalog_path() {
+        let (domain, endpoint) = find_endpoint(catalog(), "/stores/abc123/fulfillments")
+            .expect("concrete path should match the templated catalog path");
+        assert_eq!(domain.name, "fulfillments");
+        assert_eq!(endpoint.operation_id, "listFulfillments");
+    }
+
+    /// An endpoint the catalog doesn't recognize has no domain to resolve a
+    /// base URL against — `call_command` falls back to the generic gateway
+    /// host in this case.
+    #[test]
+    fn unmatched_endpoint_has_no_domain_to_resolve_against() {
+        assert!(find_endpoint(catalog(), "not-a-real-operation-id").is_none());
+    }
+
     #[test]
     fn split_header_trims_and_splits_on_first_colon() {
         assert_eq!(
@@ -1029,6 +1130,34 @@ mod tests {
         assert_ne!(output.exit_code, 0, "{}", output.rendered);
         assert!(
             output.rendered.contains("invalid HTTP method"),
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// A bare operationId (no leading '/') must be rejected rather than
+    /// silently built into an invalid request URL — `find_endpoint` can match
+    /// it for scope lookup, but the URL is always built from the literal
+    /// `endpoint` string, not the matched catalog path.
+    #[tokio::test]
+    async fn call_rejects_an_endpoint_without_a_leading_slash() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "listFulfillments",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("must be a URL path starting with"),
             "{}",
             output.rendered
         );
