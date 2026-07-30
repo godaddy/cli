@@ -693,11 +693,12 @@ fn json_pointer_escape(s: &str) -> String {
 ///   `./models/Order.yaml`  → `"Order"`
 ///   `https://.../error.json` → `"error"`
 fn derive_defs_key_for_path(ref_str: &str) -> String {
+    let frag = ref_str.find('#').map(|idx| &ref_str[idx..]);
+
     // External refs with a component-schema fragment (e.g. `./common.yaml#/components/schemas/Foo`)
     // use the component name as the key, consistent with pure local `#/components/schemas/` refs
     // and avoiding collisions when the same file is referenced for different components.
-    if let Some(frag_idx) = ref_str.find('#') {
-        let frag = &ref_str[frag_idx..];
+    if let Some(frag) = frag {
         for prefix in &["#/components/schemas/", "#/definitions/"] {
             if let Some(rest) = frag.strip_prefix(prefix) {
                 let name = rest.split('/').next().unwrap_or(rest);
@@ -705,13 +706,26 @@ fn derive_defs_key_for_path(ref_str: &str) -> String {
             }
         }
     }
+
     let file_part = ref_str.split('#').next().unwrap_or(ref_str);
     let last_seg = file_part.rsplit(['/', '\\']).next().unwrap_or(file_part);
     let stem = match last_seg.rfind('.') {
         Some(pos) => &last_seg[..pos],
         None => last_seg,
     };
-    sanitize_defs_key(stem)
+    let base_key = sanitize_defs_key(stem);
+
+    // A `#/properties/<name>` fragment (optionally nested, e.g. `#/properties/a/properties/b`)
+    // selects one property's schema out of the file, not the file's root schema — fold the
+    // property path into the key so two refs into the same file for different properties
+    // don't collide under one bare file-stem key.
+    match frag.and_then(|f| f.strip_prefix("#/properties/")) {
+        Some(rest) => {
+            let suffix = rest.split("/properties/").collect::<Vec<_>>().join("_");
+            sanitize_defs_key(&format!("{base_key}_{suffix}"))
+        }
+        None => base_key,
+    }
 }
 
 fn sanitize_defs_key(s: &str) -> String {
@@ -2252,6 +2266,21 @@ components:
         assert_eq!(
             derive_defs_key_for_path("./shared.yaml#/definitions/Bar"),
             "Bar"
+        );
+        // A `#/properties/<name>` fragment picks out one property's schema, not the
+        // file's root schema — it must be folded into the key so two refs into the
+        // same file for different properties don't collide (DEVEX-965).
+        assert_eq!(
+            derive_defs_key_for_path("./models/FulfillmentPlan.yaml#/properties/storeId"),
+            "FulfillmentPlan_storeId"
+        );
+        assert_eq!(
+            derive_defs_key_for_path("./models/FulfillmentPlan.yaml#/properties/orderId"),
+            "FulfillmentPlan_orderId"
+        );
+        assert_eq!(
+            derive_defs_key_for_path("./models/Foo.yaml#/properties/a/properties/b"),
+            "Foo_a_b"
         );
     }
 
