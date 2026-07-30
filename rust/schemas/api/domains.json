@@ -10,7 +10,7 @@
             }
           ],
           "description": "The type of legal agreement. Identifies which agreement text the customer must accept.\n",
-          "example": "DNRA"
+          "example": "API_DPA"
         },
         "title": {
           "description": "Human-readable title of the agreement, suitable for display to the customer.\n",
@@ -28,7 +28,15 @@
       "type": "object"
     },
     "AgreementType": {
-      "description": "The type of legal agreement that must be accepted prior to executing a domain operation. Additional agreement types may be returned for specific TLDs or product combinations. DNRA — Domain Name Registration Agreement. DNTA — Domain Name Transfer Agreement. DNPA — Domain Name Privacy Agreement. HTTPS_NOTICE — HTTPS notice acknowledgment for eligible TLDs. AURA — AU Domain Agreement for .au TLD registrations and transfers. CIRA — Canadian Internet Registration Authority Agreement for .ca TLD registrations and transfers.\n",
+      "description": "The type of legal agreement that must be accepted prior to executing a domain operation. Additional agreement types may be returned for specific TLDs or product combinations. API_DPA - API Domain Purchase Agreement. DNTA — Domain Name Transfer Agreement. DNPA — Domain Name Privacy Agreement. HTTPS_NOTICE — HTTPS notice acknowledgment for eligible TLDs. AURA — AU Domain Agreement for .au TLD registrations and transfers. CIRA — Canadian Internet Registration Authority Agreement for .ca TLD registrations and transfers.\n",
+      "enum": [
+        "API_DPA",
+        "AURA",
+        "CIRA",
+        "DNPA",
+        "DNTA",
+        "HTTPS_NOTICE"
+      ],
       "title": "Agreement Type",
       "type": "string"
     },
@@ -121,7 +129,7 @@
       "type": "object"
     },
     "Consent": {
-      "description": "Customer consent record for a domain operation, capturing which legal agreements were accepted, when, and by whom. This object is self-reported by the caller and treated as supplementary attestation. The server verifies agreedBy.principal against the authenticated identity (auth token + X-Shopper-Id resolution) and rejects with consent_principal_mismatch on disagreement. The persisted consent record is the union of this claimed block and the verified auth context.\n",
+      "description": "Customer consent record for a domain operation, capturing which legal agreements were accepted, when, and by whom. On execute, the caller supplies agreementTypes and agreedAt. The server derives agreedBy from the authenticated request context (OAuth identity, X-Shopper-Id, client IP, and transmission channel).\n",
       "properties": {
         "agreedAt": {
           "allOf": [
@@ -132,12 +140,18 @@
           "description": "The timestamp at which the principal expressed consent. Should reflect when the customer clicked accept or confirmed the operation, not when the API call was made.\n"
         },
         "agreedBy": {
-          "$ref": "#/$defs/ConsentActor"
+          "allOf": [
+            {
+              "$ref": "#/$defs/ConsentActor"
+            }
+          ],
+          "description": "Who gave consent and how it was transmitted. Server-derived from the execute request's auth context.\n",
+          "readOnly": true
         },
         "agreementTypes": {
           "description": "The agreement types the customer accepted. Must match the agreementType values returned in the corresponding quote's requiredAgreements array.\n",
           "example": [
-            "DNRA"
+            "API_DPA"
           ],
           "items": {
             "$ref": "#/$defs/AgreementType"
@@ -148,28 +162,27 @@
       },
       "required": [
         "agreementTypes",
-        "agreedAt",
-        "agreedBy"
+        "agreedAt"
       ],
       "title": "Consent",
       "type": "object"
     },
     "ConsentActor": {
-      "description": "Identifies who gave consent and who transmitted it. One uniform schema for all actor types. Self-reported by the caller and treated as supplementary attestation; the server verifies principal against the resolved auth identity (OAuth token + X-Shopper-Id) and rejects with consent_principal_mismatch on disagreement. The persisted consent record is the union of this block and the verified auth context.\nprincipal identifies the account holder whose consent is being recorded. actor identifies the automated or intermediary party that transmitted the consent when different from the principal. For DIRECT, actor is omitted.\n",
+      "description": "Identifies who gave consent and how it was transmitted. One uniform schema for all actor types. Populated by the server from the execute request's authenticated context — not supplied by the caller.\n",
       "properties": {
         "actor": {
-          "description": "The automated agent or system that transmitted the consent. Omitted for DIRECT. For AGENT, identifies the specific agent instance. For RESELLER, may identify the reseller when distinct from the OAuth token subject.\n",
+          "description": "The party that transmitted the consent when distinct from the principal. Omitted for DIRECT.\n",
           "example": "agent:claude/atlas-1",
           "type": "string"
         },
         "ip": {
-          "description": "The IP address of the principal at the time consent was expressed, if known. Optional — an absent IP with a verified principal is preferred over a fabricated one.\n",
+          "description": "Client IP address captured from the execute request at the time consent was recorded. Omitted when unavailable.\n",
           "example": "203.0.113.7",
           "type": "string"
         },
         "principal": {
-          "description": "The shopper or account ID whose consent is being recorded. Must match the shopper resolved from the OAuth token and X-Shopper-Id header; mismatch returns consent_principal_mismatch.\n",
-          "example": "shopper_123",
+          "description": "The resolved customer identifier whose consent is recorded, derived from the auth context on the execute request.\n",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
           "type": "string"
         },
         "type": {
@@ -178,7 +191,7 @@
               "$ref": "#/$defs/ConsentActorType"
             }
           ],
-          "description": "Who transmitted consent relative to the principal.\n",
+          "description": "How consent was transmitted relative to the principal. Server-assigned from the request's auth and channel context.\n",
           "example": "DIRECT"
         }
       },
@@ -191,7 +204,12 @@
       "x-sensitivity": "confidential"
     },
     "ConsentActorType": {
-      "description": "Who transmitted consent on behalf of the principal. DIRECT — the principal acted directly; actor is omitted. AGENT — an AI or automation acted on behalf of the principal. RESELLER — a reseller acted on behalf of a shopper.\n",
+      "description": "How consent was transmitted relative to the principal. DIRECT — the principal transmitted consent directly; actor is omitted. AGENT — consent was transmitted by an AI or automation on the principal's behalf. RESELLER — consent was transmitted by a reseller on the principal's behalf.\n",
+      "enum": [
+        "AGENT",
+        "DIRECT",
+        "RESELLER"
+      ],
       "title": "Consent Actor Type",
       "type": "string"
     },
@@ -651,16 +669,25 @@
     },
     "DomainOperationStatus": {
       "description": "The execution state of an asynchronous domain operation. CONFIRMED — operation has been accepted and is queued for execution. EXECUTING — operation is actively being processed by the registry or downstream systems. COMPLETED — operation finished successfully; result data is available. FAILED — operation terminated with an unrecoverable error; error detail is attached.\n",
+      "enum": [
+        "COMPLETED",
+        "CONFIRMED",
+        "EXECUTING",
+        "FAILED"
+      ],
       "title": "Domain Operation Status",
       "type": "string"
     },
     "DomainOperationType": {
       "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER — new domain registration.\n",
+      "enum": [
+        "REGISTER"
+      ],
       "title": "Domain Operation Type",
       "type": "string"
     },
     "DomainStatus": {
-      "description": "The lifecycle status of a registered domain. Reflects the domain's current operational state within the registry and GoDaddy's management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been cancelled by the user or system, and is not reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace period; recovery fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this is usually the result of spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER — an outbound transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED — domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred to another registrar.\n",
+      "description": "The lifecycle status of a registered domain. Reflects the domain's current operational state within the registry and GoDaddy's management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been cancelled by the user or system, and is not be reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace period; recovery fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this is usually the result of a spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER — an outbound transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED — domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred to another registrar.\n",
       "enum": [
         "ACTIVE",
         "CANCELLED",
@@ -758,7 +785,7 @@
               "$ref": "#/$defs/Consent"
             }
           ],
-          "description": "The customer's consent record for the legal agreements returned in the quote. Must reference the same agreementTypes as the quote.\n"
+          "description": "The customer's consent for the legal agreements returned in the quote. On execute, supply agreementTypes and agreedAt; agreedBy is server-derived and returned on the persisted record.\n"
         },
         "createdAt": {
           "allOf": [
@@ -801,6 +828,11 @@
           "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
           "readOnly": true
         },
+        "orderId": {
+          "description": "The orderId of the order that created this registration. Present only when the registration is completed. Not present for failed or pending registrations.\n",
+          "readOnly": true,
+          "type": "string"
+        },
         "period": {
           "default": 1,
           "description": "Registration period in years. Must match the period in the quote.",
@@ -808,6 +840,15 @@
           "maximum": 10,
           "minimum": 1,
           "type": "integer"
+        },
+        "price": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/simple-money"
+            }
+          ],
+          "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Represents the total amount that will be charged on execute.\n",
+          "readOnly": true
         },
         "profile": {
           "allOf": [
@@ -1721,7 +1762,7 @@
       "type": "string"
     }
   },
-  "baseUrl": "https://api.ote-godaddy.com",
+  "baseUrl": "https://api.godaddy.com",
   "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–50 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
   "endpoints": [
     {
@@ -2933,5 +2974,5 @@
   ],
   "name": "domains",
   "title": "Domain Lifecycle Management API",
-  "version": "3.0.0"
+  "version": "3.1.0"
 }

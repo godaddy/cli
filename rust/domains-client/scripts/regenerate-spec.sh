@@ -34,9 +34,10 @@ trimmed_v1="$openapi_dir/.swagger_domains.trimmed.v1.json"
 v1_oas3="$openapi_dir/.domains.v1.oas3.json"
 oas3="$openapi_dir/domains.oas3.json"
 
-# The document host. base_url is overridden at runtime by the CLI per environment,
-# so this is cosmetic; keep it on the public OTE host.
-host="https://api.ote-godaddy.com"
+# The document host. base_url is overridden at runtime by the CLI per environment
+# (environments::resolve_domains), so this is cosmetic — keep it prod-canonical,
+# consistent with every other embedded catalog domain's baseUrl.
+host="https://api.godaddy.com"
 
 echo "==> Downloading upstream Swagger 2.0 spec"
 curl -fsSL "https://developer.godaddy.com/swagger/swagger_domains.json" -o "$v2"

@@ -641,6 +641,51 @@
       "minLength": 20,
       "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
       "type": "string"
+    },
+    "link-description": {
+      "$id": "https://godaddy.com/schema/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+      "properties": {
+        "href": {
+          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+          "format": "uri",
+          "type": "string"
+        },
+        "method": {
+          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+          "type": "string"
+        },
+        "rel": {
+          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+          "type": "string"
+        },
+        "submissionMediaType": {
+          "default": "application/json",
+          "description": "The media type with which to submit data with the request.",
+          "type": "string"
+        },
+        "submissionSchema": {
+          "description": "The schema that describes the request data."
+        },
+        "targetMediaType": {
+          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+          "type": "string"
+        },
+        "targetSchema": {
+          "description": "The schema that describes the link target."
+        },
+        "title": {
+          "description": "The link title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link Description",
+      "type": "object"
     }
   },
   "baseUrl": "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
@@ -780,6 +825,169 @@
       },
       "scopes": [],
       "summary": "Retrieve and filter fulfillments"
+    },
+    {
+      "description": "Retrieve fulfillments for a store, either by order ID(s) or by status. At least one of `orderId` or `status` must be provided. When `orderId` is present it takes precedence and `status` is ignored.",
+      "method": "GET",
+      "operationId": "listFulfillments",
+      "parameters": [
+        {
+          "description": "Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/FulfillmentPlan"
+          }
+        },
+        {
+          "description": "Order ID or comma-separated list of order IDs (maximum 100) to fetch fulfillments for. Takes precedence over `status` when present.",
+          "in": "query",
+          "name": "orderId",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter fulfillments by status. Required when `orderId` is not provided; results are paginated.",
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/FulfillmentStatus"
+          }
+        },
+        {
+          "description": "Maximum number of results per page. Only applies when querying by `status`. Values above the maximum are capped at 100.",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Deprecated — use `pageSize` instead. Alias for `pageSize`. Only applies when querying by `status`.",
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque pagination cursor from `links[rel=next]` of a previous status-query response.",
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Deprecated — use `pageToken` instead. Alias for `pageToken`.",
+          "in": "query",
+          "name": "nextToken",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/fulfillments",
+      "responses": {
+        "200": {
+          "description": "Successfully retrieved fulfillments",
+          "schema": {
+            "properties": {
+              "fulfillments": {
+                "deprecated": true,
+                "description": "Deprecated — use `items` instead. Same data as `items`; will be removed in a future major version.",
+                "items": {
+                  "$ref": "#/$defs/Fulfillment"
+                },
+                "type": "array"
+              },
+              "items": {
+                "description": "List of fulfillments matching the query.",
+                "items": {
+                  "$ref": "#/$defs/Fulfillment"
+                },
+                "type": "array"
+              },
+              "links": {
+                "description": "HATEOAS pagination links. Present only when querying by `status`. `rel=self` (current page); `rel=next` (next page, when more results exist). Omitted for `orderId` queries.",
+                "items": {
+                  "$ref": "#/$defs/link-description"
+                },
+                "readOnly": true,
+                "type": "array"
+              },
+              "nextToken": {
+                "deprecated": true,
+                "description": "Deprecated — use `links[rel=next].href` instead. Opaque pagination cursor. Present only when querying by `status` and more pages remain; omitted (not null) once the results are exhausted.",
+                "type": "string"
+              },
+              "status": {
+                "deprecated": true,
+                "description": "Deprecated — HTTP status code conveys success/failure. Always `success` on 200 responses. Will be removed in a future major version.",
+                "example": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "fulfillments"
+            ],
+            "type": "object"
+          }
+        },
+        "400": {
+          "description": "Malformed or invalid request parameters",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication info not sent or is invalid",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated user is not allowed access",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "Application-specific request error",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "default": {
+          "description": "Unexpected error",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [],
+      "summary": "List fulfillments for a store"
     },
     {
       "description": "Create a new fulfillment",
@@ -999,5 +1207,5 @@
   ],
   "name": "fulfillments",
   "title": "Fulfillment Service",
-  "version": "1.1.0"
+  "version": "1.2.0"
 }
