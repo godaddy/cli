@@ -7,9 +7,11 @@ name: API catalog drift
 # list) lives in `cargo test`
 # (committed_catalog_matches_expected_domains_and_manifest) and runs on every PR.
 #
-# Requires a token with read access to the gdcorp-platform spec repos, provisioned
-# as the `CATALOG_SPEC_TOKEN` secret. The default GITHUB_TOKEN only reaches this
-# repo. A missing token is a configuration error and fails the job.
+# Reads the gdcorp-platform spec repos via a GitHub App (the default GITHUB_TOKEN
+# only reaches this repo). The app is installed on the gdcorp-platform org with
+# read-only Contents access; its Client ID and private key are provisioned here
+# as the `SPEC_SYNC_CLIENT_ID` / `SPEC_SYNC_PRIVATE_KEY` secrets and exchanged
+# for a short-lived installation token at job start.
 
 on:
   schedule:
@@ -34,15 +36,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Check for spec token
-        working-directory: .
-        env:
-          CATALOG_SPEC_TOKEN: ${{ secrets.CATALOG_SPEC_TOKEN }}
-        run: |
-          if [ -z "$CATALOG_SPEC_TOKEN" ]; then
-            echo "::error::CATALOG_SPEC_TOKEN must be configured with read access to gdcorp-platform specification repositories."
-            exit 1
-          fi
+      - name: Generate spec-sync app token
+        id: spec-sync-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.SPEC_SYNC_CLIENT_ID }}
+          private-key: ${{ secrets.SPEC_SYNC_PRIVATE_KEY }}
+          owner: gdcorp-platform
+          permission-contents: read
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -50,7 +51,7 @@ jobs:
       - name: Regenerate catalog from upstream specs
         # Runs from the job-default working-directory (rust/) — cargo needs the workspace.
         env:
-          GITHUB_TOKEN: ${{ secrets.CATALOG_SPEC_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.spec-sync-token.outputs.token }}
         run: cargo run -p generate-api-catalog
 
       - name: Fail on drift
