@@ -159,10 +159,14 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
 
 fn catalog() -> &'static [Domain] {
     CATALOG.get_or_init(|| {
-        DOMAIN_FILES
+        let mut domains: Vec<Domain> = DOMAIN_FILES
             .iter()
             .filter_map(|(_, src)| serde_json::from_str::<Domain>(src).ok())
-            .collect()
+            .collect();
+        // Sorted once here (not per-listing) so every consumer — `api domain
+        // list`, `api search`, `api describe` — sees the same stable order.
+        domains.sort_by(|a, b| a.name.cmp(&b.name));
+        domains
     })
 }
 
@@ -327,17 +331,22 @@ fn domain_list_command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("domain,title,endpoints,baseUrl")
             .with_output_schema::<ApiDomain>(),
-        |_ctx| async move {
+        |ctx| async move {
             let catalog = catalog();
             let domains: Vec<Value> = catalog
                 .iter()
                 .map(|d| {
+                    let base_url = crate::environments::resolve_catalog_base_url(
+                        &d.name,
+                        &d.base_url,
+                        &ctx.middleware.env,
+                    );
                     json!({
                         "domain": d.name,
                         "title": d.title,
                         "description": d.description,
                         "endpoints": d.endpoints.len(),
-                        "baseUrl": d.base_url,
+                        "baseUrl": base_url,
                     })
                 })
                 .collect();
@@ -643,18 +652,28 @@ fn call_command() -> RuntimeCommandSpec {
                 .with_dry_run());
             }
 
-            // Required scopes = explicit --scope flags, plus the matched catalog
-            // endpoint's declared scopes (best-effort: a concrete request path
-            // may not match a templated catalog path, in which case only --scope
-            // contributes). These drive OAuth scope step-up at credential time.
+            // Best-effort match against the embedded catalog: a concrete request
+            // path may not match a templated catalog path, in which case scopes
+            // fall back to just --scope and the base URL falls back to the
+            // generic gateway host.
+            let matched = find_endpoint(catalog(), endpoint);
+
+            // Required scopes = explicit --scope flags, plus the matched
+            // endpoint's declared scopes. These drive OAuth scope step-up at
+            // credential time.
             let flag_scopes = string_list(&ctx.args, "scope");
-            let endpoint_scopes = find_endpoint(catalog(), endpoint)
-                .map(|(_, ep)| ep.scopes.as_slice())
-                .unwrap_or(&[]);
+            let endpoint_scopes = matched.map(|(_, ep)| ep.scopes.as_slice()).unwrap_or(&[]);
             let required = merge_required_scopes(flag_scopes, endpoint_scopes);
 
             let token = ctx.credential_with_scopes(&required).await?.token;
-            let base_url = crate::application::client::api_url_for_env(&ctx.middleware.env);
+            let base_url = match matched {
+                Some((domain, _)) => crate::environments::resolve_catalog_base_url(
+                    &domain.name,
+                    &domain.base_url,
+                    &ctx.middleware.env,
+                ),
+                None => crate::application::client::api_url_for_env(&ctx.middleware.env),
+            };
             let url = format!("{base_url}{endpoint}");
 
             // Build request body: -F file > -d body, then merge -f fields on top
@@ -881,6 +900,40 @@ mod tests {
             merge_required_scopes(v(&["commerce.order:write"]), &endpoint.scopes),
             v(&["commerce.order:write", "commerce.order:read"]),
         );
+    }
+
+    /// `catalog()` sorts once so every listing (`api domain list`, `api
+    /// search`, `api describe`) sees the same stable, alphabetical order.
+    #[test]
+    fn catalog_domains_are_sorted_alphabetically() {
+        let names: Vec<&str> = catalog().iter().map(|d| d.name.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
+    }
+
+    /// Mirrors `call_command`'s domain-aware base-URL resolution: a matched
+    /// catalog endpoint resolves through its own domain's host (not the
+    /// generic gateway), with per-environment convention substitution.
+    #[test]
+    fn matched_endpoint_resolves_its_own_domain_base_url() {
+        let (domain, _) = find_endpoint(catalog(), "listFulfillments")
+            .expect("listFulfillments exists in the embedded catalog");
+        assert_eq!(domain.name, "fulfillments");
+        let base_url =
+            crate::environments::resolve_catalog_base_url(&domain.name, &domain.base_url, "ote");
+        assert_eq!(
+            base_url,
+            "https://fulfillment.api.commerce.ote-godaddy.com/v1/commerce"
+        );
+    }
+
+    /// An endpoint the catalog doesn't recognize has no domain to resolve a
+    /// base URL against — `call_command` falls back to the generic gateway
+    /// host in this case.
+    #[test]
+    fn unmatched_endpoint_has_no_domain_to_resolve_against() {
+        assert!(find_endpoint(catalog(), "not-a-real-operation-id").is_none());
     }
 
     #[test]
