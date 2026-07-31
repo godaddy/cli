@@ -37,15 +37,14 @@ const MAX_LIST_ITEMS: usize = 50;
 /// Writes the full event list to a temp file and returns its path.
 /// Only called when the list is truncated so the caller can offer the full set.
 fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> {
-    let dir = std::env::temp_dir().join("godaddy-cli");
+    let dir = std::env::temp_dir().join(format!("godaddy-cli-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     }
-    let filename = format!("{}-webhook-events.json", uuid::Uuid::new_v4());
-    let path = dir.join(&filename);
+    let path = dir.join("webhook-events.json");
     let content = serde_json::to_string_pretty(events)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     std::fs::write(&path, content)?;
@@ -58,6 +57,93 @@ fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> 
 }
 
 /// The webhook command group, composed below `gddy platform`.
+pub fn group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(
+        GroupSpec::new("webhook", "Manage webhook event types").with_long(
+            "Inspect the webhook event types your application can subscribe to.\n\
+                     Use `gddy platform app add subscription` to attach a webhook \
+                     subscription to an application.",
+        ),
+    )
+    .with_command(RuntimeCommandSpec::new_with_context(
+        CommandSpec::new("events", "List available webhook event types")
+            .with_long(
+                "Returns available webhook event types. Up to 50 events are shown; \
+                         if there are more, the output includes a `full_output` field \
+                         with a path to a file containing the complete list.\n\
+                         Pass an event type from this list to \
+                         `gddy platform app add subscription`.",
+            )
+            .with_system("webhooks")
+            .with_tier(Tier::Read),
+        |ctx| async move {
+            let token = ctx.credential().await?.token;
+            let base_url = api_url_for_env(&ctx.middleware.env);
+            let url = format!("{base_url}/v1/apis/webhook-event-types");
+            let client = crate::application::client::make_http_client();
+            let request = client
+                .get(&url)
+                .bearer_auth(&token)
+                .header("x-request-id", uuid::Uuid::new_v4().to_string())
+                .build()
+                .map_err(|e| GddyError::validation(e.to_string()).into_cli_error())?;
+            cli_engine::transport::debug_log_reqwest_request(&request);
+            let resp = client
+                .execute(request)
+                .await
+                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+
+            let status = resp.status();
+            let headers = resp.headers().clone();
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+            cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+            if !status.is_success() {
+                let body = String::from_utf8_lossy(&bytes).into_owned();
+                return Err(
+                    GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error()
+                );
+            }
+            let response: WebhookEventsResponse = serde_json::from_slice(&bytes).map_err(|e| {
+                GddyError::unexpected(format!("failed to parse webhook events response: {e}"))
+                    .into_cli_error()
+            })?;
+            let events: Vec<WebhookEvent> = response.events;
+            let total = events.len();
+            let truncated = total > MAX_LIST_ITEMS;
+            let shown = total.min(MAX_LIST_ITEMS);
+            let full_output: Option<String> = if truncated {
+                let path = write_full_output(&events).map_err(|e| {
+                    GddyError::unexpected(format!("failed to write full output: {e}"))
+                        .into_cli_error()
+                })?;
+                Some(path)
+            } else {
+                None
+            };
+            let items: Vec<WebhookEvent> = if truncated {
+                events.into_iter().take(MAX_LIST_ITEMS).collect()
+            } else {
+                events
+            };
+            let output = WebhookEventsOutput {
+                events: items,
+                total,
+                shown,
+                truncated,
+                full_output,
+            };
+            let out = serde_json::to_value(&output).map_err(|e| {
+                GddyError::unexpected(format!("failed to serialize output: {e}")).into_cli_error()
+            })?;
+            Ok(CommandResult::new(out))
+        },
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,8 +165,7 @@ mod tests {
     #[test]
     fn webhook_events_response_defaults_events_to_empty_when_key_absent() {
         let raw = serde_json::json!({});
-        let resp: WebhookEventsResponse =
-            serde_json::from_value(raw).expect("should deserialize");
+        let resp: WebhookEventsResponse = serde_json::from_value(raw).expect("should deserialize");
         assert!(resp.events.is_empty());
     }
 
@@ -134,79 +219,4 @@ mod tests {
         assert_eq!(parsed[0]["eventType"], "domain.created");
         assert_eq!(parsed[0]["description"], "A domain was created");
     }
-}
-
-
-pub fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(
-        GroupSpec::new("webhook", "Manage webhook event types").with_long(
-            "Inspect the webhook event types your application can subscribe to.\n\
-                     Use `gddy platform app add subscription` to attach a webhook \
-                     subscription to an application.",
-        ),
-    )
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("events", "List available webhook event types")
-            .with_long(
-                "Returns the full list of event types that can be used when \
-                         creating a webhook subscription.\n\
-                         Pass an event type from this list to \
-                         `gddy platform app add subscription`.",
-            )
-            .with_system("webhooks")
-            .with_tier(Tier::Read),
-        |ctx| async move {
-            let token = ctx.credential().await?.token;
-            let base_url = api_url_for_env(&ctx.middleware.env);
-            let url = format!("{base_url}/v1/apis/webhook-event-types");
-            let client = crate::application::client::make_http_client();
-            let request = client
-                .get(&url)
-                .bearer_auth(&token)
-                .header("x-request-id", uuid::Uuid::new_v4().to_string())
-                .build()
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_request(&request);
-            let resp = client
-                .execute(request)
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-
-            let status = resp.status();
-            let headers = resp.headers().clone();
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
-
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes).into_owned();
-                return Err(GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error());
-            }
-            let response: WebhookEventsResponse = serde_json::from_slice(&bytes)
-                .map_err(|e| GddyError::unexpected(format!("failed to parse webhook events response: {e}")).into_cli_error())?;
-            let events: Vec<WebhookEvent> = response.events;
-            let total = events.len();
-            let truncated = total > MAX_LIST_ITEMS;
-            let shown = total.min(MAX_LIST_ITEMS);
-            let full_output: Option<String> = if truncated {
-                let path = write_full_output(&events).map_err(|e| {
-                    GddyError::unexpected(format!("failed to write full output: {e}")).into_cli_error()
-                })?;
-                Some(path)
-            } else {
-                None
-            };
-            let items: Vec<WebhookEvent> = if truncated {
-                events.into_iter().take(MAX_LIST_ITEMS).collect()
-            } else {
-                events
-            };
-            let output = WebhookEventsOutput { events: items, total, shown, truncated, full_output };
-            let out = serde_json::to_value(&output)
-                .map_err(|e| GddyError::unexpected(format!("failed to serialize output: {e}")).into_cli_error())?;
-            Ok(CommandResult::new(out))
-        },
-    ))
 }
