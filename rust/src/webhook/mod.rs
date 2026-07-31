@@ -46,7 +46,7 @@ fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> 
     }
     let path = dir.join("webhook-events.json");
     let content = serde_json::to_string_pretty(events)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     std::fs::write(&path, content)?;
     #[cfg(unix)]
     {
