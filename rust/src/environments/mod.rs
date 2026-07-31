@@ -1,28 +1,10 @@
 //! Environment -> endpoint resolution, delegated to cli-engine's shared
-//! `Environments`/`EnvironmentDef` type.
+//! `Environments`/`EnvConfig` mechanism.
 //!
 //! Built-in, public-safe environments (`ote`, `prod`) are compiled in here.
 //! Internal DEV/TEST environments are supplied **at runtime** and never
-//! committed to this (OSS) repo, via two override mechanisms:
-//!
-//! * **Per-env environment variable** — `<PREFIX>_API_URL` overrides (or, for a
-//!   name unknown to every other layer, *defines*) an environment's API base
-//!   URL, where `<PREFIX>` is the env name uppercased with `-` replaced by `_`
-//!   (e.g. `DEV_API_URL`). cli-engine's `Environments` only lets an env var
-//!   override a *field* of an already-known environment, not introduce a
-//!   brand new selectable one, so [`resolve`] falls back to a local,
-//!   env-var-only path for that case — internal hostnames still never need a
-//!   compiled or local config entry.
-//! * **Gitignored local config** — a `gddy/environments.toml` in the OS config
-//!   directory, parsed by cli-engine's `Environments` file layer (which
-//!   accepts both a flat `[name]` table and gddy's already-shipped nested
-//!   `[environments.name]` table).
-//!
-//! Resolution order (later layers win): built-in base → local config entry →
-//! `<PREFIX>_*` env var. Unlike cli-engine's own layering (a later layer's
-//! blank/malformed value unconditionally overwrites a good earlier one), the
-//! final merged URL strings are still run through [`clean_url`] here, so a
-//! blank/malformed override is rejected rather than silently used.
+//! committed to this (OSS) repo, via a `gddy/environments.toml` in the OS
+//! config directory.
 //!
 //! # Feature-flag visibility per environment
 //!
@@ -31,32 +13,52 @@
 //! (e.g. `hosting` = Beta; `platform` = Experimental).
 //! An `environments.toml` entry can permanently opt a specific environment
 //! into those pre-release commands via the *same* recognized keys cli-engine
-//! parses on every `EnvironmentDef` — no gddy-specific plumbing needed:
+//! reads generically off every environment's merged TOML table:
 //!
 //! ```toml
-//! [environments.dev]
+//! [dev]
 //! api_url = "https://api.dev-godaddy.com"
 //! min_stage = "experimental"
 //!
-//! [environments.staging.feature_overrides]
+//! [staging.feature_overrides]
 //! "some-flag-key" = "beta"
 //! ```
-//!
-//! `<ENV>_MIN_STAGE`/`<ENV>_FEATURE_<KEY>` env vars override the same fields.
-//! **Caveat:** this only takes effect for the environment active when the
-//! process *starts* — cli-engine computes the visible command tree once at
-//! `Cli::new`, before the global `--env` flag is applied, so a same-invocation
-//! `--env dev` does not reveal `dev`'s pre-release commands. Persist the
-//! environment first (`gddy env set dev`), then run the command.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 
-use cli_engine::{CliCoreError, Environment, EnvironmentDef, Environments};
+use cli_engine::environments::Environments;
+use cli_engine::{CliCoreError, ConfigSource, EnvConfig, SourceChain};
 
 pub const DEFAULT_ENV: &str = "prod";
-/// Scopes requested at login by default. The authorization server may grant a
-/// subset; commands needing more declare them and the provider steps up. Drawn
-/// from the central [`crate::scopes`] registry (which the OAuth client mirrors).
+
+/// The two fields a compiled-in environment actually sets.
+#[derive(Debug, Clone, EnvConfig)]
+struct BaseEnvConfig {
+    api_url: String,
+    client_id: String,
+}
+
+/// The compiled-in `ote`/`prod` environments.
+static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::new(|| {
+    vec![
+        (
+            "ote",
+            BaseEnvConfig {
+                api_url: "https://api.ote-godaddy.com".to_owned(),
+                client_id: "91660d79-c909-426c-b5c8-e0f575e8fcd2".to_owned(),
+            },
+        ),
+        (
+            "prod",
+            BaseEnvConfig {
+                api_url: "https://api.godaddy.com".to_owned(),
+                client_id: "bc87f347-af82-4892-833f-818f54a0e79e".to_owned(),
+            },
+        ),
+    ]
+});
+
+/// Scopes requested at login by default.
 pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
     crate::scopes::APP_REGISTRY_READ,
     crate::scopes::DOMAINS_READ,
@@ -65,56 +67,109 @@ pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
 
-struct Builtin {
-    name: &'static str,
-    api_url: &'static str,
-    client_id: &'static str,
-    devx_core_url: &'static str,
-}
-
-/// Public-safe, compiled-in environments. `api.ote-godaddy.com` is public, and
-/// these client IDs are public OAuth identifiers (not secrets).
-const BUILTINS: &[Builtin] = &[
-    Builtin {
-        name: "ote",
-        api_url: "https://api.ote-godaddy.com",
-        client_id: "91660d79-c909-426c-b5c8-e0f575e8fcd2",
-        devx_core_url: "https://api.developer.commerce.ote-godaddy.com",
-    },
-    Builtin {
-        name: "prod",
-        api_url: "https://api.godaddy.com",
-        client_id: "bc87f347-af82-4892-833f-818f54a0e79e",
-        devx_core_url: "https://api.developer.commerce.godaddy.com",
-    },
+/// DevX Core API gateway base URL for each compiled-in builtin, consulted by
+/// [`devx_core_url_with`] only after both env-var override tiers miss.
+const BUILTIN_DEVX_CORE_URLS: &[(&str, &str)] = &[
+    ("ote", "https://api.developer.commerce.ote-godaddy.com"),
+    ("prod", "https://api.developer.commerce.godaddy.com"),
 ];
 
-/// A fully-resolved environment: everything needed to talk to it.
-#[derive(Clone, Debug)]
-pub struct ResolvedEnv {
+/// A fully-resolved environment config
+#[derive(Debug, Clone, Default, EnvConfig)]
+pub struct GddyEnvConfig {
+    #[env_config(default_fn = default_name)]
     pub name: String,
+
+    #[env_config(from_toml = parse_url_from_toml)]
     pub api_url: String,
+
+    /// No default: every environment must supply a real OAuth client id.
     pub client_id: String,
+
+    /// Overridable at runtime via `GDDY_AUTH_URL` — e.g. to point at a local
+    /// dev auth server without editing `environments.toml`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "AUTH_URL",
+        from_env = parse_url,
+        default_fn = default_auth_url
+    )]
     pub auth_url: String,
+
+    /// Overridable at runtime via `GDDY_TOKEN_URL`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "TOKEN_URL",
+        from_env = parse_url,
+        default_fn = default_token_url
+    )]
     pub token_url: String,
+
     /// Base URL for the domain commands. Some endpoints (e.g. domain
     /// availability) live behind a different host than the OAuth/`api_url`
-    /// service; this defaults to `api_url` when not overridden.
+    /// service; this defaults to `api_url` when not overridden. Overridable
+    /// at runtime via `GDDY_DOMAINS_API_URL`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "DOMAINS_API_URL",
+        from_env = parse_url,
+        default_fn = default_domains_api_url
+    )]
     pub domains_api_url: String,
+
     /// Base URL for the account management site (e.g. adding payment methods).
     /// Defaults to `account.godaddy.com` for prod and `account.{env}-godaddy.com`
-    /// for other environments; overridable via `<PREFIX>_ACCOUNT_URL` or local config.
+    /// for other environments; overridable via `GDDY_ACCOUNT_URL` or local config.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "ACCOUNT_URL",
+        from_env = parse_url,
+        default_fn = default_account_url
+    )]
     pub account_url: String,
-}
-
-/// The domain-command view of a resolved environment.
-#[derive(Clone, Debug)]
-pub struct ResolvedDomains {
-    pub base_url: String,
 }
 
 pub fn env_prefix(name: &str) -> String {
     name.to_uppercase().replace('-', "_")
+}
+
+/// `name`'s `default_fn`: the field itself is never set by any real TOML/env
+/// source, so this fires unconditionally, reading the environment's own
+/// identity off the chain instead of a sibling field's value.
+fn default_name(sources: &SourceChain<'_>) -> String {
+    sources.env_name().unwrap_or_default().to_owned()
+}
+
+/// The already-resolved, cleaned `api_url` for this chain — same value the
+/// `api_url` field itself holds, re-derived from the raw chain rather than
+/// `Self` (a `default_fn` only ever sees the chain, not sibling fields
+/// already computed on the struct being built). Declaring `api_url` before
+/// the fields that call this, so their own resolution only runs once
+/// `api_url`'s already succeeded, is what makes re-deriving from the raw
+/// value safe — a malformed `api_url` fails the whole `assemble` before any
+/// of these `default_fn`s could run.
+fn current_api_url(sources: &SourceChain<'_>) -> String {
+    sources
+        .toml_value("api_url")
+        .and_then(toml::Value::as_str)
+        .and_then(clean_url)
+        .unwrap_or_default()
+}
+
+fn default_auth_url(sources: &SourceChain<'_>) -> String {
+    derive_auth_url(&current_api_url(sources))
+}
+
+fn default_token_url(sources: &SourceChain<'_>) -> String {
+    derive_token_url(&current_api_url(sources))
+}
+
+fn default_domains_api_url(sources: &SourceChain<'_>) -> String {
+    current_api_url(sources)
+}
+
+fn default_account_url(sources: &SourceChain<'_>) -> String {
+    derive_account_url(sources.env_name().unwrap_or_default())
 }
 
 fn derive_account_url(env_name: &str) -> String {
@@ -159,10 +214,8 @@ fn substitute_env_host(url: &str, env_name: &str) -> Option<String> {
 /// Resolve the environment-specific base URL for a catalog domain (used by
 /// `api domain list` / `api call`). Checks an explicit override first — a
 /// `<domain>_api_url` key from local config, or a `<PREFIX>_<DOMAIN>_API_URL`
-/// env var read directly here (not through cli-engine's `apply_env_vars`,
-/// which only overrides an extra key already present after the compiled+file
-/// layers merge — see the module doc; gddy's `register()` never pre-seeds
-/// per-domain override keys on the compiled builtins). Checking the env var
+/// env var read directly here (outside `GddyEnvConfig`'s own fields entirely,
+/// since a per-domain override key isn't one of them). Checking the env var
 /// directly makes this work uniformly for `prod`/`ote` builtins and custom
 /// dev/test env names alike. Absent an override, falls back to GoDaddy's
 /// `{env}-godaddy.com` hostname convention against `prod_base_url` for any
@@ -179,16 +232,20 @@ pub fn resolve_catalog_base_url(domain: &str, prod_base_url: &str, env_name: &st
 }
 
 /// Pure lookup for [`resolve_catalog_base_url`]'s override, with the env-var
-/// getter injected so tests stay parallel-safe (no real `std::env::set_var`),
-/// matching [`resolve_from_env_var_only`]'s pattern.
+/// getter injected so tests stay parallel-safe (no real `std::env::set_var`).
+/// `instance().source(env_name)` errors for an environment unknown to every
+/// compiled/file layer, which this treats the same as "no local config
+/// entry" — falling through to the env var — rather than propagating.
 fn domain_override(
     override_key: &str,
     env_name: &str,
     var: impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    if let Ok(env) = instance().resolve(env_name)
-        && let Some(v) = env.extra.get(override_key)
-        && let Some(clean) = clean_url(v)
+    if let Ok(source) = instance().source(env_name)
+        && let Some(raw) = source
+            .toml_value(override_key)
+            .and_then(toml::Value::as_str)
+        && let Some(clean) = clean_url(raw)
     {
         return Some(clean);
     }
@@ -204,14 +261,11 @@ fn derive_token_url(api_url: &str) -> String {
     format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
 }
 
-/// Validates and normalizes a candidate URL (api/auth/token): trims surrounding
+/// Validates and normalizes a candidate URL. Trims surrounding
 /// whitespace and any trailing slash, and requires an `http(s)://` scheme with a
 /// non-empty host (reqwest needs an absolute URL). Returns `None` for an
 /// empty/whitespace or schemeless value, so a blank or malformed value never
-/// resolves to a relative/unusable URL. This is the single authority for "is
-/// this URL usable?" across [`adapt`] and [`resolve_from_env_var_only`] —
-/// unlike cli-engine's own file/env-var layers (which apply unconditionally,
-/// with no such check), a blank/malformed value here is treated as unset.
+/// resolves to a relative/unusable URL.
 fn clean_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim().trim_end_matches('/');
     // Require an http(s):// scheme (case-insensitive per RFC 3986, so `HTTPS://`
@@ -233,19 +287,6 @@ fn clean_url(raw: &str) -> Option<String> {
     (!host.is_empty()).then(|| trimmed.to_owned())
 }
 
-fn devx_core_url_with(name: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
-    let prefix = env_prefix(name);
-    var(&format!("{prefix}_DEVX_CORE_URL"))
-        .and_then(|value| clean_url(&value))
-        .or_else(|| var("DEVX_CORE_URL").and_then(|value| clean_url(&value)))
-        .or_else(|| {
-            BUILTINS
-                .iter()
-                .find(|env| env.name == name)
-                .map(|env| env.devx_core_url.to_owned())
-        })
-}
-
 /// Base URL for the DevX Core API gateway for the given environment.
 ///
 /// Custom environments must set `<PREFIX>_DEVX_CORE_URL` (for example,
@@ -255,62 +296,37 @@ pub fn devx_core_url(name: &str) -> Option<String> {
     devx_core_url_with(name, |key| std::env::var(key).ok())
 }
 
-/// Scans the raw process argv for a `--env <value>` / `--env=<value>` token.
-///
-/// cli-engine's built-in global `--env` flag (and any command-local `--env`
-/// arg sharing that argv text, e.g. `pat add --env <name>`) validates against
-/// the shared `Environments` *directly* — bypassing this module's own
-/// [`resolve`] and its env-var-only fallback entirely. So a name defined only
-/// via `<PREFIX>_API_URL` must be pre-registered into the singleton itself
-/// (see [`build_environments`]) before cli-engine ever sees it, which means
-/// finding that name before clap has parsed anything.
-fn requested_env_from_argv() -> Option<String> {
-    // `args_os()` + a lossy conversion, not `args()` — this runs during the
-    // environment singleton's own initialization, before clap ever gets a
-    // chance to handle a malformed argument; `args()` panics outright on a
-    // non-UTF-8 arg (possible on Windows/odd shells), which would crash the
-    // whole CLI for a command that doesn't even use `--env`.
-    requested_env_from(
-        std::env::args_os()
-            .skip(1)
-            .map(|arg| arg.to_string_lossy().into_owned()),
-    )
+fn devx_core_url_with(name: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let prefix = env_prefix(name);
+    var(&format!("{prefix}_DEVX_CORE_URL"))
+        .and_then(|value| clean_url(&value))
+        .or_else(|| var("DEVX_CORE_URL").and_then(|value| clean_url(&value)))
+        .or_else(|| {
+            BUILTIN_DEVX_CORE_URLS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, url)| (*url).to_owned())
+        })
 }
 
-/// Pure scan over an arg iterator — unit-testable without touching the real
-/// process argv. See [`requested_env_from_argv`] for why this exists.
-///
-/// Scans the *entire* argv and keeps the *last* non-empty `--env`/`--env=`
-/// value, rather than stopping at the first match. A global `--env` and a
-/// command-local one sharing the same arg id (e.g. `gddy --env bar pat add
-/// --env foo ...`) can both appear in one invocation; whichever clap
-/// resolves as the effective value (empirically, the last one) is the one
-/// this scan must agree with, or a real env-var-only environment can be
-/// rejected as unknown even though it's the value actually in effect. An
-/// empty value (`--env=` with nothing after the `=`, or `--env` immediately
-/// followed by another flag with nothing captured) is ignored rather than
-/// becoming a literal empty-string candidate.
-fn requested_env_from(mut args: impl Iterator<Item = String>) -> Option<String> {
-    let mut result = None;
-    while let Some(arg) = args.next() {
-        let value = if let Some(v) = arg.strip_prefix("--env=") {
-            Some(v.to_owned())
-        } else if arg == "--env" {
-            // A space-separated value that itself looks like another flag
-            // (starts with `-`) is not a value at all — clap rejects this
-            // outright ("a value is required for '--env <ENV>' but none was
-            // supplied"), so this scan must not treat it as one either. An
-            // explicit `--env=-foo` is unambiguous and still accepted, same
-            // as clap's own disambiguation rule.
-            args.next().filter(|v| !v.starts_with('-'))
-        } else {
-            None
-        };
-        if let Some(v) = value.filter(|v| !v.is_empty()) {
-            result = Some(v);
-        }
-    }
-    result
+/// Validates a candidate URL string. `EnvConfig` `from_env` shared by every
+/// env-var-overridable URL field — an env var is already a plain `&str`, so
+/// this is the direct validator with nothing to unwrap first. Blank values
+/// never reach this — every `EnvConfig` field treats a blank source answer
+/// as absent by default; a non-blank value must be a real http(s) URL.
+fn parse_url(raw: &str) -> Result<String, String> {
+    clean_url(raw).ok_or_else(|| format!("{raw:?} is not a valid http(s) URL"))
+}
+
+/// `EnvConfig` `from_toml` shared by every URL field — a TOML value carries
+/// its own type, so this checks it's actually a string before delegating to
+/// [`parse_url`], the shared core every URL field's `from_env` also uses
+/// directly.
+fn parse_url_from_toml(value: &toml::Value) -> Result<String, String> {
+    let raw = value
+        .as_str()
+        .ok_or_else(|| "expected a string".to_owned())?;
+    parse_url(raw)
 }
 
 /// Builds the compiled-in `ote`/`prod` `Environments`, shared by
@@ -322,224 +338,51 @@ fn build_environments() -> Environments {
     // would deadlock re-entering `instance()`'s `OnceLock`
     // mid-initialization.
     let default_raw = crate::env::read_gdenv_raw().unwrap_or_else(|| DEFAULT_ENV.to_owned());
-    resolve_default_environments(&default_raw, requested_env_from_argv())
+    resolve_default_environments(&default_raw)
 }
 
-/// Builds the full `Environments` instance for candidate default
-/// `default_raw`, falling back to [`DEFAULT_ENV`] if it can't actually
-/// resolve. A corrupted/hand-edited `.gdenv`, or one naming a since-removed
-/// custom env, must not become the CLI's real startup default — every other
-/// command relying on the default active environment (via
-/// `ctx.middleware.env`) would then fail with "unknown environment" instead
-/// of falling back, unlike `env::get_env`'s own `is_known` guard. Validated
-/// against `probe` directly (a plain method call on this local instance),
-/// not `instance()`/`resolve()`, so this can't re-enter the singleton's own
-/// initialization. `requested_from_argv` is injected (rather than this
-/// function calling [`requested_env_from_argv`] itself) so it stays
-/// deterministic for unit tests, regardless of what argv the test binary
-/// itself happens to have been invoked with — [`build_environments`] is the
-/// only real caller, and passes the real scan result.
-fn resolve_default_environments(
-    default_raw: &str,
-    requested_from_argv: Option<String>,
-) -> Environments {
-    let probe = register(
-        Environments::new(default_raw.to_owned()),
-        default_raw,
-        requested_from_argv.clone(),
-    );
-    if probe.resolve(default_raw).is_ok() {
+fn resolve_default_environments(default_raw: &str) -> Environments {
+    let probe = register(Environments::new(default_raw.to_owned()));
+    if probe.source(default_raw).is_ok() {
         probe
     } else {
-        register(
-            Environments::new(DEFAULT_ENV),
-            default_raw,
-            requested_from_argv,
-        )
+        register(Environments::new(DEFAULT_ENV))
     }
 }
 
-/// Registers the compiled `ote`/`prod` defaults plus any env-var-only
-/// placeholder (see the module doc) onto `envs`. `default_candidate` is the
-/// `.gdenv` value under consideration as the active default, and
-/// `requested_from_argv` the (already-scanned) `--env` value from the
-/// command line, if any — both pre-registered like any other candidate so
-/// [`resolve_default_environments`] can validate them even when only
-/// defined via `<PREFIX>_API_URL`.
-fn register(
-    envs: Environments,
-    default_candidate: &str,
-    requested_from_argv: Option<String>,
-) -> Environments {
+/// Registers the compiled `ote`/`prod` defaults onto `envs`
+fn register(envs: Environments) -> Environments {
     let mut envs = envs.with_app_id(APP_ID).with_config_file(true);
-    for b in BUILTINS {
-        envs = envs.with_environment(
-            b.name,
-            EnvironmentDef::new()
-                .with_client_id(b.client_id)
-                .with_auth_url(derive_auth_url(b.api_url))
-                .with_token_url(derive_token_url(b.api_url))
-                .with_field("api_url", b.api_url),
-        );
-    }
-    // Pre-register a placeholder for any candidate (the `.gdenv` default, or
-    // an explicit `--env <name>` on the command line) that's otherwise
-    // unknown to every layer but has a `<PREFIX>_API_URL` env var set —
-    // cli-engine's own env-var layer only overrides a bag key already
-    // present in a resolved record, it can't introduce a brand-new
-    // selectable environment on its own. An empty `api_url` placeholder
-    // gives that layer something to fill in; it's never registered for a
-    // name already known via a compiled/file entry, so a real value is
-    // never clobbered.
-    for candidate in [default_candidate.to_owned()]
-        .into_iter()
-        .chain(requested_from_argv)
-    {
-        if envs.list().contains(&candidate) {
-            continue;
-        }
-        let prefix = env_prefix(&candidate);
-        // `clean_url`, not a bare `.is_ok()` — a set-but-blank
-        // `<PREFIX>_API_URL` (e.g. `""`) would otherwise make cli-engine's
-        // own `--env <name>` validation accept the name, only for `adapt` to
-        // reject it moments later with a confusing "no usable api_url"
-        // error instead of a clean "unknown environment" one.
-        let has_usable_api_url = std::env::var(format!("{prefix}_API_URL"))
-            .ok()
-            .and_then(|v| clean_url(&v))
-            .is_some();
-        if has_usable_api_url {
-            envs =
-                envs.with_environment(candidate, EnvironmentDef::new().with_field("api_url", ""));
-        }
+    for (name, config) in BUILTIN_ENVS.iter() {
+        envs = envs.with_environment(*name, config.clone());
     }
     envs
 }
 
 /// The shared `Environments` instance — built once, reused by every consumer
-/// (`main.rs`'s `CliConfig::with_environments`, `auth.rs`'s
-/// `PkceAuthProvider::with_environments`, and this module's own `resolve`/
-/// `listable`/`is_known`).
 pub fn instance() -> &'static Arc<Environments> {
     static INSTANCE: OnceLock<Arc<Environments>> = OnceLock::new();
     INSTANCE.get_or_init(|| Arc::new(build_environments()))
 }
 
-/// Adapts a resolved `cli_engine::environments::Environment` into gddy's own
-/// [`ResolvedEnv`] shape, applying the derivation/defaulting and URL
-/// validation that cli-engine's generic `extra` bag has no notion of.
-fn adapt(name: &str, env: Environment) -> cli_engine::Result<ResolvedEnv> {
-    let api_url = env
-        .extra
-        .get("api_url")
-        .and_then(|v| clean_url(v))
-        .ok_or_else(|| {
-            CliCoreError::message(format!(
-                "environment {name:?} has no usable api_url configured"
-            ))
-        })?;
-    let oauth = env.oauth.unwrap_or_default();
-    // `clean_url`, not a bare emptiness check — a blank-but-non-empty or
-    // schemeless override (from a local config entry or an `<ENV>_OAUTH_*`
-    // env var) must fall back to the derived endpoint too, matching the
-    // validation already applied to `api_url`/`domains_api_url`/`account_url`
-    // above.
-    let auth_url = clean_url(&oauth.auth_url).unwrap_or_else(|| derive_auth_url(&api_url));
-    let token_url = clean_url(&oauth.token_url).unwrap_or_else(|| derive_token_url(&api_url));
-    let domains_api_url = env
-        .extra
-        .get("domains_api_url")
-        .and_then(|v| clean_url(v))
-        .unwrap_or_else(|| api_url.clone());
-    let account_url = env
-        .extra
-        .get("account_url")
-        .and_then(|v| clean_url(v))
-        .unwrap_or_else(|| derive_account_url(name));
-    Ok(ResolvedEnv {
-        name: name.to_owned(),
-        api_url,
-        client_id: oauth.client_id,
-        auth_url,
-        token_url,
-        domains_api_url,
-        account_url,
-    })
-}
-
-/// Falls back to a `<PREFIX>_API_URL`-only definition for a name unknown to
-/// every compiled/file layer — see the module doc for why this must survive
-/// the migration onto cli-engine's `Environments` (which cannot define a new
-/// environment from an env var alone). Pure: the var getter is injected so
-/// this is unit-testable without touching process state.
-fn resolve_from_env_var_only(
-    name: &str,
-    var: impl Fn(&str) -> Option<String>,
-) -> Option<ResolvedEnv> {
-    let prefix = env_prefix(name);
-    let api_url = var(&format!("{prefix}_API_URL")).and_then(|v| clean_url(&v))?;
-    let domains_api_url = var(&format!("{prefix}_DOMAINS_API_URL"))
-        .and_then(|v| clean_url(&v))
-        .unwrap_or_else(|| api_url.clone());
-    let account_url = var(&format!("{prefix}_ACCOUNT_URL"))
-        .and_then(|v| clean_url(&v))
-        .unwrap_or_else(|| derive_account_url(name));
-    Some(ResolvedEnv {
-        name: name.to_owned(),
-        auth_url: derive_auth_url(&api_url),
-        token_url: derive_token_url(&api_url),
-        api_url,
-        client_id: String::new(),
-        domains_api_url,
-        account_url,
-    })
-}
-
-/// Resolve an environment by name (built-ins → local config → env var, with a
-/// pure-env-var-only fallback for a name none of those layers define).
-pub fn resolve(name: &str) -> cli_engine::Result<ResolvedEnv> {
-    match instance().resolve(name) {
-        Ok(env) => adapt(name, env),
-        Err(err) => resolve_from_env_var_only(name, |k| std::env::var(k).ok()).ok_or(err),
-    }
-}
-
-/// Resolve the domain-command view of an environment: its domains base URL.
-/// Thin wrapper over [`resolve`].
-pub fn resolve_domains(name: &str) -> cli_engine::Result<ResolvedDomains> {
-    let env = resolve(name)?;
-    Ok(ResolvedDomains {
-        base_url: env.domains_api_url,
-    })
-}
-
-/// The default environment's built-in API base URL.
-///
-/// Infallible last-resort value (unlike [`resolve`], which can fail on a
-/// malformed local config), so callers never end up with an empty base URL.
-pub fn default_api_url() -> &'static str {
-    BUILTINS
-        .iter()
-        .find(|b| b.name == DEFAULT_ENV)
-        .map(|b| b.api_url)
-        .unwrap_or("https://api.godaddy.com")
+/// Resolve an environment by name.
+pub fn resolve(name: &str) -> cli_engine::Result<GddyEnvConfig> {
+    instance()
+        .resolve(name)
+        .map_err(|err| CliCoreError::message(format!("environment {name:?}: {err}")))
 }
 
 /// Environments to show in `env list`: built-ins + local-config entries.
-/// Env-var-only environments are intentionally excluded (matching cli-engine's
-/// own `Environments::list`, which can't discover a name defined only by an
-/// env var either).
-pub fn listable() -> cli_engine::Result<Vec<ResolvedEnv>> {
+pub fn listable() -> cli_engine::Result<Vec<GddyEnvConfig>> {
     let envs = instance();
     Ok(envs
         .list()
         .into_iter()
-        .filter_map(|name| envs.resolve(&name).ok().and_then(|e| adapt(&name, e).ok()))
+        .filter_map(|name| envs.resolve::<GddyEnvConfig>(&name).ok())
         .collect())
 }
 
-/// Whether `name` is a usable environment (built-in, locally configured, or
-/// defined via a `<PREFIX>_API_URL` env var).
+/// Whether `name` is a usable environment (built-in or locally configured).
 pub fn is_known(name: &str) -> bool {
     resolve(name).is_ok()
 }
@@ -547,22 +390,101 @@ pub fn is_known(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cli_engine::environments::EnvTable;
+    use std::sync::Mutex;
 
-    fn test_environment(def: EnvironmentDef) -> Environment {
-        Environments::new("x")
-            .with_environment("x", def)
-            .resolve("x")
-            .expect("x resolves")
+    // Serializes every test that touches real process env vars, so
+    // parallel test threads can't observe each other's GDDY_* overrides.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// RAII guard that removes an env var on drop, even if a test panics.
+    struct EnvGuard(&'static str);
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: caller holds ENV_LOCK; clean up on any exit incl. panic.
+            #[allow(unsafe_code)]
+            unsafe {
+                std::env::remove_var(self.0)
+            }
+        }
     }
 
     #[test]
-    fn adapt_derives_oauth_urls_from_api_url_when_unset() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.example.test"),
-        );
-        let resolved = adapt("dev", env).expect("adapts");
+    fn register_scaffolds_a_file_only_environment() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("environments.toml");
+        std::fs::write(
+            &file,
+            r#"
+[dev]
+api_url = "https://api.dev-godaddy.com"
+client_id = "dev-client"
+"#,
+        )
+        .expect("write file");
+
+        let envs = register(Environments::new("prod").with_config_file_path_override(file));
+        let resolved: GddyEnvConfig = envs.resolve("dev").expect("dev resolves");
+
+        assert_eq!(resolved.domains_api_url, "https://api.dev-godaddy.com");
+        assert_eq!(resolved.account_url, "https://account.dev-godaddy.com");
+    }
+
+    #[test]
+    fn register_rejects_a_file_only_environments_malformed_api_url() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("environments.toml");
+        std::fs::write(
+            &file,
+            r#"
+[dev]
+api_url = "not-a-url"
+client_id = "dev-client"
+"#,
+        )
+        .expect("write file");
+
+        let envs = register(Environments::new("prod").with_config_file_path_override(file));
+        let err = envs
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("a malformed api_url must be a hard error, not silently dropped");
+        assert!(err.to_string().contains("api_url"));
+    }
+
+    #[test]
+    fn register_rejects_a_malformed_file_layer_auth_url_override_for_a_builtin() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("environments.toml");
+        std::fs::write(
+            &file,
+            r#"
+[prod]
+auth_url = "not-a-url"
+"#,
+        )
+        .expect("write file");
+
+        let envs = register(Environments::new("prod").with_config_file_path_override(file));
+        let err = envs
+            .resolve::<GddyEnvConfig>("prod")
+            .expect_err("a malformed override must be a hard error");
+        assert!(err.to_string().contains("auth_url"));
+    }
+
+    fn test_environment(name: &str, extend: impl FnOnce(EnvTable) -> EnvTable) -> GddyEnvConfig {
+        Environments::new(name)
+            .with_environment(name, extend(EnvTable::new()))
+            .resolve(name)
+            .expect("resolves")
+    }
+
+    #[test]
+    fn resolved_env_derives_oauth_urls_from_api_url_when_unset() {
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(resolved.name, "dev");
         assert_eq!(resolved.api_url, "https://api.example.test");
         assert_eq!(resolved.client_id, "cid");
         assert_eq!(
@@ -576,116 +498,209 @@ mod tests {
     }
 
     #[test]
-    fn adapt_prefers_explicit_oauth_urls_over_derived() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_auth_url("https://auth.example.test/authorize")
-                .with_token_url("https://auth.example.test/token")
-                .with_field("api_url", "https://api.example.test"),
-        );
-        let resolved = adapt("dev", env).expect("adapts");
+    fn resolved_env_prefers_explicit_oauth_urls_over_derived() {
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("auth_url", "https://auth.example.test/authorize")
+                .with("token_url", "https://auth.example.test/token")
+                .with("api_url", "https://api.example.test")
+        });
         assert_eq!(resolved.auth_url, "https://auth.example.test/authorize");
         assert_eq!(resolved.token_url, "https://auth.example.test/token");
     }
 
     #[test]
-    fn adapt_falls_back_to_derived_oauth_urls_when_override_is_blank_or_malformed() {
-        // A blank-but-non-empty or schemeless override (e.g. from
-        // `<ENV>_OAUTH_AUTH_URL=" "`) must not be used as-is — it should be
-        // treated the same as unset, matching the validation already applied
-        // to api_url/domains_api_url/account_url.
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_auth_url("   ")
-                .with_token_url("not-a-url")
-                .with_field("api_url", "https://api.example.test"),
-        );
-        let resolved = adapt("dev", env).expect("adapts");
+    fn resolved_env_falls_back_to_derived_oauth_urls_when_override_is_blank() {
+        // A blank override (e.g. from `<ENV>_OAUTH_AUTH_URL=" "`) is treated
+        // the same as unset. A genuinely malformed (non-blank) override is a
+        // hard resolve error instead — see
+        // `register_rejects_a_malformed_file_layer_auth_url_override_for_a_builtin`.
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("auth_url", "   ")
+                .with("api_url", "https://api.example.test")
+        });
         assert_eq!(
             resolved.auth_url,
             "https://api.example.test/v2/oauth2/authorize"
         );
-        assert_eq!(
-            resolved.token_url,
-            "https://api.example.test/v2/oauth2/token"
-        );
     }
 
     #[test]
-    fn adapt_rejects_missing_api_url() {
-        let env = test_environment(EnvironmentDef::new().with_client_id("cid"));
-        let err = adapt("dev", env).expect_err("no api_url");
-        assert!(err.to_string().contains("dev"));
+    fn resolve_rejects_missing_api_url() {
+        let err = Environments::new("dev")
+            .with_environment("dev", EnvTable::new().with("client_id", "cid"))
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("no api_url");
+        assert!(err.to_string().contains("api_url"));
     }
 
     #[test]
-    fn adapt_rejects_blank_api_url_final_value() {
-        // A blank override that made it all the way through cli-engine's own
-        // (unconditional) layering must still be treated as unset here.
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "   "),
-        );
-        assert!(adapt("dev", env).is_err());
+    fn resolve_rejects_missing_client_id() {
+        // client_id has no default: every environment (built-in, file, or
+        // hand-built for a test) must supply a real one.
+        let err = Environments::new("dev")
+            .with_environment(
+                "dev",
+                EnvTable::new().with("api_url", "https://api.example.test"),
+            )
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("no client_id");
+        assert!(err.to_string().contains("client_id"));
+    }
+
+    #[test]
+    fn resolve_rejects_blank_api_url_final_value() {
+        // Unlike auth_url/token_url/domains_api_url/account_url, api_url has
+        // no sensible derived fallback, so blank is rejected (as `MissingField`,
+        // since a blank source answer is treated as absent by default).
+        let err = Environments::new("dev")
+            .with_environment(
+                "dev",
+                EnvTable::new()
+                    .with("client_id", "cid")
+                    .with("api_url", "   "),
+            )
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("blank api_url must be rejected");
+        assert!(err.to_string().contains("api_url"));
     }
 
     #[test]
     fn domains_api_url_defaults_to_api_url() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.example.test"),
-        );
-        let resolved = adapt("dev", env).expect("adapts");
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
         assert_eq!(resolved.domains_api_url, resolved.api_url);
     }
 
     #[test]
     fn domains_api_url_override_is_respected() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.example.test")
-                .with_field("domains_api_url", "https://domains.example.test"),
-        );
-        let resolved = adapt("dev", env).expect("adapts");
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+                .with("domains_api_url", "https://domains.example.test")
+        });
         assert_eq!(resolved.domains_api_url, "https://domains.example.test");
     }
 
     #[test]
     fn account_url_defaults_to_bare_domain_for_prod() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.godaddy.com"),
-        );
-        let resolved = adapt("prod", env).expect("adapts");
+        let resolved = test_environment("prod", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.godaddy.com")
+        });
         assert_eq!(resolved.account_url, "https://account.godaddy.com");
     }
 
     #[test]
     fn account_url_defaults_to_prefixed_domain_for_non_prod() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.ote-godaddy.com"),
-        );
-        let resolved = adapt("ote", env).expect("adapts");
+        let resolved = test_environment("ote", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.ote-godaddy.com")
+        });
         assert_eq!(resolved.account_url, "https://account.ote-godaddy.com");
     }
 
     #[test]
     fn account_url_override_is_respected() {
-        let env = test_environment(
-            EnvironmentDef::new()
-                .with_client_id("cid")
-                .with_field("api_url", "https://api.example.test")
-                .with_field("account_url", "https://account.override.test"),
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+                .with("account_url", "https://account.override.test")
+        });
+        assert_eq!(resolved.account_url, "https://account.override.test");
+    }
+
+    fn test_environment_with_app_id(
+        name: &str,
+        extend: impl FnOnce(EnvTable) -> EnvTable,
+    ) -> GddyEnvConfig {
+        Environments::new(name)
+            .with_app_id(APP_ID)
+            .with_environment(name, extend(EnvTable::new()))
+            .resolve(name)
+            .expect("resolves")
+    }
+
+    #[test]
+    fn env_var_overrides_auth_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_AUTH_URL", "https://auth.override.test")
+        };
+        let _guard = EnvGuard("GDDY_AUTH_URL");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+                .with("auth_url", "https://auth.example.test/authorize")
+        });
+        assert_eq!(
+            resolved.auth_url, "https://auth.override.test",
+            "env var must win over the TOML value"
         );
-        let resolved = adapt("dev", env).expect("adapts");
+    }
+
+    #[test]
+    fn env_var_overrides_token_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_TOKEN_URL", "https://token.override.test")
+        };
+        let _guard = EnvGuard("GDDY_TOKEN_URL");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(resolved.token_url, "https://token.override.test");
+    }
+
+    #[test]
+    fn env_var_overrides_domains_api_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_DOMAINS_API_URL", "https://domains.override.test")
+        };
+        let _guard = EnvGuard("GDDY_DOMAINS_API_URL");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(resolved.domains_api_url, "https://domains.override.test");
+    }
+
+    #[test]
+    fn env_var_overrides_account_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_ACCOUNT_URL", "https://account.override.test")
+        };
+        let _guard = EnvGuard("GDDY_ACCOUNT_URL");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
         assert_eq!(resolved.account_url, "https://account.override.test");
     }
 
@@ -766,34 +781,50 @@ mod tests {
     }
 
     #[test]
-    fn env_var_only_fallback_defines_a_new_env() {
-        let var = |k: &str| (k == "DEV_API_URL").then(|| "https://dev.example.test".to_owned());
-        let resolved = resolve_from_env_var_only("dev", var).expect("dev resolves from env var");
-        assert_eq!(resolved.api_url, "https://dev.example.test");
-        assert_eq!(
-            resolved.auth_url,
-            "https://dev.example.test/v2/oauth2/authorize"
-        );
-        assert!(resolved.client_id.is_empty());
-    }
-
-    #[test]
-    fn env_var_only_fallback_is_none_without_the_var() {
-        let var = |_: &str| None;
-        assert!(resolve_from_env_var_only("dev", var).is_none());
-    }
-
-    #[test]
-    fn env_var_only_fallback_respects_domains_and_account_overrides() {
-        let var = |k: &str| match k {
-            "DEV_API_URL" => Some("https://dev.example.test".to_owned()),
-            "DEV_DOMAINS_API_URL" => Some("https://domains.dev.example.test".to_owned()),
-            "DEV_ACCOUNT_URL" => Some("https://account.dev.example.test".to_owned()),
-            _ => None,
+    fn env_var_override_rejects_a_malformed_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_AUTH_URL", "not-a-url")
         };
-        let resolved = resolve_from_env_var_only("dev", var).expect("dev resolves");
-        assert_eq!(resolved.domains_api_url, "https://domains.dev.example.test");
-        assert_eq!(resolved.account_url, "https://account.dev.example.test");
+        let _guard = EnvGuard("GDDY_AUTH_URL");
+
+        let err = Environments::new("dev")
+            .with_app_id(APP_ID)
+            .with_environment(
+                "dev",
+                EnvTable::new()
+                    .with("client_id", "cid")
+                    .with("api_url", "https://api.example.test"),
+            )
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("a malformed env var override must be a hard error");
+        assert!(err.to_string().contains("auth_url"));
+    }
+
+    #[test]
+    fn blank_env_var_override_falls_through_to_derived_auth_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("GDDY_AUTH_URL", "   ")
+        };
+        let _guard = EnvGuard("GDDY_AUTH_URL");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(
+            resolved.auth_url, "https://api.example.test/v2/oauth2/authorize",
+            "a blank env var override is treated as absent, same as a blank TOML value"
+        );
     }
 
     #[test]
@@ -819,11 +850,6 @@ mod tests {
     }
 
     #[test]
-    fn default_api_url_is_the_builtin_prod_url() {
-        assert_eq!(default_api_url(), "https://api.godaddy.com");
-    }
-
-    #[test]
     fn env_prefix_uppercases_and_replaces_hyphen() {
         assert_eq!(env_prefix("ote"), "OTE");
         assert_eq!(env_prefix("prod-us"), "PROD_US");
@@ -832,112 +858,17 @@ mod tests {
     #[test]
     fn resolve_default_environments_falls_back_to_default_env_for_an_unresolvable_gdenv_value() {
         // A corrupted/stale `.gdenv` value that resolves to nothing (no
-        // compiled/file entry, no matching `<PREFIX>_API_URL`) must not
-        // become the CLI's real startup default.
-        let envs = resolve_default_environments("totally-bogus-env-name", None);
+        // compiled/file entry) must not become the CLI's real startup
+        // default.
+        let envs = resolve_default_environments("totally-bogus-env-name");
         assert_eq!(envs.default_env(), DEFAULT_ENV);
-        assert!(envs.resolve(DEFAULT_ENV).is_ok());
+        assert!(envs.source(DEFAULT_ENV).is_ok());
     }
 
     #[test]
     fn resolve_default_environments_keeps_a_resolvable_gdenv_value() {
-        let envs = resolve_default_environments("prod", None);
+        let envs = resolve_default_environments("prod");
         assert_eq!(envs.default_env(), "prod");
-    }
-
-    #[test]
-    fn resolve_default_environments_registers_an_injected_argv_env_var_only_candidate() {
-        // `requested_from_argv` is an injected value here, not a real argv
-        // scan — this stays deterministic regardless of what the test
-        // binary itself happens to have been invoked with.
-        let envs = resolve_default_environments("prod", Some("from-argv".to_owned()));
-        assert!(
-            !envs.list().contains(&"from-argv".to_owned()),
-            "no FROM_ARGV_API_URL env var is set, so no placeholder should be registered"
-        );
-    }
-
-    fn argv(args: &[&str]) -> impl Iterator<Item = String> {
-        args.iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
-
-    #[test]
-    fn requested_env_from_finds_space_separated_value() {
-        assert_eq!(
-            requested_env_from(argv(&["--dry-run", "--env", "dev", "list"])),
-            Some("dev".to_owned())
-        );
-    }
-
-    #[test]
-    fn requested_env_from_finds_equals_separated_value() {
-        assert_eq!(
-            requested_env_from(argv(&["--env=dev", "list"])),
-            Some("dev".to_owned())
-        );
-    }
-
-    #[test]
-    fn requested_env_from_is_none_without_the_flag() {
-        assert_eq!(requested_env_from(argv(&["env", "list"])), None);
-    }
-
-    #[test]
-    fn requested_env_from_trailing_env_flag_with_no_value_is_none() {
-        assert_eq!(requested_env_from(argv(&["--env"])), None);
-    }
-
-    #[test]
-    fn requested_env_from_keeps_the_last_of_multiple_occurrences() {
-        // A global `--env` and a command-local one sharing the same arg id
-        // can both appear (e.g. `gddy --env bar pat add --env foo ...`);
-        // clap resolves the *last* one as effective, so this scan must too.
-        assert_eq!(
-            requested_env_from(argv(&[
-                "--env",
-                "bar",
-                "pat",
-                "add",
-                "--env",
-                "foo",
-                "test-token"
-            ])),
-            Some("foo".to_owned())
-        );
-    }
-
-    #[test]
-    fn requested_env_from_ignores_an_empty_equals_value() {
-        assert_eq!(requested_env_from(argv(&["--env="])), None);
-    }
-
-    #[test]
-    fn requested_env_from_empty_occurrence_does_not_clobber_an_earlier_real_value() {
-        assert_eq!(
-            requested_env_from(argv(&["--env", "dev", "--env="])),
-            Some("dev".to_owned())
-        );
-    }
-
-    #[test]
-    fn requested_env_from_space_separated_value_starting_with_dash_is_not_a_value() {
-        // clap rejects `--env --dry-run` outright ("a value is required for
-        // '--env <ENV>' but none was supplied") rather than treating
-        // `--dry-run` as the value; this scan must agree.
-        assert_eq!(requested_env_from(argv(&["--env", "--dry-run"])), None);
-    }
-
-    #[test]
-    fn requested_env_from_equals_form_accepts_a_value_starting_with_dash() {
-        // `--env=-foo` is unambiguous (unlike the space-separated form) and
-        // still accepted, matching clap's own disambiguation rule.
-        assert_eq!(
-            requested_env_from(argv(&["--env=-foo"])),
-            Some("-foo".to_owned())
-        );
     }
 
     #[test]

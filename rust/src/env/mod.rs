@@ -66,11 +66,10 @@ pub fn get_env() -> Option<String> {
     read_gdenv_raw()
         // Ignore an unrecognized value (e.g. a hand-edited/corrupted .gdenv) so
         // callers fall back to DEFAULT_ENV instead of propagating an unknown
-        // environment. `is_known` accepts built-ins plus any env defined via
-        // env var or local config, so a persisted custom env (e.g. "dev")
-        // survives — except a config-only env is dropped if the config file
-        // can't be read, since `is_known` then falls back to built-ins +
-        // `<ENV>_API_URL` only.
+        // environment. `is_known` accepts built-ins plus any environment
+        // defined in local config, so a persisted custom env (e.g. "dev")
+        // survives — except it's dropped if the config file can't be read,
+        // since `is_known` then falls back to built-ins only.
         .filter(|s| environments::is_known(s))
 }
 
@@ -111,15 +110,7 @@ pub fn module() -> Module {
                 .no_auth(true),
             |_cred, _args| async move {
                 let current = active_env();
-                let mut resolved = environments::listable()?;
-                // If the active env is defined only via `<ENV>_API_URL` (so it's
-                // excluded from `listable`), still show it — otherwise the list
-                // has no `active: true` entry and callers can't tell what's active.
-                if !resolved.iter().any(|e| e.name == current)
-                    && let Ok(active) = environments::resolve(&current)
-                {
-                    resolved.push(active);
-                }
+                let resolved = environments::listable()?;
                 let envs: Vec<_> = resolved
                     .into_iter()
                     .map(|e| {
@@ -161,8 +152,7 @@ pub fn module() -> Module {
                          ~/.gdenv so all subsequent commands use the new environment \
                          without needing `--env`.\n\
                          The value must be a known environment name: the built-in prod \
-                         or ote, one defined in a local environments.toml, or one \
-                         defined via a <PREFIX>_API_URL environment variable.\n\
+                         or ote, or one defined in a local environments.toml.\n\
                          If a local environments.toml entry for this environment sets \
                          min_stage/feature_overrides to reveal pre-release commands, \
                          persisting it here (not a same-invocation `--env`) is what \

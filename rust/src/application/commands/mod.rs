@@ -99,7 +99,7 @@ async fn make_client(ctx: &cli_engine::CommandContext) -> cli_engine::Result<App
     // Lazily resolve the credential; this triggers the auth flow only for
     // commands that actually call the API.
     let token = ctx.credential().await?.token;
-    let base_url = api_url_for_env(&ctx.middleware.env);
+    let base_url = api_url_for_env(&ctx.middleware.env)?;
     Ok(ApplicationClient::new(base_url, token))
 }
 
@@ -1120,7 +1120,7 @@ fn deploy_command() -> RuntimeCommandSpec {
                 .to_owned();
             let env = ctx.middleware.env.clone();
             let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
-            let base_url = api_url_for_env(&env);
+            let base_url = tap_deploy_err(&sender, api_url_for_env(&env)).await?;
             let client = ApplicationClient::new(base_url, token);
 
             sender

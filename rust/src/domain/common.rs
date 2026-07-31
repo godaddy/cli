@@ -207,11 +207,16 @@ pub(crate) fn make_client_with_cred(
     cred: &Credential,
 ) -> Result<domains_client::Client> {
     ensure_transport_observer_registered();
-    let domains = environments::resolve_domains(env)?;
+    let config = environments::resolve(env)?;
     let authorization = format!("Bearer {}", cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
-    domains_client::client_with_auth(&domains.base_url, &authorization, USER_AGENT, &request_id)
-        .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
+    domains_client::client_with_auth(
+        &config.domains_api_url,
+        &authorization,
+        USER_AGENT,
+        &request_id,
+    )
+    .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
 }
 
 /// Collect a repeatable string argument into a `Vec` (clap stores it as a JSON

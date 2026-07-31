@@ -6,24 +6,23 @@ use cli_engine::{
     auth::{AuthProvider, pkce::PkceAuthProvider},
 };
 
-use crate::environments::{self, ResolvedEnv};
+use crate::environments::{self, GddyEnvConfig};
 use crate::pat::{self, PatEntry};
 use crate::scopes;
 
-/// Single auth provider, built per call from gddy's own resolved (and
-/// gddy-specific-derived) endpoints, then wired via `.with_environments` for
-/// the `<ENV>_OAUTH_*` override layer.
+/// Single auth provider, built per call from gddy's own resolved
+/// [`GddyEnvConfig`] (already fully derived — `auth_url`/`token_url` filled
+/// in from `api_url` wherever the environment left them blank — by its own
+/// `#[env_config(...)]` attributes, not by anything gddy-specific bolted on
+/// after resolution), then wired via `.with_environments` for the
+/// `<ENV>_OAUTH_*` override layer.
 ///
-/// cli-engine's shared `Environments` never derives `auth_url`/`token_url`
-/// from `api_url` the way [`crate::environments::adapt`] does — that
-/// derivation is gddy-specific and only happens in this crate's own
-/// resolution. Passing static empty base args to a single, long-lived
-/// `PkceAuthProvider` (as this used to) would mean any environment relying
-/// on that derivation (e.g. the real `dev`/`test` file entries, which only
-/// set `client_id`) tries to hit an empty auth/token URL — a real,
-/// reproduced bug, not a hypothetical one. So each call resolves `env`
-/// through gddy's own adapter first and passes the fully-derived values in
-/// as the provider's base args.
+/// Passing static empty base args to a single, long-lived `PkceAuthProvider`
+/// (as this used to) would mean any environment relying on that derivation
+/// (e.g. the real `dev`/`test` file entries, which only set `client_id`)
+/// tries to hit an empty auth/token URL — a real, reproduced bug, not a
+/// hypothetical one. So each call resolves `env` first and passes the
+/// fully-derived values in as the provider's base args.
 ///
 /// The provider is still always constructed with the fixed name `"godaddy"`
 /// (not `env`), so cli-engine's credential storage key
@@ -55,7 +54,7 @@ impl GoDaddyAuthProvider {
 /// Builds a `PkceAuthProvider` named `"godaddy"` (not `env` — see
 /// [`GoDaddyAuthProvider`]'s doc) from an already-resolved (and
 /// gddy-specific-derived) environment.
-fn build_provider(env: &ResolvedEnv) -> PkceAuthProvider {
+fn build_provider(env: &GddyEnvConfig) -> PkceAuthProvider {
     log_resolved_oauth(env);
     PkceAuthProvider::new(
         "godaddy",
@@ -101,7 +100,7 @@ fn pat_credential(env: &str, entry: &PatEntry) -> Credential {
 ///
 /// Enable with `RUST_LOG=gddy=debug` (e.g. `RUST_LOG=gddy=debug gddy domain
 /// available example.com --env dev`).
-fn log_resolved_oauth(env: &ResolvedEnv) {
+fn log_resolved_oauth(env: &GddyEnvConfig) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;
     }

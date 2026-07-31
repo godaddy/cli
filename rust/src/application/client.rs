@@ -368,13 +368,19 @@ impl ApplicationClient {
     }
 }
 
-pub fn api_url_for_env(env: &str) -> String {
-    crate::environments::resolve(env)
-        .or_else(|_| crate::environments::resolve(crate::environments::DEFAULT_ENV))
-        .map(|e| e.api_url)
-        // Never return an empty base URL (e.g. if a malformed local config makes
-        // even the default fail to resolve) — fall back to the built-in default.
-        .unwrap_or_else(|_| crate::environments::default_api_url().to_owned())
+/// The API base URL for `env`.
+///
+/// # Errors
+///
+/// Returns an error when `env` fails to resolve — for example a malformed
+/// `environments.toml` override. Propagated rather than silently retrying
+/// against a different environment or a hardcoded default: `env` is
+/// normally already validated (by `--env` parsing or the persisted active
+/// environment), so a failure here means the environment's *config* is
+/// broken, and every other `environments::resolve` consumer in this crate
+/// treats that as a hard error rather than something to paper over.
+pub fn api_url_for_env(env: &str) -> cli_engine::Result<String> {
+    crate::environments::resolve(env).map(|e| e.api_url)
 }
 
 #[cfg(test)]
@@ -390,19 +396,18 @@ mod tests {
         // URL — a dev machine may legitimately override a built-in's URL via
         // env var / local config, so don't hard-code the host.
         for env in ["prod", "ote"] {
-            let url = api_url_for_env(env);
+            let url = api_url_for_env(env).expect("resolves");
             assert!(url.contains("://"), "{env} -> {url:?}");
         }
     }
 
     #[test]
-    fn api_url_for_unknown_env_falls_back_to_default_and_is_never_empty() {
-        // Unknown env resolves to the default environment's URL (never empty).
-        let url = api_url_for_env("definitely-not-a-real-env-xyz");
-        assert!(!url.is_empty());
-        // Don't hard-code the scheme: a built-in's URL is overridable (a dev
-        // may point the default at an http:// local proxy).
-        assert!(url.contains("://"), "{url:?}");
+    fn api_url_for_env_rejects_an_unknown_env() {
+        // An unrecognized env is a hard error now, not a silent fallback to
+        // some other environment's URL.
+        let err = api_url_for_env("definitely-not-a-real-env-xyz")
+            .expect_err("unknown env must not resolve");
+        assert!(err.to_string().contains("definitely-not-a-real-env-xyz"));
     }
 
     #[tokio::test]
