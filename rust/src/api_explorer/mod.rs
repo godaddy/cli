@@ -25,7 +25,7 @@ output_schema!(ApiEndpoint {
     "path": "string";
     "summary": "string", optional;
     "scopes": "[]string";
-    "graphql_operations": "number", optional;
+    "graphqlOperations": "number", optional;
 });
 
 // `api endpoint list --domain X` lists endpoints within one domain, so each row
@@ -36,7 +36,7 @@ output_schema!(ApiDomainEndpoint {
     "path": "string";
     "summary": "string", optional;
     "scopes": "[]string";
-    "graphql_operations": "number", optional;
+    "graphqlOperations": "number", optional;
 });
 
 output_schema!(ApiOperation {
@@ -347,30 +347,26 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
         .flat_map(|domain| {
             let q = q.clone();
             domain.endpoints.iter().filter_map(move |ep| {
-                let graphql_searchable = ep
-                    .graphql
-                    .as_ref()
-                    .map(|g| {
-                        g.operations
-                            .iter()
-                            .map(|op| format!("{} {}", op.kind, op.name))
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    })
-                    .unwrap_or_default();
                 let haystack = format!(
-                    "{} {} {} {} {}",
+                    "{} {} {} {}",
                     ep.operation_id.to_lowercase(),
                     ep.path.to_lowercase(),
                     ep.summary.to_lowercase(),
                     ep.description.to_lowercase(),
-                    graphql_searchable.to_lowercase(),
                 );
-                if haystack.contains(&q) {
-                    Some((domain, ep))
-                } else {
-                    None
-                }
+                // Only scan GraphQL operations (up to 149 on some domains)
+                // when the core fields didn't already match, and stop at the
+                // first hit instead of concatenating every operation into one
+                // string up front.
+                let matches = haystack.contains(&q)
+                    || ep.graphql.as_ref().is_some_and(|g| {
+                        g.operations.iter().any(|op| {
+                            format!("{} {}", op.kind, op.name)
+                                .to_lowercase()
+                                .contains(&q)
+                        })
+                    });
+                if matches { Some((domain, ep)) } else { None }
             })
         })
         .collect()
@@ -742,7 +738,7 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
                         "path": ep.path,
                         "summary": ep.summary,
                         "scopes": ep.scopes,
-                        "graphql_operations": ep.graphql.as_ref().map(|g| g.operation_count),
+                        "graphqlOperations": ep.graphql.as_ref().map(|g| g.operation_count),
                     })
                 })
                 .collect();
@@ -882,11 +878,18 @@ fn describe_command() -> RuntimeCommandSpec {
                     .collect()
             });
 
+            // Strip `base_url`'s scheme+host generically (not a hard-coded
+            // prod hostname) so `fullPath` stays a hostless path prefix +
+            // endpoint path consistently across every environment, not just
+            // prod — `resolve_catalog_base_url` rewrites the host per env
+            // (e.g. `api.ote-godaddy.com`), which a literal prod-host strip
+            // would silently leave un-stripped.
             let full_path = {
-                let raw = format!("{base_url}{}", ep.path);
-                raw.strip_prefix("https://api.godaddy.com")
-                    .map(str::to_owned)
-                    .unwrap_or(raw)
+                let without_scheme = base_url
+                    .split_once("://")
+                    .map_or(base_url.as_str(), |(_, rest)| rest);
+                let path_prefix = without_scheme.find('/').map_or("", |i| &without_scheme[i..]);
+                format!("{path_prefix}{}", ep.path)
             };
 
             Ok(CommandResult::new(json!({
@@ -950,7 +953,7 @@ fn search_command() -> RuntimeCommandSpec {
                         "path": ep.path,
                         "summary": ep.summary,
                         "scopes": ep.scopes,
-                        "graphql_operations": ep.graphql.as_ref().map(|g| g.operation_count),
+                        "graphqlOperations": ep.graphql.as_ref().map(|g| g.operation_count),
                     })
                 })
                 .collect();
@@ -1788,6 +1791,37 @@ mod tests {
         assert_eq!(
             rendered["data"]["operationId"],
             json!("commerce.location.verify-address")
+        );
+        assert_eq!(
+            rendered["data"]["fullPath"],
+            json!("/v1/commerce/location/address-verifications")
+        );
+    }
+
+    /// `fullPath` must stay a hostless path in every environment, not just
+    /// prod — `resolve_catalog_base_url` rewrites the host for non-prod envs
+    /// (e.g. `api.ote-godaddy.com`), so stripping only the literal prod host
+    /// would silently leave the scheme+host in place here.
+    #[tokio::test]
+    async fn describe_full_path_is_hostless_in_a_non_prod_env() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "commerce.location.verify-address",
+                "--env",
+                "ote",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["baseUrl"],
+            json!("https://api.ote-godaddy.com/v1/commerce")
         );
         assert_eq!(
             rendered["data"]["fullPath"],
