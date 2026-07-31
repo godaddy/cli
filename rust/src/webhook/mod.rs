@@ -45,8 +45,7 @@ fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> 
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     }
     let path = dir.join("webhook-events.json");
-    let content = serde_json::to_string_pretty(events)
-        .map_err(std::io::Error::other)?;
+    let content = serde_json::to_string_pretty(events).map_err(std::io::Error::other)?;
     std::fs::write(&path, content)?;
     #[cfg(unix)]
     {
