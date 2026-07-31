@@ -53,6 +53,8 @@ output_schema!(ApiOperation {
     "responses": "object";
     "scopes": "[]string";
     "graphql": "object", optional;
+    "message": "string", optional;
+    "matches": "[]object", optional;
 });
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,13 @@ struct Domain {
     #[serde(rename = "baseUrl")]
     base_url: String,
     endpoints: Vec<Endpoint>,
+    /// Local JSON-schema definitions (`$defs`) that a `requestBody`/response
+    /// schema's `$ref` may point at, e.g. `{"$ref": "#/$defs/Business"}`.
+    /// Most catalog request bodies are a bare `$ref` with no inline
+    /// `properties`, so resolving these is required for schema
+    /// summarization to say anything useful about them.
+    #[serde(rename = "$defs", default)]
+    defs: Map<String, Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -250,27 +259,74 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
     })
 }
 
-/// Exact (non-fuzzy) endpoint lookup by operationId or full path equality,
-/// optionally narrowed to a specific HTTP method. Used by `api describe`'s
-/// primary resolution step, distinct from `find_endpoint`'s looser
-/// substring-`contains` match (which `api call` still relies on for scope
-/// resolution and is left untouched).
+/// Exact (non-fuzzy) endpoint lookup by operationId, full path equality, or
+/// a concrete path against a templated catalog path (e.g. `/stores/abc123`
+/// against `/stores/{storeId}`), optionally narrowed to a specific HTTP
+/// method. Used by `api describe`'s primary resolution step, distinct from
+/// `find_endpoint`'s looser substring-`contains` match (which `api call`
+/// still relies on for scope resolution and is left untouched).
+///
+/// Returns every match, not just the first: many catalog paths are shared by
+/// several endpoints that only differ by method (e.g. `GET`/`POST` on the
+/// same collection endpoint), so without `--method` there can genuinely be
+/// more than one exact match — the caller decides what to do with that
+/// (typically: 1 match resolves transparently, >1 is treated the same as an
+/// ambiguous fuzzy match).
 fn find_endpoint_exact<'a>(
     catalog: &'a [Domain],
     query: &str,
     method: Option<&str>,
-) -> Option<(&'a Domain, &'a Endpoint)> {
+) -> Vec<(&'a Domain, &'a Endpoint)> {
     let q = query.to_lowercase();
-    catalog.iter().find_map(|domain| {
-        domain
-            .endpoints
-            .iter()
-            .find(|ep| {
-                (ep.operation_id.to_lowercase() == q || ep.path.to_lowercase() == q)
-                    && method.is_none_or(|m| ep.method.eq_ignore_ascii_case(m))
+    catalog
+        .iter()
+        .flat_map(|domain| {
+            let q = q.clone();
+            domain.endpoints.iter().filter_map(move |ep| {
+                let path_matches = ep.operation_id.to_lowercase() == q
+                    || ep.path.to_lowercase() == q
+                    || path_matches_template(&ep.path, query);
+                let method_matches = method.is_none_or(|m| ep.method.eq_ignore_ascii_case(m));
+                (path_matches && method_matches).then_some((domain, ep))
             })
-            .map(|ep| (domain, ep))
-    })
+        })
+        .collect()
+}
+
+/// Builds the `{message, matches}` response for an ambiguous resolution —
+/// shared by `api describe`'s exact-match step (same path, multiple methods)
+/// and its fuzzy fallback (same query, multiple unrelated endpoints) — with
+/// a `next_action` per candidate that carries both `endpoint` and `method`,
+/// since candidates sharing one path are only distinguishable by method.
+fn multi_match_result(query: &str, hits: &[(&Domain, &Endpoint)]) -> CommandResult {
+    let matches: Vec<Value> = hits
+        .iter()
+        .map(|(domain, ep)| {
+            json!({
+                "operationId": ep.operation_id,
+                "method": ep.method,
+                "path": ep.path,
+                "summary": ep.summary,
+                "domain": domain.name,
+            })
+        })
+        .collect();
+    let next_actions = hits
+        .iter()
+        .map(|(_, ep)| {
+            next_action(
+                "api describe <endpoint> --method <method>",
+                format!("{} {} — {}", ep.method, ep.path, ep.summary),
+            )
+            .with_param("endpoint", required_value(ep.path.clone()))
+            .with_param("method", required_value(ep.method.clone()))
+        })
+        .collect();
+    CommandResult::new(json!({
+        "message": format!("Multiple endpoints match '{query}'. Be more specific:"),
+        "matches": matches,
+    }))
+    .with_next_actions(next_actions)
 }
 
 /// Reads a repeatable string argument, handling both shapes cli-engine
@@ -407,9 +463,41 @@ struct ResponseSummary {
     schema: Option<Vec<SchemaSummaryProperty>>,
 }
 
+/// Max `$ref` hops to follow when resolving a schema fragment against a
+/// domain's `$defs` — bounds a def-to-def cycle (e.g. A refers to B refers
+/// back to A) rather than looping forever.
+const MAX_REF_DEPTH: u8 = 5;
+
+/// Follows a `{"$ref": "#/$defs/Name"}` pointer against `defs`, transparently
+/// substituting the referenced schema, up to `MAX_REF_DEPTH` hops (a def can
+/// itself be a `$ref` to another def). Returns `schema` unchanged if it
+/// isn't a `$ref`, or the last-resolved schema if the chain doesn't resolve
+/// (unknown def name, external non-`#/$defs/` ref, or depth exceeded) —
+/// callers fall back to rendering that as an unresolved `ref(...)`.
+fn resolve_schema_ref<'a>(schema: &'a Value, defs: &'a Map<String, Value>) -> &'a Value {
+    let mut current = schema;
+    for _ in 0..MAX_REF_DEPTH {
+        let Some(key) = current
+            .get("$ref")
+            .and_then(Value::as_str)
+            .and_then(|r| r.strip_prefix("#/$defs/"))
+        else {
+            break;
+        };
+        let Some(resolved) = defs.get(key) else {
+            break;
+        };
+        current = resolved;
+    }
+    current
+}
+
 /// A short human-readable label for a JSON-schema fragment, e.g.
-/// `array<object{id, name, ...}>`, `enum(a|b|c)`, `string(uuid)`.
-fn schema_type_label(schema: &Value) -> String {
+/// `array<object{id, name, ...}>`, `enum(a|b|c)`, `string(uuid)`. Resolves
+/// `$ref`s against `defs` first, so a referenced schema is described the
+/// same as if it were inlined.
+fn schema_type_label(schema: &Value, defs: &Map<String, Value>) -> String {
+    let schema = resolve_schema_ref(schema, defs);
     let Some(obj) = schema.as_object() else {
         return "unknown".to_owned();
     };
@@ -417,7 +505,7 @@ fn schema_type_label(schema: &Value) -> String {
         if type_str == "array"
             && let Some(items) = obj.get("items")
         {
-            return format!("array<{}>", schema_type_label(items));
+            return format!("array<{}>", schema_type_label(items, defs));
         }
         if type_str == "object"
             && let Some(props) = obj.get("properties").and_then(Value::as_object)
@@ -443,6 +531,8 @@ fn schema_type_label(schema: &Value) -> String {
     if obj.get("allOf").and_then(Value::as_array).is_some() {
         return "allOf".to_owned();
     }
+    // Only reached for a $ref that resolve_schema_ref couldn't follow
+    // (unknown def, external ref, or a chain deeper than MAX_REF_DEPTH).
     if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
         return format!("ref({reference})");
     }
@@ -461,13 +551,17 @@ fn json_value_to_label(v: &Value) -> String {
     }
 }
 
-fn summarize_schema(schema: Option<&Value>) -> Option<Vec<SchemaSummaryProperty>> {
-    let obj = schema?.as_object()?;
+fn summarize_schema(
+    schema: Option<&Value>,
+    defs: &Map<String, Value>,
+) -> Option<Vec<SchemaSummaryProperty>> {
+    let schema = resolve_schema_ref(schema?, defs);
+    let obj = schema.as_object()?;
     let Some(properties) = obj.get("properties").and_then(Value::as_object) else {
         if obj.contains_key("type") || obj.contains_key("enum") {
             return Some(vec![SchemaSummaryProperty {
                 name: "(value)".to_owned(),
-                prop_type: schema_type_label(schema?),
+                prop_type: schema_type_label(schema, defs),
                 required: true,
                 description: None,
                 format: None,
@@ -487,27 +581,36 @@ fn summarize_schema(schema: Option<&Value>) -> Option<Vec<SchemaSummaryProperty>
             .iter()
             .map(|(name, prop)| {
                 let prop_obj = prop.as_object();
+                // A property that's itself a bare `$ref` carries none of
+                // description/format/enum/items locally — fall back to the
+                // resolved def's, while still preferring a local value if
+                // the property overrides it (JSON Schema allows keywords
+                // alongside `$ref`).
+                let resolved_obj = resolve_schema_ref(prop, defs).as_object();
                 let description = prop_obj
                     .and_then(|p| p.get("description"))
+                    .or_else(|| resolved_obj.and_then(|p| p.get("description")))
                     .and_then(Value::as_str)
                     .filter(|d| !d.is_empty())
                     .map(str::to_owned);
                 let format = prop_obj
                     .and_then(|p| p.get("format"))
+                    .or_else(|| resolved_obj.and_then(|p| p.get("format")))
                     .and_then(Value::as_str)
                     .map(str::to_owned);
                 let enum_values = prop_obj
                     .and_then(|p| p.get("enum"))
+                    .or_else(|| resolved_obj.and_then(|p| p.get("enum")))
                     .and_then(Value::as_array)
                     .cloned();
-                let items = prop_obj
+                let items = resolved_obj
                     .filter(|p| p.get("type").and_then(Value::as_str) == Some("array"))
                     .and_then(|p| p.get("items"))
                     .filter(|v| v.is_object())
-                    .map(schema_type_label);
+                    .map(|items| schema_type_label(items, defs));
                 SchemaSummaryProperty {
                     name: name.clone(),
-                    prop_type: schema_type_label(prop),
+                    prop_type: schema_type_label(prop, defs),
                     required: required.contains(name.as_str()),
                     description,
                     format,
@@ -519,7 +622,10 @@ fn summarize_schema(schema: Option<&Value>) -> Option<Vec<SchemaSummaryProperty>
     )
 }
 
-fn summarize_request_body(request_body: Option<&Value>) -> Option<RequestBodySummary> {
+fn summarize_request_body(
+    request_body: Option<&Value>,
+    defs: &Map<String, Value>,
+) -> Option<RequestBodySummary> {
     let obj = request_body?.as_object()?;
     Some(RequestBodySummary {
         required: obj
@@ -534,11 +640,14 @@ fn summarize_request_body(request_body: Option<&Value>) -> Option<RequestBodySum
             .get("description")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        schema: summarize_schema(obj.get("schema")),
+        schema: summarize_schema(obj.get("schema"), defs),
     })
 }
 
-fn summarize_responses(responses: &Value) -> Option<Vec<(String, ResponseSummary)>> {
+fn summarize_responses(
+    responses: &Value,
+    defs: &Map<String, Value>,
+) -> Option<Vec<(String, ResponseSummary)>> {
     let obj = responses.as_object()?;
     Some(
         obj.iter()
@@ -548,7 +657,7 @@ fn summarize_responses(responses: &Value) -> Option<Vec<(String, ResponseSummary
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_owned();
-                let schema = summarize_schema(resp.get("schema"));
+                let schema = summarize_schema(resp.get("schema"), defs);
                 (
                     status.clone(),
                     ResponseSummary {
@@ -795,13 +904,16 @@ fn describe_command() -> RuntimeCommandSpec {
                 .map(str::to_uppercase);
             let catalog = catalog();
 
-            // Exact operationId/path match (optionally narrowed by --method)
-            // first; a miss falls back to fuzzy substring search, which
-            // ignores --method entirely (matches the original CLI).
-            let (domain, ep) = match find_endpoint_exact(catalog, query, method_filter.as_deref())
-            {
-                Some(hit) => hit,
-                None => {
+            // Exact operationId/path/template match (optionally narrowed by
+            // --method) first; a miss falls back to fuzzy substring search,
+            // which ignores --method entirely (matches the original CLI).
+            // Either step can legitimately produce more than one candidate
+            // (e.g. GET/POST sharing a path with no --method given) — both
+            // are treated as the same kind of ambiguity.
+            let exact_hits = find_endpoint_exact(catalog, query, method_filter.as_deref());
+            let (domain, ep) = match exact_hits.len() {
+                1 => exact_hits[0],
+                0 => {
                     let hits = search_endpoints(catalog, query);
                     match hits.len() {
                         0 => {
@@ -814,39 +926,10 @@ fn describe_command() -> RuntimeCommandSpec {
                             .into_cli_error());
                         }
                         1 => hits[0],
-                        _ => {
-                            let matches: Vec<Value> = hits
-                                .iter()
-                                .map(|(domain, ep)| {
-                                    json!({
-                                        "operationId": ep.operation_id,
-                                        "method": ep.method,
-                                        "path": ep.path,
-                                        "summary": ep.summary,
-                                        "domain": domain.name,
-                                    })
-                                })
-                                .collect();
-                            let next_actions = hits
-                                .iter()
-                                .map(|(_, ep)| {
-                                    next_action(
-                                        "api describe <endpoint>",
-                                        format!("{} {} — {}", ep.method, ep.path, ep.summary),
-                                    )
-                                    .with_param("endpoint", required_value(ep.path.clone()))
-                                })
-                                .collect();
-                            return Ok(CommandResult::new(json!({
-                                "message": format!(
-                                    "Multiple endpoints match '{query}'. Be more specific:"
-                                ),
-                                "matches": matches,
-                            }))
-                            .with_next_actions(next_actions));
-                        }
+                        _ => return Ok(multi_match_result(query, &hits)),
                     }
                 }
+                _ => return Ok(multi_match_result(query, &exact_hits)),
             };
 
             // Env-aware base URL, matching `domain_list_command`/`call_command`
@@ -859,8 +942,9 @@ fn describe_command() -> RuntimeCommandSpec {
                 &ctx.middleware.env,
             );
 
-            let summarized_request = summarize_request_body(ep.request_body.as_ref());
-            let summarized_responses = summarize_responses(&ep.responses);
+            let summarized_request =
+                summarize_request_body(ep.request_body.as_ref(), &domain.defs);
+            let summarized_responses = summarize_responses(&ep.responses, &domain.defs);
 
             let request_body_json = summarized_request.map(|r| {
                 json!({
@@ -1585,19 +1669,26 @@ mod tests {
 
     use super::{schema_type_label, search_endpoints, summarize_graphql_schema, summarize_schema};
 
+    fn no_defs() -> serde_json::Map<String, serde_json::Value> {
+        serde_json::Map::new()
+    }
+
     #[test]
     fn schema_type_label_object_lists_every_property_name() {
         let schema = json!({
             "type": "object",
             "properties": { "a": {}, "b": {}, "c": {}, "d": {}, "e": {}, "f": {} },
         });
-        assert_eq!(schema_type_label(&schema), "object{a, b, c, d, e, f}");
+        assert_eq!(
+            schema_type_label(&schema, &no_defs()),
+            "object{a, b, c, d, e, f}"
+        );
     }
 
     #[test]
     fn schema_type_label_array_recurses_into_items() {
         let schema = json!({ "type": "array", "items": { "type": "string" } });
-        assert_eq!(schema_type_label(&schema), "array<string>");
+        assert_eq!(schema_type_label(&schema, &no_defs()), "array<string>");
     }
 
     #[test]
@@ -1607,31 +1698,92 @@ mod tests {
         // for an item schema with declared properties.
         let schema =
             json!({ "type": "array", "items": { "type": "object", "additionalProperties": true } });
-        assert_eq!(schema_type_label(&schema), "array<object>");
+        assert_eq!(schema_type_label(&schema, &no_defs()), "array<object>");
     }
 
     #[test]
     fn schema_type_label_string_with_format() {
         let schema = json!({ "type": "string", "format": "uuid" });
-        assert_eq!(schema_type_label(&schema), "string(uuid)");
+        assert_eq!(schema_type_label(&schema, &no_defs()), "string(uuid)");
     }
 
     #[test]
     fn schema_type_label_enum_lists_every_value() {
         let schema = json!({ "enum": ["a", "b", "c", "d", "e", "f", "g", "h", "i"] });
-        assert_eq!(schema_type_label(&schema), "enum(a|b|c|d|e|f|g|h|i)");
+        assert_eq!(
+            schema_type_label(&schema, &no_defs()),
+            "enum(a|b|c|d|e|f|g|h|i)"
+        );
     }
 
     #[test]
     fn schema_type_label_falls_back_through_one_of_any_of_all_of_and_ref() {
-        assert_eq!(schema_type_label(&json!({ "oneOf": [] })), "oneOf");
-        assert_eq!(schema_type_label(&json!({ "anyOf": [] })), "anyOf");
-        assert_eq!(schema_type_label(&json!({ "allOf": [] })), "allOf");
         assert_eq!(
-            schema_type_label(&json!({ "$ref": "#/$defs/uuid" })),
+            schema_type_label(&json!({ "oneOf": [] }), &no_defs()),
+            "oneOf"
+        );
+        assert_eq!(
+            schema_type_label(&json!({ "anyOf": [] }), &no_defs()),
+            "anyOf"
+        );
+        assert_eq!(
+            schema_type_label(&json!({ "allOf": [] }), &no_defs()),
+            "allOf"
+        );
+        assert_eq!(
+            schema_type_label(&json!({ "$ref": "#/$defs/uuid" }), &no_defs()),
             "ref(#/$defs/uuid)"
         );
-        assert_eq!(schema_type_label(&json!({})), "object");
+        assert_eq!(schema_type_label(&json!({}), &no_defs()), "object");
+    }
+
+    #[test]
+    fn schema_type_label_resolves_a_ref_against_defs() {
+        let mut defs = serde_json::Map::new();
+        defs.insert(
+            "Business".to_owned(),
+            json!({ "type": "object", "properties": { "name": {}, "address": {} } }),
+        );
+        let schema = json!({ "$ref": "#/$defs/Business" });
+        assert_eq!(schema_type_label(&schema, &defs), "object{address, name}");
+    }
+
+    #[test]
+    fn schema_type_label_ref_chain_through_multiple_defs() {
+        let mut defs = serde_json::Map::new();
+        defs.insert("A".to_owned(), json!({ "$ref": "#/$defs/B" }));
+        defs.insert(
+            "B".to_owned(),
+            json!({ "type": "string", "format": "uuid" }),
+        );
+        let schema = json!({ "$ref": "#/$defs/A" });
+        assert_eq!(schema_type_label(&schema, &defs), "string(uuid)");
+    }
+
+    #[test]
+    fn schema_type_label_ref_cycle_does_not_hang() {
+        let mut defs = serde_json::Map::new();
+        defs.insert("A".to_owned(), json!({ "$ref": "#/$defs/B" }));
+        defs.insert("B".to_owned(), json!({ "$ref": "#/$defs/A" }));
+        let schema = json!({ "$ref": "#/$defs/A" });
+        // Bounded by MAX_REF_DEPTH — must terminate and fall back to an
+        // unresolved ref label rather than looping forever. Which of A/B it
+        // lands on depends on MAX_REF_DEPTH's parity, so only assert the
+        // shape, not the exact key.
+        assert!(
+            schema_type_label(&schema, &defs).starts_with("ref(#/$defs/"),
+            "expected an unresolved ref fallback, got: {}",
+            schema_type_label(&schema, &defs)
+        );
+    }
+
+    #[test]
+    fn schema_type_label_unknown_ref_falls_back_to_unresolved_label() {
+        let schema = json!({ "$ref": "#/$defs/DoesNotExist" });
+        assert_eq!(
+            schema_type_label(&schema, &no_defs()),
+            "ref(#/$defs/DoesNotExist)"
+        );
     }
 
     #[test]
@@ -1641,7 +1793,7 @@ mod tests {
             "type": "object",
             "properties": { "note": { "type": "string", "description": long_description.clone() } },
         });
-        let props = summarize_schema(Some(&schema)).expect("has properties");
+        let props = summarize_schema(Some(&schema), &no_defs()).expect("has properties");
         let note = props.iter().find(|p| p.name == "note").expect("note prop");
         assert_eq!(note.description.as_deref(), Some(long_description.as_str()));
     }
@@ -1653,7 +1805,7 @@ mod tests {
             "type": "object",
             "properties": { "big": { "type": "integer", "enum": big_enum.clone() } },
         });
-        let props = summarize_schema(Some(&schema)).expect("has properties");
+        let props = summarize_schema(Some(&schema), &no_defs()).expect("has properties");
         let big = props.iter().find(|p| p.name == "big").expect("big prop");
         assert_eq!(big.enum_values.as_ref(), Some(&big_enum));
     }
@@ -1661,7 +1813,7 @@ mod tests {
     #[test]
     fn summarize_schema_scalar_value_falls_back_to_value_placeholder() {
         let schema = json!({ "type": "string" });
-        let props = summarize_schema(Some(&schema)).expect("scalar schema summarizes");
+        let props = summarize_schema(Some(&schema), &no_defs()).expect("scalar schema summarizes");
         assert_eq!(props.len(), 1);
         assert_eq!(props[0].name, "(value)");
         assert_eq!(props[0].prop_type, "string");
@@ -1670,8 +1822,74 @@ mod tests {
 
     #[test]
     fn summarize_schema_none_for_schema_with_no_type_or_properties() {
-        assert!(summarize_schema(Some(&json!({}))).is_none());
-        assert!(summarize_schema(None).is_none());
+        assert!(summarize_schema(Some(&json!({})), &no_defs()).is_none());
+        assert!(summarize_schema(None, &no_defs()).is_none());
+    }
+
+    #[test]
+    fn summarize_schema_resolves_a_top_level_ref() {
+        let mut defs = serde_json::Map::new();
+        defs.insert(
+            "Business".to_owned(),
+            json!({
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+            }),
+        );
+        // Most catalog request bodies are exactly this shape: a bare `$ref`
+        // with no inline `properties` for summarize_schema to find directly.
+        let schema = json!({ "$ref": "#/$defs/Business" });
+        let props = summarize_schema(Some(&schema), &defs).expect("resolves through $ref");
+        assert_eq!(props.len(), 1);
+        assert_eq!(props[0].name, "name");
+        assert_eq!(props[0].prop_type, "string");
+    }
+
+    #[test]
+    fn summarize_schema_resolves_a_property_level_ref() {
+        let mut defs = serde_json::Map::new();
+        defs.insert(
+            "address".to_owned(),
+            json!({
+                "type": "object",
+                "properties": { "street": {}, "city": {} },
+                "description": "A mailing address",
+            }),
+        );
+        let schema = json!({
+            "type": "object",
+            "properties": { "address": { "$ref": "#/$defs/address" } },
+        });
+        let props = summarize_schema(Some(&schema), &defs).expect("has properties");
+        let address = props
+            .iter()
+            .find(|p| p.name == "address")
+            .expect("address prop");
+        assert_eq!(address.prop_type, "object{city, street}");
+        // No local description at the reference site — falls back to the
+        // resolved def's.
+        assert_eq!(address.description.as_deref(), Some("A mailing address"));
+    }
+
+    #[test]
+    fn summarize_schema_local_description_overrides_the_resolved_def() {
+        let mut defs = serde_json::Map::new();
+        defs.insert(
+            "address".to_owned(),
+            json!({ "type": "object", "properties": {}, "description": "def description" }),
+        );
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "address": { "$ref": "#/$defs/address", "description": "local override" },
+            },
+        });
+        let props = summarize_schema(Some(&schema), &defs).expect("has properties");
+        let address = props
+            .iter()
+            .find(|p| p.name == "address")
+            .expect("address prop");
+        assert_eq!(address.description.as_deref(), Some("local override"));
     }
 
     // -----------------------------------------------------------------------
@@ -1930,6 +2148,76 @@ mod tests {
         );
     }
 
+    /// Many catalog paths are shared by several endpoints that only differ
+    /// by method (here: `GET /businesses` and `POST /businesses`) — without
+    /// `--method`, exact-match resolution must treat that the same as an
+    /// ambiguous fuzzy match, not silently pick whichever one it saw first.
+    #[tokio::test]
+    async fn describe_exact_path_shared_by_multiple_methods_is_ambiguous() {
+        let output = describe_cli()
+            .run(["gddy", "api", "describe", "/businesses", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let matches = rendered["data"]["matches"]
+            .as_array()
+            .expect("matches array");
+        assert_eq!(matches.len(), 2, "{}", output.rendered);
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        assert_eq!(next_actions.len(), 2);
+        // Candidates sharing one path are only distinguishable by method, so
+        // each next_action must carry both params, not just `endpoint`.
+        for action in next_actions {
+            assert!(action["params"]["endpoint"]["value"].is_string());
+            assert!(action["params"]["method"]["value"].is_string());
+        }
+    }
+
+    /// The same ambiguity, resolved by adding `--method`.
+    #[tokio::test]
+    async fn describe_exact_path_shared_by_multiple_methods_resolves_with_method_flag() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "/businesses",
+                "--method",
+                "POST",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["operationId"], json!("createBusiness"));
+    }
+
+    /// A concrete path with a real ID substituted for a `{param}` segment
+    /// must resolve via template matching, same as `api call` already does
+    /// via `find_endpoint`/`path_matches_template`.
+    #[tokio::test]
+    async fn describe_concrete_path_resolves_via_template_matching() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "/businesses/abc123",
+                "--method",
+                "GET",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["operationId"], json!("getBusinessById"));
+    }
+
     #[tokio::test]
     async fn describe_zero_matches_is_an_error() {
         let output = describe_cli()
@@ -1948,6 +2236,35 @@ mod tests {
             "{}",
             output.rendered
         );
+    }
+
+    /// Most catalog request bodies are a bare `$ref` with no inline
+    /// `properties` (63/82 in the embedded catalog) — `createBusiness`'s is
+    /// `{"$ref": "#/$defs/Business"}`. Without $ref resolution this
+    /// summarizes to `null`; with it, the real fields show up.
+    #[tokio::test]
+    async fn describe_resolves_a_pure_ref_request_body_against_defs() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "createBusiness",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let schema = rendered["data"]["requestBody"]["schema"]
+            .as_array()
+            .expect("requestBody.schema resolves to a property list, not null");
+        let active_since = schema
+            .iter()
+            .find(|p| p["name"] == "activeSince")
+            .expect("activeSince property");
+        assert_eq!(active_since["type"], json!("string(date-time)"));
     }
 
     #[tokio::test]
