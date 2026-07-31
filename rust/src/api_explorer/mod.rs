@@ -4,10 +4,10 @@ use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
 
-use crate::next_action::next_action;
+use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 
 output_schema!(ApiDomain {
@@ -24,6 +24,8 @@ output_schema!(ApiEndpoint {
     "method": "string";
     "path": "string";
     "summary": "string", optional;
+    "scopes": "[]string";
+    "graphql_operations": "number", optional;
 });
 
 // `api endpoint list --domain X` lists endpoints within one domain, so each row
@@ -33,19 +35,24 @@ output_schema!(ApiDomainEndpoint {
     "method": "string";
     "path": "string";
     "summary": "string", optional;
+    "scopes": "[]string";
+    "graphql_operations": "number", optional;
 });
 
 output_schema!(ApiOperation {
     "domain": "string";
+    "baseUrl": "string";
     "operationId": "string";
     "method": "string";
     "path": "string";
+    "fullPath": "string";
     "summary": "string", optional;
     "description": "string", optional;
     "parameters": "[]object";
     "requestBody": "object", optional;
     "responses": "object";
     "scopes": "[]string";
+    "graphql": "object", optional;
 });
 
 // ---------------------------------------------------------------------------
@@ -79,6 +86,41 @@ struct Endpoint {
     responses: Value,
     #[serde(default)]
     scopes: Vec<String>,
+    #[serde(default)]
+    graphql: Option<GraphqlSchema>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlArgument {
+    name: String,
+    #[serde(rename = "type")]
+    arg_type: String,
+    required: bool,
+    #[serde(default, rename = "defaultValue")]
+    default_value: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlOperation {
+    name: String,
+    kind: String,
+    #[serde(rename = "returnType")]
+    return_type: String,
+    #[serde(default)]
+    deprecated: bool,
+    #[serde(default, rename = "deprecationReason")]
+    deprecation_reason: Option<String>,
+    #[serde(default)]
+    args: Vec<GraphqlArgument>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlSchema {
+    #[serde(rename = "schemaRef")]
+    schema_ref: String,
+    #[serde(rename = "operationCount")]
+    operation_count: usize,
+    operations: Vec<GraphqlOperation>,
 }
 
 // ---------------------------------------------------------------------------
@@ -208,11 +250,34 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
     })
 }
 
+/// Exact (non-fuzzy) endpoint lookup by operationId or full path equality,
+/// optionally narrowed to a specific HTTP method. Used by `api describe`'s
+/// primary resolution step, distinct from `find_endpoint`'s looser
+/// substring-`contains` match (which `api call` still relies on for scope
+/// resolution and is left untouched).
+fn find_endpoint_exact<'a>(
+    catalog: &'a [Domain],
+    query: &str,
+    method: Option<&str>,
+) -> Option<(&'a Domain, &'a Endpoint)> {
+    let q = query.to_lowercase();
+    catalog.iter().find_map(|domain| {
+        domain
+            .endpoints
+            .iter()
+            .find(|ep| {
+                (ep.operation_id.to_lowercase() == q || ep.path.to_lowercase() == q)
+                    && method.is_none_or(|m| ep.method.eq_ignore_ascii_case(m))
+            })
+            .map(|ep| (domain, ep))
+    })
+}
+
 /// Reads a repeatable string argument, handling both shapes cli-engine
 /// produces: a single occurrence is collapsed to a scalar `Value::String`, and
 /// only two-or-more become a `Value::Array`. Matching only the array shape
 /// silently drops a lone `--scope`/`--field` value, so handle both.
-fn string_list(args: &serde_json::Map<String, Value>, key: &str) -> Vec<String> {
+fn string_list(args: &Map<String, Value>, key: &str) -> Vec<String> {
     match args.get(key) {
         Some(Value::Array(arr)) => arr
             .iter()
@@ -282,12 +347,24 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
         .flat_map(|domain| {
             let q = q.clone();
             domain.endpoints.iter().filter_map(move |ep| {
+                let graphql_searchable = ep
+                    .graphql
+                    .as_ref()
+                    .map(|g| {
+                        g.operations
+                            .iter()
+                            .map(|op| format!("{} {}", op.kind, op.name))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .unwrap_or_default();
                 let haystack = format!(
-                    "{} {} {} {}",
+                    "{} {} {} {} {}",
                     ep.operation_id.to_lowercase(),
                     ep.path.to_lowercase(),
                     ep.summary.to_lowercase(),
                     ep.description.to_lowercase(),
+                    graphql_searchable.to_lowercase(),
                 );
                 if haystack.contains(&q) {
                     Some((domain, ep))
@@ -297,6 +374,239 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
             })
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Schema summarization — condenses a raw JSON-schema fragment down to
+// top-level property names/types for `api describe`, so a caller sees a
+// scannable summary instead of a full nested schema dump. Ported from the
+// original TypeScript CLI's `summarizeSchema`/`schemaTypeLabel` family.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+struct SchemaSummaryProperty {
+    name: String,
+    #[serde(rename = "type")]
+    prop_type: String,
+    required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
+    #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
+    enum_values: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<String>,
+}
+
+struct RequestBodySummary {
+    required: bool,
+    content_type: Option<String>,
+    description: Option<String>,
+    schema: Option<Vec<SchemaSummaryProperty>>,
+}
+
+struct ResponseSummary {
+    description: String,
+    schema: Option<Vec<SchemaSummaryProperty>>,
+}
+
+/// A short human-readable label for a JSON-schema fragment, e.g.
+/// `array<object{id, name, ...}>`, `enum(a|b|c)`, `string(uuid)`.
+fn schema_type_label(schema: &Value) -> String {
+    let Some(obj) = schema.as_object() else {
+        return "unknown".to_owned();
+    };
+    if let Some(type_str) = obj.get("type").and_then(Value::as_str) {
+        if type_str == "array"
+            && let Some(items) = obj.get("items")
+        {
+            return format!("array<{}>", schema_type_label(items));
+        }
+        if type_str == "object"
+            && let Some(props) = obj.get("properties").and_then(Value::as_object)
+        {
+            let names: Vec<&str> = props.keys().map(String::as_str).collect();
+            return format!("object{{{}}}", names.join(", "));
+        }
+        return match obj.get("format").and_then(Value::as_str) {
+            Some(format) => format!("{type_str}({format})"),
+            None => type_str.to_owned(),
+        };
+    }
+    if let Some(enum_vals) = obj.get("enum").and_then(Value::as_array) {
+        let vals: Vec<String> = enum_vals.iter().map(json_value_to_label).collect();
+        return format!("enum({})", vals.join("|"));
+    }
+    if obj.get("oneOf").and_then(Value::as_array).is_some() {
+        return "oneOf".to_owned();
+    }
+    if obj.get("anyOf").and_then(Value::as_array).is_some() {
+        return "anyOf".to_owned();
+    }
+    if obj.get("allOf").and_then(Value::as_array).is_some() {
+        return "allOf".to_owned();
+    }
+    if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
+        return format!("ref({reference})");
+    }
+    "object".to_owned()
+}
+
+/// Mimics JS `Array.prototype.join`'s implicit `String(value)` coercion for
+/// the handful of JSON value kinds an enum entry can be.
+fn json_value_to_label(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn summarize_schema(schema: Option<&Value>) -> Option<Vec<SchemaSummaryProperty>> {
+    let obj = schema?.as_object()?;
+    let Some(properties) = obj.get("properties").and_then(Value::as_object) else {
+        if obj.contains_key("type") || obj.contains_key("enum") {
+            return Some(vec![SchemaSummaryProperty {
+                name: "(value)".to_owned(),
+                prop_type: schema_type_label(schema?),
+                required: true,
+                description: None,
+                format: None,
+                enum_values: None,
+                items: None,
+            }]);
+        }
+        return None;
+    };
+    let required: std::collections::HashSet<&str> = obj
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    Some(
+        properties
+            .iter()
+            .map(|(name, prop)| {
+                let prop_obj = prop.as_object();
+                let description = prop_obj
+                    .and_then(|p| p.get("description"))
+                    .and_then(Value::as_str)
+                    .filter(|d| !d.is_empty())
+                    .map(str::to_owned);
+                let format = prop_obj
+                    .and_then(|p| p.get("format"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let enum_values = prop_obj
+                    .and_then(|p| p.get("enum"))
+                    .and_then(Value::as_array)
+                    .cloned();
+                let items = prop_obj
+                    .filter(|p| p.get("type").and_then(Value::as_str) == Some("array"))
+                    .and_then(|p| p.get("items"))
+                    .filter(|v| v.is_object())
+                    .map(schema_type_label);
+                SchemaSummaryProperty {
+                    name: name.clone(),
+                    prop_type: schema_type_label(prop),
+                    required: required.contains(name.as_str()),
+                    description,
+                    format,
+                    enum_values,
+                    items,
+                }
+            })
+            .collect(),
+    )
+}
+
+fn summarize_request_body(request_body: Option<&Value>) -> Option<RequestBodySummary> {
+    let obj = request_body?.as_object()?;
+    Some(RequestBodySummary {
+        required: obj
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        content_type: obj
+            .get("contentType")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        description: obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        schema: summarize_schema(obj.get("schema")),
+    })
+}
+
+fn summarize_responses(responses: &Value) -> Option<Vec<(String, ResponseSummary)>> {
+    let obj = responses.as_object()?;
+    Some(
+        obj.iter()
+            .map(|(status, resp)| {
+                let description = resp
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let schema = summarize_schema(resp.get("schema"));
+                (
+                    status.clone(),
+                    ResponseSummary {
+                        description,
+                        schema,
+                    },
+                )
+            })
+            .collect(),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL summarization — condenses a domain's embedded GraphQL schema
+// (parsed at catalog-build time) into a per-operation summary for
+// `api describe`. Ported from the original TypeScript CLI's
+// `summarizeGraphqlSchema`, minus its operation-count cap: every operation
+// is included, full stop — no truncation until there's a real mechanism
+// for retrieving what got cut.
+// ---------------------------------------------------------------------------
+
+fn summarize_graphql_schema(graphql: &GraphqlSchema) -> Value {
+    let query_count = graphql
+        .operations
+        .iter()
+        .filter(|op| op.kind == "query")
+        .count();
+    let mutation_count = graphql.operations.len() - query_count;
+    let operations: Vec<Value> = graphql
+        .operations
+        .iter()
+        .map(|op| {
+            json!({
+                "name": op.name,
+                "kind": op.kind,
+                "returnType": op.return_type,
+                "deprecated": op.deprecated,
+                "deprecationReason": op.deprecation_reason,
+                "args": op.args.iter().map(|a| json!({
+                    "name": a.name,
+                    "type": a.arg_type,
+                    "required": a.required,
+                    "defaultValue": a.default_value,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    json!({
+        "schemaRef": graphql.schema_ref,
+        "operationCount": graphql.operation_count,
+        "queryCount": query_count,
+        "mutationCount": mutation_count,
+        "operations": operations,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +741,8 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
                         "method": ep.method,
                         "path": ep.path,
                         "summary": ep.summary,
+                        "scopes": ep.scopes,
+                        "graphql_operations": ep.graphql.as_ref().map(|g| g.operation_count),
                     })
                 })
                 .collect();
@@ -466,6 +778,13 @@ fn describe_command() -> RuntimeCommandSpec {
                 .value_name("ENDPOINT")
                 .required(true)
                 .help("Operation ID (e.g. createOrder) or path fragment (e.g. /v1/commerce/orders)"),
+        )
+        .with_arg(
+            clap::Arg::new("method")
+                .long("method")
+                .short('m')
+                .value_name("METHOD")
+                .help("Filter to a specific HTTP method (GET, POST, PUT, PATCH, DELETE)"),
         ),
         |ctx| async move {
             let query = ctx
@@ -473,27 +792,117 @@ fn describe_command() -> RuntimeCommandSpec {
                 .get("endpoint")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            let method_filter = ctx
+                .args
+                .get("method")
+                .and_then(|v| v.as_str())
+                .map(str::to_uppercase);
             let catalog = catalog();
-            let (domain, ep) = find_endpoint(catalog, query).ok_or_else(|| {
-                crate::error::GddyError::not_found(format!(
-                    "no endpoint found matching '{query}' — try `gddy api search {query}`"
-                ))
-                .with_fix(format!(
-                    "Run: gddy api search {query} or gddy api endpoint list"
-                ))
-                .into_cli_error()
-            })?;
+
+            // Exact operationId/path match (optionally narrowed by --method)
+            // first; a miss falls back to fuzzy substring search, which
+            // ignores --method entirely (matches the original CLI).
+            let (domain, ep) = match find_endpoint_exact(catalog, query, method_filter.as_deref())
+            {
+                Some(hit) => hit,
+                None => {
+                    let hits = search_endpoints(catalog, query);
+                    match hits.len() {
+                        0 => {
+                            return Err(crate::error::GddyError::not_found(format!(
+                                "no endpoint found matching '{query}' — try `gddy api search {query}`"
+                            ))
+                            .with_fix(format!(
+                                "Run: gddy api search {query} or gddy api endpoint list"
+                            ))
+                            .into_cli_error());
+                        }
+                        1 => hits[0],
+                        _ => {
+                            let matches: Vec<Value> = hits
+                                .iter()
+                                .map(|(domain, ep)| {
+                                    json!({
+                                        "operationId": ep.operation_id,
+                                        "method": ep.method,
+                                        "path": ep.path,
+                                        "summary": ep.summary,
+                                        "domain": domain.name,
+                                    })
+                                })
+                                .collect();
+                            let next_actions = hits
+                                .iter()
+                                .map(|(_, ep)| {
+                                    next_action(
+                                        "api describe <endpoint>",
+                                        format!("{} {} — {}", ep.method, ep.path, ep.summary),
+                                    )
+                                    .with_param("endpoint", required_value(ep.path.clone()))
+                                })
+                                .collect();
+                            return Ok(CommandResult::new(json!({
+                                "message": format!(
+                                    "Multiple endpoints match '{query}'. Be more specific:"
+                                ),
+                                "matches": matches,
+                            }))
+                            .with_next_actions(next_actions));
+                        }
+                    }
+                }
+            };
+
+            // Env-aware base URL, matching `domain_list_command`/`call_command`
+            // — the catalog's `baseUrl` is a static, prod-shaped value; this
+            // resolves it against the active environment the same way an
+            // actual `api call` to this endpoint would.
+            let base_url = crate::environments::resolve_catalog_base_url(
+                &domain.name,
+                &domain.base_url,
+                &ctx.middleware.env,
+            );
+
+            let summarized_request = summarize_request_body(ep.request_body.as_ref());
+            let summarized_responses = summarize_responses(&ep.responses);
+
+            let request_body_json = summarized_request.map(|r| {
+                json!({
+                    "required": r.required,
+                    "contentType": r.content_type,
+                    "description": r.description,
+                    "schema": r.schema,
+                })
+            });
+            let responses_json: Option<Map<String, Value>> = summarized_responses.map(|list| {
+                list.into_iter()
+                    .map(|(status, r)| {
+                        (status, json!({ "description": r.description, "schema": r.schema }))
+                    })
+                    .collect()
+            });
+
+            let full_path = {
+                let raw = format!("{base_url}{}", ep.path);
+                raw.strip_prefix("https://api.godaddy.com")
+                    .map(str::to_owned)
+                    .unwrap_or(raw)
+            };
+
             Ok(CommandResult::new(json!({
                 "domain": domain.name,
+                "baseUrl": base_url,
                 "operationId": ep.operation_id,
                 "method": ep.method,
                 "path": ep.path,
+                "fullPath": full_path,
                 "summary": ep.summary,
                 "description": ep.description,
                 "parameters": ep.parameters,
-                "requestBody": ep.request_body,
-                "responses": ep.responses,
+                "requestBody": request_body_json,
+                "responses": responses_json,
                 "scopes": ep.scopes,
+                "graphql": ep.graphql.as_ref().map(summarize_graphql_schema),
             }))
             .with_next_actions(vec![
                 next_action(
@@ -540,6 +949,8 @@ fn search_command() -> RuntimeCommandSpec {
                         "method": ep.method,
                         "path": ep.path,
                         "summary": ep.summary,
+                        "scopes": ep.scopes,
+                        "graphql_operations": ep.graphql.as_ref().map(|g| g.operation_count),
                     })
                 })
                 .collect();
@@ -802,7 +1213,7 @@ fn call_command() -> RuntimeCommandSpec {
             );
 
             let status = status_code.as_u16();
-            let response_headers: Option<serde_json::Map<String, Value>> = if include_headers {
+            let response_headers: Option<Map<String, Value>> = if include_headers {
                 Some(
                     response_headers_raw
                         .iter()
@@ -1160,6 +1571,374 @@ mod tests {
             output.rendered.contains("must be a URL path starting with"),
             "{}",
             output.rendered
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Schema summarization
+    // -----------------------------------------------------------------------
+
+    use serde_json::json;
+
+    use super::{schema_type_label, search_endpoints, summarize_graphql_schema, summarize_schema};
+
+    #[test]
+    fn schema_type_label_object_lists_every_property_name() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "a": {}, "b": {}, "c": {}, "d": {}, "e": {}, "f": {} },
+        });
+        assert_eq!(schema_type_label(&schema), "object{a, b, c, d, e, f}");
+    }
+
+    #[test]
+    fn schema_type_label_array_recurses_into_items() {
+        let schema = json!({ "type": "array", "items": { "type": "string" } });
+        assert_eq!(schema_type_label(&schema), "array<string>");
+    }
+
+    #[test]
+    fn schema_type_label_bare_array_of_untyped_objects() {
+        // No declared `properties` on the item schema — renders as the bare
+        // "array<object>" (no trailing `{`), distinct from "array<object{...}>"
+        // for an item schema with declared properties.
+        let schema =
+            json!({ "type": "array", "items": { "type": "object", "additionalProperties": true } });
+        assert_eq!(schema_type_label(&schema), "array<object>");
+    }
+
+    #[test]
+    fn schema_type_label_string_with_format() {
+        let schema = json!({ "type": "string", "format": "uuid" });
+        assert_eq!(schema_type_label(&schema), "string(uuid)");
+    }
+
+    #[test]
+    fn schema_type_label_enum_lists_every_value() {
+        let schema = json!({ "enum": ["a", "b", "c", "d", "e", "f", "g", "h", "i"] });
+        assert_eq!(schema_type_label(&schema), "enum(a|b|c|d|e|f|g|h|i)");
+    }
+
+    #[test]
+    fn schema_type_label_falls_back_through_one_of_any_of_all_of_and_ref() {
+        assert_eq!(schema_type_label(&json!({ "oneOf": [] })), "oneOf");
+        assert_eq!(schema_type_label(&json!({ "anyOf": [] })), "anyOf");
+        assert_eq!(schema_type_label(&json!({ "allOf": [] })), "allOf");
+        assert_eq!(
+            schema_type_label(&json!({ "$ref": "#/$defs/uuid" })),
+            "ref(#/$defs/uuid)"
+        );
+        assert_eq!(schema_type_label(&json!({})), "object");
+    }
+
+    #[test]
+    fn summarize_schema_keeps_the_full_description() {
+        let long_description = "x".repeat(200);
+        let schema = json!({
+            "type": "object",
+            "properties": { "note": { "type": "string", "description": long_description.clone() } },
+        });
+        let props = summarize_schema(Some(&schema)).expect("has properties");
+        let note = props.iter().find(|p| p.name == "note").expect("note prop");
+        assert_eq!(note.description.as_deref(), Some(long_description.as_str()));
+    }
+
+    #[test]
+    fn summarize_schema_keeps_the_full_enum_regardless_of_size() {
+        let big_enum: Vec<_> = (0..20).map(|i| json!(i)).collect();
+        let schema = json!({
+            "type": "object",
+            "properties": { "big": { "type": "integer", "enum": big_enum.clone() } },
+        });
+        let props = summarize_schema(Some(&schema)).expect("has properties");
+        let big = props.iter().find(|p| p.name == "big").expect("big prop");
+        assert_eq!(big.enum_values.as_ref(), Some(&big_enum));
+    }
+
+    #[test]
+    fn summarize_schema_scalar_value_falls_back_to_value_placeholder() {
+        let schema = json!({ "type": "string" });
+        let props = summarize_schema(Some(&schema)).expect("scalar schema summarizes");
+        assert_eq!(props.len(), 1);
+        assert_eq!(props[0].name, "(value)");
+        assert_eq!(props[0].prop_type, "string");
+        assert!(props[0].required);
+    }
+
+    #[test]
+    fn summarize_schema_none_for_schema_with_no_type_or_properties() {
+        assert!(summarize_schema(Some(&json!({}))).is_none());
+        assert!(summarize_schema(None).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // GraphQL summarization
+    // -----------------------------------------------------------------------
+
+    fn make_graphql_operations(count: usize) -> Vec<super::GraphqlOperation> {
+        (0..count)
+            .map(|i| super::GraphqlOperation {
+                name: format!("op{i}"),
+                kind: if i % 2 == 0 { "query" } else { "mutation" }.to_owned(),
+                return_type: "String".to_owned(),
+                deprecated: false,
+                deprecation_reason: None,
+                args: vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn summarize_graphql_schema_includes_every_operation_and_splits_query_mutation_counts() {
+        let schema = super::GraphqlSchema {
+            schema_ref: "./schema.graphql".to_owned(),
+            operation_count: 25,
+            operations: make_graphql_operations(25),
+        };
+        let summary = summarize_graphql_schema(&schema);
+        assert_eq!(summary["operationCount"], json!(25));
+        assert_eq!(summary["queryCount"], json!(13));
+        assert_eq!(summary["mutationCount"], json!(12));
+        assert_eq!(
+            summary["operations"]
+                .as_array()
+                .expect("operations array")
+                .len(),
+            25
+        );
+    }
+
+    #[test]
+    fn summarize_graphql_schema_carries_operation_detail() {
+        let schema = super::GraphqlSchema {
+            schema_ref: "./schema.graphql".to_owned(),
+            operation_count: 1,
+            operations: vec![super::GraphqlOperation {
+                name: "widgets".to_owned(),
+                kind: "query".to_owned(),
+                return_type: "[Widget]".to_owned(),
+                deprecated: true,
+                deprecation_reason: Some("use widgetsV2".to_owned()),
+                args: vec![super::GraphqlArgument {
+                    name: "id".to_owned(),
+                    arg_type: "String!".to_owned(),
+                    required: true,
+                    default_value: None,
+                }],
+            }],
+        };
+        let summary = summarize_graphql_schema(&schema);
+        assert_eq!(summary["operations"][0]["name"], json!("widgets"));
+        assert_eq!(summary["operations"][0]["deprecated"], json!(true));
+        assert_eq!(
+            summary["operations"][0]["args"][0]["type"],
+            json!("String!")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // search_endpoints — GraphQL operation names are searchable
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn search_endpoints_matches_a_graphql_operation_name() {
+        let hits = search_endpoints(catalog(), "SKUGroup");
+        assert!(
+            hits.iter()
+                .any(|(_, ep)| ep.operation_id == "postCatalogGraphql"),
+            "expected a GraphQL operation name to surface its parent endpoint in search results"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // api describe — exact/method/fuzzy resolution, schema + GraphQL summary
+    // -----------------------------------------------------------------------
+
+    fn describe_cli() -> Cli {
+        // `resolve_catalog_base_url` needs `ctx.middleware.env` to actually
+        // resolve to `DEFAULT_ENV` ("prod") rather than an empty default, so
+        // wire environments the same way `main.rs` does for the real CLI.
+        Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_module(super::module())
+                .with_environments(std::sync::Arc::clone(crate::environments::instance())),
+        )
+    }
+
+    #[tokio::test]
+    async fn describe_exact_operation_id_match() {
+        // Pin `--env` explicitly: `fullPath` depends on env-resolved base
+        // URL, and the default env is read from ambient local config
+        // (`gdenv`), so a bare run isn't hermetic across machines/CI.
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "commerce.location.verify-address",
+                "--env",
+                "prod",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["operationId"],
+            json!("commerce.location.verify-address")
+        );
+        assert_eq!(
+            rendered["data"]["fullPath"],
+            json!("/v1/commerce/location/address-verifications")
+        );
+    }
+
+    #[tokio::test]
+    async fn describe_exact_match_narrowed_by_method_flag() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "/location/addresses",
+                "--method",
+                "GET",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["operationId"],
+            json!("commerce.location.search-addresses")
+        );
+    }
+
+    /// Matches the original CLI's documented quirk: `--method` only narrows
+    /// the exact-match step. A mismatched method falls through to fuzzy
+    /// search, which ignores the method filter entirely — so this still
+    /// resolves to the (wrong-method) endpoint rather than erroring.
+    #[tokio::test]
+    async fn describe_method_filter_is_ignored_during_fuzzy_fallback() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "/location/addresses",
+                "--method",
+                "POST",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["operationId"],
+            json!("commerce.location.search-addresses")
+        );
+        assert_eq!(rendered["data"]["method"], json!("GET"));
+    }
+
+    #[tokio::test]
+    async fn describe_single_fuzzy_match_resolves_transparently() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["operationId"],
+            json!("commerce.location.verify-address")
+        );
+    }
+
+    #[tokio::test]
+    async fn describe_multiple_fuzzy_matches_lists_candidates() {
+        let output = describe_cli()
+            .run(["gddy", "api", "describe", "/location", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert!(
+            rendered["data"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("Multiple endpoints match"),
+            "{}",
+            output.rendered
+        );
+        let matches = rendered["data"]["matches"]
+            .as_array()
+            .expect("matches array");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(
+            rendered["next_actions"]
+                .as_array()
+                .expect("next_actions array")
+                .len(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn describe_zero_matches_is_an_error() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "totally-fake-endpoint-xyz",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("no endpoint found matching"),
+            "{}",
+            output.rendered
+        );
+    }
+
+    #[tokio::test]
+    async fn describe_graphql_endpoint_gets_summary() {
+        let output = describe_cli()
+            .run([
+                "gddy",
+                "api",
+                "describe",
+                "postCatalogGraphql",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let data = &rendered["data"];
+        assert_eq!(data["graphql"]["operationCount"], json!(149));
+        assert_eq!(
+            data["graphql"]["operations"]
+                .as_array()
+                .expect("operations array")
+                .len(),
+            149
         );
     }
 }
