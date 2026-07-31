@@ -27,7 +27,7 @@
 use std::sync::{Arc, LazyLock, OnceLock};
 
 use cli_engine::environments::Environments;
-use cli_engine::{CliCoreError, ConfigSource, EnvConfig, SourceChain};
+use cli_engine::{ConfigSource, EnvConfig, SourceChain};
 
 pub const DEFAULT_ENV: &str = "prod";
 
@@ -367,9 +367,11 @@ pub fn instance() -> &'static Arc<Environments> {
 
 /// Resolve an environment by name.
 pub fn resolve(name: &str) -> cli_engine::Result<GddyEnvConfig> {
-    instance()
-        .resolve(name)
-        .map_err(|err| CliCoreError::message(format!("environment {name:?}: {err}")))
+    // `?`, not a manual `CliCoreError::message` rewrap — `EnvConfigError`
+    // already converts into `CliCoreError` (see cli-engine's `error.rs`),
+    // preserving whatever structured system/fix metadata the underlying
+    // error carries instead of flattening it to a plain string.
+    Ok(instance().resolve(name)?)
 }
 
 /// Environments to show in `env list`: built-ins + local-config entries.
@@ -511,9 +513,10 @@ auth_url = "not-a-url"
 
     #[test]
     fn resolved_env_falls_back_to_derived_oauth_urls_when_override_is_blank() {
-        // A blank override (e.g. from `<ENV>_OAUTH_AUTH_URL=" "`) is treated
-        // the same as unset. A genuinely malformed (non-blank) override is a
-        // hard resolve error instead — see
+        // A blank `auth_url` (from a TOML value here, or from `GDDY_AUTH_URL=" "`
+        // — see `blank_env_var_override_falls_through_to_derived_auth_url`) is
+        // treated the same as unset. A genuinely malformed (non-blank) override
+        // is a hard resolve error instead — see
         // `register_rejects_a_malformed_file_layer_auth_url_override_for_a_builtin`.
         let resolved = test_environment("dev", |t| {
             t.with("client_id", "cid")

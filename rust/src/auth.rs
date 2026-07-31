@@ -14,8 +14,8 @@ use crate::scopes;
 /// [`GddyEnvConfig`] (already fully derived — `auth_url`/`token_url` filled
 /// in from `api_url` wherever the environment left them blank — by its own
 /// `#[env_config(...)]` attributes, not by anything gddy-specific bolted on
-/// after resolution), then wired via `.with_environments` for the
-/// `<ENV>_OAUTH_*` override layer.
+/// after resolution), then wired via `.with_environments` so cli-engine's
+/// own resolution stays consistent with gddy's.
 ///
 /// Passing static empty base args to a single, long-lived `PkceAuthProvider`
 /// (as this used to) would mean any environment relying on that derivation
@@ -92,11 +92,11 @@ fn pat_credential(env: &str, entry: &PatEntry) -> Credential {
 /// is the CLI's single point of visibility into the client id / endpoints that
 /// drive an `invalid_client`/`invalid_grant` failure.
 ///
-/// It mirrors cli-engine's `<ENV>_OAUTH_*` env-var overrides
-/// (`PkceAuthProvider::effective_*`) so the logged values are what's actually
-/// sent — and flags when a value comes from an env var rather than config, which
-/// is the usual cause of a "wrong client id". No secrets are logged (the OAuth
-/// client id is a public identifier; tokens never pass through here).
+/// It mirrors `GddyEnvConfig`'s own app-scoped `GDDY_AUTH_URL`/`GDDY_TOKEN_URL`
+/// overrides so the logged values are what's actually sent — and flags when a
+/// value comes from an env var rather than config, which is the usual cause of
+/// a "wrong client id". No secrets are logged (the OAuth client id is a public
+/// identifier; tokens never pass through here).
 ///
 /// Enable with `RUST_LOG=gddy=debug` (e.g. `RUST_LOG=gddy=debug gddy domain
 /// available example.com --env dev`).
@@ -104,15 +104,22 @@ fn log_resolved_oauth(env: &GddyEnvConfig) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;
     }
-    let prefix = environments::env_prefix(&env.name);
-    let override_var = |suffix: &str| std::env::var(format!("{prefix}_OAUTH_{suffix}")).ok();
-    let client_id_ovr = override_var("CLIENT_ID");
+    // App-scoped, not environment-scoped — matches `GddyEnvConfig`'s own
+    // `env_config(env = "AUTH_URL"/"TOKEN_URL")` attributes. `client_id` has
+    // no such attribute (no env-var override exists for it), so it's always
+    // just `env.client_id` below. A blank value is treated as absent, same
+    // as `EnvConfig`'s own resolution.
+    let prefix = environments::env_prefix(environments::APP_ID);
+    let override_var = |suffix: &str| {
+        std::env::var(format!("{prefix}_{suffix}"))
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    };
     let auth_url_ovr = override_var("AUTH_URL");
     let token_url_ovr = override_var("TOKEN_URL");
     tracing::debug!(
         env = %env.name,
-        client_id = %client_id_ovr.as_deref().unwrap_or(&env.client_id),
-        client_id_from_env_var = client_id_ovr.is_some(),
+        client_id = %env.client_id,
         auth_url = %auth_url_ovr.as_deref().unwrap_or(&env.auth_url),
         auth_url_from_env_var = auth_url_ovr.is_some(),
         token_url = %token_url_ovr.as_deref().unwrap_or(&env.token_url),
