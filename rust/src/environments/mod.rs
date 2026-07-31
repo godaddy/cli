@@ -343,7 +343,11 @@ fn build_environments() -> Environments {
 
 fn resolve_default_environments(default_raw: &str) -> Environments {
     let probe = register(Environments::new(default_raw.to_owned()));
-    if probe.source(default_raw).is_ok() {
+    // `.resolve::<GddyEnvConfig>(...)`, not `.source(...)` — a name can be
+    // *known* to some layer (so `.source()` succeeds) while still being
+    // *unusable* (missing client_id, a malformed api_url, ...). Only a full
+    // resolve proves the persisted default is actually safe to keep.
+    if probe.resolve::<GddyEnvConfig>(default_raw).is_ok() {
         probe
     } else {
         register(Environments::new(DEFAULT_ENV))
@@ -399,20 +403,47 @@ mod tests {
     // parallel test threads can't observe each other's GDDY_* overrides.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    /// RAII guard that removes an env var on drop, even if a test panics.
-    struct EnvGuard(&'static str);
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            // SAFETY: caller holds ENV_LOCK; clean up on any exit incl. panic.
+    /// RAII guard that sets an env var and restores it to its prior state on
+    /// drop — removing it if it wasn't already set, or putting the original
+    /// value back if it was — even if a test panics. Restoring rather than
+    /// unconditionally removing keeps a var a developer happens to already
+    /// have set in their shell from leaking into the rest of the test run.
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            // SAFETY: caller holds ENV_LOCK.
             #[allow(unsafe_code)]
             unsafe {
-                std::env::remove_var(self.0)
+                std::env::set_var(key, value);
+            }
+            Self { key, prior }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: caller holds ENV_LOCK; restore on any exit incl. panic.
+            #[allow(unsafe_code)]
+            unsafe {
+                match &self.prior {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
             }
         }
     }
 
     #[test]
     fn register_scaffolds_a_file_only_environment() {
+        // Resolves through `register()`, which sets `app_id` — so it checks
+        // `GDDY_*` overrides and must be serialized against tests that set
+        // them (see `ENV_LOCK`'s own doc).
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -434,6 +465,9 @@ client_id = "dev-client"
 
     #[test]
     fn register_rejects_a_file_only_environments_malformed_api_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -455,6 +489,9 @@ client_id = "dev-client"
 
     #[test]
     fn register_rejects_a_malformed_file_layer_auth_url_override_for_a_builtin() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -632,12 +669,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_AUTH_URL", "https://auth.override.test")
-        };
-        let _guard = EnvGuard("GDDY_AUTH_URL");
+        let _guard = EnvGuard::set("GDDY_AUTH_URL", "https://auth.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
             t.with("client_id", "cid")
@@ -655,12 +687,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_TOKEN_URL", "https://token.override.test")
-        };
-        let _guard = EnvGuard("GDDY_TOKEN_URL");
+        let _guard = EnvGuard::set("GDDY_TOKEN_URL", "https://token.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
             t.with("client_id", "cid")
@@ -674,12 +701,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_DOMAINS_API_URL", "https://domains.override.test")
-        };
-        let _guard = EnvGuard("GDDY_DOMAINS_API_URL");
+        let _guard = EnvGuard::set("GDDY_DOMAINS_API_URL", "https://domains.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
             t.with("client_id", "cid")
@@ -693,12 +715,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_ACCOUNT_URL", "https://account.override.test")
-        };
-        let _guard = EnvGuard("GDDY_ACCOUNT_URL");
+        let _guard = EnvGuard::set("GDDY_ACCOUNT_URL", "https://account.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
             t.with("client_id", "cid")
@@ -788,12 +805,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_AUTH_URL", "not-a-url")
-        };
-        let _guard = EnvGuard("GDDY_AUTH_URL");
+        let _guard = EnvGuard::set("GDDY_AUTH_URL", "not-a-url");
 
         let err = Environments::new("dev")
             .with_app_id(APP_ID)
@@ -813,12 +825,7 @@ auth_url = "not-a-url"
         let _g = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: serialized by ENV_LOCK; guard removes the var on any exit.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("GDDY_AUTH_URL", "   ")
-        };
-        let _guard = EnvGuard("GDDY_AUTH_URL");
+        let _guard = EnvGuard::set("GDDY_AUTH_URL", "   ");
 
         let resolved = test_environment_with_app_id("dev", |t| {
             t.with("client_id", "cid")
@@ -863,13 +870,48 @@ auth_url = "not-a-url"
         // A corrupted/stale `.gdenv` value that resolves to nothing (no
         // compiled/file entry) must not become the CLI's real startup
         // default.
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let envs = resolve_default_environments("totally-bogus-env-name");
         assert_eq!(envs.default_env(), DEFAULT_ENV);
         assert!(envs.source(DEFAULT_ENV).is_ok());
     }
 
     #[test]
+    fn source_existing_but_resolve_failing_is_the_case_resolve_default_environments_must_catch() {
+        // `resolve_default_environments`'s own validity check must use
+        // `.resolve::<GddyEnvConfig>()`, not `.source()` — a name can be
+        // *known* to a layer (so `.source()` succeeds) while still missing
+        // required fields (so `.resolve()` fails). Checking only `.source()`
+        // would let a misconfigured persisted default stick, instead of
+        // falling back to `DEFAULT_ENV`.
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A file-path override pointing at a nonexistent path, not a bare
+        // `register(...)` — without it this would pick up a real developer's
+        // own `~/.config/gddy/environments.toml` `[dev]` entry (if any),
+        // making the test's result depend on that machine's local config.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing_file = dir.path().join("environments.toml");
+        let probe = register(Environments::new("dev").with_config_file_path_override(missing_file))
+            .with_environment(
+                "dev",
+                EnvTable::new().with("api_url", "https://api.example.test"), // no client_id
+            );
+        assert!(probe.source("dev").is_ok(), "the name is known");
+        assert!(
+            probe.resolve::<GddyEnvConfig>("dev").is_err(),
+            "but it's missing client_id, so it can't actually assemble"
+        );
+    }
+
+    #[test]
     fn resolve_default_environments_keeps_a_resolvable_gdenv_value() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let envs = resolve_default_environments("prod");
         assert_eq!(envs.default_env(), "prod");
     }
