@@ -1206,7 +1206,7 @@ fn call_command() -> RuntimeCommandSpec {
                     &domain.base_url,
                     &ctx.middleware.env,
                 ),
-                None => crate::application::client::api_url_for_env(&ctx.middleware.env),
+                None => crate::application::client::api_url_for_env(&ctx.middleware.env)?,
             };
             let url = format!("{base_url}{endpoint}");
 

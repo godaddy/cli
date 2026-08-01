@@ -77,7 +77,7 @@ pub fn group() -> RuntimeGroupSpec {
             .with_tier(Tier::Read),
         |ctx| async move {
             let token = ctx.credential().await?.token;
-            let base_url = api_url_for_env(&ctx.middleware.env);
+            let base_url = api_url_for_env(&ctx.middleware.env)?;
             let url = format!("{base_url}/v1/apis/webhook-event-types");
             let client = crate::application::client::make_http_client();
             let request = client

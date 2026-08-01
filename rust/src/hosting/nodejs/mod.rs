@@ -34,7 +34,7 @@ output_schema!(HostingJobSummary {
 async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<HostingClient> {
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
-    let base_url = api_url_for_env(&ctx.middleware.env);
+    let base_url = api_url_for_env(&ctx.middleware.env)?;
     Ok(HostingClient::new(base_url, token))
 }
 

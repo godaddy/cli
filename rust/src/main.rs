@@ -106,7 +106,7 @@ async fn main() -> ExitCode {
 mod tests {
     use std::sync::Arc;
 
-    use cli_engine::{Cli, CliConfig, Stage, environments::EnvironmentDef};
+    use cli_engine::{Cli, CliConfig, Stage, environments::EnvTable};
 
     /// Regression test for a real bug found while wiring feature-flagging up
     /// properly: with no `min_stage` override anywhere, cli-engine's own
@@ -152,15 +152,14 @@ mod tests {
     #[tokio::test]
     async fn an_environment_min_stage_override_reveals_beta_and_experimental_modules() {
         let environments = Arc::new(
-            cli_engine::environments::Environments::new("dev").with_environment(
-                "dev",
-                EnvironmentDef::new().with_min_stage(Stage::Experimental),
-            ),
+            cli_engine::environments::Environments::new("dev")
+                .with_environment("dev", EnvTable::new().with("min_stage", "experimental")),
         );
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
                 .with_environments(environments)
+                .with_startup_args(Vec::<&str>::new())
                 .with_modules(super::all_modules()),
         );
         let output = cli.run(["gddy", "hosting", "--help"]).await;
