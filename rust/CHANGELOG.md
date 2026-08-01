@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.0](https://github.com/godaddy/cli/compare/v0.1.16...v0.2.0) (2026-08-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **env:** `--search` is now a real `search <query...> [--scope <path>]` command (from cli-engine 0.5.0), not a global flag that could attach to (and silently swallow the output of) any other command. Per-environment override env vars are now app-scoped (`GDDY_AUTH_URL`, `GDDY_TOKEN_URL`, `GDDY_DOMAINS_API_URL`, `GDDY_ACCOUNT_URL`) instead of environment-scoped (`<ENV>_OAUTH_AUTH_URL`, `<ENV>_OAUTH_TOKEN_URL`, `<ENV>_DOMAINS_API_URL`, `<ENV>_ACCOUNT_URL`); `api_url` is no longer env-var overridable at all. An environment defined only via `<PREFIX>_API_URL`, with no compiled-in or `environments.toml` entry, no longer resolves — every environment must now be a builtin (`ote`/`prod`) or a real `environments.toml` entry. A malformed (non-blank) override, from an env var or `environments.toml`, is now a hard error instead of silently falling back to the derived default (blank/ whitespace-only overrides still fall back, unchanged). An unknown or misconfigured `--env` is now a hard error everywhere, instead of silently falling back to prod's API URL.
+
+### Features
+
+* **api:** restore agent-safe describe/list/search output [DEVEX-702] ([#169](https://github.com/godaddy/cli/issues/169)) ([1f33ec6](https://github.com/godaddy/cli/commit/1f33ec604cd9837fcd1d8ab4f16f8d3d19204135))
+* **env:** migrate gddy onto cli-engine's declarative EnvConfig (DEVEX-947) ([#171](https://github.com/godaddy/cli/issues/171)) ([44f7368](https://github.com/godaddy/cli/commit/44f73684d92548c054b44c45dc8028c79215ff25))
+* **webhook:** Normalize webhook output and truncate larger results ([#165](https://github.com/godaddy/cli/issues/165)) ([af59d11](https://github.com/godaddy/cli/commit/af59d11afc04bed03c64ef2dbdf80678a115ca4e))
+
+
+### Bug Fixes
+
+* Mapped response to { eventType, description } per event, added 50-item truncation with temp file fallback, and returned { events, total, shown, truncated, full_output } matching the original TS behavior ([af59d11](https://github.com/godaddy/cli/commit/af59d11afc04bed03c64ef2dbdf80678a115ca4e))
+
+
+### Miscellaneous
+
+* **cicd:** Add audit step and regenerate lock file ([#158](https://github.com/godaddy/cli/issues/158)) ([4ed50e8](https://github.com/godaddy/cli/commit/4ed50e8ba0c747744bccbdb78ca0f903759345cf))
+
 ## [0.1.16](https://github.com/godaddy/cli/compare/v0.1.15...v0.1.16) (2026-07-30)
 
 
