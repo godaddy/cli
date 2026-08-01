@@ -1,6 +1,6 @@
 # gddy skill
 
-Teaches an AI coding agent how to drive `gddy`, GoDaddy's beta CLI for domain search, registration, and DNS management. It covers install/auth, the two-step quote-then-purchase flow for buying a domain, DNS record semantics (`add` vs `set` vs `delete`), and how to use the CLI's own self-documentation (`--help`, `--search`, `tree`, `guide`) to stay current as `gddy` evolves.
+Teaches an AI coding agent how to drive `gddy`, GoDaddy's beta CLI for domain search, registration, and DNS management. It covers install/auth, the two-step quote-then-purchase flow for buying a domain, DNS record semantics (`add` vs `set` vs `delete`), and how to use the CLI's own self-documentation (`--help`, `search`, `tree`, `guide`) to stay current as `gddy` evolves.
 
 See [SKILL.md](./SKILL.md) for the full instructions given to the agent.
 
