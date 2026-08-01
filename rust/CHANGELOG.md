@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/godaddy/cli/compare/v0.2.0...v0.2.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **cli:** drop experimental platform suggestion, fix stale --search doc ([#174](https://github.com/godaddy/cli/issues/174)) ([48047d1](https://github.com/godaddy/cli/commit/48047d11c398833da755d35e5d6e7fcb799fa908))
+
 ## [0.2.0](https://github.com/godaddy/cli/compare/v0.1.16...v0.2.0) (2026-08-01)
 
 
