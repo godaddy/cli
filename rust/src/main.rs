@@ -87,7 +87,6 @@ async fn main() -> ExitCode {
                 vec![
                     next_action("auth status", "Check authentication status"),
                     next_action("env get", "Get the current active environment"),
-                    next_action("platform app list", "List all platform apps"),
                     next_action("tree", "Display the full command tree"),
                 ]
             }))

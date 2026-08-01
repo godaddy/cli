@@ -31,7 +31,7 @@ Verify that installation works by running `gddy --version`.
 The `gddy` CLI is self-documenting. Use the following to get more information about its capabilities:
 
 - The `--help` flag will give you detailed documentation on any command.
-- `gddy --search <keywords>` will help you find a command.
+- `gddy search <keywords>` will help you find a command.
 - The `gddy tree` command will give you a full listing of all commands.
 - The `gddy guide` command lets you view detailed documentation that explains concepts and outlines complex workflows.
 
