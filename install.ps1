@@ -52,9 +52,15 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls1
 
 # ── 1. Detect platform ───────────────────────────────────────────────────────
 
-$arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
-switch ($arch) {
-    'x64'   { $platform = 'x86_64-pc-windows-msvc' }
+# Use the PROCESSOR_ARCHITECTURE env vars (not
+# [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture, which
+# requires .NET Framework 4.7.1+ and throws a property-not-found error on
+# older runtimes) so this works on any Windows PowerShell version.
+# PROCESSOR_ARCHITEW6432 is set instead of PROCESSOR_ARCHITECTURE when running
+# a 32-bit process under WOW64 on a 64-bit OS.
+$arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+switch ($arch.ToUpper()) {
+    'AMD64' { $platform = 'x86_64-pc-windows-msvc' }
     default {
         Die ("Unsupported architecture '$arch'. Only x86_64-pc-windows-msvc is published today. " +
              "Download the matching asset manually from https://github.com/$Repo/releases")
@@ -127,7 +133,10 @@ try {
     # ── 4. PATH ──────────────────────────────────────────────────────────────
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $onPath = ($userPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Prefix.TrimEnd('\') }).Count -gt 0
+    # Wrap in @(...): Windows PowerShell 5.1 (unlike pwsh 7+) doesn't add an
+    # auto Count property to a bare $null/single-string pipeline result, so
+    # this throws under Set-StrictMode when there are 0 or 1 matches.
+    $onPath = @($userPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Prefix.TrimEnd('\') }).Count -gt 0
     if (-not $onPath) {
         $newPath = if ([string]::IsNullOrEmpty($userPath)) { $Prefix } else { "$userPath;$Prefix" }
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
