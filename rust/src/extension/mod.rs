@@ -16,9 +16,63 @@ pub enum ExtensionType {
     Blocks,
 }
 
+/// Options for [`bundle_extension`].
+pub struct BundleOptions<'a> {
+    /// Extension handle — used as the artifact package name.
+    pub name: &'a str,
+    /// Optional semver; defaults to `"0.0.0"` in the artifact filename.
+    pub version: Option<&'a str>,
+    /// Repo root (for temp-dir naming and root `tsconfig.json` fallback).
+    pub repo_root: &'a Path,
+    /// UTC timestamp override (`yyyymmddHHMMss`); defaults to now.
+    pub timestamp: Option<&'a str>,
+}
+
+/// Result of a successful bundle. Artifacts remain on disk under [`Self::temp_dir`]
+/// until [`BundleCleanup`] removes them.
 pub struct BundleResult {
     pub bytes: Vec<u8>,
     pub sha256: String,
+    pub artifact_name: String,
+    pub artifact_path: PathBuf,
+    pub size: u64,
+    pub sourcemap_path: Option<PathBuf>,
+    /// Root temp directory created for this bundle; pass to cleanup.
+    pub temp_dir: PathBuf,
+}
+
+/// Best-effort RAII cleanup of a bundle temp directory.
+///
+/// Construct with [`Self::for_dir`] as soon as the temp dir exists (so early
+/// failures still clean up), then [`Self::disarm`] before returning a successful
+/// [`BundleResult`] so the caller can own cleanup via [`Self::new`].
+pub struct BundleCleanup {
+    temp_dir: Option<PathBuf>,
+}
+
+impl BundleCleanup {
+    pub fn new(bundle: &BundleResult) -> Self {
+        Self::for_dir(bundle.temp_dir.clone())
+    }
+
+    pub fn for_dir(temp_dir: PathBuf) -> Self {
+        Self {
+            temp_dir: Some(temp_dir),
+        }
+    }
+
+    /// Leave the directory in place (caller takes ownership of cleanup).
+    pub fn disarm(mut self) {
+        self.temp_dir = None;
+    }
+}
+
+impl Drop for BundleCleanup {
+    fn drop(&mut self) {
+        if let Some(dir) = self.temp_dir.take() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -433,33 +487,413 @@ fn find_esbuild() -> PathBuf {
     PathBuf::from("esbuild")
 }
 
+/// Prefer `extensionDir/tsconfig.json`, else `repoRoot/tsconfig.json`.
+fn resolve_tsconfig(extension_dir: &Path, repo_root: &Path) -> Option<PathBuf> {
+    let local = extension_dir.join("tsconfig.json");
+    if local.is_file() {
+        return Some(local);
+    }
+    let root = repo_root.join("tsconfig.json");
+    if root.is_file() {
+        return Some(root);
+    }
+    None
+}
+
+/// Lexically normalize `.` / `..` without requiring the path to exist on disk.
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(p) => out.push(p.as_os_str()),
+            Component::RootDir => out.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(c) => out.push(c),
+        }
+    }
+    out
+}
+
+pub(crate) fn repo_root_from_cwd() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn invalid_handle_path(handle: &str) -> String {
+    format!(
+        "Invalid extension handle path: {handle}. \
+         Extension directories must stay within ./extensions."
+    )
+}
+
+fn invalid_source_path(extension_name: &str, source: &str) -> String {
+    format!(
+        "Invalid extension source path for '{extension_name}': {source}. \
+         Source files must stay within the extension directory."
+    )
+}
+
+/// True when `candidate` is `base` or a descendant.
+///
+/// Comparison is ASCII case-insensitive so manifests that mix handle casing
+/// with a repo-relative `extensions/{handle}/…` source still resolve on
+/// case-insensitive volumes (default macOS / Windows).
+fn is_path_within(base: &Path, candidate: &Path) -> bool {
+    strip_prefix_ignore_ascii_case(candidate, base).is_some()
+}
+
+/// Like [`Path::strip_prefix`], but component matching ignores ASCII case.
+fn strip_prefix_ignore_ascii_case(path: &Path, prefix: &Path) -> Option<PathBuf> {
+    let path = normalize_path(path);
+    let prefix = normalize_path(prefix);
+    let path_comps: Vec<_> = path.components().collect();
+    let prefix_comps: Vec<_> = prefix.components().collect();
+    if path_comps.len() < prefix_comps.len() {
+        return None;
+    }
+    for (p, pre) in path_comps.iter().zip(prefix_comps.iter()) {
+        if !components_eq_ignore_ascii_case(p, pre) {
+            return None;
+        }
+    }
+    let mut out = PathBuf::new();
+    for component in &path_comps[prefix_comps.len()..] {
+        out.push(component.as_os_str());
+    }
+    Some(out)
+}
+
+fn components_eq_ignore_ascii_case(
+    a: &std::path::Component<'_>,
+    b: &std::path::Component<'_>,
+) -> bool {
+    use std::path::Component;
+    match (a, b) {
+        (Component::Normal(a), Component::Normal(b)) => a.eq_ignore_ascii_case(b),
+        _ => a == b,
+    }
+}
+
+/// Walk `candidate` under `root`, matching each path segment against an existing
+/// directory while ignoring ASCII case. Used so a handle like `Foo/Bar` still
+/// finds `extensions/foo/bar` on case-sensitive volumes.
+///
+/// Falls back to `candidate` when any segment is missing (lexical path kept for
+/// later "not found" errors).
+fn dir_casing_on_disk(root: &Path, candidate: &Path) -> PathBuf {
+    let Some(rel) = strip_prefix_ignore_ascii_case(candidate, root) else {
+        return candidate.to_path_buf();
+    };
+    if rel.as_os_str().is_empty() {
+        return root.to_path_buf();
+    }
+    if candidate.is_dir() {
+        return candidate.to_path_buf();
+    }
+
+    use std::path::Component;
+    let mut current = root.to_path_buf();
+    for component in rel.components() {
+        let Component::Normal(name) = component else {
+            current.push(component.as_os_str());
+            continue;
+        };
+        let exact = current.join(name);
+        if exact.is_dir() {
+            current = exact;
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            return candidate.to_path_buf();
+        };
+        let matched = entries.flatten().find_map(|entry| {
+            (entry.file_name().eq_ignore_ascii_case(name) && entry.path().is_dir())
+                .then(|| entry.path())
+        });
+        match matched {
+            Some(path) => current = path,
+            None => return candidate.to_path_buf(),
+        }
+    }
+    normalize_path(&current)
+}
+
+/// When `path` exists, follow symlinks and ensure the real path stays under
+/// `base`. Lexical containment alone is not enough — a symlink under the
+/// extension tree can point outside.
+fn enforce_sandbox_realpath(
+    base: &Path,
+    path: &Path,
+    outside_message: impl FnOnce() -> String,
+) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let canon_base = std::fs::canonicalize(base)
+        .map_err(|e| format!("failed to resolve path '{}': {e}", base.display()))?;
+    let canon_path = std::fs::canonicalize(path)
+        .map_err(|e| format!("failed to resolve path '{}': {e}", path.display()))?;
+    if !is_path_within(&canon_base, &canon_path) {
+        return Err(outside_message());
+    }
+    Ok(())
+}
+
+/// Resolve and sandbox extension paths:
+/// - `extensionDir` = `repoRoot/extensions/{handle}` (must stay under `extensions/`)
+/// - `sourcePath` must stay under that directory
+///
+/// Also accepts a repo-relative `source` that already points inside the extension
+/// dir (older Rust manifests that stored `extensions/{handle}/src/...`).
+///
+/// When paths exist on disk, containment is re-checked after canonicalization so
+/// symlinks cannot escape the sandbox.
+pub(crate) fn resolve_extension_paths(
+    repo_root: &Path,
+    handle: &str,
+    source: &str,
+    extension_name: &str,
+) -> Result<(PathBuf, PathBuf), String> {
+    let repo_root = if repo_root.is_absolute() {
+        normalize_path(repo_root)
+    } else {
+        normalize_path(&repo_root_from_cwd().join(repo_root))
+    };
+    let extensions_root = normalize_path(&repo_root.join("extensions"));
+    let extension_dir = normalize_path(&extensions_root.join(handle));
+    if !is_path_within(&extensions_root, &extension_dir) {
+        return Err(invalid_handle_path(handle));
+    }
+    let extension_dir = dir_casing_on_disk(&extensions_root, &extension_dir);
+
+    let source_path = {
+        let source_path = Path::new(source);
+        if source_path.is_absolute() {
+            normalize_path(source_path)
+        } else {
+            let from_repo = normalize_path(&repo_root.join(source));
+            match strip_prefix_ignore_ascii_case(&from_repo, &extension_dir) {
+                Some(rel) => normalize_path(&extension_dir.join(rel)),
+                None => normalize_path(&extension_dir.join(source)),
+            }
+        }
+    };
+    if !is_path_within(&extension_dir, &source_path) {
+        return Err(invalid_source_path(extension_name, source));
+    }
+
+    enforce_sandbox_realpath(&extensions_root, &extension_dir, || {
+        invalid_handle_path(handle)
+    })?;
+    enforce_sandbox_realpath(&extension_dir, &source_path, || {
+        invalid_source_path(extension_name, source)
+    })?;
+
+    Ok((extension_dir, source_path))
+}
+
+/// Ensure the resolved source path exists as a file.
+pub(crate) fn require_extension_source_file(
+    handle: &str,
+    extension_name: &str,
+    source_path: &Path,
+) -> Result<(), String> {
+    if source_path.is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "Extension source file not found for '{extension_name}': {}. \
+         Expected a file under extensions/{handle}/ (e.g. src/index.ts).",
+        source_path.display()
+    ))
+}
+
+/// Validate handle/source against the deploy sandbox and return the source path
+/// relative to `extensions/{handle}/` for writing into `godaddy.toml`.
+///
+/// Accepts either a handle-relative path (`src/index.ts`) or a repo-relative path
+/// already under the extension dir (`extensions/{handle}/src/index.ts`). Requires
+/// the resolved file to exist so `platform app add` fails before deploy.
+pub(crate) fn normalize_extension_source_for_config(
+    repo_root: &Path,
+    handle: &str,
+    source: &str,
+    extension_name: &str,
+) -> Result<String, String> {
+    let (extension_dir, source_path) =
+        resolve_extension_paths(repo_root, handle, source, extension_name)?;
+    require_extension_source_file(handle, extension_name, &source_path)?;
+    let relative = strip_prefix_ignore_ascii_case(&source_path, &extension_dir)
+        .ok_or_else(|| invalid_source_path(extension_name, source))?;
+    Ok(relative.to_string_lossy().replace('\\', "/"))
+}
+
+/// Absolute path suitable for embedding in the UI runtime wrapper import.
+/// Relative sources must not be resolved against the temp wrapper location.
+async fn absolute_entry_path(source_path: &Path) -> PathBuf {
+    if source_path.is_absolute() {
+        return tokio::fs::canonicalize(source_path)
+            .await
+            .unwrap_or_else(|_| source_path.to_path_buf());
+    }
+    let joined = repo_root_from_cwd().join(source_path);
+    tokio::fs::canonicalize(&joined).await.unwrap_or(joined)
+}
+
+/// True for embed/checkout — they need the UI runtime registration wrapper.
+fn should_use_ui_extension_runtime_wrapper(ext_type: ExtensionType) -> bool {
+    matches!(ext_type, ExtensionType::Embed | ExtensionType::Checkout)
+}
+
+/// Synthetic entry that imports the user module and registers it with
+/// `globalThis.GoDaddyUiExtensions`.
+///
+/// `entry_path` must be absolute so esbuild resolves it from the temp wrapper
+/// file location.
+fn create_ui_extension_runtime_wrapper(entry_path: &Path) -> String {
+    let entry = entry_path.to_string_lossy();
+    format!(
+        r#"import * as userModule from {entry:?};
+
+function resolveContract() {{
+  if (typeof userModule.mount === "function") {{
+    return userModule;
+  }}
+
+  const defaultExport = userModule.default;
+  const candidate = typeof defaultExport === "function"
+    ? defaultExport()
+    : defaultExport;
+
+  if (!candidate || typeof candidate.mount !== "function") {{
+    throw new Error("UI extension must export mount or a default contract/factory.");
+  }}
+
+  return candidate;
+}}
+
+const contract = resolveContract();
+const registry = globalThis.GoDaddyUiExtensions;
+
+if (!registry || typeof registry.register !== "function") {{
+  throw new Error("UI extension runtime registry is not available.");
+}}
+
+registry.register(contract);
+"#
+    )
+}
+
+/// Sanitize an extension handle/name for use in filenames.
+fn sanitize_extension_name(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '@' | '!' => '-',
+            c if c.is_whitespace() => '-',
+            c => c,
+        })
+        .collect();
+    let cleaned = sanitized
+        .to_ascii_lowercase()
+        .trim_matches(|c: char| c == '-' || c.is_whitespace())
+        .chars()
+        .take(100)
+        .collect::<String>();
+    if cleaned.is_empty() {
+        "extension".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+/// UTC timestamp `yyyymmddHHMMss`.
+pub(crate) fn format_timestamp(now: chrono::DateTime<chrono::Utc>) -> String {
+    now.format("%Y%m%d%H%M%S").to_string()
+}
+
+fn short_hash(full_hash: &str) -> &str {
+    full_hash.get(..6).unwrap_or(full_hash)
+}
+
+/// `{sanitized}-{version}-{timestamp}-{hash}.mjs`
+fn build_artifact_name(name: &str, version: Option<&str>, timestamp: &str, hash: &str) -> String {
+    format!(
+        "{}-{}-{}-{}.mjs",
+        sanitize_extension_name(name),
+        version.unwrap_or("0.0.0"),
+        timestamp,
+        hash
+    )
+}
+
+fn create_temp_directory(repo_root: &Path, timestamp: &str) -> PathBuf {
+    let repo_name = repo_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("repo");
+    // Include PID so two deploys in the same second don't share a temp tree.
+    let pid = std::process::id();
+    std::env::temp_dir()
+        .join("gd-cli")
+        .join(repo_name)
+        .join(format!("deploy-{timestamp}-{pid}"))
+}
+
 pub async fn bundle_extension(
     source_path: &Path,
     ext_type: ExtensionType,
     ext_dir: &Path,
+    options: BundleOptions<'_>,
 ) -> Result<BundleResult, String> {
     let esbuild = find_esbuild();
+    let timestamp = options
+        .timestamp
+        .map(str::to_owned)
+        .unwrap_or_else(|| format_timestamp(chrono::Utc::now()));
 
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let temp_dir = std::env::temp_dir().join(format!("godaddy-bundle-{millis}"));
-    tokio::fs::create_dir_all(&temp_dir)
+    let temp_root = create_temp_directory(options.repo_root, &timestamp);
+    let extension_temp_dir = temp_root.join(sanitize_extension_name(options.name));
+    tokio::fs::create_dir_all(&extension_temp_dir)
         .await
         .map_err(|e| format!("failed to create temp dir: {e}"))?;
+    // Clean the temp tree on any early return; disarmed only on success.
+    let cleanup = BundleCleanup::for_dir(temp_root.clone());
+
+    let mut build_entry = source_path.to_owned();
+    if should_use_ui_extension_runtime_wrapper(ext_type) {
+        let abs_source = absolute_entry_path(source_path).await;
+        let wrapper_path = extension_temp_dir.join("ui-extension-runtime-entry.ts");
+        let wrapper = create_ui_extension_runtime_wrapper(&abs_source);
+        tokio::fs::write(&wrapper_path, wrapper)
+            .await
+            .map_err(|e| format!("failed to write UI runtime wrapper: {e}"))?;
+        build_entry = wrapper_path;
+    }
+
+    let out_dir = extension_temp_dir.join("out");
+    tokio::fs::create_dir_all(&out_dir)
+        .await
+        .map_err(|e| format!("failed to create out dir: {e}"))?;
 
     let mut args: Vec<String> = vec![
-        source_path.to_string_lossy().into_owned(),
+        build_entry.to_string_lossy().into_owned(),
         "--bundle".to_owned(),
         "--minify".to_owned(),
         "--sourcemap=external".to_owned(),
-        format!("--outdir={}", temp_dir.display()),
+        format!("--outdir={}", out_dir.display()),
         "--out-extension:.js=.mjs".to_owned(),
         "--log-level=silent".to_owned(),
         "--external:node:*".to_owned(),
         "--external:@wsblocks/*".to_owned(),
     ];
+
+    if let Some(tsconfig) = resolve_tsconfig(ext_dir, options.repo_root) {
+        args.push(format!("--tsconfig={}", tsconfig.display()));
+    }
 
     match ext_type {
         ExtensionType::Blocks => {
@@ -494,37 +928,90 @@ pub async fn bundle_extension(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        tokio::fs::remove_dir_all(&temp_dir).await.ok();
         return Err(format!("esbuild failed: {stderr}"));
     }
 
-    let mjs_path = find_output_mjs(&temp_dir).await?;
+    let mjs_path = find_output_mjs(&out_dir).await?;
+    let map_path = {
+        let candidate = PathBuf::from(format!("{}.map", mjs_path.display()));
+        candidate.is_file().then_some(candidate)
+    };
+
     let raw_bytes = tokio::fs::read(&mjs_path)
         .await
         .map_err(|e| format!("failed to read bundle output: {e}"))?;
 
-    // Strip sourcemap comment before hashing (matches TS behavior).
+    // Strip sourcemap comment before hashing; size/bytes include the
+    // re-appended `sourceMappingURL` footer (matches TS behavior).
     let content = String::from_utf8_lossy(&raw_bytes);
     let stripped = strip_sourcemap_comment(&content);
     let sha256 = sha256_hex(stripped.as_bytes());
-    let bytes = stripped.into_bytes();
+    let hash = short_hash(&sha256).to_owned();
+    let artifact_name = build_artifact_name(options.name, options.version, &timestamp, &hash);
 
-    tokio::fs::remove_dir_all(&temp_dir).await.ok();
+    let mut bundle_content = stripped;
+    let mut sourcemap_path = None;
+    if let Some(map_src) = map_path {
+        let map_name = format!("{artifact_name}.map");
+        bundle_content.push_str(&format!("\n//# sourceMappingURL={map_name}\n"));
+        let map_dest = extension_temp_dir.join(&map_name);
+        tokio::fs::copy(&map_src, &map_dest)
+            .await
+            .map_err(|e| format!("failed to write sourcemap: {e}"))?;
+        sourcemap_path = Some(map_dest);
+    }
 
-    Ok(BundleResult { bytes, sha256 })
+    let artifact_path = extension_temp_dir.join(&artifact_name);
+    tokio::fs::write(&artifact_path, bundle_content.as_bytes())
+        .await
+        .map_err(|e| format!("failed to write artifact: {e}"))?;
+
+    let size = bundle_content.len() as u64;
+    cleanup.disarm();
+    Ok(BundleResult {
+        bytes: bundle_content.into_bytes(),
+        sha256,
+        artifact_name,
+        artifact_path,
+        size,
+        sourcemap_path,
+        temp_dir: temp_root,
+    })
 }
 
+/// Find the single `.mjs` output under `dir`. Fails if zero or multiple are present
+/// (code-splitting / multi-chunk outputs are not supported).
 async fn find_output_mjs(dir: &Path) -> Result<PathBuf, String> {
     let mut read_dir = tokio::fs::read_dir(dir)
         .await
         .map_err(|e| format!("failed to read temp dir: {e}"))?;
-    while let Ok(Some(entry)) = read_dir.next_entry().await {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
-            return Ok(path);
+    let mut found = Vec::new();
+    loop {
+        match read_dir.next_entry().await {
+            Ok(Some(entry)) => {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
+                    found.push(path);
+                }
+            }
+            Ok(None) => break,
+            Err(e) => return Err(format!("failed to read temp dir entry: {e}")),
         }
     }
-    Err("esbuild produced no .mjs output file".to_owned())
+    match found.as_slice() {
+        [only] => Ok(only.clone()),
+        [] => Err("esbuild produced no .mjs output file".to_owned()),
+        many => {
+            let list = many
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(format!(
+                "esbuild produced multiple .mjs outputs (code splitting not supported): {list}"
+            ))
+        }
+    }
 }
 
 fn strip_sourcemap_comment(content: &str) -> String {
@@ -676,6 +1163,445 @@ mod tests {
         assert_eq!(
             hex,
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Artifact naming / tsconfig / UI wrapper
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sanitize_extension_name_scoped_and_special_chars() {
+        assert_eq!(
+            sanitize_extension_name("@scoped/extension"),
+            "scoped-extension"
+        );
+        assert_eq!(sanitize_extension_name("My Extension!"), "my-extension");
+        assert_eq!(sanitize_extension_name("@@@"), "extension");
+    }
+
+    #[test]
+    fn build_artifact_name_uses_handle_version_timestamp_hash() {
+        let name = build_artifact_name(
+            "@scoped/extension",
+            Some("1.0.0"),
+            "20250128143022",
+            "a3b2c1",
+        );
+        assert_eq!(name, "scoped-extension-1.0.0-20250128143022-a3b2c1.mjs");
+    }
+
+    #[test]
+    fn build_artifact_name_defaults_missing_version() {
+        let name = build_artifact_name("widget", None, "20250128143022", "abcdef");
+        assert_eq!(name, "widget-0.0.0-20250128143022-abcdef.mjs");
+    }
+
+    #[test]
+    fn format_timestamp_is_utc_compact() {
+        use chrono::TimeZone;
+        let ts = chrono::Utc
+            .with_ymd_and_hms(2025, 1, 28, 14, 30, 22)
+            .single()
+            .expect("valid utc");
+        assert_eq!(format_timestamp(ts), "20250128143022");
+    }
+
+    #[test]
+    fn resolve_tsconfig_prefers_extension_local_over_repo_root() {
+        let root = tempfile::tempdir().expect("temp root");
+        let ext = root.path().join("ext");
+        std::fs::create_dir_all(&ext).expect("ext dir");
+        std::fs::write(root.path().join("tsconfig.json"), "{}").expect("root tsconfig");
+        std::fs::write(ext.join("tsconfig.json"), "{}").expect("local tsconfig");
+        let resolved = resolve_tsconfig(&ext, root.path()).expect("local");
+        assert_eq!(resolved, ext.join("tsconfig.json"));
+    }
+
+    #[test]
+    fn resolve_tsconfig_falls_back_to_repo_root() {
+        let root = tempfile::tempdir().expect("temp root");
+        let ext = root.path().join("ext");
+        std::fs::create_dir_all(&ext).expect("ext dir");
+        std::fs::write(root.path().join("tsconfig.json"), "{}").expect("root tsconfig");
+        let resolved = resolve_tsconfig(&ext, root.path()).expect("root");
+        assert_eq!(resolved, root.path().join("tsconfig.json"));
+    }
+
+    #[test]
+    fn is_path_within_accepts_descendants_and_rejects_siblings() {
+        let base = Path::new("/repo/extensions");
+        assert!(is_path_within(base, Path::new("/repo/extensions")));
+        assert!(is_path_within(base, Path::new("/repo/extensions/widget")));
+        assert!(is_path_within(
+            base,
+            Path::new("/repo/extensions/widget/src/index.ts")
+        ));
+        assert!(!is_path_within(base, Path::new("/repo/other")));
+        assert!(!is_path_within(
+            base,
+            Path::new("/repo/extensions-extra/widget")
+        ));
+    }
+
+    #[test]
+    fn resolve_extension_paths_accepts_handle_relative_source() {
+        let root = tempfile::tempdir().expect("temp root");
+        let (ext_dir, source) =
+            resolve_extension_paths(root.path(), "widget", "src/index.ts", "Widget").expect("ok");
+        assert_eq!(
+            ext_dir,
+            normalize_path(&root.path().join("extensions/widget"))
+        );
+        assert_eq!(
+            source,
+            normalize_path(&root.path().join("extensions/widget/src/index.ts"))
+        );
+    }
+
+    #[test]
+    fn resolve_extension_paths_accepts_repo_relative_source_already_under_handle() {
+        let root = tempfile::tempdir().expect("temp root");
+        let (ext_dir, source) = resolve_extension_paths(
+            root.path(),
+            "widget",
+            "extensions/widget/src/index.ts",
+            "Widget",
+        )
+        .expect("ok");
+        assert_eq!(
+            ext_dir,
+            normalize_path(&root.path().join("extensions/widget"))
+        );
+        assert_eq!(
+            source,
+            normalize_path(&root.path().join("extensions/widget/src/index.ts"))
+        );
+    }
+
+    #[test]
+    fn resolve_extension_paths_accepts_repo_relative_source_with_handle_case_mismatch() {
+        let root = tempfile::tempdir().expect("temp root");
+        let (ext_dir, source) = resolve_extension_paths(
+            root.path(),
+            "Widget",
+            "extensions/widget/src/index.ts",
+            "Widget",
+        )
+        .expect("ok");
+        // Prefer the handle's casing for the extension dir / source prefix.
+        assert_eq!(
+            ext_dir,
+            normalize_path(&root.path().join("extensions/Widget"))
+        );
+        assert_eq!(
+            source,
+            normalize_path(&root.path().join("extensions/Widget/src/index.ts"))
+        );
+    }
+
+    #[test]
+    fn resolve_extension_paths_keeps_the_casing_that_exists_on_disk() {
+        let root = tempfile::tempdir().expect("temp root");
+        let entry = root.path().join("extensions/widget/src/index.ts");
+        std::fs::create_dir_all(entry.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&entry, "export {}").expect("write");
+
+        let (ext_dir, source) = resolve_extension_paths(
+            root.path(),
+            "Widget",
+            "extensions/widget/src/index.ts",
+            "Widget",
+        )
+        .expect("ok");
+        assert!(ext_dir.is_dir(), "should use the directory on disk");
+        assert!(source.is_file(), "should resolve to the file on disk");
+
+        let relative =
+            normalize_extension_source_for_config(root.path(), "Widget", "src/index.ts", "Widget")
+                .expect("normalize");
+        assert_eq!(relative, "src/index.ts");
+    }
+
+    #[test]
+    fn is_path_within_ignores_ascii_case() {
+        assert!(is_path_within(
+            Path::new("/repo/extensions/Widget"),
+            Path::new("/repo/extensions/widget/src/index.ts")
+        ));
+        assert!(!is_path_within(
+            Path::new("/repo/extensions/Widget"),
+            Path::new("/repo/extensions/other/src/index.ts")
+        ));
+    }
+
+    #[test]
+    fn resolve_extension_paths_rejects_handle_escaping_extensions() {
+        let root = tempfile::tempdir().expect("temp root");
+        let err = resolve_extension_paths(root.path(), "../evil", "src/index.ts", "Evil")
+            .expect_err("escape handle");
+        assert!(
+            err.contains("Invalid extension handle path"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_extension_paths_rejects_source_escaping_extension_dir() {
+        let root = tempfile::tempdir().expect("temp root");
+        let err = resolve_extension_paths(root.path(), "widget", "../../secret.ts", "Widget")
+            .expect_err("escape source");
+        assert!(
+            err.contains("Invalid extension source path for 'Widget'"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn dir_casing_on_disk_walks_nested_handle_segments() {
+        let root = tempfile::tempdir().expect("temp root");
+        let nested = root.path().join("extensions/foo/bar");
+        std::fs::create_dir_all(&nested).expect("mkdir");
+        // Sibling that must NOT be chosen when resolving nested handle foo/Bar.
+        std::fs::create_dir_all(root.path().join("extensions/bar")).expect("mkdir sibling");
+
+        let extensions_root = normalize_path(&root.path().join("extensions"));
+        let candidate = normalize_path(&extensions_root.join("Foo/Bar"));
+        let resolved = dir_casing_on_disk(&extensions_root, &candidate);
+        let resolved_canon = std::fs::canonicalize(&resolved).expect("resolved exists");
+        let nested_canon = std::fs::canonicalize(&nested).expect("nested exists");
+        assert_eq!(resolved_canon, nested_canon);
+        assert_ne!(
+            resolved_canon,
+            std::fs::canonicalize(root.path().join("extensions/bar")).expect("sibling"),
+            "must not pick the top-level extensions/bar sibling"
+        );
+    }
+
+    #[test]
+    fn resolve_extension_paths_nested_handle_does_not_pick_sibling() {
+        let root = tempfile::tempdir().expect("temp root");
+        let entry = root.path().join("extensions/foo/bar/src/index.ts");
+        std::fs::create_dir_all(entry.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&entry, "export {}").expect("write");
+        std::fs::create_dir_all(root.path().join("extensions/bar")).expect("mkdir sibling");
+
+        let (ext_dir, source) =
+            resolve_extension_paths(root.path(), "Foo/Bar", "src/index.ts", "Nested").expect("ok");
+        assert!(source.is_file());
+        assert_eq!(
+            std::fs::canonicalize(&ext_dir).expect("ext dir"),
+            std::fs::canonicalize(root.path().join("extensions/foo/bar")).expect("nested"),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_extension_paths_rejects_source_symlink_escaping_extension_dir() {
+        let root = tempfile::tempdir().expect("temp root");
+        let ext_src = root.path().join("extensions/widget/src");
+        std::fs::create_dir_all(&ext_src).expect("mkdir");
+        let secret = root.path().join("secret.env");
+        std::fs::write(&secret, "password").expect("write secret");
+        std::os::unix::fs::symlink(&secret, ext_src.join("index.ts")).expect("symlink");
+
+        let err = resolve_extension_paths(root.path(), "widget", "src/index.ts", "Widget")
+            .expect_err("symlink escape");
+        assert!(
+            err.contains("Invalid extension source path for 'Widget'"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_extension_paths_rejects_extension_dir_symlink_escaping_extensions() {
+        let root = tempfile::tempdir().expect("temp root");
+        std::fs::create_dir_all(root.path().join("extensions")).expect("mkdir");
+        let outside = root.path().join("outside");
+        std::fs::create_dir_all(&outside).expect("mkdir outside");
+        std::os::unix::fs::symlink(&outside, root.path().join("extensions/widget"))
+            .expect("symlink");
+
+        let err = resolve_extension_paths(root.path(), "widget", "src/index.ts", "Widget")
+            .expect_err("dir symlink escape");
+        assert!(
+            err.contains("Invalid extension handle path"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn normalize_extension_source_strips_to_handle_relative() {
+        let root = tempfile::tempdir().expect("temp root");
+        let entry = root.path().join("extensions/widget/src/index.ts");
+        std::fs::create_dir_all(entry.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&entry, "export {}").expect("write");
+
+        let from_handle_rel =
+            normalize_extension_source_for_config(root.path(), "widget", "src/index.ts", "Widget")
+                .expect("ok");
+        assert_eq!(from_handle_rel, "src/index.ts");
+
+        let from_repo_rel = normalize_extension_source_for_config(
+            root.path(),
+            "widget",
+            "extensions/widget/src/index.ts",
+            "Widget",
+        )
+        .expect("ok");
+        assert_eq!(from_repo_rel, "src/index.ts");
+    }
+
+    #[test]
+    fn normalize_extension_source_requires_existing_file() {
+        let root = tempfile::tempdir().expect("temp root");
+        let err = normalize_extension_source_for_config(
+            root.path(),
+            "widget",
+            "src/missing.ts",
+            "Widget",
+        )
+        .expect_err("missing file");
+        assert!(
+            err.contains("Extension source file not found for 'Widget'"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn create_temp_directory_includes_pid() {
+        let root = Path::new("/tmp/my-app");
+        let dir = create_temp_directory(root, "20250731120000");
+        let name = dir.file_name().and_then(|s| s.to_str()).expect("dir name");
+        assert!(
+            name.starts_with("deploy-20250731120000-"),
+            "unexpected: {name}"
+        );
+        assert!(
+            name.ends_with(&format!("-{}", std::process::id())),
+            "unexpected: {name}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ui_wrapper_embeds_absolute_entry_path() {
+        let root = tempfile::tempdir().expect("temp");
+        let entry = root.path().join("src").join("index.ts");
+        std::fs::create_dir_all(entry.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&entry, "export function mount() {}").expect("write");
+        let abs = absolute_entry_path(&entry).await;
+        assert!(abs.is_absolute(), "{abs:?}");
+        let wrapper = create_ui_extension_runtime_wrapper(&abs);
+        assert!(
+            wrapper.contains(&abs.to_string_lossy().replace('\\', "\\\\"))
+                || wrapper.contains(abs.to_string_lossy().as_ref()),
+            "wrapper should import absolute path: {wrapper}"
+        );
+    }
+
+    #[test]
+    fn ui_runtime_wrapper_only_for_embed_and_checkout() {
+        assert!(should_use_ui_extension_runtime_wrapper(
+            ExtensionType::Embed
+        ));
+        assert!(should_use_ui_extension_runtime_wrapper(
+            ExtensionType::Checkout
+        ));
+        assert!(!should_use_ui_extension_runtime_wrapper(
+            ExtensionType::Blocks
+        ));
+    }
+
+    #[test]
+    fn ui_runtime_wrapper_registers_contract() {
+        let wrapper =
+            create_ui_extension_runtime_wrapper(Path::new("/path/to/extension/src/index.ts"));
+        assert!(wrapper.contains("import * as userModule from"));
+        assert!(wrapper.contains("registry.register(contract)"));
+        assert!(wrapper.contains("GoDaddyUiExtensions"));
+        assert!(wrapper.contains(r#"typeof candidate.mount !== "function""#));
+    }
+
+    #[tokio::test]
+    async fn find_output_mjs_rejects_multiple_chunks() {
+        let dir = tempfile::tempdir().expect("temp");
+        std::fs::write(dir.path().join("a.mjs"), "a").expect("a");
+        std::fs::write(dir.path().join("b.mjs"), "b").expect("b");
+        let err = find_output_mjs(dir.path())
+            .await
+            .expect_err("multiple .mjs");
+        assert!(err.contains("multiple .mjs"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn find_output_mjs_returns_the_single_file() {
+        let dir = tempfile::tempdir().expect("temp");
+        let path = dir.path().join("bundle.mjs");
+        std::fs::write(&path, "export {}").expect("write");
+        let found = find_output_mjs(dir.path()).await.expect("one .mjs");
+        assert_eq!(found, path);
+    }
+
+    /// Integration check against a minimal TS fixture when esbuild is on PATH
+    /// (or under a nearby node_modules/.bin). Skipped otherwise so CI without
+    /// Node still passes unit tests.
+    #[tokio::test]
+    async fn bundle_simple_blocks_fixture_when_esbuild_available() {
+        let esbuild = find_esbuild();
+        if tokio::process::Command::new(&esbuild)
+            .arg("--version")
+            .output()
+            .await
+            .map(|o| !o.status.success())
+            .unwrap_or(true)
+        {
+            // esbuild not installed — unit coverage above still runs.
+            return;
+        }
+
+        let root = tempfile::tempdir().expect("temp root");
+        let src_dir = root.path().join("src");
+        std::fs::create_dir_all(&src_dir).expect("src");
+        let entry = src_dir.join("index.ts");
+        std::fs::write(
+            &entry,
+            r#"export const name = "simple-extension";
+export function handler() { return { success: true }; }
+"#,
+        )
+        .expect("entry");
+
+        let bundle = bundle_extension(
+            &entry,
+            ExtensionType::Blocks,
+            root.path(),
+            BundleOptions {
+                name: "simple-extension",
+                version: Some("1.0.0"),
+                repo_root: root.path(),
+                timestamp: Some("20250128143022"),
+            },
+        )
+        .await
+        .expect("bundle");
+        let _cleanup = BundleCleanup::new(&bundle);
+
+        assert!(
+            bundle
+                .artifact_name
+                .starts_with("simple-extension-1.0.0-20250128143022-"),
+            "artifact name: {}",
+            bundle.artifact_name
+        );
+        assert!(bundle.artifact_name.ends_with(".mjs"));
+        assert!(bundle.artifact_path.is_file());
+        assert!(bundle.size > 0);
+        assert_eq!(bundle.sha256.len(), 64);
+        let content = String::from_utf8_lossy(&bundle.bytes);
+        assert!(
+            content.contains("simple-extension") || content.contains("success"),
+            "bundle should retain exported strings: {content}"
         );
     }
 
