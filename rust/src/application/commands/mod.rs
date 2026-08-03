@@ -1190,6 +1190,8 @@ fn deploy_command() -> RuntimeCommandSpec {
             // Process each extension
             let extensions = collect_extensions(&config);
             let total = extensions.len();
+            // One timestamp for the whole deploy so all artifacts share a temp root.
+            let deploy_timestamp = crate::extension::format_timestamp(chrono::Utc::now());
             sender
                 .send(json!({ "type": "step", "name": "extensions", "status": "started", "total": total }))
                 .await;
@@ -1200,11 +1202,14 @@ fn deploy_command() -> RuntimeCommandSpec {
                     deploy_extension(
                         &client,
                         &sender,
-                        &application_id,
-                        &release_id,
-                        ext,
-                        i + 1,
-                        total,
+                        DeployExtensionArgs {
+                            application_id: &application_id,
+                            release_id: &release_id,
+                            ext,
+                            index: i + 1,
+                            total,
+                            deploy_timestamp: &deploy_timestamp,
+                        },
                     )
                     .await,
                 )
@@ -1272,11 +1277,11 @@ async fn finalize_deploy_activation(
     Ok(())
 }
 
-/// Collect extension source files from config, returning (name, source_path, ext_type) triples.
-/// One deployable extension: its name, source entry-point, type, and the
-/// configured target surfaces (empty for blocks / untargeted extensions).
+/// One extension entry from godaddy.toml ready for deploy: name, handle,
+/// source, type, and target surfaces (empty for blocks / untargeted).
 struct ExtensionDeploy {
     name: String,
+    handle: String,
     source: String,
     ext_type: crate::extension::ExtensionType,
     targets: Vec<String>,
@@ -1288,6 +1293,7 @@ fn collect_extensions(config: &crate::config::Config) -> Vec<ExtensionDeploy> {
         for e in &exts.embed {
             result.push(ExtensionDeploy {
                 name: e.name.clone(),
+                handle: e.handle.clone(),
                 source: e.source.clone(),
                 ext_type: crate::extension::ExtensionType::Embed,
                 targets: e.targets.iter().map(|t| t.target.clone()).collect(),
@@ -1296,6 +1302,7 @@ fn collect_extensions(config: &crate::config::Config) -> Vec<ExtensionDeploy> {
         for e in &exts.checkout {
             result.push(ExtensionDeploy {
                 name: e.name.clone(),
+                handle: e.handle.clone(),
                 source: e.source.clone(),
                 ext_type: crate::extension::ExtensionType::Checkout,
                 targets: e.targets.iter().map(|t| t.target.clone()).collect(),
@@ -1303,7 +1310,8 @@ fn collect_extensions(config: &crate::config::Config) -> Vec<ExtensionDeploy> {
         }
         if let Some(blocks) = &exts.blocks {
             result.push(ExtensionDeploy {
-                name: "blocks".to_owned(),
+                name: "Blocks".to_owned(),
+                handle: "blocks".to_owned(),
                 source: blocks.source.clone(),
                 ext_type: crate::extension::ExtensionType::Blocks,
                 targets: Vec::new(),
@@ -1359,17 +1367,50 @@ fn parse_targets(raw: &str) -> Vec<crate::config::ExtensionTarget> {
         .collect()
 }
 
+/// Sandbox + normalize `--source` the same way deploy resolves it, so
+/// `godaddy.toml` always stores a path relative to `extensions/{handle}/`.
+fn normalized_extension_source(
+    handle: &str,
+    source: &str,
+    extension_name: &str,
+) -> cli_engine::Result<String> {
+    let repo_root = crate::extension::repo_root_from_cwd();
+    crate::extension::normalize_extension_source_for_config(
+        &repo_root,
+        handle,
+        source,
+        extension_name,
+    )
+    .map_err(validation_err)
+}
+
+fn validation_err(message: impl Into<String>) -> cli_engine::CliCoreError {
+    crate::error::GddyError::validation(message).into_cli_error()
+}
+
+struct DeployExtensionArgs<'a> {
+    application_id: &'a str,
+    release_id: &'a str,
+    ext: &'a ExtensionDeploy,
+    index: usize,
+    total: usize,
+    deploy_timestamp: &'a str,
+}
+
 async fn deploy_extension(
     client: &ApplicationClient,
     sender: &StreamSender,
-    application_id: &str,
-    release_id: &str,
-    ext: &ExtensionDeploy,
-    index: usize,
-    total: usize,
+    args: DeployExtensionArgs<'_>,
 ) -> cli_engine::Result<()> {
+    let DeployExtensionArgs {
+        application_id,
+        release_id,
+        ext,
+        index,
+        total,
+        deploy_timestamp,
+    } = args;
     let ext_name = &ext.name;
-    let source_path = &ext.source;
     let ext_type = ext.ext_type;
 
     // ---- Bundle ----
@@ -1383,13 +1424,27 @@ async fn deploy_extension(
         }))
         .await;
 
-    let source = std::path::Path::new(source_path);
-    let ext_dir = source.parent().unwrap_or(std::path::Path::new("."));
-    let bundle = crate::extension::bundle_extension(source, ext_type, ext_dir)
-        .await
-        .map_err(|e| {
-            cli_engine::CliCoreError::message(format!("bundle failed for '{ext_name}': {e}"))
-        })?;
+    let repo_root = crate::extension::repo_root_from_cwd();
+    let (ext_dir, source) =
+        crate::extension::resolve_extension_paths(&repo_root, &ext.handle, &ext.source, ext_name)
+            .map_err(validation_err)?;
+    crate::extension::require_extension_source_file(ext.handle.as_str(), ext_name, &source)
+        .map_err(validation_err)?;
+    let bundle = crate::extension::bundle_extension(
+        &source,
+        ext_type,
+        &ext_dir,
+        crate::extension::BundleOptions {
+            name: &ext.handle,
+            version: None,
+            repo_root: &repo_root,
+            timestamp: Some(deploy_timestamp),
+        },
+    )
+    .await
+    .map_err(|e| validation_err(format!("bundle failed for '{ext_name}': {e}")))?;
+    // Always clean temp artifacts when this function returns (success or error).
+    let _bundle_cleanup = crate::extension::BundleCleanup::new(&bundle);
 
     sender
         .send(json!({
@@ -1397,7 +1452,11 @@ async fn deploy_extension(
             "name": "extension.bundle",
             "status": "completed",
             "extensionName": ext_name,
+            "artifactName": bundle.artifact_name,
+            "artifactPath": bundle.artifact_path.display().to_string(),
+            "size": bundle.size,
             "sha256": bundle.sha256,
+            "sourcemapPath": bundle.sourcemap_path.as_ref().map(|p| p.display().to_string()),
         }))
         .await;
 
@@ -1408,11 +1467,13 @@ async fn deploy_extension(
             "name": "extension.scan",
             "status": "started",
             "extensionName": ext_name,
+            "artifactName": bundle.artifact_name,
         }))
         .await;
 
+    let source_display = ext.source.as_str();
     let content = String::from_utf8_lossy(&bundle.bytes);
-    let findings = crate::extension::scan_bundle(&content, source_path);
+    let findings = crate::extension::scan_bundle(&content, source_display);
 
     if crate::extension::is_blocked(&findings) {
         let blocked_msgs: Vec<String> = findings
@@ -1433,7 +1494,7 @@ async fn deploy_extension(
             "security scan blocked deployment of '{ext_name}':\n{}",
             blocked_msgs.join("\n")
         ))
-        .into());
+        .into_cli_error());
     }
 
     sender
@@ -1667,12 +1728,11 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                     .required(true)
                     .help("Platform handle used to identify this extension surface"),
             )
-            .with_arg(
-                clap::Arg::new("source")
-                    .long("source")
-                    .required(true)
-                    .help("Path to the JavaScript entry-point file for this extension"),
-            )
+            .with_arg(clap::Arg::new("source").long("source").required(true).help(
+                "Path to the JavaScript entry-point file, relative to \
+                         extensions/<handle>/ (e.g. src/index.ts), or a path already \
+                         under that directory",
+            ))
             .with_arg(
                 clap::Arg::new("target")
                     .long("target")
@@ -1682,16 +1742,17 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let handle = arg_str(&ctx, "handle").to_owned();
-            let source = arg_str(&ctx, "source").to_owned();
+            let source = normalized_extension_source(&handle, arg_str(&ctx, "source"), &name)?;
             let targets = parse_targets(arg_str(&ctx, "target"));
             if targets.is_empty() {
-                return Err(cli_engine::CliCoreError::message(
+                return Err(crate::error::GddyError::validation(
                     "at least one --target is required (comma-separated)",
-                ));
+                )
+                .into_cli_error());
             }
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             let exts = config
                 .extensions
                 .get_or_insert_with(|| crate::config::ExtensionsConfig {
@@ -1706,7 +1767,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 targets,
             });
             crate::config::write_config(&path, &config)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             Ok(
                 CommandResult::new(json!({ "name": name, "handle": handle, "type": "embed" }))
                     .with_next_actions(add_config_next_actions(&config.name)),
@@ -1737,12 +1798,11 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                     .required(true)
                     .help("Platform handle used to identify this extension surface"),
             )
-            .with_arg(
-                clap::Arg::new("source")
-                    .long("source")
-                    .required(true)
-                    .help("Path to the JavaScript entry-point file for this extension"),
-            )
+            .with_arg(clap::Arg::new("source").long("source").required(true).help(
+                "Path to the JavaScript entry-point file, relative to \
+                         extensions/<handle>/ (e.g. src/index.ts), or a path already \
+                         under that directory",
+            ))
             .with_arg(
                 clap::Arg::new("target")
                     .long("target")
@@ -1752,16 +1812,17 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
         |ctx| async move {
             let name = arg_str(&ctx, "name").to_owned();
             let handle = arg_str(&ctx, "handle").to_owned();
-            let source = arg_str(&ctx, "source").to_owned();
+            let source = normalized_extension_source(&handle, arg_str(&ctx, "source"), &name)?;
             let targets = parse_targets(arg_str(&ctx, "target"));
             if targets.is_empty() {
-                return Err(cli_engine::CliCoreError::message(
+                return Err(crate::error::GddyError::validation(
                     "at least one --target is required (comma-separated)",
-                ));
+                )
+                .into_cli_error());
             }
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             let exts = config
                 .extensions
                 .get_or_insert_with(|| crate::config::ExtensionsConfig {
@@ -1776,7 +1837,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 targets,
             });
             crate::config::write_config(&path, &config)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             Ok(
                 CommandResult::new(json!({ "name": name, "handle": handle, "type": "checkout" }))
                     .with_next_actions(add_config_next_actions(&config.name)),
@@ -1796,17 +1857,16 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionBlocks>()
             .no_auth(true)
-            .with_arg(
-                clap::Arg::new("source")
-                    .long("source")
-                    .required(true)
-                    .help("Path to the JavaScript entry-point file for the blocks extension"),
-            ),
+            .with_arg(clap::Arg::new("source").long("source").required(true).help(
+                "Path to the JavaScript entry-point file for the blocks extension, \
+                         relative to extensions/blocks/ (e.g. src/index.ts), or a path \
+                         already under that directory",
+            )),
         |ctx| async move {
-            let source = arg_str(&ctx, "source").to_owned();
+            let source = normalized_extension_source("blocks", arg_str(&ctx, "source"), "Blocks")?;
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             let exts = config
                 .extensions
                 .get_or_insert_with(|| crate::config::ExtensionsConfig {
@@ -1818,7 +1878,7 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 source: source.clone(),
             });
             crate::config::write_config(&path, &config)
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
             Ok(
                 CommandResult::new(json!({ "source": source, "type": "blocks" }))
                     .with_next_actions(add_config_next_actions(&config.name)),
