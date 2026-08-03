@@ -856,12 +856,12 @@ pub async fn bundle_extension(
         .unwrap_or_else(|| format_timestamp(chrono::Utc::now()));
 
     let temp_root = create_temp_directory(options.repo_root, &timestamp);
+    // Clean the temp tree on any early return; disarmed only on success.
+    let cleanup = BundleCleanup::for_dir(temp_root.clone());
     let extension_temp_dir = temp_root.join(sanitize_extension_name(options.name));
     tokio::fs::create_dir_all(&extension_temp_dir)
         .await
         .map_err(|e| format!("failed to create temp dir: {e}"))?;
-    // Clean the temp tree on any early return; disarmed only on success.
-    let cleanup = BundleCleanup::for_dir(temp_root.clone());
 
     let mut build_entry = source_path.to_owned();
     if should_use_ui_extension_runtime_wrapper(ext_type) {

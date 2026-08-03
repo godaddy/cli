@@ -1471,9 +1471,9 @@ async fn deploy_extension(
         }))
         .await;
 
-    let source_display = source.display().to_string();
+    let source_display = ext.source.as_str();
     let content = String::from_utf8_lossy(&bundle.bytes);
-    let findings = crate::extension::scan_bundle(&content, &source_display);
+    let findings = crate::extension::scan_bundle(&content, source_display);
 
     if crate::extension::is_blocked(&findings) {
         let blocked_msgs: Vec<String> = findings
