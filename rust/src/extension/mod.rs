@@ -622,8 +622,7 @@ fn dir_casing_on_disk(root: &Path, candidate: &Path) -> PathBuf {
 }
 
 /// When `path` exists, follow symlinks and ensure the real path stays under
-/// `base`. Lexical containment alone is not enough — a symlink under the
-/// extension tree can point outside.
+/// `base`. Post-canonicalize containment is case-sensitive.
 fn enforce_sandbox_realpath(
     base: &Path,
     path: &Path,
@@ -636,7 +635,7 @@ fn enforce_sandbox_realpath(
         .map_err(|e| format!("failed to resolve path '{}': {e}", base.display()))?;
     let canon_path = std::fs::canonicalize(path)
         .map_err(|e| format!("failed to resolve path '{}': {e}", path.display()))?;
-    if !is_path_within(&canon_base, &canon_path) {
+    if canon_path.strip_prefix(&canon_base).is_err() {
         return Err(outside_message());
     }
     Ok(())
@@ -788,11 +787,14 @@ registry.register(contract);
 }
 
 /// Sanitize an extension handle/name for use in filenames.
+///
+/// Dots are rewritten so handles like `.` / `..` cannot make `Path::join`
+/// resolve to the temp root or its parent.
 fn sanitize_extension_name(name: &str) -> String {
     let sanitized: String = name
         .chars()
         .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '@' | '!' => '-',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '@' | '!' | '.' => '-',
             c if c.is_whitespace() => '-',
             c => c,
         })
@@ -1178,6 +1180,30 @@ mod tests {
         );
         assert_eq!(sanitize_extension_name("My Extension!"), "my-extension");
         assert_eq!(sanitize_extension_name("@@@"), "extension");
+        assert_eq!(sanitize_extension_name("."), "extension");
+        assert_eq!(sanitize_extension_name(".."), "extension");
+        assert_eq!(sanitize_extension_name("my.widget"), "my-widget");
+    }
+
+    #[test]
+    fn sanitize_extension_name_dot_handles_stay_under_temp_root() {
+        let temp_root = Path::new("/tmp/gd-cli/repo/deploy-ts-1");
+        for handle in [".", ".."] {
+            let joined = temp_root.join(sanitize_extension_name(handle));
+            assert!(
+                joined.starts_with(temp_root),
+                "handle {handle:?} escaped temp root: {joined:?}"
+            );
+            assert_ne!(
+                joined, temp_root,
+                "handle {handle:?} collapsed to temp root"
+            );
+            assert_ne!(
+                joined,
+                temp_root.parent().expect("parent"),
+                "handle {handle:?} resolved to temp parent"
+            );
+        }
     }
 
     #[test]
@@ -1429,6 +1455,34 @@ mod tests {
             err.contains("Invalid extension handle path"),
             "unexpected: {err}"
         );
+    }
+
+    /// On case-sensitive volumes, a symlink into a differently cased sibling
+    /// (`EXTENSIONS` vs `extensions`) must not pass the realpath sandbox.
+    #[cfg(unix)]
+    #[test]
+    fn enforce_sandbox_realpath_rejects_differently_cased_sibling_after_canonicalize() {
+        let root = tempfile::tempdir().expect("temp root");
+        let lower = root.path().join("extensions");
+        let upper = root.path().join("EXTENSIONS");
+        std::fs::create_dir_all(&lower).expect("mkdir lower");
+        if std::fs::create_dir(&upper).is_err() {
+            // Case-insensitive volume — both names are the same directory.
+            return;
+        }
+        let lower_canon = std::fs::canonicalize(&lower).expect("canon lower");
+        let upper_canon = std::fs::canonicalize(&upper).expect("canon upper");
+        if lower_canon == upper_canon {
+            return;
+        }
+
+        std::fs::write(upper.join("secret.ts"), "leak").expect("write");
+        let link = lower.join("widget");
+        std::os::unix::fs::symlink(&upper, &link).expect("symlink");
+
+        let err = enforce_sandbox_realpath(&lower, &link, || "escaped".into())
+            .expect_err("case-variant sibling must not count as inside");
+        assert_eq!(err, "escaped");
     }
 
     #[test]
