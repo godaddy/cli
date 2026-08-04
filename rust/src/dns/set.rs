@@ -3,7 +3,7 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::domain::{api_error, format_api_error, make_client, string_list};
+use crate::domain::{api_error, format_api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
@@ -13,8 +13,8 @@ use super::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
 use super::records::{
-    RecordOptions, arg_bool, arg_str, fetch_records, v3_record, validate_caa_fields,
-    verify_with_list_action, with_record_write_args,
+    RecordOptions, RecordWriteArgs, fetch_records, v3_record, validate_caa_fields,
+    verify_with_list_action,
 };
 
 // `dns set` reconciles over v3's per-record ops; it reports how many records it
@@ -403,15 +403,25 @@ async fn apply_replace(
     outcomes
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SetArgs {
+    #[command(flatten)]
+    write: RecordWriteArgs,
+
+    /// Remove any existing CNAME (or, if setting a CNAME, any other type) at
+    /// this name first.
+    #[arg(long = "replace-conflicting-types")]
+    replace_conflicting_types: bool,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        with_record_write_args(
-            CommandSpec::new(
-                "set",
-                "Replace all records for a type+name (destructive: overwrites existing)",
-            )
-            .with_long(
-                "Replaces every DNS record for the given type+name pair with the \
+    RuntimeCommandSpec::new_typed_with_context::<SetArgs, _, _, _>(
+        CommandSpec::from_args::<SetArgs>(
+            "set",
+            "Replace all records for a type+name (destructive: overwrites existing)",
+        )
+        .with_long(
+            "Replaces every DNS record for the given type+name pair with the \
                  values supplied via `--data`, discarding any records that were \
                  there before. v3 has no bulk or in-place replace, so this \
                  reconciles over per-record calls: for the overlap it creates \
@@ -427,30 +437,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  with a specific error naming the conflict; pass \
                  `--replace-conflicting-types` to remove the conflicting record(s) \
                  automatically and retry.",
-            )
-            .with_system("domain")
-            .with_tier(Tier::Destructive)
-            .handles_dry_run(true)
-            .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
-            .with_output_schema::<DnsSetResult>()
-            .with_scopes(&[DOMAINS_DNS_UPDATE]),
         )
-        .with_arg(
-            clap::Arg::new("replace-conflicting-types")
-                .long("replace-conflicting-types")
-                .action(clap::ArgAction::SetTrue)
-                .help(
-                    "Remove any existing CNAME (or, if setting a CNAME, any other \
-                     type) at this name first",
-                ),
-        ),
-        |ctx| async move {
-            let domain = arg_str(&ctx, "domain").unwrap_or_default();
-            let record_type = arg_str(&ctx, "type").unwrap_or_default();
-            let name = arg_str(&ctx, "name").unwrap_or_default();
-            let data = string_list(&ctx, "data");
-            let opts = RecordOptions::from_ctx(&ctx);
-            let replace_conflicting = arg_bool(&ctx, "replace-conflicting-types");
+        .with_system("domain")
+        .with_tier(Tier::Destructive)
+        .handles_dry_run(true)
+        .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
+        .with_output_schema::<DnsSetResult>()
+        .with_scopes(&[DOMAINS_DNS_UPDATE]),
+        |ctx, args: SetArgs| async move {
+            let opts = RecordOptions::from_write_args(&args.write);
+            let domain = args.write.domain;
+            let record_type = args.write.record_type;
+            let name = args.write.name;
+            let data = args.write.data;
+            let replace_conflicting = args.replace_conflicting_types;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
 

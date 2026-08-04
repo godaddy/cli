@@ -10,9 +10,16 @@ use super::common::{api_error, make_client, validate_domain_name};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
+#[derive(Debug, Clone, clap::Args)]
+struct GetArgs {
+    /// Domain to look up (must be in your account), e.g. example.com.
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("get", "Show full details for one of your domains")
+    RuntimeCommandSpec::new_typed_with_context::<GetArgs, _, _, _>(
+        CommandSpec::from_args::<GetArgs>("get", "Show full details for one of your domains")
             .with_long(
                 "Show every detail for a single domain in your account (status, \
                  expiry, nameservers, and more). Unlike `list`, this shows all fields \
@@ -21,20 +28,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_json_schema::<types::Domain>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("Domain to look up (must be in your account), e.g. example.com"),
-            ),
-        |ctx| async move {
-            let domain = validate_domain_name(
-                ctx.args
-                    .get("domain")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(""),
-            )?;
+            .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: GetArgs| async move {
+            let domain = validate_domain_name(&args.domain)?;
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
             let detail = match client

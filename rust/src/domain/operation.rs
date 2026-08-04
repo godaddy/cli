@@ -29,33 +29,32 @@ output_schema!(DomainOperationStatusResult {
     "error": "string", optional;
 });
 
+#[derive(Debug, Clone, clap::Args)]
+struct OperationStatusArgs {
+    /// The operationId returned by an async domain mutation.
+    #[arg(value_name = "OPERATION_ID")]
+    operation_id: String,
+}
+
 fn status_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("status", "Check the status of an async domain operation")
-            .with_long(
-                "Check on a domain operation (registration, nameserver update, and \
+    RuntimeCommandSpec::new_typed_with_context::<OperationStatusArgs, _, _, _>(
+        CommandSpec::from_args::<OperationStatusArgs>(
+            "status",
+            "Check the status of an async domain operation",
+        )
+        .with_long(
+            "Check on a domain operation (registration, nameserver update, and \
                  similar async mutations) by the `operationId` it returned. This is a \
                  read-only check: even a FAILED operation is reported as data with exit \
                  code 0, since the status check itself succeeded.",
-            )
-            .with_system("domain")
-            .with_tier(Tier::Read)
-            .with_default_fields("operationId,type,domain,status,orderId,expiresAt,error")
-            .with_output_schema::<DomainOperationStatusResult>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("operation-id")
-                    .value_name("OPERATION_ID")
-                    .required(true)
-                    .help("The operationId returned by an async domain mutation"),
-            ),
-        |ctx| async move {
-            let operation_id = ctx
-                .args
-                .get("operation-id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+        )
+        .with_system("domain")
+        .with_tier(Tier::Read)
+        .with_default_fields("operationId,type,domain,status,orderId,expiresAt,error")
+        .with_output_schema::<DomainOperationStatusResult>()
+        .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: OperationStatusArgs| async move {
+            let operation_id = args.operation_id;
             let debug = !ctx.middleware.debug.is_empty();
 
             let client = make_client(&ctx).await?;

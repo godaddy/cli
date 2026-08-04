@@ -8,9 +8,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{
-    api_error, make_client, string_list, validate_domain_name, validate_nameserver_hosts,
-};
+use super::common::{api_error, make_client, validate_domain_name, validate_nameserver_hosts};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
@@ -23,13 +21,29 @@ output_schema!(NameserversResult {
     "status": "string", optional;
 });
 
+#[derive(Debug, Clone, clap::Args)]
+struct NameserversSetArgs {
+    /// Domain whose nameservers to replace (e.g. example.com).
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+
+    /// Nameserver host (repeatable; replaces the full set).
+    #[arg(long, value_name = "HOST", required = true)]
+    nameserver: Vec<String>,
+}
+
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(GroupSpec::new(
         "nameservers",
         "Manage a domain's nameservers",
     ))
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("set", "Replace a domain's nameservers")
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        NameserversSetArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<NameserversSetArgs>("set", "Replace a domain's nameservers")
             .with_long(
                 "Replace the full set of nameservers for a domain you own. Pass \
                  --nameserver once per host. This is destructive — it overwrites the \
@@ -39,29 +53,10 @@ pub(super) fn group() -> RuntimeGroupSpec {
             .with_tier(Tier::Destructive)
             .with_default_fields("domain,nameservers,operationId,status")
             .with_output_schema::<NameserversResult>()
-            .with_scopes(&[DOMAINS_NAMESERVER_UPDATE])
-            .with_arg(
-                clap::Arg::new("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("Domain whose nameservers to replace (e.g. example.com)"),
-            )
-            .with_arg(
-                clap::Arg::new("nameserver")
-                    .long("nameserver")
-                    .value_name("HOST")
-                    .required(true)
-                    .action(clap::ArgAction::Append)
-                    .help("Nameserver host (repeatable; replaces the full set)"),
-            ),
-        |ctx| async move {
-            let domain = validate_domain_name(
-                ctx.args
-                    .get("domain")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(""),
-            )?;
-            let hosts = validate_nameserver_hosts(string_list(&ctx, "nameserver"))?;
+            .with_scopes(&[DOMAINS_NAMESERVER_UPDATE]),
+        |ctx, args: NameserversSetArgs| async move {
+            let domain = validate_domain_name(&args.domain)?;
+            let hosts = validate_nameserver_hosts(args.nameserver)?;
             let debug = !ctx.middleware.debug.is_empty();
 
             let client = make_client(&ctx).await?;

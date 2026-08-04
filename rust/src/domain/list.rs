@@ -7,7 +7,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, make_client, string_list};
+use super::common::{api_error, make_client};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -30,9 +30,20 @@ fn wants_visible_only(statuses: &[types::ListStatusesItem], show_hidden: bool) -
     statuses.is_empty() && !show_hidden
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ListArgs {
+    /// Only domains with this status, e.g. ACTIVE (repeatable).
+    #[arg(long, value_name = "STATUS")]
+    status: Vec<String>,
+
+    /// Include domains hidden by default, e.g. cancelled or confiscated.
+    #[arg(long)]
+    show_hidden: bool,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("list", "List the domains in your account")
+    RuntimeCommandSpec::new_typed_with_context::<ListArgs, _, _, _>(
+        CommandSpec::from_args::<ListArgs>("list", "List the domains in your account")
             .with_long(
                 "List the domains registered to your account. Shows domain, status, \
                  expiry, and auto-renew by default; use --fields to pick columns. Hides \
@@ -44,28 +55,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("domain,status,expires,renewAuto")
             .with_json_schema::<types::V1DomainSummary>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("status")
-                    .long("status")
-                    .value_name("STATUS")
-                    .action(clap::ArgAction::Append)
-                    .help("Only domains with this status, e.g. ACTIVE (repeatable)"),
-            )
-            .with_arg(
-                clap::Arg::new("show-hidden")
-                    .long("show-hidden")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Include domains hidden by default, e.g. cancelled or confiscated"),
-            ),
-        |ctx| async move {
+            .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
-            let statuses = parse_statuses(&string_list(&ctx, "status"))?;
-            let show_hidden = ctx
-                .args
-                .get("show-hidden")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let statuses = parse_statuses(&args.status)?;
+            let show_hidden = args.show_hidden;
             let client = make_client(&ctx).await?;
             let mut req = client.list();
             if !statuses.is_empty() {

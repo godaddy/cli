@@ -9,7 +9,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use domains_client::types;
 
-use super::records::{arg_str, fetch_records, parse_write_type_arg, verify_with_list_action};
+use super::records::{fetch_records, parse_write_type_arg, verify_with_list_action};
 
 output_schema!(DnsDeleteResult {
     "domain": "string";
@@ -111,9 +111,24 @@ fn dry_run_delete_preview(
     })
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct DeleteArgs {
+    /// Domain whose records to delete (e.g. example.com).
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+
+    /// Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT).
+    #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
+    record_type: String,
+
+    /// Record name relative to the domain (e.g. www).
+    #[arg(long, value_name = "NAME")]
+    name: String,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new(
+    RuntimeCommandSpec::new_typed_with_context::<DeleteArgs, _, _, _>(
+        CommandSpec::from_args::<DeleteArgs>(
             "delete",
             "Delete all records for a type+name (destructive: removes existing)",
         )
@@ -129,32 +144,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .handles_dry_run(true)
         .with_default_fields("domain,type,name,deleted,failed,action,records")
         .with_output_schema::<DnsDeleteResult>()
-        .with_scopes(&[DOMAINS_DNS_UPDATE])
-        .with_arg(
-            clap::Arg::new("domain")
-                .value_name("DOMAIN")
-                .required(true)
-                .help("Domain whose records to delete (e.g. example.com)"),
-        )
-        .with_arg(
-            clap::Arg::new("type")
-                .long("type")
-                .value_name("TYPE")
-                .required(true)
-                .value_parser(parse_write_type_arg)
-                .help("Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT)"),
-        )
-        .with_arg(
-            clap::Arg::new("name")
-                .long("name")
-                .value_name("NAME")
-                .required(true)
-                .help("Record name relative to the domain (e.g. www)"),
-        ),
-        |ctx| async move {
-            let domain = arg_str(&ctx, "domain").unwrap_or_default();
-            let record_type = arg_str(&ctx, "type").unwrap_or_default();
-            let name = arg_str(&ctx, "name").unwrap_or_default();
+        .with_scopes(&[DOMAINS_DNS_UPDATE]),
+        |ctx, args: DeleteArgs| async move {
+            let domain = args.domain;
+            let record_type = args.record_type;
+            let name = args.name;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;

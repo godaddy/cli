@@ -219,19 +219,6 @@ pub(crate) fn make_client_with_cred(
     .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
 }
 
-/// Collect a repeatable string argument into a `Vec` (clap stores it as a JSON
-/// array; a lone value arrives as a string).
-pub(crate) fn string_list(ctx: &CommandContext, key: &str) -> Vec<String> {
-    match ctx.args.get(key) {
-        Some(serde_json::Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_owned))
-            .collect(),
-        Some(serde_json::Value::String(s)) => vec![s.clone()],
-        _ => Vec::new(),
-    }
-}
-
 /// Collapse a repeatable CLI flag's values into the single query-string value
 /// some domains-client endpoints require (e.g. `tlds`, whose OpenAPI param is
 /// `style: form, explode: false` — one comma-joined value). progenitor's

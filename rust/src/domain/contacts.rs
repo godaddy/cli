@@ -9,6 +9,13 @@ use serde_json::json;
 use crate::contacts;
 use crate::next_action::next_action;
 
+#[derive(Debug, Clone, clap::Args)]
+struct ContactsInitArgs {
+    /// Overwrite an existing contacts.toml.
+    #[arg(long)]
+    force: bool,
+}
+
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new(
@@ -24,35 +31,33 @@ pub(super) fn group() -> RuntimeGroupSpec {
                  account's default contact for that role.",
         ),
     )
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("init", "Write a starter contacts.toml you can edit")
-            .with_long(
-                "Scaffold a starter contacts.toml in your config directory with \
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        ContactsInitArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<ContactsInitArgs>(
+            "init",
+            "Write a starter contacts.toml you can edit",
+        )
+        .with_long(
+            "Scaffold a starter contacts.toml in your config directory with \
                      every role commented out (so it's inert until you edit it). Fill \
                      in any roles you want to override the account defaults for. Pass \
                      --force to overwrite an existing file.",
-            )
-            .with_system("domain")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .handles_dry_run(true)
-            .no_auth(true)
-            .with_default_fields("path,action")
-            .with_arg(
-                clap::Arg::new("force")
-                    .long("force")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Overwrite an existing contacts.toml"),
-            ),
-        |ctx| async move {
+        )
+        .with_system("domain")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .handles_dry_run(true)
+        .no_auth(true)
+        .with_default_fields("path,action"),
+        |ctx, args: ContactsInitArgs| async move {
             let path = contacts::contacts_path().ok_or_else(|| {
                 CliCoreError::message("could not determine a config directory for contacts.toml")
             })?;
-            let force = ctx
-                .args
-                .get("force")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let force = args.force;
             let existed = path.exists();
             // Runs unconditionally, including under `--dry-run`, so a missing
             // `--force` against an existing file is still reported as an error

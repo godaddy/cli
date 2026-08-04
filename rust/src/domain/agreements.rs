@@ -7,13 +7,24 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, comma_joined, make_client, string_list};
+use super::common::{api_error, comma_joined, make_client};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
+#[derive(Debug, Clone, clap::Args)]
+struct AgreementsArgs {
+    /// TLD whose agreements to retrieve, e.g. com (repeatable).
+    #[arg(long, value_name = "TLD", required = true)]
+    tld: Vec<String>,
+
+    /// Retrieve the agreements that apply when privacy is requested.
+    #[arg(long)]
+    privacy: bool,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new(
+    RuntimeCommandSpec::new_typed_with_context::<AgreementsArgs, _, _, _>(
+        CommandSpec::from_args::<AgreementsArgs>(
             "agreements",
             "Show the legal agreements required to register a TLD",
         )
@@ -31,28 +42,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             TableColumn::new("url", "URL").no_truncate(true),
         ])
         .with_json_schema::<types::V1LegalAgreement>()
-        .with_scopes(&[DOMAINS_READ])
-        .with_arg(
-            clap::Arg::new("tld")
-                .long("tld")
-                .value_name("TLD")
-                .required(true)
-                .action(clap::ArgAction::Append)
-                .help("TLD whose agreements to retrieve, e.g. com (repeatable)"),
-        )
-        .with_arg(
-            clap::Arg::new("privacy")
-                .long("privacy")
-                .action(clap::ArgAction::SetTrue)
-                .help("Retrieve the agreements that apply when privacy is requested"),
-        ),
-        |ctx| async move {
-            let tlds = string_list(&ctx, "tld");
-            let privacy = ctx
-                .args
-                .get("privacy")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+        .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: AgreementsArgs| async move {
+            let tlds = args.tld;
+            let privacy = args.privacy;
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
             let resp = match client

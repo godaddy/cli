@@ -8,8 +8,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, string_list, validate_domain_name,
-    validate_nameserver_hosts,
+    api_error, format_money, make_client, validate_domain_name, validate_nameserver_hosts,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -176,11 +175,37 @@ fn agreement_types_and_titles(agreements: &[types::Agreement]) -> (Vec<String>, 
     (types, titles)
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct QuoteArgs {
+    /// Domain to quote, e.g. example.com.
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+
+    /// Registration length in years (1-10).
+    #[arg(long, value_name = "YEARS", value_parser = clap::value_parser!(u64).range(1..=10), default_value = "1")]
+    period: u64,
+
+    /// Add privacy protection to the registration.
+    #[arg(long)]
+    privacy: bool,
+
+    /// Disable auto-renewal (auto-renew is on by default).
+    #[arg(long = "no-renew")]
+    no_renew: bool,
+
+    /// Custom nameserver (repeatable); omit to use GoDaddy defaults.
+    #[arg(long, value_name = "HOST")]
+    nameserver: Vec<String>,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("quote", "Price a domain registration and lock a quote")
-            .with_long(
-                "Quote a single-domain registration: returns the locked price, the \
+    RuntimeCommandSpec::new_typed_with_context::<QuoteArgs, _, _, _>(
+        CommandSpec::from_args::<QuoteArgs>(
+            "quote",
+            "Price a domain registration and lock a quote",
+        )
+        .with_long(
+            "Quote a single-domain registration: returns the locked price, the \
                  legal agreements you must accept, the contact/preference settings that \
                  would apply, and a single-use quote token (valid ~10 minutes). Quoting \
                  is free and changes nothing.\n\
@@ -189,63 +214,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  (--period/--privacy/--no-renew/--nameserver and your contacts.toml) — is \
                  saved locally so `gddy domain purchase --quote-token <token>` buys the \
                  exact thing you reviewed, at the price you were quoted.",
-            )
-            .with_system("domain")
-            .with_tier(Tier::Read)
-            .with_default_fields(
-                "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
-            )
-            .with_output_schema::<DomainQuoteResult>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("Domain to quote, e.g. example.com"),
-            )
-            .with_arg(
-                clap::Arg::new("period")
-                    .long("period")
-                    .value_name("YEARS")
-                    .value_parser(clap::value_parser!(u64).range(1..=10))
-                    .default_value("1")
-                    .help("Registration length in years (1-10)"),
-            )
-            .with_arg(
-                clap::Arg::new("privacy")
-                    .long("privacy")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Add privacy protection to the registration"),
-            )
-            .with_arg(
-                clap::Arg::new("no-renew")
-                    .long("no-renew")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Disable auto-renewal (auto-renew is on by default)"),
-            )
-            .with_arg(
-                clap::Arg::new("nameserver")
-                    .long("nameserver")
-                    .value_name("HOST")
-                    .action(clap::ArgAction::Append)
-                    .help("Custom nameserver (repeatable); omit to use GoDaddy defaults"),
-            ),
-        |ctx| async move {
-            let domain = validate_domain_name(
-                ctx.args.get("domain").and_then(|v| v.as_str()).unwrap_or(""),
-            )?;
-            let period = ctx.args.get("period").and_then(|v| v.as_u64()).unwrap_or(1);
-            let privacy = ctx
-                .args
-                .get("privacy")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let renew_auto = !ctx
-                .args
-                .get("no-renew")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let name_servers = validate_nameserver_hosts(string_list(&ctx, "nameserver"))?;
+        )
+        .with_system("domain")
+        .with_tier(Tier::Read)
+        .with_default_fields(
+            "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
+        )
+        .with_output_schema::<DomainQuoteResult>()
+        .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: QuoteArgs| async move {
+            let domain = validate_domain_name(&args.domain)?;
+            let period = args.period;
+            let privacy = args.privacy;
+            let renew_auto = !args.no_renew;
+            let name_servers = validate_nameserver_hosts(args.nameserver)?;
             let debug = !ctx.middleware.debug.is_empty();
             let period_nz =
                 std::num::NonZeroU64::new(period).expect("clap value_parser enforces period >= 1");

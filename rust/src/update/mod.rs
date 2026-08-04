@@ -113,39 +113,35 @@ fn check_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ApplyArgs {
+    /// Reinstall the latest release even if it matches the running version
+    /// (useful for validating the update mechanism itself).
+    #[arg(long)]
+    force: bool,
+}
+
 fn apply_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new(
-        CommandSpec::new("apply", "Download and install the latest gddy release")
-            .with_long(
-                "Downloads the latest gddy release for this platform, verifies its \
+    RuntimeCommandSpec::new_typed::<ApplyArgs, _, _, _>(
+        CommandSpec::from_args::<ApplyArgs>(
+            "apply",
+            "Download and install the latest gddy release",
+        )
+        .with_long(
+            "Downloads the latest gddy release for this platform, verifies its \
                  SHA-256 checksum against the release's published checksums file, and \
                  replaces the currently running binary in place.\n\
                  \n\
                  Run `gddy update check` first to preview whether an update is \
                  available without installing anything.",
-            )
-            .with_system("update")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .no_auth(true)
-            .with_output_schema::<UpdateApplyResult>()
-            .with_default_fields("previousVersion,newVersion,status")
-            .with_arg(
-                clap::Arg::new("force")
-                    .long("force")
-                    .action(clap::ArgAction::SetTrue)
-                    .help(
-                        "Reinstall the latest release even if it matches the running \
-                         version (useful for validating the update mechanism itself)",
-                    ),
-            ),
-        |_cred, args| async move {
-            let force = args
-                .get("force")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            Ok(CommandResult::new(run_apply(force).await?))
-        },
+        )
+        .with_system("update")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .no_auth(true)
+        .with_output_schema::<UpdateApplyResult>()
+        .with_default_fields("previousVersion,newVersion,status"),
+        |_cred, args: ApplyArgs| async move { Ok(CommandResult::new(run_apply(args.force).await?)) },
     )
 }
 

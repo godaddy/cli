@@ -2,8 +2,7 @@
 //! subcommand: type/name validation, the `RecordOptions` bundle, converting
 //! CLI input into v3 `DnsRecord`s, and the paginated `list_dns_records` fetch.
 
-use cli_engine::{CliCoreError, CommandContext, CommandSpec, NextAction, NextActionParam};
-use serde_json::Value;
+use cli_engine::{CliCoreError, NextAction, NextActionParam};
 
 use crate::domain::api_error;
 use crate::next_action::next_action;
@@ -26,17 +25,6 @@ pub(super) const DEFAULT_TTL: i64 = 3600;
 /// Page size for the paginated v3 list; the handler pages through until every
 /// matching record is collected.
 const LIST_PAGE_SIZE: i64 = 100;
-
-pub(super) fn arg_str(ctx: &CommandContext, key: &str) -> Option<String> {
-    ctx.args
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-}
-
-pub(super) fn arg_bool(ctx: &CommandContext, key: &str) -> bool {
-    ctx.args.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
 
 /// clap value-parser for a mutating `--type` (`add`/`set`/`delete`): validate
 /// against [`WRITABLE_TYPES`] and return the canonical upper-case wire string.
@@ -89,19 +77,74 @@ pub(super) struct RecordOptions {
 }
 
 impl RecordOptions {
-    pub(super) fn from_ctx(ctx: &CommandContext) -> Self {
-        let as_i64 = |key: &str| ctx.args.get(key).and_then(Value::as_i64);
+    pub(super) fn from_write_args(args: &RecordWriteArgs) -> Self {
         RecordOptions {
-            ttl: as_i64("ttl"),
-            priority: as_i64("priority"),
-            port: as_i64("port"),
-            weight: as_i64("weight"),
-            protocol: arg_str(ctx, "protocol"),
-            service: arg_str(ctx, "service"),
-            flag: as_i64("flag"),
-            tag: arg_str(ctx, "tag"),
+            ttl: args.ttl,
+            priority: args.priority,
+            port: args.port,
+            weight: args.weight,
+            protocol: args.protocol.clone(),
+            service: args.service.clone(),
+            flag: args.flag,
+            tag: args.tag.clone(),
         }
     }
+}
+
+/// Shared flags for the mutating commands (`add`/`set`): required type/name and
+/// the repeatable `--data`, plus the optional record fields.
+#[derive(Debug, Clone, clap::Args)]
+pub(super) struct RecordWriteArgs {
+    /// Domain whose records to modify (e.g. example.com).
+    #[arg(value_name = "DOMAIN")]
+    pub(super) domain: String,
+
+    /// Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT).
+    #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
+    pub(super) record_type: String,
+
+    /// Record name relative to the domain (e.g. www, @ for the apex).
+    #[arg(long, value_name = "NAME")]
+    pub(super) name: String,
+
+    /// Record value (repeatable for multiple records on the same name).
+    #[arg(long, value_name = "VALUE", required = true)]
+    pub(super) data: Vec<String>,
+
+    /// Time-to-live in seconds (defaults to 3600 when omitted).
+    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(i64).range(1..))]
+    pub(super) ttl: Option<i64>,
+
+    /// Record priority (MX and SRV only).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
+    pub(super) priority: Option<i64>,
+
+    /// Service port (SRV only).
+    #[arg(long, value_name = "PORT", value_parser = clap::value_parser!(i64).range(1..=65535))]
+    pub(super) port: Option<i64>,
+
+    /// Record weight (SRV only).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
+    pub(super) weight: Option<i64>,
+
+    /// Service protocol (SRV only).
+    #[arg(long, value_name = "PROTO")]
+    pub(super) protocol: Option<String>,
+
+    /// Service type (SRV only).
+    #[arg(long, value_name = "SERVICE")]
+    pub(super) service: Option<String>,
+
+    /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255))]
+    pub(super) flag: Option<i64>,
+
+    // A CAA record needs a tag; enforce it at parse time (before auth). The
+    // reverse guard — flag/tag only valid for CAA — lives in the handler
+    // (`validate_caa_fields`), which clap can't express.
+    /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
+    #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
+    pub(super) tag: Option<String>,
 }
 
 /// Validate the CAA-specific fields against the record type. A CAA record needs a
@@ -208,97 +251,6 @@ pub(super) async fn fetch_records(
         page += 1;
     }
     Ok(all)
-}
-
-/// Shared flags for the mutating commands (`add`/`set`): required type/name and
-/// the repeatable `--data`, plus the optional record fields.
-pub(super) fn with_record_write_args(spec: CommandSpec) -> CommandSpec {
-    spec.with_arg(
-        clap::Arg::new("domain")
-            .value_name("DOMAIN")
-            .required(true)
-            .help("Domain whose records to modify (e.g. example.com)"),
-    )
-    .with_arg(
-        clap::Arg::new("type")
-            .long("type")
-            .value_name("TYPE")
-            .required(true)
-            .value_parser(parse_write_type_arg)
-            .help("Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT)"),
-    )
-    .with_arg(
-        clap::Arg::new("name")
-            .long("name")
-            .value_name("NAME")
-            .required(true)
-            .help("Record name relative to the domain (e.g. www, @ for the apex)"),
-    )
-    .with_arg(
-        clap::Arg::new("data")
-            .long("data")
-            .value_name("VALUE")
-            .required(true)
-            .action(clap::ArgAction::Append)
-            .help("Record value (repeatable for multiple records on the same name)"),
-    )
-    .with_arg(
-        clap::Arg::new("ttl")
-            .long("ttl")
-            .value_name("SECONDS")
-            .value_parser(clap::value_parser!(i64).range(1..))
-            .help("Time-to-live in seconds (defaults to 3600 when omitted)"),
-    )
-    .with_arg(
-        clap::Arg::new("priority")
-            .long("priority")
-            .value_name("N")
-            .value_parser(clap::value_parser!(i64).range(0..=65535))
-            .help("Record priority (MX and SRV only)"),
-    )
-    .with_arg(
-        clap::Arg::new("port")
-            .long("port")
-            .value_name("PORT")
-            .value_parser(clap::value_parser!(i64).range(1..=65535))
-            .help("Service port (SRV only)"),
-    )
-    .with_arg(
-        clap::Arg::new("weight")
-            .long("weight")
-            .value_name("N")
-            .value_parser(clap::value_parser!(i64).range(0..=65535))
-            .help("Record weight (SRV only)"),
-    )
-    .with_arg(
-        clap::Arg::new("protocol")
-            .long("protocol")
-            .value_name("PROTO")
-            .help("Service protocol (SRV only)"),
-    )
-    .with_arg(
-        clap::Arg::new("service")
-            .long("service")
-            .value_name("SERVICE")
-            .help("Service type (SRV only)"),
-    )
-    .with_arg(
-        clap::Arg::new("flag")
-            .long("flag")
-            .value_name("N")
-            .value_parser(clap::value_parser!(i64).range(0..=255))
-            .help("CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical)"),
-    )
-    .with_arg(
-        clap::Arg::new("tag")
-            .long("tag")
-            .value_name("TAG")
-            // A CAA record needs a tag; enforce it at parse time (before auth).
-            // The reverse guard — flag/tag only valid for CAA — lives in the
-            // handler (`validate_caa_fields`), which clap can't express.
-            .required_if_eq("type", "CAA")
-            .help("CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA)"),
-    )
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
