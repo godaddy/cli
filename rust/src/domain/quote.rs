@@ -1,7 +1,8 @@
 //! `gddy domain quote` — price a registration, lock a quote, cache it (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec,
+    TableColumn, Tier,
 };
 use serde_json::json;
 
@@ -140,7 +141,9 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
         out["resolved"] = value;
     }
     if let Some(agreements) = quote.required_agreements.as_ref() {
-        // Scalar summary for the default table view (nested arrays don't project).
+        // Scalar summary kept in the default fields for the common case; the
+        // full array is available (nested) as `requiredAgreements` via
+        // `--fields all`.
         out["agreements"] = json!(
             agreements
                 .iter()
@@ -148,7 +151,7 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
                 .collect::<Vec<_>>()
                 .join("; ")
         );
-        // Full structure for `--output json`.
+        // Full structure for `--output json` / `--fields requiredAgreements`.
         out["requiredAgreements"] = json!(
             agreements
                 .iter()
@@ -198,6 +201,37 @@ struct QuoteArgs {
     nameserver: Vec<String>,
 }
 
+/// `requiredAgreements`/`resolved` aren't in the default fields (the
+/// `agreements` scalar covers the common case), but render as nested child
+/// tables/property bags instead of raw JSON dumps when selected via
+/// `--fields all` or by name.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("available", "Available"),
+        TableColumn::new("price", "Price"),
+        TableColumn::new("renewalPrice", "Renewal Price"),
+        TableColumn::new("currency", "Currency"),
+        TableColumn::new("period", "Period"),
+        TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
+        TableColumn::new("expiresAt", "Expires At"),
+        TableColumn::new("irreversible", "Irreversible"),
+        TableColumn::new("agreements", "Agreements"),
+        TableColumn::new("requiredAgreements", "Required Agreements").nested(vec![
+            TableColumn::new("agreementType", "Type"),
+            TableColumn::new("title", "Title"),
+            TableColumn::new("url", "URL").no_truncate(true),
+        ]),
+        TableColumn::new("resolved", "Resolved Settings").nested(vec![
+            TableColumn::new("contactSource", "Contact Source"),
+            TableColumn::new("registrantSummary", "Registrant"),
+            TableColumn::new("autoRenew", "Auto Renew"),
+            TableColumn::new("privacy", "Privacy"),
+            TableColumn::new("nameServers", "Name Servers"),
+        ]),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<QuoteArgs, _, _, _>(
         CommandSpec::from_args::<QuoteArgs>(
@@ -221,6 +255,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
         )
         .with_output_schema::<DomainQuoteResult>()
+        .with_view(view_columns())
         .with_scopes(&[DOMAINS_READ]),
         |ctx, args: QuoteArgs| async move {
             let domain = validate_domain_name(&args.domain)?;
@@ -325,7 +360,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::command;
+    use super::{command, view_columns};
+    use serde_json::json;
 
     #[test]
     fn default_fields_includes_renewal_price() {
@@ -335,5 +371,39 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    /// Proves `view_columns()` renders `requiredAgreements`/`resolved` shaped
+    /// like what `quote_to_json` actually emits (confirmed by inspection —
+    /// `requiredAgreements` items come from a `json!` literal in
+    /// `quote_to_json`, and `resolved` is `ResolvedSettings` serialized via
+    /// serde, whose `#[serde(rename = ...)]` attributes were cross-checked
+    /// for the field names used below) as nested blocks — a mismatch would
+    /// silently drop them from `--fields all` output. Renders a hand-built
+    /// envelope rather than calling `quote_to_json`, which would need a
+    /// live `RegistrationQuote` built through its generated builder.
+    #[test]
+    fn quote_result_renders_required_agreements_and_resolved_as_nested_blocks() {
+        let quote = json!({
+            "domain": "example.com",
+            "available": true,
+            "requiredAgreements": [
+                {"agreementType": "OPT_OUT_EXPLICIT", "title": "Registration Agreement", "url": "https://example.com/agreement"},
+            ],
+            "resolved": {
+                "contactSource": "PROFILE",
+                "registrantSummary": "Jane Smith / jane@example.com",
+                "autoRenew": true,
+                "privacy": false,
+                "nameServers": ["ns01.domaincontrol.com", "ns02.domaincontrol.com"],
+            },
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Required Agreements:"), "{rendered}");
+        assert!(rendered.contains("Registration Agreement"), "{rendered}");
+        assert!(rendered.contains("Resolved Settings:"), "{rendered}");
+        assert!(rendered.contains("Jane Smith"), "{rendered}");
+        assert!(rendered.contains("PROFILE"), "{rendered}");
     }
 }

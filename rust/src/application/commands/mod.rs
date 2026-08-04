@@ -1,6 +1,6 @@
 use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, StreamSender, Tier,
+    RuntimeGroupSpec, StreamSender, TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
@@ -371,6 +371,26 @@ struct InitArgs {
     accept_agreements: bool,
 }
 
+/// `filesWritten` is a small path-by-kind object (`config`/`env`), so it
+/// renders as an indented property bag instead of a raw JSON dump.
+fn init_view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("id", "ID"),
+        TableColumn::new("name", "Name"),
+        TableColumn::new("status", "Status"),
+        TableColumn::new("clientId", "Client ID"),
+        TableColumn::new("orgId", "Org ID"),
+        TableColumn::new("url", "URL").no_truncate(true),
+        TableColumn::new("proxyUrl", "Proxy URL").no_truncate(true),
+        TableColumn::new("authorizationScopes", "Authorization Scopes"),
+        TableColumn::new("oauthGrantTypes", "OAuth Grant Types"),
+        TableColumn::new("filesWritten", "Files Written").nested(vec![
+            TableColumn::new("config", "Config").no_truncate(true),
+            TableColumn::new("env", "Env").no_truncate(true),
+        ]),
+    ]
+}
+
 fn init_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<InitArgs, _, _, _>(
         CommandSpec::from_args::<InitArgs>("init", "Create and initialize a new application")
@@ -385,7 +405,8 @@ fn init_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationInit>(),
+            .with_output_schema::<ApplicationInit>()
+            .with_view(init_view_columns()),
         |ctx, args: InitArgs| async move {
             let env = ctx.middleware.env.clone();
             let config_path = crate::config::config_path(Some(&env));
@@ -1829,8 +1850,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        add_config_next_actions, deploy_next_actions, update_command, validate_command,
-        validate_remote_application,
+        add_config_next_actions, deploy_next_actions, init_view_columns, update_command,
+        validate_command, validate_remote_application,
     };
 
     #[test]
@@ -1845,6 +1866,31 @@ mod tests {
         let name = &actions[0].params["name"];
         assert!(name.required);
         assert_eq!(name.value.as_deref(), None);
+    }
+
+    /// Proves `init_view_columns()` renders a `filesWritten` shaped like what
+    /// the `init` handler actually builds (`config`/`env` paths, confirmed by
+    /// inspection) as a nested property bag — a column/field name mismatch
+    /// would silently drop the write summary from human output and print a
+    /// raw JSON blob instead. Renders a hand-built envelope rather than
+    /// calling the handler, which would need a live app-registry API call.
+    #[test]
+    fn init_result_renders_files_written_as_a_nested_property_bag() {
+        let result = json!({
+            "id": "app-1",
+            "name": "demo",
+            "status": "ACTIVE",
+            "filesWritten": {
+                "config": "/home/user/project/godaddy.toml",
+                "env": "/home/user/project/.env",
+            },
+        });
+        let envelope = cli_engine::Envelope::success(result, "applications");
+        let rendered =
+            cli_engine::render_human_with_view(&envelope, Some(&init_view_columns()), "");
+        assert!(rendered.contains("Files Written:"), "{rendered}");
+        assert!(rendered.contains("godaddy.toml"), "{rendered}");
+        assert!(rendered.contains(".env"), "{rendered}");
     }
 
     fn update_clap_command() -> clap::Command {

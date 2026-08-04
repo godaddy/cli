@@ -1,6 +1,6 @@
 //! `dns add` — append new DNS records to a domain without touching existing ones.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
@@ -77,6 +77,25 @@ fn summarize_add_outcomes(
     }))
 }
 
+/// `results` isn't in the default fields, but renders as an indented child
+/// table instead of a raw JSON dump when selected via `--fields results` (or
+/// `--fields all`).
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("type", "Type"),
+        TableColumn::new("name", "Name"),
+        TableColumn::new("created", "Created"),
+        TableColumn::new("failed", "Failed"),
+        TableColumn::new("results", "Results").nested(vec![
+            TableColumn::new("data", "Data"),
+            TableColumn::new("status", "Status"),
+            TableColumn::new("error", "Error"),
+        ]),
+        TableColumn::new("action", "Action"),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<RecordWriteArgs, _, _, _>(
         CommandSpec::from_args::<RecordWriteArgs>(
@@ -97,6 +116,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_tier(Tier::Mutate)
         .with_default_fields("domain,type,name,created,failed")
         .with_output_schema::<DnsAddResult>()
+        .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: RecordWriteArgs| async move {
             let opts = RecordOptions::from_write_args(&args);
@@ -180,6 +200,25 @@ mod tests {
         assert_eq!(results[0]["data"], "1.2.3.4");
         assert_eq!(results[0]["status"], "created");
         assert_eq!(results[1]["data"], "5.6.7.8");
+    }
+
+    /// Proves `view_columns()`'s field names actually match what
+    /// `summarize_add_outcomes` emits — a mismatch here would silently drop
+    /// the per-record breakdown from human output.
+    #[test]
+    fn dns_add_results_render_as_a_nested_table() {
+        let payload = summarize_add_outcomes(
+            "example.com",
+            "A",
+            "www",
+            vec![("1.2.3.4".to_string(), Ok(()))],
+        )
+        .expect("all created -> success payload");
+        let envelope = cli_engine::Envelope::success(payload, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Results:"), "{rendered}");
+        assert!(rendered.contains("1.2.3.4"), "{rendered}");
+        assert!(rendered.contains("created"), "{rendered}");
     }
 
     #[test]

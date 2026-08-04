@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    RuntimeGroupSpec, TableColumn, Tier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -869,7 +869,34 @@ fn describe_command() -> RuntimeCommandSpec {
         .with_system("api")
         .with_tier(Tier::Read)
         .no_auth(true)
-        .with_output_schema::<ApiOperation>(),
+        .with_output_schema::<ApiOperation>()
+        // `parameters` is a flat array of OpenAPI parameter objects, so it
+        // renders as an indented child table instead of a raw JSON dump.
+        // `message`/`matches` cover the ambiguous-query shape (see
+        // `multi_match_result`) — without declaring them here, that response
+        // would render as a table of blank fields instead of the candidate
+        // list.
+        .with_view(vec![
+            TableColumn::new("domain", "Domain"),
+            TableColumn::new("operationId", "Operation ID"),
+            TableColumn::new("method", "Method"),
+            TableColumn::new("path", "Path"),
+            TableColumn::new("summary", "Summary"),
+            TableColumn::new("parameters", "Parameters").nested(vec![
+                TableColumn::new("name", "Name"),
+                TableColumn::new("in", "In"),
+                TableColumn::new("required", "Required"),
+                TableColumn::new("description", "Description"),
+            ]),
+            TableColumn::new("message", "Message"),
+            TableColumn::new("matches", "Matches").nested(vec![
+                TableColumn::new("domain", "Domain"),
+                TableColumn::new("operationId", "Operation ID"),
+                TableColumn::new("method", "Method"),
+                TableColumn::new("path", "Path"),
+                TableColumn::new("summary", "Summary"),
+            ]),
+        ]),
         |ctx, args: DescribeArgs| async move {
             let query = args.endpoint.as_str();
             let method_filter = args.method.map(|m| m.to_uppercase());
@@ -2065,6 +2092,40 @@ mod tests {
                 .expect("next_actions array")
                 .len(),
             2
+        );
+    }
+
+    /// The `describe` view's declared columns cover the single-match shape
+    /// (domain/operationId/method/path/summary/parameters); without also
+    /// declaring `message`/`matches`, a view still only ever shows its own
+    /// declared fields — so the ambiguous-match shape would render as a
+    /// table of blank fields with the explanatory message and candidate
+    /// list silently dropped. Covers that human-output path directly, since
+    /// every other test here only exercises `--output json`.
+    #[tokio::test]
+    async fn describe_multiple_fuzzy_matches_human_output_shows_message_and_candidates() {
+        let output = describe_cli()
+            .run(["gddy", "api", "describe", "/location", "--output", "human"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output
+                .rendered
+                .contains("Multiple endpoints match '/location'. Be more specific:"),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            output.rendered.contains("commerce.location.verify-address"),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            output
+                .rendered
+                .contains("commerce.location.search-addresses"),
+            "{}",
+            output.rendered
         );
     }
 

@@ -1,6 +1,6 @@
 //! `dns set` — replace every record for a type+name pair (destructive).
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, format_api_error, make_client};
@@ -414,6 +414,26 @@ struct SetArgs {
     replace_conflicting_types: bool,
 }
 
+/// `plan` only appears on the `--dry-run` preview (the real set's success
+/// payload has no per-action breakdown), so it renders as an indented child
+/// table there instead of a raw JSON dump.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("type", "Type"),
+        TableColumn::new("name", "Name"),
+        TableColumn::new("replaced", "Replaced"),
+        TableColumn::new("created", "Created"),
+        TableColumn::new("deleted", "Deleted"),
+        TableColumn::new("action", "Action"),
+        TableColumn::new("plan", "Plan").nested(vec![
+            TableColumn::new("action", "Action"),
+            TableColumn::new("recordId", "Record ID"),
+            TableColumn::new("data", "Data"),
+        ]),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SetArgs, _, _, _>(
         CommandSpec::from_args::<SetArgs>(
@@ -443,6 +463,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .handles_dry_run(true)
         .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
         .with_output_schema::<DnsSetResult>()
+        .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: SetArgs| async move {
             let opts = RecordOptions::from_write_args(&args.write);
@@ -692,6 +713,25 @@ mod tests {
                 "{field:?} was stripped by default_fields; preview: {projected}"
             );
         }
+    }
+
+    /// Proves `view_columns()`'s field names actually match what
+    /// `dry_run_set_preview` emits — a mismatch here would silently drop the
+    /// reconcile plan from human output.
+    #[test]
+    fn dry_run_set_preview_renders_plan_as_a_nested_table() {
+        let plan = plan_set(
+            &["r1".to_string()],
+            &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
+        );
+        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        let envelope = cli_engine::Envelope::success(preview, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Plan:"), "{rendered}");
+        assert!(rendered.contains("RECORD ID"), "{rendered}");
+        assert!(rendered.contains("replace"), "{rendered}");
+        assert!(rendered.contains("create"), "{rendered}");
+        assert!(rendered.contains("9.9.9.9"), "{rendered}");
     }
 
     // --- write_with_conflict_handling ---------------------------------------
