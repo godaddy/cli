@@ -63,6 +63,19 @@ fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
+/// Turns `--limit` into the deployments query param. Missing or non-positive
+/// values are omitted so the global flag's default of 0 is never sent. The API
+/// accepts 1-50 and defaults to 20 when the param is absent.
+fn optional_api_limit(ctx: &CommandContext) -> Option<u32> {
+    api_limit_from_value(ctx.args.get("limit"))
+}
+
+fn api_limit_from_value(v: Option<&Value>) -> Option<u32> {
+    v.and_then(|v| v.as_i64())
+        .filter(|&n| n >= 1)
+        .and_then(|n| u32::try_from(n).ok())
+}
+
 /// Whether a zip-upload or git-import job status is terminal (no further polling).
 fn is_source_job_terminal(status: &str) -> bool {
     matches!(status, "complete" | "failed")
@@ -414,15 +427,19 @@ fn deployment_list_command() -> RuntimeCommandSpec {
                     .help("Application ID"),
             )
             .with_arg(
+                // Must be i64 because this shares an id with the global `--limit`,
+                // which the engine always reads as i64. Using u32 here panics on
+                // downcast.
                 clap::Arg::new("limit")
                     .long("limit")
                     .value_name("N")
-                    .value_parser(clap::value_parser!(u32).range(1..=50))
+                    .allow_negative_numbers(true)
+                    .value_parser(clap::value_parser!(i64).range(1..=50))
                     .help("Maximum deployments to return (1-50)"),
             ),
         |ctx| async move {
             let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let limit = optional_u32(&ctx, "limit");
+            let limit = optional_api_limit(&ctx);
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client
                 .list_deployments(&app_id, limit)
@@ -1082,8 +1099,49 @@ fn logs_command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_app_creation_job_terminal, is_source_job_terminal, promote_job_fields};
+    use super::{
+        api_limit_from_value, deployment_list_command, is_app_creation_job_terminal,
+        is_source_job_terminal, promote_job_fields,
+    };
     use serde_json::json;
+
+    /// Builds a clap command from the real `--limit` arg rather than a hand-rolled copy.
+    fn deployment_list_clap_command() -> clap::Command {
+        clap::Command::new("list").args(deployment_list_command().spec.args)
+    }
+
+    #[test]
+    fn limit_rejects_out_of_range_and_negative_values() {
+        for bad in ["0", "51", "-1"] {
+            let err = deployment_list_clap_command()
+                .try_get_matches_from(["list", "--app-id", "app-1", "--limit", bad])
+                .expect_err("out-of-range --limit should be rejected");
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "--limit {bad} should fail range validation, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn limit_accepts_the_full_valid_range() {
+        for good in ["1", "50"] {
+            deployment_list_clap_command()
+                .try_get_matches_from(["list", "--app-id", "app-1", "--limit", good])
+                .expect("value within the valid --limit range should be accepted");
+        }
+    }
+
+    #[test]
+    fn api_limit_from_value_omits_missing_and_non_positive() {
+        // The global `--limit` defaults to 0, which must not be forwarded to the API.
+        assert_eq!(api_limit_from_value(None), None);
+        assert_eq!(api_limit_from_value(Some(&json!(0))), None);
+        assert_eq!(api_limit_from_value(Some(&json!(-1))), None);
+        assert_eq!(api_limit_from_value(Some(&json!(1))), Some(1));
+        assert_eq!(api_limit_from_value(Some(&json!(50))), Some(50));
+    }
 
     #[test]
     fn source_job_terminal_status_detection() {
