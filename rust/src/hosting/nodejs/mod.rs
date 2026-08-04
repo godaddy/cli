@@ -42,40 +42,6 @@ fn client_err(e: client::ClientError) -> CliCoreError {
     crate::error::GddyError::from(e).into_cli_error()
 }
 
-fn required_str(ctx: &CommandContext, key: &str, label: &str) -> Result<String> {
-    optional_str(ctx, key).ok_or_else(|| {
-        crate::error::GddyError::validation(format!("{label} is required")).into_cli_error()
-    })
-}
-
-fn optional_str(ctx: &CommandContext, key: &str) -> Option<String> {
-    ctx.args
-        .get(key)
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-}
-
-fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
-    let v = ctx.args.get(key)?;
-    v.as_u64()
-        .and_then(|n| u32::try_from(n).ok())
-        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-}
-
-/// Turns `--limit` into the deployments query param. Missing or non-positive
-/// values are omitted so the global flag's default of 0 is never sent. The API
-/// accepts 1-50 and defaults to 20 when the param is absent.
-fn optional_api_limit(ctx: &CommandContext) -> Option<u32> {
-    api_limit_from_value(ctx.args.get("limit"))
-}
-
-fn api_limit_from_value(v: Option<&Value>) -> Option<u32> {
-    v.and_then(|v| v.as_i64())
-        .filter(|&n| n >= 1)
-        .and_then(|n| u32::try_from(n).ok())
-}
-
 /// Whether a zip-upload or git-import job status is terminal (no further polling).
 fn is_source_job_terminal(status: &str) -> bool {
     matches!(status, "complete" | "failed")
@@ -171,22 +137,22 @@ fn app_list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct AppIdArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+}
+
 fn app_get_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("get", "Get a Node.js hosting application")
+    RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppIdArgs>("get", "Get a Node.js hosting application")
             .with_long("Get details for one Node.js hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[APPS_READ])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            .with_scopes(&[APPS_READ]),
+        |ctx, args: AppIdArgs| async move {
+            let app_id = args.app_id;
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.get_app(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
@@ -205,9 +171,20 @@ fn app_get_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct AppCreateArgs {
+    /// Application name.
+    #[arg(long, value_name = "NAME")]
+    name: String,
+
+    /// Datacenter (p3 or sxb1).
+    #[arg(long, value_name = "DATACENTER", value_parser = ["p3", "sxb1"])]
+    datacenter: Option<String>,
+}
+
 fn app_create_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("create", "Create a Node.js hosting application")
+    RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
+        CommandSpec::from_args::<AppCreateArgs>("create", "Create a Node.js hosting application")
             .with_long(
                 "Create a Node.js hosting application. Returns a creation job; poll \
                  `hosting nodejs job get` until the job is active.",
@@ -215,25 +192,11 @@ fn app_create_command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[APPS_CREATE])
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            )
-            .with_arg(
-                clap::Arg::new("datacenter")
-                    .long("datacenter")
-                    .value_name("DATACENTER")
-                    .value_parser(["p3", "sxb1"])
-                    .help("Datacenter (p3 or sxb1)"),
-            ),
-        |ctx| async move {
-            let name = required_str(&ctx, "name", "--name")?;
+            .with_scopes(&[APPS_CREATE]),
+        |ctx, args: AppCreateArgs| async move {
+            let name = args.name;
             let mut body = json!({ "name": name });
-            if let Some(datacenter) = optional_str(&ctx, "datacenter") {
+            if let Some(datacenter) = args.datacenter {
                 body["datacenter"] = json!(datacenter);
             }
             let client = make_client(&ctx, &[APPS_CREATE]).await?;
@@ -261,37 +224,40 @@ fn app_create_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct AppUpdateArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// New application name.
+    #[arg(long, value_name = "NAME")]
+    name: Option<String>,
+
+    /// Application root path.
+    #[arg(long = "root-path", value_name = "PATH")]
+    root_path: Option<String>,
+}
+
 fn app_update_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("update", "Update Node.js hosting application metadata")
-            .with_long("Update application metadata (name and/or root path).")
-            .with_system("hosting")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .with_scopes(&[APPS_UPDATE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .value_name("NAME")
-                    .help("New application name"),
-            )
-            .with_arg(
-                clap::Arg::new("root-path")
-                    .long("root-path")
-                    .value_name("PATH")
-                    .help("Application root path"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let name = optional_str(&ctx, "name");
-            let root_path = optional_str(&ctx, "root-path");
+    RuntimeCommandSpec::new_typed_with_context::<AppUpdateArgs, _, _, _>(
+        CommandSpec::from_args::<AppUpdateArgs>(
+            "update",
+            "Update Node.js hosting application metadata",
+        )
+        .with_long("Update application metadata (name and/or root path).")
+        .with_system("hosting")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .with_scopes(&[APPS_UPDATE]),
+        |ctx, args: AppUpdateArgs| async move {
+            let app_id = args.app_id;
+            // Treat an empty/whitespace-only value the same as an absent flag,
+            // matching the pre-typed-args `optional_str` helper's behavior —
+            // otherwise `--name ""` bypasses the "at least one of" check below
+            // and would send an invalid patch body.
+            let name = args.name.filter(|s| !s.trim().is_empty());
+            let root_path = args.root_path.filter(|s| !s.trim().is_empty());
             if name.is_none() && root_path.is_none() {
                 return Err(crate::error::GddyError::validation(
                     "at least one of --name or --root-path is required",
@@ -316,22 +282,15 @@ fn app_update_command() -> RuntimeCommandSpec {
 }
 
 fn app_delete_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("delete", "Delete a Node.js hosting application")
+    RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppIdArgs>("delete", "Delete a Node.js hosting application")
             .with_long("Permanently delete a Node.js hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Destructive)
             .mutates(true)
-            .with_scopes(&[APPS_DELETE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            .with_scopes(&[APPS_DELETE]),
+        |ctx, args: AppIdArgs| async move {
+            let app_id = args.app_id;
             let client = make_client(&ctx, &[APPS_DELETE]).await?;
             client.delete_app(&app_id).await.map_err(client_err)?;
             Ok(
@@ -346,9 +305,16 @@ fn app_delete_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct JobIdArgs {
+    /// App creation job ID.
+    #[arg(long = "job-id", value_name = "JOB_ID")]
+    job_id: String,
+}
+
 fn job_get_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("get", "Get app creation job status")
+    RuntimeCommandSpec::new_typed_with_context::<JobIdArgs, _, _, _>(
+        CommandSpec::from_args::<JobIdArgs>("get", "Get app creation job status")
             .with_long(
                 "Poll an app creation job until status is active (app provisioned) or failed.",
             )
@@ -356,16 +322,9 @@ fn job_get_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_scopes(&[APPS_CREATE])
             .with_default_fields("id,status")
-            .with_output_schema::<HostingJobSummary>()
-            .with_arg(
-                clap::Arg::new("job-id")
-                    .long("job-id")
-                    .value_name("JOB_ID")
-                    .required(true)
-                    .help("App creation job ID"),
-            ),
-        |ctx| async move {
-            let job_id = required_str(&ctx, "job-id", "--job-id")?;
+            .with_output_schema::<HostingJobSummary>(),
+        |ctx, args: JobIdArgs| async move {
+            let job_id = args.job_id;
             let client = make_client(&ctx, &[APPS_CREATE]).await?;
             let mut data = client
                 .get_app_creation_status(&job_id)
@@ -412,34 +371,36 @@ fn promote_job_fields(data: &mut Value) {
     }
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct DeploymentListArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    // Local override of the engine's global `--limit`, typed `i64` to match
+    // it (see `domain::suggest::SuggestArgs::limit` for the full rationale —
+    // a differently-typed override panics with a downcast mismatch reading
+    // the root `ArgMatches`).
+    #[arg(
+        long,
+        value_name = "N",
+        help = "Maximum deployments to return (1-50)",
+        allow_negative_numbers = true,
+        value_parser = clap::value_parser!(i64).range(1..=50)
+    )]
+    limit: Option<i64>,
+}
+
 fn deployment_list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("list", "List application deployments")
+    RuntimeCommandSpec::new_typed_with_context::<DeploymentListArgs, _, _, _>(
+        CommandSpec::from_args::<DeploymentListArgs>("list", "List application deployments")
             .with_long("List deployments for a Node.js hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[APPS_READ])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                // Must be i64 because this shares an id with the global `--limit`,
-                // which the engine always reads as i64. Using u32 here panics on
-                // downcast.
-                clap::Arg::new("limit")
-                    .long("limit")
-                    .value_name("N")
-                    .allow_negative_numbers(true)
-                    .value_parser(clap::value_parser!(i64).range(1..=50))
-                    .help("Maximum deployments to return (1-50)"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let limit = optional_api_limit(&ctx);
+            .with_scopes(&[APPS_READ]),
+        |ctx, args: DeploymentListArgs| async move {
+            let app_id = args.app_id;
+            let limit = args.limit.and_then(|n| u32::try_from(n).ok());
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client
                 .list_deployments(&app_id, limit)
@@ -457,8 +418,8 @@ fn deployment_list_command() -> RuntimeCommandSpec {
 }
 
 fn deployment_publish_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("publish", "Publish application (deploy latest code)")
+    RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppIdArgs>("publish", "Publish application (deploy latest code)")
             .with_long(
                 "Deploy the latest uploaded source for a Node.js hosting application. \
                  Poll `hosting nodejs status` and `hosting nodejs deployment list` for progress.",
@@ -466,16 +427,9 @@ fn deployment_publish_command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[DEPLOY_EXECUTE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            .with_scopes(&[DEPLOY_EXECUTE]),
+        |ctx, args: AppIdArgs| async move {
+            let app_id = args.app_id;
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
             let data = client.publish_app(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
@@ -495,21 +449,14 @@ fn deployment_publish_command() -> RuntimeCommandSpec {
 }
 
 fn status_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("status", "Get application status")
+    RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppIdArgs>("status", "Get application status")
             .with_long("Get runtime status for a Node.js hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[APPS_READ])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            .with_scopes(&[APPS_READ]),
+        |ctx, args: AppIdArgs| async move {
+            let app_id = args.app_id;
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.get_app_status(&app_id).await.map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
@@ -528,9 +475,20 @@ fn status_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SourceUploadArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Path to the zip file.
+    #[arg(long, short = 'f', value_name = "PATH")]
+    file: String,
+}
+
 fn source_upload_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("upload", "Upload application source (zip)")
+    RuntimeCommandSpec::new_typed_with_context::<SourceUploadArgs, _, _, _>(
+        CommandSpec::from_args::<SourceUploadArgs>("upload", "Upload application source (zip)")
             .with_long(
                 "Upload a zip archive of application source. Returns a job ID; poll \
                  `hosting nodejs source status` until complete.",
@@ -538,25 +496,10 @@ fn source_upload_command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[CODE_WRITE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("file")
-                    .long("file")
-                    .short('f')
-                    .value_name("PATH")
-                    .required(true)
-                    .help("Path to the zip file"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let file = required_str(&ctx, "file", "--file")?;
+            .with_scopes(&[CODE_WRITE]),
+        |ctx, args: SourceUploadArgs| async move {
+            let app_id = args.app_id;
+            let file = args.file;
             let path = std::path::Path::new(&file);
             if !path.is_file() {
                 return Err(crate::error::GddyError::validation(format!(
@@ -590,30 +533,27 @@ fn source_upload_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct AppJobIdArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Job ID.
+    #[arg(long = "job-id", value_name = "JOB_ID")]
+    job_id: String,
+}
+
 fn source_status_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("status", "Poll zip upload status")
+    RuntimeCommandSpec::new_typed_with_context::<AppJobIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppJobIdArgs>("status", "Poll zip upload status")
             .with_long("Poll the status of a zip source upload job.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[CODE_WRITE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("job-id")
-                    .long("job-id")
-                    .value_name("JOB_ID")
-                    .required(true)
-                    .help("Upload job ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let job_id = required_str(&ctx, "job-id", "--job-id")?;
+            .with_scopes(&[CODE_WRITE]),
+        |ctx, args: AppJobIdArgs| async move {
+            let app_id = args.app_id;
+            let job_id = args.job_id;
             let client = make_client(&ctx, &[CODE_WRITE]).await?;
             let data = client
                 .get_source_upload_status(&app_id, &job_id)
@@ -644,9 +584,36 @@ fn source_status_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SourceGitArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Branch to import.
+    #[arg(long, value_name = "BRANCH")]
+    branch: String,
+
+    /// Repository in owner/repo format.
+    #[arg(long, value_name = "OWNER/REPO")]
+    repo: Option<String>,
+
+    /// Repository clone URL.
+    #[arg(long = "repo-url", value_name = "URL")]
+    repo_url: Option<String>,
+
+    /// Repository is private.
+    #[arg(long)]
+    private: bool,
+
+    /// Clear working tree before import.
+    #[arg(long)]
+    clear: bool,
+}
+
 fn source_git_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("git", "Import source from a GitHub repository")
+    RuntimeCommandSpec::new_typed_with_context::<SourceGitArgs, _, _, _>(
+        CommandSpec::from_args::<SourceGitArgs>("git", "Import source from a GitHub repository")
             .with_long(
                 "Import source code from a GitHub repository branch. Returns a job ID; \
                  poll `hosting nodejs source git-status` until complete, then publish.",
@@ -654,69 +621,25 @@ fn source_git_command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[CODE_WRITE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("branch")
-                    .long("branch")
-                    .value_name("BRANCH")
-                    .required(true)
-                    .help("Branch to import"),
-            )
-            .with_arg(
-                clap::Arg::new("repo")
-                    .long("repo")
-                    .value_name("OWNER/REPO")
-                    .help("Repository in owner/repo format"),
-            )
-            .with_arg(
-                clap::Arg::new("repo-url")
-                    .long("repo-url")
-                    .value_name("URL")
-                    .help("Repository clone URL"),
-            )
-            .with_arg(
-                clap::Arg::new("private")
-                    .long("private")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Repository is private"),
-            )
-            .with_arg(
-                clap::Arg::new("clear")
-                    .long("clear")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Clear working tree before import"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let branch = required_str(&ctx, "branch", "--branch")?;
+            .with_scopes(&[CODE_WRITE]),
+        |ctx, args: SourceGitArgs| async move {
+            let app_id = args.app_id;
+            let branch = args.branch;
             let mut body = json!({ "branch": branch });
-            if let Some(repo) = optional_str(&ctx, "repo") {
+            // Treat an empty/whitespace-only value the same as an absent
+            // flag, matching the pre-typed-args `optional_str` helper's
+            // behavior — otherwise `--repo ""` would forward an invalid
+            // empty field into the request body.
+            if let Some(repo) = args.repo.filter(|s| !s.trim().is_empty()) {
                 body["repoFullName"] = json!(repo);
             }
-            if let Some(repo_url) = optional_str(&ctx, "repo-url") {
+            if let Some(repo_url) = args.repo_url.filter(|s| !s.trim().is_empty()) {
                 body["repoUrl"] = json!(repo_url);
             }
-            if ctx
-                .args
-                .get("private")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
+            if args.private {
                 body["isPrivate"] = json!(true);
             }
-            if ctx
-                .args
-                .get("clear")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
+            if args.clear {
                 body["clearWorkingTree"] = json!(true);
             }
             let client = make_client(&ctx, &[CODE_WRITE]).await?;
@@ -746,29 +669,15 @@ fn source_git_command() -> RuntimeCommandSpec {
 }
 
 fn source_git_status_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("git-status", "Poll git import job status")
+    RuntimeCommandSpec::new_typed_with_context::<AppJobIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppJobIdArgs>("git-status", "Poll git import job status")
             .with_long("Poll the status of a GitHub source import job.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[CODE_READ])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("job-id")
-                    .long("job-id")
-                    .value_name("JOB_ID")
-                    .required(true)
-                    .help("Git import job ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let job_id = required_str(&ctx, "job-id", "--job-id")?;
+            .with_scopes(&[CODE_READ]),
+        |ctx, args: AppJobIdArgs| async move {
+            let app_id = args.app_id;
+            let job_id = args.job_id;
             let client = make_client(&ctx, &[CODE_READ]).await?;
             let data = client
                 .get_git_import_status(&app_id, &job_id)
@@ -800,21 +709,14 @@ fn source_git_status_command() -> RuntimeCommandSpec {
 }
 
 fn github_status_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("status", "Show GitHub connection status")
+    RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
+        CommandSpec::from_args::<AppIdArgs>("status", "Show GitHub connection status")
             .with_long("Show whether GitHub is connected to a Node.js hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[GITHUB_EXECUTE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
+            .with_scopes(&[GITHUB_EXECUTE]),
+        |ctx, args: AppIdArgs| async move {
+            let app_id = args.app_id;
             let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
             let data = client
                 .get_github_status(&app_id)
@@ -839,38 +741,32 @@ fn github_status_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct GithubReposArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Repositories per page (1-100).
+    #[arg(long = "per-page", value_name = "N", value_parser = clap::value_parser!(u32).range(1..=100))]
+    per_page: Option<u32>,
+
+    /// Sort order (created, updated, pushed, full_name).
+    #[arg(long, value_name = "SORT", value_parser = ["created", "updated", "pushed", "full_name"])]
+    sort: Option<String>,
+}
+
 fn github_repos_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("repos", "List accessible GitHub repositories")
+    RuntimeCommandSpec::new_typed_with_context::<GithubReposArgs, _, _, _>(
+        CommandSpec::from_args::<GithubReposArgs>("repos", "List accessible GitHub repositories")
             .with_long("List GitHub repositories accessible to the connected account.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[GITHUB_EXECUTE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("per-page")
-                    .long("per-page")
-                    .value_name("N")
-                    .value_parser(clap::value_parser!(u32).range(1..=100))
-                    .help("Repositories per page (1-100)"),
-            )
-            .with_arg(
-                clap::Arg::new("sort")
-                    .long("sort")
-                    .value_name("SORT")
-                    .value_parser(["created", "updated", "pushed", "full_name"])
-                    .help("Sort order (created, updated, pushed, full_name)"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let per_page = optional_u32(&ctx, "per-page");
-            let sort = optional_str(&ctx, "sort");
+            .with_scopes(&[GITHUB_EXECUTE]),
+        |ctx, args: GithubReposArgs| async move {
+            let app_id = args.app_id;
+            let per_page = args.per_page;
+            let sort = args.sort;
             let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
             let data = client
                 .list_github_repos(&app_id, per_page, sort.as_deref())
@@ -889,46 +785,40 @@ fn github_repos_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct GithubBranchesArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Repository owner (user or org).
+    #[arg(long, value_name = "OWNER")]
+    owner: String,
+
+    /// Repository name.
+    #[arg(long, value_name = "REPO")]
+    repo: String,
+
+    /// Branches per page (1-100).
+    #[arg(long = "per-page", value_name = "N", value_parser = clap::value_parser!(u32).range(1..=100))]
+    per_page: Option<u32>,
+}
+
 fn github_branches_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("branches", "List branches for a GitHub repository")
-            .with_long("List branches for a GitHub repository accessible to the connected account.")
-            .with_system("hosting")
-            .with_tier(Tier::Read)
-            .with_scopes(&[GITHUB_EXECUTE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("owner")
-                    .long("owner")
-                    .value_name("OWNER")
-                    .required(true)
-                    .help("Repository owner (user or org)"),
-            )
-            .with_arg(
-                clap::Arg::new("repo")
-                    .long("repo")
-                    .value_name("REPO")
-                    .required(true)
-                    .help("Repository name"),
-            )
-            .with_arg(
-                clap::Arg::new("per-page")
-                    .long("per-page")
-                    .value_name("N")
-                    .value_parser(clap::value_parser!(u32).range(1..=100))
-                    .help("Branches per page (1-100)"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let owner = required_str(&ctx, "owner", "--owner")?;
-            let repo = required_str(&ctx, "repo", "--repo")?;
-            let per_page = optional_u32(&ctx, "per-page");
+    RuntimeCommandSpec::new_typed_with_context::<GithubBranchesArgs, _, _, _>(
+        CommandSpec::from_args::<GithubBranchesArgs>(
+            "branches",
+            "List branches for a GitHub repository",
+        )
+        .with_long("List branches for a GitHub repository accessible to the connected account.")
+        .with_system("hosting")
+        .with_tier(Tier::Read)
+        .with_scopes(&[GITHUB_EXECUTE]),
+        |ctx, args: GithubBranchesArgs| async move {
+            let app_id = args.app_id;
+            let owner = args.owner;
+            let repo = args.repo;
+            let per_page = args.per_page;
             let client = make_client(&ctx, &[GITHUB_EXECUTE]).await?;
             let data = client
                 .list_github_branches(&app_id, &owner, &repo, per_page)
@@ -947,30 +837,30 @@ fn github_branches_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SecretsListArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Variant filter (preview or publish).
+    #[arg(long, value_name = "VARIANT", value_parser = ["preview", "publish"])]
+    variant: Option<String>,
+}
+
 fn secrets_list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("list", "List application secrets (metadata only)")
-            .with_long("List secret names and metadata. Secret values are never returned.")
-            .with_system("hosting")
-            .with_tier(Tier::Read)
-            .with_scopes(&[SECRETS_WRITE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("variant")
-                    .long("variant")
-                    .value_name("VARIANT")
-                    .value_parser(["preview", "publish"])
-                    .help("Variant filter (preview or publish)"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let variant = optional_str(&ctx, "variant");
+    RuntimeCommandSpec::new_typed_with_context::<SecretsListArgs, _, _, _>(
+        CommandSpec::from_args::<SecretsListArgs>(
+            "list",
+            "List application secrets (metadata only)",
+        )
+        .with_long("List secret names and metadata. Secret values are never returned.")
+        .with_system("hosting")
+        .with_tier(Tier::Read)
+        .with_scopes(&[SECRETS_WRITE]),
+        |ctx, args: SecretsListArgs| async move {
+            let app_id = args.app_id;
+            let variant = args.variant;
             let client = make_client(&ctx, &[SECRETS_WRITE]).await?;
             let data = client
                 .list_secrets(&app_id, variant.as_deref())
@@ -981,34 +871,31 @@ fn secrets_list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SecretsUpdateArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// JSON file with secret operations.
+    #[arg(long, short = 'f', value_name = "PATH")]
+    file: String,
+}
+
 fn secrets_update_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("update", "Add, update, or delete application secrets")
-            .with_long(
-                "Update secrets from a JSON file matching the PublicSecretsUpdateBody schema.",
-            )
-            .with_system("hosting")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .with_scopes(&[SECRETS_WRITE])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("file")
-                    .long("file")
-                    .short('f')
-                    .value_name("PATH")
-                    .required(true)
-                    .help("JSON file with secret operations"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let file = required_str(&ctx, "file", "--file")?;
+    RuntimeCommandSpec::new_typed_with_context::<SecretsUpdateArgs, _, _, _>(
+        CommandSpec::from_args::<SecretsUpdateArgs>(
+            "update",
+            "Add, update, or delete application secrets",
+        )
+        .with_long("Update secrets from a JSON file matching the PublicSecretsUpdateBody schema.")
+        .with_system("hosting")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .with_scopes(&[SECRETS_WRITE]),
+        |ctx, args: SecretsUpdateArgs| async move {
+            let app_id = args.app_id;
+            let file = args.file;
             let content = std::fs::read_to_string(&file).map_err(|e| {
                 crate::error::GddyError::validation(format!(
                     "failed to read secrets file '{file}': {e}"
@@ -1031,9 +918,32 @@ fn secrets_update_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct LogsArgs {
+    /// Application ID.
+    #[arg(long = "app-id", value_name = "APP_ID")]
+    app_id: String,
+
+    /// Log target (preview or publish).
+    #[arg(long, value_name = "TARGET", value_parser = ["preview", "publish"])]
+    target: String,
+
+    /// Log stream (stdout, stderr, or exec).
+    #[arg(long, value_name = "SOURCE", value_parser = ["stdout", "stderr", "exec"])]
+    source: String,
+
+    /// Return logs since this ISO timestamp.
+    #[arg(long, value_name = "TIMESTAMP")]
+    since: String,
+
+    /// Maximum log lines to return (1-500).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=500))]
+    lines: Option<u32>,
+}
+
 fn logs_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("logs", "Get application logs")
+    RuntimeCommandSpec::new_typed_with_context::<LogsArgs, _, _, _>(
+        CommandSpec::from_args::<LogsArgs>("logs", "Get application logs")
             .with_long(
                 "Fetch log entries for a Node.js hosting application. \
                  Choose --source to select which stream to read: `stdout` and \
@@ -1043,50 +953,13 @@ fn logs_command() -> RuntimeCommandSpec {
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[LOGS_READ])
-            .with_arg(
-                clap::Arg::new("app-id")
-                    .long("app-id")
-                    .value_name("APP_ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("target")
-                    .long("target")
-                    .value_name("TARGET")
-                    .required(true)
-                    .value_parser(["preview", "publish"])
-                    .help("Log target (preview or publish)"),
-            )
-            .with_arg(
-                clap::Arg::new("source")
-                    .long("source")
-                    .value_name("SOURCE")
-                    .required(true)
-                    .value_parser(["stdout", "stderr", "exec"])
-                    .help("Log stream (stdout, stderr, or exec)"),
-            )
-            .with_arg(
-                clap::Arg::new("since")
-                    .long("since")
-                    .value_name("TIMESTAMP")
-                    .required(true)
-                    .help("Return logs since this ISO timestamp"),
-            )
-            .with_arg(
-                clap::Arg::new("lines")
-                    .long("lines")
-                    .value_name("N")
-                    .value_parser(clap::value_parser!(u32).range(1..=500))
-                    .help("Maximum log lines to return (1-500)"),
-            ),
-        |ctx| async move {
-            let app_id = required_str(&ctx, "app-id", "--app-id")?;
-            let target = required_str(&ctx, "target", "--target")?;
-            let source = required_str(&ctx, "source", "--source")?;
-            let since = required_str(&ctx, "since", "--since")?;
-            let lines = optional_u32(&ctx, "lines");
+            .with_scopes(&[LOGS_READ]),
+        |ctx, args: LogsArgs| async move {
+            let app_id = args.app_id;
+            let target = args.target;
+            let source = args.source;
+            let since = args.since;
+            let lines = args.lines;
             let client = make_client(&ctx, &[LOGS_READ]).await?;
             let data = client
                 .get_logs(&app_id, &target, &source, &since, lines)
@@ -1100,8 +973,8 @@ fn logs_command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_limit_from_value, deployment_list_command, is_app_creation_job_terminal,
-        is_source_job_terminal, promote_job_fields,
+        deployment_list_command, is_app_creation_job_terminal, is_source_job_terminal,
+        promote_job_fields,
     };
     use serde_json::json;
 
@@ -1131,16 +1004,6 @@ mod tests {
                 .try_get_matches_from(["list", "--app-id", "app-1", "--limit", good])
                 .expect("value within the valid --limit range should be accepted");
         }
-    }
-
-    #[test]
-    fn api_limit_from_value_omits_missing_and_non_positive() {
-        // The global `--limit` defaults to 0, which must not be forwarded to the API.
-        assert_eq!(api_limit_from_value(None), None);
-        assert_eq!(api_limit_from_value(Some(&json!(0))), None);
-        assert_eq!(api_limit_from_value(Some(&json!(-1))), None);
-        assert_eq!(api_limit_from_value(Some(&json!(1))), Some(1));
-        assert_eq!(api_limit_from_value(Some(&json!(50))), Some(50));
     }
 
     #[test]

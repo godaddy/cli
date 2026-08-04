@@ -142,9 +142,25 @@ fn purchase_consent_types(
         .collect()
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct PurchaseArgs {
+    /// The quote token from `gddy domain quote` (locks the price + settings).
+    #[arg(long = "quote-token", value_name = "TOKEN")]
+    quote_token: String,
+
+    /// Consent to the quote's legal agreements (run without it to list them;
+    /// review with `gddy guide domain-purchase`).
+    #[arg(long)]
+    agree: bool,
+
+    /// Confirm the purchase; required because it charges your account.
+    #[arg(long)]
+    confirm: bool,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new(
+    RuntimeCommandSpec::new_typed_with_context::<PurchaseArgs, _, _, _>(
+        CommandSpec::from_args::<PurchaseArgs>(
             "purchase",
             "Register a domain from a quote (paid; charges your account)",
         )
@@ -171,46 +187,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_tier(Tier::Destructive)
         .with_default_fields("domain,status,operationId,price,currency")
         .with_output_schema::<DomainPurchaseResult>()
-        .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE])
-        .with_arg(
-            clap::Arg::new("quote-token")
-                .long("quote-token")
-                .value_name("TOKEN")
-                .required(true)
-                .help("The quote token from `gddy domain quote` (locks the price + settings)"),
-        )
-        .with_arg(
-            clap::Arg::new("agree")
-                .long("agree")
-                .action(clap::ArgAction::SetTrue)
-                .help(
-                    "Consent to the quote's legal agreements (run without it to list \
-                             them; review with `gddy guide domain-purchase`)",
-                ),
-        )
-        .with_arg(
-            clap::Arg::new("confirm")
-                .long("confirm")
-                .action(clap::ArgAction::SetTrue)
-                .help("Confirm the purchase; required because it charges your account"),
-        ),
-        |ctx| async move {
-            let quote_token = ctx
-                .args
-                .get("quote-token")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
-            let agree = ctx
-                .args
-                .get("agree")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let confirm = ctx
-                .args
-                .get("confirm")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+        .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE]),
+        |ctx, args: PurchaseArgs| async move {
+            let quote_token = args.quote_token;
+            let agree = args.agree;
+            let confirm = args.confirm;
             let debug = !ctx.middleware.debug.is_empty();
 
             // Resolve auth *before* consuming the cached quote, so a token that

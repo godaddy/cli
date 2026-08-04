@@ -24,11 +24,22 @@ output_schema!(DomainAvailableResult {
     "period": "number", optional;
 });
 
+#[derive(Debug, Clone, clap::Args)]
+struct AvailableArgs {
+    /// Domain name to check (e.g. example.com).
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+
+    /// Optimize for speed (fast) or accuracy (full).
+    #[arg(long = "check-type", value_name = "TYPE", value_parser = ["fast", "full"])]
+    check_type: Option<String>,
+}
+
 /// The headline price for an availability/quote: the entry for a 1-year term if
 /// present, else the first listed term.
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("available", "Check whether a domain is available")
+    RuntimeCommandSpec::new_typed_with_context::<AvailableArgs, _, _, _>(
+        CommandSpec::from_args::<AvailableArgs>("available", "Check whether a domain is available")
             .with_long(
                 "Check whether a domain can be registered, and at what price. \
                  --check-type fast trades accuracy for speed; full is authoritative \
@@ -38,29 +49,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("domain,available,definitive,price,renewalPrice,currency,period")
             .with_output_schema::<DomainAvailableResult>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("Domain name to check (e.g. example.com)"),
-            )
-            .with_arg(
-                clap::Arg::new("check-type")
-                    .long("check-type")
-                    .value_name("TYPE")
-                    .value_parser(["fast", "full"])
-                    .help("Optimize for speed (fast) or accuracy (full)"),
-            ),
-        |ctx| async move {
-            let domain = validate_domain_name(
-                ctx.args
-                    .get("domain")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(""),
-            )?;
+            .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: AvailableArgs| async move {
+            let domain = validate_domain_name(&args.domain)?;
             // --check-type fast|full → v3 optimizeFor SPEED|ACCURACY.
-            let optimize_for = match ctx.args.get("check-type").and_then(|v| v.as_str()) {
+            let optimize_for = match args.check_type.as_deref() {
                 Some("fast") => Some(types::OptimizationTarget::Speed),
                 Some("full") => Some(types::OptimizationTarget::Accuracy),
                 _ => None,

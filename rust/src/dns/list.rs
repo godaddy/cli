@@ -8,11 +8,27 @@ use crate::scopes::DOMAINS_READ;
 
 use domains_client::types;
 
-use super::records::{arg_str, fetch_records, parse_list_type_arg};
+use super::records::{fetch_records, parse_list_type_arg};
+
+#[derive(Debug, Clone, clap::Args)]
+struct ListArgs {
+    /// Domain whose records to list (e.g. example.com).
+    #[arg(value_name = "DOMAIN")]
+    domain: String,
+
+    /// Only records of this type (A, AAAA, ALIAS, CAA, CNAME, MX, NS, SOA,
+    /// SRV, TXT).
+    #[arg(long = "type", value_name = "TYPE", value_parser = parse_list_type_arg)]
+    record_type: Option<String>,
+
+    /// Only records with this name (requires --type).
+    #[arg(long, value_name = "NAME", requires = "record_type")]
+    name: Option<String>,
+}
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("list", "List DNS records for a domain")
+    RuntimeCommandSpec::new_typed_with_context::<ListArgs, _, _, _>(
+        CommandSpec::from_args::<ListArgs>("list", "List DNS records for a domain")
             .with_long(
                 "Retrieves DNS records for a domain. Without filters, returns all \
                  record types. Use `--type` to narrow to one record type, and \
@@ -22,34 +38,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("type,name,data,ttl")
             .with_json_schema::<types::DnsRecord>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("Domain whose records to list (e.g. example.com)"),
-            )
-            .with_arg(
-                clap::Arg::new("type")
-                    .long("type")
-                    .value_name("TYPE")
-                    .value_parser(parse_list_type_arg)
-                    .help(
-                        "Only records of this type (A, AAAA, ALIAS, CAA, CNAME, MX, NS, SOA, \
-                         SRV, TXT)",
-                    ),
-            )
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .value_name("NAME")
-                    .requires("type")
-                    .help("Only records with this name (requires --type)"),
-            ),
-        |ctx| async move {
-            let domain = arg_str(&ctx, "domain").unwrap_or_default();
-            let type_opt = arg_str(&ctx, "type");
-            let name_opt = arg_str(&ctx, "name");
+            .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: ListArgs| async move {
+            let domain = args.domain;
+            let type_opt = args.record_type;
+            let name_opt = args.name;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;

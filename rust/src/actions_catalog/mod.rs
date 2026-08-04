@@ -60,6 +60,13 @@ fn load_action_schema(name: &str) -> Option<serde_json::Value> {
     serde_json::from_str(json_str).ok()
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct DescribeArgs {
+    /// Name of the action to describe (e.g. location.address.verify).
+    #[arg(value_name = "ACTION")]
+    action: String,
+}
+
 /// The action-catalog command group, composed below `gddy platform`.
 pub fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
@@ -97,32 +104,21 @@ pub fn group() -> RuntimeGroupSpec {
                 ]))
             },
         ))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("describe", "Show the input/output schema for an action")
-                .with_long(
-                    "Prints the full JSON schema for the named action contract, \
+        .with_command(RuntimeCommandSpec::new_typed::<DescribeArgs, _, _, _>(
+            CommandSpec::from_args::<DescribeArgs>(
+                "describe",
+                "Show the input/output schema for an action",
+            )
+            .with_long(
+                "Prints the full JSON schema for the named action contract, \
                      including its expected input fields and the shape of its output.\n\
                      Run `gddy platform actions list` for the list of valid action names.",
-                )
-                .with_system("actions")
-                .with_tier(Tier::Read)
-                .no_auth(true)
-                .with_arg(
-                    clap::Arg::new("action")
-                        .value_name("ACTION")
-                        .required(true)
-                        .help(
-                            "Name of the action to describe \
-                             (e.g. location.address.verify)",
-                        ),
-                ),
-            |ctx| async move {
-                let name = ctx
-                    .args
-                    .get("action")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_owned();
+            )
+            .with_system("actions")
+            .with_tier(Tier::Read)
+            .no_auth(true),
+            |_cred, args: DescribeArgs| async move {
+                let name = args.action;
                 let schema = load_action_schema(&name).ok_or_else(|| {
                     cli_engine::CliCoreError::message(format!(
                         "action {name:?} not found; run `gddy platform actions list` to see available actions"

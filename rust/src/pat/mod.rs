@@ -307,9 +307,24 @@ pub fn module() -> Module {
     .with_guides_from_markdown([("auth.md", include_bytes!("guides/auth.md").as_slice())])
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct PatAddArgs {
+    /// Environment the PAT is for (e.g. prod or ote).
+    #[arg(long, value_name = "ENV")]
+    env: String,
+
+    /// PAT value (if omitted, read from stdin).
+    #[arg(long, value_name = "TOKEN")]
+    token: Option<String>,
+
+    /// Human-readable label for this PAT.
+    #[arg(value_name = "NAME")]
+    name: String,
+}
+
 fn add_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("add", "Store a PAT for an environment")
+    RuntimeCommandSpec::new_typed_with_context::<PatAddArgs, _, _, _>(
+        CommandSpec::from_args::<PatAddArgs>("add", "Store a PAT for an environment")
             .with_long(
                 "Stores a Personal Access Token for the target environment.\n\
                  The token is read from stdin by default so it does not appear in shell \
@@ -324,35 +339,16 @@ fn add_command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .no_auth(true)
             .with_output_schema::<PatAddResult>()
-            .with_default_fields("env,name,lastFour,path,action")
-            .with_arg(
-                clap::Arg::new("env")
-                    .long("env")
-                    .value_name("ENV")
-                    .required(true)
-                    .help("Environment the PAT is for (e.g. prod or ote)"),
-            )
-            .with_arg(
-                clap::Arg::new("token")
-                    .long("token")
-                    .value_name("TOKEN")
-                    .help("PAT value (if omitted, read from stdin)"),
-            )
-            .with_arg(
-                clap::Arg::new("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Human-readable label for this PAT"),
-            ),
-        |ctx| async move {
-            let env = string_arg(&ctx.args, "env");
+            .with_default_fields("env,name,lastFour,path,action"),
+        |ctx, args: PatAddArgs| async move {
+            let env = args.env;
             // Validate the environment up front so a typo does not stash a PAT
             // for a non-existent env. Runs unconditionally, including under
             // `--dry-run`, so `--dry-run` can be used to pre-validate a PAT.
             environments::resolve(&env)?;
 
-            let name = string_arg(&ctx.args, "name");
-            let token = resolve_token_arg(&ctx.args).await?;
+            let name = args.name;
+            let token = resolve_token_arg(args.token.as_deref()).await?;
             if !is_valid_pat(&token) {
                 return Err(CliCoreError::message(
                     "token doesn't look like a GoDaddy PAT; refusing to store it. Run `gddy guide auth` for details on creating PATs.",
@@ -424,9 +420,16 @@ fn list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct PatRemoveArgs {
+    /// Environment whose PAT should be removed.
+    #[arg(long, value_name = "ENV")]
+    env: String,
+}
+
 fn remove_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("remove", "Remove the PAT for an environment")
+    RuntimeCommandSpec::new_typed_with_context::<PatRemoveArgs, _, _, _>(
+        CommandSpec::from_args::<PatRemoveArgs>("remove", "Remove the PAT for an environment")
             .with_long(
                 "Deletes the stored PAT for the given environment. This does not revoke \
                  the PAT in the Developer Portal; it only removes the local copy.",
@@ -437,16 +440,9 @@ fn remove_command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .no_auth(true)
             .with_output_schema::<PatRemoveResult>()
-            .with_default_fields("env,status")
-            .with_arg(
-                clap::Arg::new("env")
-                    .long("env")
-                    .value_name("ENV")
-                    .required(true)
-                    .help("Environment whose PAT should be removed"),
-            ),
-        |ctx| async move {
-            let env = string_arg(&ctx.args, "env");
+            .with_default_fields("env,status"),
+        |ctx, args: PatRemoveArgs| async move {
+            let env = args.env;
             // Validate the environment up front so a typo produces a clear error
             // instead of silently reporting "not found".
             environments::resolve(&env)?;
@@ -469,13 +465,6 @@ fn remove_command() -> RuntimeCommandSpec {
             })))
         },
     )
-}
-
-fn string_arg(args: &serde_json::Map<String, serde_json::Value>, name: &str) -> String {
-    args.get(name)
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_owned()
 }
 
 async fn read_stdin_token() -> Result<String, CliCoreError> {
@@ -503,10 +492,8 @@ fn parse_stdin_token(line: &str, bytes_read: usize) -> Result<String, CliCoreErr
 
 /// Return the PAT supplied on the command line, trimmed of surrounding whitespace,
 /// or read it from stdin when `--token` is absent or whitespace-only.
-async fn resolve_token_arg(
-    args: &serde_json::Map<String, serde_json::Value>,
-) -> Result<String, CliCoreError> {
-    if let Some(t) = args.get("token").and_then(|v| v.as_str()) {
+async fn resolve_token_arg(token: Option<&str>) -> Result<String, CliCoreError> {
+    if let Some(t) = token {
         let trimmed = t.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_owned());
@@ -574,12 +561,9 @@ mod tests {
 
     #[tokio::test]
     async fn cli_token_is_trimmed_before_validation() {
-        let mut args = serde_json::Map::new();
-        args.insert(
-            "token".to_owned(),
-            serde_json::Value::String("  gd_pat_a_12345678  \n".to_owned()),
-        );
-        let token = resolve_token_arg(&args).await.expect("token arg resolves");
+        let token = resolve_token_arg(Some("  gd_pat_a_12345678  \n"))
+            .await
+            .expect("token arg resolves");
         assert_eq!(token, "gd_pat_a_12345678");
         assert!(is_valid_pat(&token));
     }

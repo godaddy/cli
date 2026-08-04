@@ -174,10 +174,6 @@ async fn tap_deploy_err<T>(
     }
 }
 
-fn arg_str<'a>(ctx: &'a cli_engine::CommandContext, key: &str) -> &'a str {
-    ctx.args.get(key).and_then(|v| v.as_str()).unwrap_or("")
-}
-
 /// Next-actions after mutating local godaddy.toml (add action/subscription/extension).
 fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
     let name_param = if app_name.is_empty() {
@@ -274,9 +270,16 @@ fn list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct InfoArgs {
+    /// Application name.
+    #[arg(long, short = 'n', value_name = "NAME")]
+    name: String,
+}
+
 fn info_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("info", "Get application details")
+    RuntimeCommandSpec::new_typed_with_context::<InfoArgs, _, _, _>(
+        CommandSpec::from_args::<InfoArgs>("info", "Get application details")
             .with_long(
                 "Fetch full details for a single GoDaddy developer-platform application by \
                 name, including status, URLs, and authorization scopes. Use `gddy platform app \
@@ -285,17 +288,9 @@ fn info_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Read)
-            .with_output_schema::<ApplicationSummary>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .short('n')
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
+            .with_output_schema::<ApplicationSummary>(),
+        |ctx, args: InfoArgs| async move {
+            let name = args.name;
             let client = make_client(&ctx).await?;
             let data = client.get_application(&name).await.map_err(client_err)?;
             let app = &data["application"];
@@ -340,9 +335,45 @@ fn info_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct InitArgs {
+    /// Application name (used as label if --label is not set).
+    #[arg(long, short = 'n', value_name = "NAME")]
+    name: Option<String>,
+
+    /// Display label (defaults to name).
+    #[arg(long, value_name = "LABEL")]
+    label: Option<String>,
+
+    /// Application description.
+    #[arg(long, value_name = "TEXT")]
+    description: Option<String>,
+
+    /// Application URL (must be public HTTP(S)).
+    #[arg(long, value_name = "URL")]
+    url: Option<String>,
+
+    /// Proxy URL (must be public HTTP(S)).
+    #[arg(long, value_name = "URL")]
+    proxy_url: Option<String>,
+
+    /// Comma-separated authorization scopes.
+    #[arg(long, value_name = "SCOPES")]
+    scopes: Option<String>,
+
+    /// Read defaults from this config file.
+    #[arg(long, short = 'c', value_name = "PATH")]
+    config: Option<String>,
+
+    /// Accept GoDaddy Developer agreements non-interactively when onboarding
+    /// is still pending (required for non-TTY).
+    #[arg(long)]
+    accept_agreements: bool,
+}
+
 fn init_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("init", "Create and initialize a new application")
+    RuntimeCommandSpec::new_typed_with_context::<InitArgs, _, _, _>(
+        CommandSpec::from_args::<InitArgs>("init", "Create and initialize a new application")
             .with_long(
                 "Register a new GoDaddy developer-platform application and write a \
                 godaddy.toml manifest to the current directory. The manifest captures the \
@@ -354,71 +385,14 @@ fn init_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationInit>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .short('n')
-                    .value_name("NAME")
-                    .help("Application name (used as label if --label is not set)"),
-            )
-            .with_arg(
-                clap::Arg::new("label")
-                    .long("label")
-                    .value_name("LABEL")
-                    .help("Display label (defaults to name)"),
-            )
-            .with_arg(
-                clap::Arg::new("description")
-                    .long("description")
-                    .value_name("TEXT")
-                    .help("Application description"),
-            )
-            .with_arg(
-                clap::Arg::new("url")
-                    .long("url")
-                    .value_name("URL")
-                    .help("Application URL (must be public HTTP(S))"),
-            )
-            .with_arg(
-                clap::Arg::new("proxy-url")
-                    .long("proxy-url")
-                    .value_name("URL")
-                    .help("Proxy URL (must be public HTTP(S))"),
-            )
-            .with_arg(
-                clap::Arg::new("scopes")
-                    .long("scopes")
-                    .value_name("SCOPES")
-                    .help("Comma-separated authorization scopes"),
-            )
-            .with_arg(
-                clap::Arg::new("config")
-                    .long("config")
-                    .short('c')
-                    .value_name("PATH")
-                    .help("Read defaults from this config file"),
-            )
-            .with_arg(
-                clap::Arg::new("accept-agreements")
-                    .long("accept-agreements")
-                    .action(clap::ArgAction::SetTrue)
-                    .help(
-                        "Accept GoDaddy Developer agreements non-interactively when \
-                         onboarding is still pending (required for non-TTY)",
-                    ),
-            ),
-        |ctx| async move {
+            .with_output_schema::<ApplicationInit>(),
+        |ctx, args: InitArgs| async move {
             let env = ctx.middleware.env.clone();
             let config_path = crate::config::config_path(Some(&env));
-            let accept_agreements = ctx
-                .args
-                .get("accept-agreements")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
+            let accept_agreements = args.accept_agreements;
 
             // Seed defaults only from an explicit --config; a bad/missing --config is fatal.
-            let existing = match ctx.args.get("config").and_then(|v| v.as_str()) {
+            let existing = match args.config.as_deref() {
                 Some(path) => Some(
                     crate::config::read_config(std::path::Path::new(path)).map_err(|e| {
                         crate::error::GddyError::config(format!("invalid config: {e}"))
@@ -429,34 +403,34 @@ fn init_command() -> RuntimeCommandSpec {
             };
 
             // Resolve each field: CLI flag, else the existing config's value, else a default.
-            let flag = |key: &str| ctx.args.get(key).and_then(|v| v.as_str());
-            let name = flag("name")
-                .map(str::to_owned)
+            let name = args
+                .name
                 .or_else(|| existing.as_ref().map(|c| c.name.clone()))
                 .unwrap_or_default();
-            let description = flag("description")
-                .map(str::to_owned)
+            let description = args
+                .description
                 .or_else(|| existing.as_ref().and_then(|c| c.description.clone()))
                 .unwrap_or_default();
-            let url = flag("url")
-                .map(str::to_owned)
+            let url = args
+                .url
                 .or_else(|| existing.as_ref().map(|c| c.url.clone()))
                 .unwrap_or_default();
-            let proxy_url = flag("proxy-url")
-                .map(str::to_owned)
+            let proxy_url = args
+                .proxy_url
                 .or_else(|| existing.as_ref().map(|c| c.proxy_url.clone()))
                 .unwrap_or_default();
-            let scopes: Vec<String> = flag("scopes")
+            let scopes: Vec<String> = args
+                .scopes
                 .map(|s| {
                     s.split(',')
-                        .map(str::trim)
+                        .map(|p| p.trim())
                         .filter(|p| !p.is_empty())
                         .map(str::to_owned)
                         .collect()
                 })
                 .or_else(|| existing.as_ref().map(|c| c.authorization_scopes.clone()))
                 .unwrap_or_default();
-            let label = flag("label").unwrap_or(&name).to_owned();
+            let label = args.label.unwrap_or_else(|| name.clone());
 
             for (message, empty) in [
                 ("Application name is required", name.is_empty()),
@@ -630,9 +604,16 @@ fn validate_remote_application(app: &Value) -> (bool, Vec<String>, Vec<String>) 
     (errors.is_empty(), errors, warnings)
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ValidateArgs {
+    /// Application name.
+    #[arg(value_name = "NAME")]
+    name: String,
+}
+
 fn validate_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("validate", "Validate remote application state")
+    RuntimeCommandSpec::new_typed_with_context::<ValidateArgs, _, _, _>(
+        CommandSpec::from_args::<ValidateArgs>("validate", "Validate remote application state")
             .with_long(
                 "Fetch a GoDaddy developer-platform application by name and validate its \
                 remote configuration. Reports an error when the application URL is missing, \
@@ -641,15 +622,9 @@ fn validate_command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Read)
-            .with_output_schema::<ValidationResult>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
+            .with_output_schema::<ValidationResult>(),
+        |ctx, args: ValidateArgs| async move {
+            let name = args.name;
             let client = make_client(&ctx).await?;
             let data = client.get_application(&name).await.map_err(client_err)?;
             let app = &data["application"];
@@ -694,9 +669,42 @@ fn validate_command() -> RuntimeCommandSpec {
     )
 }
 
+/// "At least one of" fields for `update`, flattened into [`UpdateArgs`].
+///
+/// Kept as its own derive struct (rather than inline fields on `UpdateArgs`)
+/// so the struct-level `#[group(...)]` only covers these three — `id` stays
+/// outside the group and independently required. See the flatten caveat on
+/// `CommandSpec::from_args`: a struct can't both flatten a field and declare
+/// its own enforced group.
+#[derive(Debug, Clone, clap::Args)]
+#[group(required = true, multiple = true)]
+struct UpdateFields {
+    /// New label.
+    #[arg(long, value_name = "LABEL")]
+    label: Option<String>,
+
+    /// New description.
+    #[arg(long, value_name = "TEXT")]
+    description: Option<String>,
+
+    /// Application status (ACTIVE or INACTIVE).
+    #[arg(long, value_name = "STATUS", value_parser = ["ACTIVE", "INACTIVE"])]
+    status: Option<String>,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct UpdateArgs {
+    /// Application ID.
+    #[arg(long, value_name = "ID")]
+    id: String,
+
+    #[command(flatten)]
+    fields: UpdateFields,
+}
+
 fn update_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("update", "Update an application")
+    RuntimeCommandSpec::new_typed_with_context::<UpdateArgs, _, _, _>(
+        CommandSpec::from_args::<UpdateArgs>("update", "Update an application")
             .with_long(
                 "Update the label, description, or status of a GoDaddy developer-platform \
                 application by its ID. At least one of --label, --description, or --status \
@@ -706,52 +714,21 @@ fn update_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationUpdate>()
-            .with_arg(
-                clap::Arg::new("id")
-                    .long("id")
-                    .value_name("ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("label")
-                    .long("label")
-                    .value_name("LABEL")
-                    // CommandSpec has no ArgGroup; this enforces "at least one" at parse time.
-                    .required_unless_present_any(["description", "status"])
-                    .help("New label"),
-            )
-            .with_arg(
-                clap::Arg::new("description")
-                    .long("description")
-                    .value_name("TEXT")
-                    .required_unless_present_any(["label", "status"])
-                    .help("New description"),
-            )
-            .with_arg(
-                clap::Arg::new("status")
-                    .long("status")
-                    .value_name("STATUS")
-                    .value_parser(["ACTIVE", "INACTIVE"])
-                    .required_unless_present_any(["label", "description"])
-                    .help("Application status (ACTIVE or INACTIVE)"),
-            ),
-        |ctx| async move {
-            let id = arg_str(&ctx, "id").to_owned();
+            .with_output_schema::<ApplicationUpdate>(),
+        |context, args: UpdateArgs| async move {
             let mut input = serde_json::Map::new();
-            if let Some(label) = ctx.args.get("label").and_then(|v| v.as_str()) {
+            if let Some(label) = args.fields.label {
                 input.insert("label".to_owned(), json!(label));
             }
-            if let Some(desc) = ctx.args.get("description").and_then(|v| v.as_str()) {
-                input.insert("description".to_owned(), json!(desc));
+            if let Some(description) = args.fields.description {
+                input.insert("description".to_owned(), json!(description));
             }
-            if let Some(status) = ctx.args.get("status").and_then(|v| v.as_str()) {
+            if let Some(status) = args.fields.status {
                 input.insert("status".to_owned(), json!(status));
             }
-            let client = make_client(&ctx).await?;
+            let client = make_client(&context).await?;
             let data = client
-                .update_application(&id, json!(input))
+                .update_application(&args.id, json!(input))
                 .await
                 .map_err(client_err)?;
             let name = data["updateApplication"]["name"]
@@ -776,9 +753,20 @@ fn update_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct EnableDisableArgs {
+    /// Application name.
+    #[arg(value_name = "NAME")]
+    name: String,
+
+    /// Store ID to enable/disable the application on.
+    #[arg(long = "store-id", value_name = "STORE_ID")]
+    store_id: String,
+}
+
 fn enable_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("enable", "Enable an application on a store")
+    RuntimeCommandSpec::new_typed_with_context::<EnableDisableArgs, _, _, _>(
+        CommandSpec::from_args::<EnableDisableArgs>("enable", "Enable an application on a store")
             .with_long(
                 "Make a GoDaddy developer-platform application available on a specific \
                 store. Use `gddy platform app disable` to reverse this. Both the application name \
@@ -787,23 +775,10 @@ fn enable_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationRef>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            )
-            .with_arg(
-                clap::Arg::new("store-id")
-                    .long("store-id")
-                    .value_name("STORE_ID")
-                    .required(true)
-                    .help("Store ID to enable the application on"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let store_id = arg_str(&ctx, "store-id").to_owned();
+            .with_output_schema::<ApplicationRef>(),
+        |ctx, args: EnableDisableArgs| async move {
+            let name = args.name;
+            let store_id = args.store_id;
             let client = make_client(&ctx).await?;
             let data = client
                 .enable_application(json!({ "applicationName": name, "storeId": store_id }))
@@ -829,8 +804,8 @@ fn enable_command() -> RuntimeCommandSpec {
 }
 
 fn disable_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("disable", "Disable an application on a store")
+    RuntimeCommandSpec::new_typed_with_context::<EnableDisableArgs, _, _, _>(
+        CommandSpec::from_args::<EnableDisableArgs>("disable", "Disable an application on a store")
             .with_long(
                 "Remove a GoDaddy developer-platform application from a specific store, \
                 making it unavailable there. Use `gddy platform app enable` to re-enable it. \
@@ -839,23 +814,10 @@ fn disable_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationRef>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            )
-            .with_arg(
-                clap::Arg::new("store-id")
-                    .long("store-id")
-                    .value_name("STORE_ID")
-                    .required(true)
-                    .help("Store ID to disable the application on"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let store_id = arg_str(&ctx, "store-id").to_owned();
+            .with_output_schema::<ApplicationRef>(),
+        |ctx, args: EnableDisableArgs| async move {
+            let name = args.name;
+            let store_id = args.store_id;
             let client = make_client(&ctx).await?;
             let data = client
                 .disable_application(json!({ "applicationName": name, "storeId": store_id }))
@@ -883,8 +845,8 @@ fn disable_command() -> RuntimeCommandSpec {
 }
 
 fn archive_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("archive", "Archive an application")
+    RuntimeCommandSpec::new_typed_with_context::<ValidateArgs, _, _, _>(
+        CommandSpec::from_args::<ValidateArgs>("archive", "Archive an application")
             .with_long(
                 "Archive a GoDaddy developer-platform application by name. Archiving is \
                 irreversible via this CLI; the application will no longer be active. \
@@ -893,15 +855,9 @@ fn archive_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Destructive)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationArchive>()
-            .with_arg(
-                clap::Arg::new("name")
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
+            .with_output_schema::<ApplicationArchive>(),
+        |ctx, args: ValidateArgs| async move {
+            let name = args.name;
             let client = make_client(&ctx).await?;
             let app_data = client.get_application(&name).await.map_err(client_err)?;
             let app_id = app_data["application"]["id"]
@@ -978,9 +934,24 @@ fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec
     Ok(out)
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ReleaseArgs {
+    /// Application ID.
+    #[arg(long = "application-id", value_name = "ID")]
+    application_id: String,
+
+    /// Semver release version.
+    #[arg(long, value_name = "VERSION")]
+    version: String,
+
+    /// Release description.
+    #[arg(long, value_name = "TEXT")]
+    description: Option<String>,
+}
+
 fn release_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("release", "Create a new application release")
+    RuntimeCommandSpec::new_typed_with_context::<ReleaseArgs, _, _, _>(
+        CommandSpec::from_args::<ReleaseArgs>("release", "Create a new application release")
             .with_long(
                 "Tag a new versioned release for a GoDaddy developer-platform application. \
                 The version must follow semver (e.g. 1.2.3). A release is required before \
@@ -990,35 +961,11 @@ fn release_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_output_schema::<ApplicationRelease>()
-            .with_arg(
-                clap::Arg::new("application-id")
-                    .long("application-id")
-                    .value_name("ID")
-                    .required(true)
-                    .help("Application ID"),
-            )
-            .with_arg(
-                clap::Arg::new("version")
-                    .long("version")
-                    .value_name("VERSION")
-                    .required(true)
-                    .help("Semver release version"),
-            )
-            .with_arg(
-                clap::Arg::new("description")
-                    .long("description")
-                    .value_name("TEXT")
-                    .help("Release description"),
-            ),
-        |ctx| async move {
-            let app_id = arg_str(&ctx, "application-id").to_owned();
-            let version = arg_str(&ctx, "version").to_owned();
-            let description = ctx
-                .args
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(str::to_owned);
+            .with_output_schema::<ApplicationRelease>(),
+        |ctx, args: ReleaseArgs| async move {
+            let app_id = args.application_id;
+            let version = args.version;
+            let description = args.description;
             let mut input = json!({ "applicationId": app_id, "version": version });
             if let Some(desc) = description {
                 input["description"] = json!(desc);
@@ -1090,34 +1037,31 @@ fn release_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct DeployArgs {
+    /// Application name.
+    #[arg(long, short = 'n', value_name = "NAME")]
+    name: String,
+}
+
 fn deploy_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_streaming(
-        CommandSpec::new("deploy", "Deploy an application, streaming progress events")
-            .with_long(
-                "Read godaddy.toml from the current directory, bundle all declared extensions \
+    RuntimeCommandSpec::new_typed_streaming::<DeployArgs, _, _>(
+        CommandSpec::from_args::<DeployArgs>(
+            "deploy",
+            "Deploy an application, streaming progress events",
+        )
+        .with_long(
+            "Read godaddy.toml from the current directory, bundle all declared extensions \
                 with esbuild, run the security scanner (rules SEC101–SEC115) on each bundle, \
                 then upload the artifacts to the latest release of the named application. \
                 Progress is streamed as JSON events. A release must exist before deploying; \
                 create one with `gddy platform app release`.",
-            )
-            .with_system("applications")
-            .with_tier(Tier::Mutate)
-            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .short('n')
-                    .value_name("NAME")
-                    .required(true)
-                    .help("Application name"),
-            ),
-        |ctx, sender: StreamSender| async move {
-            let name = ctx
-                .args
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
+        )
+        .with_system("applications")
+        .with_tier(Tier::Mutate)
+        .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE]),
+        |ctx, args: DeployArgs, sender: StreamSender| async move {
+            let name = args.name;
             let env = ctx.middleware.env.clone();
             let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
             let base_url = tap_deploy_err(&sender, api_url_for_env(&env)).await?;
@@ -1574,6 +1518,65 @@ async fn deploy_extension(
     Ok(())
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ActionArgs {
+    /// Unique action name written into godaddy.toml.
+    #[arg(long)]
+    name: String,
+
+    /// Public HTTPS URL the platform will invoke for this action.
+    #[arg(long)]
+    url: String,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct SubscriptionArgs {
+    /// Unique subscription name written into godaddy.toml.
+    #[arg(long)]
+    name: String,
+
+    /// Public HTTPS URL that will receive webhook POST requests.
+    #[arg(long)]
+    url: String,
+
+    /// One or more event types to subscribe to (run `gddy platform webhook
+    /// events` to list valid values).
+    #[arg(long, value_name = "EVENT", required = true, num_args = 1..)]
+    events: Vec<String>,
+}
+
+/// Shared shape for `add extension embed`/`add extension checkout` — both
+/// register a UI extension by name/handle/source/target.
+#[derive(Debug, Clone, clap::Args)]
+struct UiExtensionArgs {
+    /// Unique extension name written into godaddy.toml.
+    #[arg(long)]
+    name: String,
+
+    /// Platform handle used to identify this extension surface.
+    #[arg(long)]
+    handle: String,
+
+    /// Path to the JavaScript entry-point file, relative to
+    /// extensions/<handle>/ (e.g. src/index.ts), or a path already under
+    /// that directory.
+    #[arg(long)]
+    source: String,
+
+    /// Comma-separated target surface(s) for this extension.
+    #[arg(long)]
+    target: String,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct BlocksArgs {
+    /// Path to the JavaScript entry-point file for the blocks extension,
+    /// relative to extensions/blocks/ (e.g. src/index.ts), or a path
+    /// already under that directory.
+    #[arg(long)]
+    source: String,
+}
+
 pub fn add_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("add", "Add components to an application").with_long(
@@ -1583,8 +1586,13 @@ pub fn add_group() -> RuntimeGroupSpec {
                 `gddy platform app deploy` to publish the updated manifest.",
         ),
     )
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("action", "Add an action to godaddy.toml")
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        ActionArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<ActionArgs>("action", "Add an action to godaddy.toml")
             .with_long(
                 "Append an action entry to the godaddy.toml manifest in the current \
                     directory. An action is an HTTP endpoint that the platform calls on \
@@ -1595,22 +1603,10 @@ pub fn add_group() -> RuntimeGroupSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ConfigAction>()
-            .no_auth(true)
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .required(true)
-                    .help("Unique action name written into godaddy.toml"),
-            )
-            .with_arg(
-                clap::Arg::new("url")
-                    .long("url")
-                    .required(true)
-                    .help("Public HTTPS URL the platform will invoke for this action"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let url = arg_str(&ctx, "url").to_owned();
+            .no_auth(true),
+        |ctx, args: ActionArgs| async move {
+            let name = args.name;
+            let url = args.url;
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1624,54 +1620,30 @@ pub fn add_group() -> RuntimeGroupSpec {
                 .with_next_actions(add_config_next_actions(&config.name)))
         },
     ))
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("subscription", "Add a webhook subscription to godaddy.toml")
-            .with_long(
-                "Append a webhook subscription entry to the godaddy.toml manifest in \
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        SubscriptionArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<SubscriptionArgs>(
+            "subscription",
+            "Add a webhook subscription to godaddy.toml",
+        )
+        .with_long(
+            "Append a webhook subscription entry to the godaddy.toml manifest in \
                     the current directory. A subscription routes platform events to an HTTPS \
                     endpoint. Provide one or more event types with --events; run \
                     `gddy platform webhook events` to discover the full list of valid event types.",
-            )
-            .with_system("applications")
-            .with_tier(Tier::Mutate)
-            .with_output_schema::<ConfigSubscription>()
-            .no_auth(true)
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .required(true)
-                    .help("Unique subscription name written into godaddy.toml"),
-            )
-            .with_arg(
-                clap::Arg::new("url")
-                    .long("url")
-                    .required(true)
-                    .help("Public HTTPS URL that will receive webhook POST requests"),
-            )
-            .with_arg(
-                clap::Arg::new("events")
-                    .long("events")
-                    .num_args(1..)
-                    .value_name("EVENT")
-                    .required(true)
-                    .help(
-                        "One or more event types to subscribe to \
-                            (run `gddy platform webhook events` to list valid values)",
-                    ),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let url = arg_str(&ctx, "url").to_owned();
-            let events: Vec<String> = ctx
-                .args
-                .get("events")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
+        )
+        .with_system("applications")
+        .with_tier(Tier::Mutate)
+        .with_output_schema::<ConfigSubscription>()
+        .no_auth(true),
+        |ctx, args: SubscriptionArgs| async move {
+            let name = args.name;
+            let url = args.url;
+            let events = args.events;
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
                 .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
@@ -1704,8 +1676,13 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
                 `gddy platform app deploy` to bundle and upload the registered extensions.",
         ),
     )
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("embed", "Add an embed extension")
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        UiExtensionArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<UiExtensionArgs>("embed", "Add an embed extension")
             .with_long(
                 "Register an embed UI extension in godaddy.toml. An embed extension is a \
                 JavaScript bundle rendered as an inline widget inside a store surface. \
@@ -1715,35 +1692,12 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionHandle>()
-            .no_auth(true)
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .required(true)
-                    .help("Unique extension name written into godaddy.toml"),
-            )
-            .with_arg(
-                clap::Arg::new("handle")
-                    .long("handle")
-                    .required(true)
-                    .help("Platform handle used to identify this extension surface"),
-            )
-            .with_arg(clap::Arg::new("source").long("source").required(true).help(
-                "Path to the JavaScript entry-point file, relative to \
-                         extensions/<handle>/ (e.g. src/index.ts), or a path already \
-                         under that directory",
-            ))
-            .with_arg(
-                clap::Arg::new("target")
-                    .long("target")
-                    .required(true)
-                    .help("Comma-separated target surface(s) for this extension"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let handle = arg_str(&ctx, "handle").to_owned();
-            let source = normalized_extension_source(&handle, arg_str(&ctx, "source"), &name)?;
-            let targets = parse_targets(arg_str(&ctx, "target"));
+            .no_auth(true),
+        |ctx, args: UiExtensionArgs| async move {
+            let name = args.name;
+            let handle = args.handle;
+            let source = normalized_extension_source(&handle, &args.source, &name)?;
+            let targets = parse_targets(&args.target);
             if targets.is_empty() {
                 return Err(crate::error::GddyError::validation(
                     "at least one --target is required (comma-separated)",
@@ -1774,8 +1728,13 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             )
         },
     ))
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("checkout", "Add a checkout extension")
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        UiExtensionArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<UiExtensionArgs>("checkout", "Add a checkout extension")
             .with_long(
                 "Register a checkout UI extension in godaddy.toml. A checkout extension is \
                 a JavaScript bundle rendered during the store checkout flow. Provide a \
@@ -1785,35 +1744,12 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionHandle>()
-            .no_auth(true)
-            .with_arg(
-                clap::Arg::new("name")
-                    .long("name")
-                    .required(true)
-                    .help("Unique extension name written into godaddy.toml"),
-            )
-            .with_arg(
-                clap::Arg::new("handle")
-                    .long("handle")
-                    .required(true)
-                    .help("Platform handle used to identify this extension surface"),
-            )
-            .with_arg(clap::Arg::new("source").long("source").required(true).help(
-                "Path to the JavaScript entry-point file, relative to \
-                         extensions/<handle>/ (e.g. src/index.ts), or a path already \
-                         under that directory",
-            ))
-            .with_arg(
-                clap::Arg::new("target")
-                    .long("target")
-                    .required(true)
-                    .help("Comma-separated target surface(s) for this extension"),
-            ),
-        |ctx| async move {
-            let name = arg_str(&ctx, "name").to_owned();
-            let handle = arg_str(&ctx, "handle").to_owned();
-            let source = normalized_extension_source(&handle, arg_str(&ctx, "source"), &name)?;
-            let targets = parse_targets(arg_str(&ctx, "target"));
+            .no_auth(true),
+        |ctx, args: UiExtensionArgs| async move {
+            let name = args.name;
+            let handle = args.handle;
+            let source = normalized_extension_source(&handle, &args.source, &name)?;
+            let targets = parse_targets(&args.target);
             if targets.is_empty() {
                 return Err(crate::error::GddyError::validation(
                     "at least one --target is required (comma-separated)",
@@ -1844,8 +1780,13 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             )
         },
     ))
-    .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("blocks", "Add a blocks extension")
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        BlocksArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<BlocksArgs>("blocks", "Add a blocks extension")
             .with_long(
                 "Register a blocks UI extension in godaddy.toml. A blocks extension is a \
                 JavaScript bundle that provides content blocks within a store. Only one \
@@ -1856,14 +1797,9 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
             .with_system("applications")
             .with_tier(Tier::Mutate)
             .with_output_schema::<ExtensionBlocks>()
-            .no_auth(true)
-            .with_arg(clap::Arg::new("source").long("source").required(true).help(
-                "Path to the JavaScript entry-point file for the blocks extension, \
-                         relative to extensions/blocks/ (e.g. src/index.ts), or a path \
-                         already under that directory",
-            )),
-        |ctx| async move {
-            let source = normalized_extension_source("blocks", arg_str(&ctx, "source"), "Blocks")?;
+            .no_auth(true),
+        |ctx, args: BlocksArgs| async move {
+            let source = normalized_extension_source("blocks", &args.source, "Blocks")?;
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let mut config = crate::config::read_config(&path)
                 .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;

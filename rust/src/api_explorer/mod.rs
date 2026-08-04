@@ -329,21 +329,6 @@ fn multi_match_result(query: &str, hits: &[(&Domain, &Endpoint)]) -> CommandResu
     .with_next_actions(next_actions)
 }
 
-/// Reads a repeatable string argument, handling both shapes cli-engine
-/// produces: a single occurrence is collapsed to a scalar `Value::String`, and
-/// only two-or-more become a `Value::Array`. Matching only the array shape
-/// silently drops a lone `--scope`/`--field` value, so handle both.
-fn string_list(args: &Map<String, Value>, key: &str) -> Vec<String> {
-    match args.get(key) {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_owned))
-            .collect(),
-        Some(Value::String(s)) => vec![s.clone()],
-        _ => Vec::new(),
-    }
-}
-
 /// Split a `--header` value of the form `KEY:VALUE` into trimmed parts.
 /// Splits on the first colon only, so values may themselves contain colons
 /// (e.g. a URL). Returns None when there is no colon.
@@ -799,9 +784,16 @@ fn domain_list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct EndpointListArgs {
+    /// API domain whose endpoints to list (see `api domain list`).
+    #[arg(long, value_name = "DOMAIN")]
+    domain: String,
+}
+
 fn endpoint_list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("list", "List endpoints within an API domain")
+    RuntimeCommandSpec::new_typed_with_context::<EndpointListArgs, _, _, _>(
+        CommandSpec::from_args::<EndpointListArgs>("list", "List endpoints within an API domain")
             .with_long(
                 "Lists every endpoint in one API domain, showing the operation ID, HTTP \
                  method, path, and summary. Use `api domain list` to find available domain \
@@ -812,21 +804,10 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("operationId,method,path,summary")
-            .with_output_schema::<ApiDomainEndpoint>()
-            .with_arg(
-                clap::Arg::new("domain")
-                    .long("domain")
-                    .value_name("DOMAIN")
-                    .required(true)
-                    .help("API domain whose endpoints to list (see `api domain list`)"),
-            ),
-        |ctx| async move {
+            .with_output_schema::<ApiDomainEndpoint>(),
+        |_ctx, args: EndpointListArgs| async move {
             let catalog = catalog();
-            let domain_filter = ctx
-                .args
-                .get("domain")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let domain_filter = args.domain;
             let domain = catalog
                 .iter()
                 .find(|d| d.name == domain_filter)
@@ -862,9 +843,20 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct DescribeArgs {
+    /// Operation ID (e.g. createOrder) or path fragment (e.g. /v1/commerce/orders).
+    #[arg(value_name = "ENDPOINT")]
+    endpoint: String,
+
+    /// Filter to a specific HTTP method (GET, POST, PUT, PATCH, DELETE).
+    #[arg(long, short = 'm', value_name = "METHOD")]
+    method: Option<String>,
+}
+
 fn describe_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new(
+    RuntimeCommandSpec::new_typed_with_context::<DescribeArgs, _, _, _>(
+        CommandSpec::from_args::<DescribeArgs>(
             "describe",
             "Show schema and parameters for an endpoint",
         )
@@ -877,31 +869,10 @@ fn describe_command() -> RuntimeCommandSpec {
         .with_system("api")
         .with_tier(Tier::Read)
         .no_auth(true)
-        .with_output_schema::<ApiOperation>()
-        .with_arg(
-            clap::Arg::new("endpoint")
-                .value_name("ENDPOINT")
-                .required(true)
-                .help("Operation ID (e.g. createOrder) or path fragment (e.g. /v1/commerce/orders)"),
-        )
-        .with_arg(
-            clap::Arg::new("method")
-                .long("method")
-                .short('m')
-                .value_name("METHOD")
-                .help("Filter to a specific HTTP method (GET, POST, PUT, PATCH, DELETE)"),
-        ),
-        |ctx| async move {
-            let query = ctx
-                .args
-                .get("endpoint")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let method_filter = ctx
-                .args
-                .get("method")
-                .and_then(|v| v.as_str())
-                .map(str::to_uppercase);
+        .with_output_schema::<ApiOperation>(),
+        |ctx, args: DescribeArgs| async move {
+            let query = args.endpoint.as_str();
+            let method_filter = args.method.map(|m| m.to_uppercase());
             let catalog = catalog();
 
             // Exact operationId/path/template match (optionally narrowed by
@@ -942,8 +913,7 @@ fn describe_command() -> RuntimeCommandSpec {
                 &ctx.middleware.env,
             );
 
-            let summarized_request =
-                summarize_request_body(ep.request_body.as_ref(), &domain.defs);
+            let summarized_request = summarize_request_body(ep.request_body.as_ref(), &domain.defs);
             let summarized_responses = summarize_responses(&ep.responses, &domain.defs);
 
             let request_body_json = summarized_request.map(|r| {
@@ -957,7 +927,10 @@ fn describe_command() -> RuntimeCommandSpec {
             let responses_json: Option<Map<String, Value>> = summarized_responses.map(|list| {
                 list.into_iter()
                     .map(|(status, r)| {
-                        (status, json!({ "description": r.description, "schema": r.schema }))
+                        (
+                            status,
+                            json!({ "description": r.description, "schema": r.schema }),
+                        )
                     })
                     .collect()
             });
@@ -972,7 +945,9 @@ fn describe_command() -> RuntimeCommandSpec {
                 let without_scheme = base_url
                     .split_once("://")
                     .map_or(base_url.as_str(), |(_, rest)| rest);
-                let path_prefix = without_scheme.find('/').map_or("", |i| &without_scheme[i..]);
+                let path_prefix = without_scheme
+                    .find('/')
+                    .map_or("", |i| &without_scheme[i..]);
                 format!("{path_prefix}{}", ep.path)
             };
 
@@ -991,19 +966,24 @@ fn describe_command() -> RuntimeCommandSpec {
                 "scopes": ep.scopes,
                 "graphql": ep.graphql.as_ref().map(summarize_graphql_schema),
             }))
-            .with_next_actions(vec![
-                next_action(
-                    format!("api call {} --method {}", ep.path, ep.method),
-                    "Make an authenticated call to this endpoint",
-                ),
-            ]))
+            .with_next_actions(vec![next_action(
+                format!("api call {} --method {}", ep.path, ep.method),
+                "Make an authenticated call to this endpoint",
+            )]))
         },
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SearchArgs {
+    /// Search term (matches path, operationId, summary, description).
+    #[arg(value_name = "QUERY")]
+    query: String,
+}
+
 fn search_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("search", "Search API endpoints by keyword")
+    RuntimeCommandSpec::new_typed::<SearchArgs, _, _, _>(
+        CommandSpec::from_args::<SearchArgs>("search", "Search API endpoints by keyword")
             .with_long(
                 "Full-text searches across all API domains, matching against operation IDs, \
                  paths, summaries, and descriptions. Returns matching endpoints with domain, \
@@ -1014,16 +994,9 @@ fn search_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,method,path,summary")
-            .with_output_schema::<ApiEndpoint>()
-            .with_arg(
-                clap::Arg::new("query")
-                    .value_name("QUERY")
-                    .required(true)
-                    .help("Search term (matches path, operationId, summary, description)"),
-            ),
-        |ctx| async move {
-            let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            let hits = search_endpoints(catalog(), query);
+            .with_output_schema::<ApiEndpoint>(),
+        |_cred, args: SearchArgs| async move {
+            let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
                 return Ok(CommandResult::new(json!([])));
             }
@@ -1052,9 +1025,44 @@ fn search_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct CallArgs {
+    /// Relative API path (e.g. /v1/commerce/stores/{storeId}/orders).
+    #[arg(value_name = "ENDPOINT")]
+    endpoint: String,
+
+    /// HTTP method.
+    #[arg(long, short = 'X', value_name = "METHOD", default_value = "GET")]
+    method: String,
+
+    /// Request body as raw JSON string.
+    #[arg(long, short = 'd', value_name = "JSON")]
+    body: Option<String>,
+
+    /// Add a field to the request body (key=value, repeatable).
+    #[arg(long, short = 'f', value_name = "KEY=VALUE")]
+    field: Vec<String>,
+
+    /// Read request body from a JSON file.
+    #[arg(long, short = 'F', value_name = "PATH")]
+    file: Option<String>,
+
+    /// Extra request headers.
+    #[arg(long, short = 'H', value_name = "KEY:VALUE")]
+    header: Vec<String>,
+
+    /// Include response headers in output.
+    #[arg(long, short = 'i')]
+    include: bool,
+
+    /// Additional required OAuth scope(s), merged with the endpoint's.
+    #[arg(long, short = 's', value_name = "SCOPE")]
+    scope: Vec<String>,
+}
+
 fn call_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("call", "Make an authenticated API request")
+    RuntimeCommandSpec::new_typed_with_context::<CallArgs, _, _, _>(
+        CommandSpec::from_args::<CallArgs>("call", "Make an authenticated API request")
             .with_long(
                 "Executes an authenticated HTTP request against any GoDaddy API endpoint. \
                  Required OAuth scopes are resolved automatically: the catalog is searched \
@@ -1075,80 +1083,10 @@ fn call_command() -> RuntimeCommandSpec {
             // resolution is deferred to the handler (which only calls
             // `credential_with_scopes` on the path that actually sends a
             // request) instead of the engine resolving eagerly beforehand.
-            .auth_optional()
-            .with_arg(
-                clap::Arg::new("endpoint")
-                    .value_name("ENDPOINT")
-                    .required(true)
-                    .help("Relative API path (e.g. /v1/commerce/stores/{storeId}/orders)"),
-            )
-            .with_arg(
-                clap::Arg::new("method")
-                    .long("method")
-                    .short('X')
-                    .value_name("METHOD")
-                    .default_value("GET")
-                    .help("HTTP method"),
-            )
-            .with_arg(
-                clap::Arg::new("body")
-                    .long("body")
-                    .short('d')
-                    .value_name("JSON")
-                    .help("Request body as raw JSON string"),
-            )
-            .with_arg(
-                clap::Arg::new("field")
-                    .long("field")
-                    .short('f')
-                    .value_name("KEY=VALUE")
-                    .num_args(0..)
-                    .help("Add a field to the request body (key=value, repeatable)"),
-            )
-            .with_arg(
-                clap::Arg::new("file")
-                    .long("file")
-                    .short('F')
-                    .value_name("PATH")
-                    .help("Read request body from a JSON file"),
-            )
-            .with_arg(
-                clap::Arg::new("header")
-                    .long("header")
-                    .short('H')
-                    .value_name("KEY:VALUE")
-                    .num_args(0..)
-                    .help("Extra request headers"),
-            )
-            .with_arg(
-                clap::Arg::new("include")
-                    .long("include")
-                    .short('i')
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Include response headers in output"),
-            )
-            .with_arg(
-                clap::Arg::new("scope")
-                    .long("scope")
-                    .short('s')
-                    .value_name("SCOPE")
-                    // One value per occurrence, repeatable (`--scope a --scope b`).
-                    // Append (vs num_args(1..)) avoids greedily consuming the
-                    // ENDPOINT positional and still rejects a bare `--scope`.
-                    .action(clap::ArgAction::Append)
-                    .help("Additional required OAuth scope(s), merged with the endpoint's"),
-            ),
-        |ctx| async move {
-            let endpoint = ctx
-                .args
-                .get("endpoint")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let method = ctx
-                .args
-                .get("method")
-                .and_then(|v| v.as_str())
-                .unwrap_or("GET");
+            .auth_optional(),
+        |ctx, args: CallArgs| async move {
+            let endpoint = args.endpoint.as_str();
+            let method = args.method.as_str();
             // Validate the method unconditionally, including under
             // `--dry-run` — otherwise a garbage/malformed method (e.g.
             // "POST " with trailing whitespace) would return a successful
@@ -1195,7 +1133,7 @@ fn call_command() -> RuntimeCommandSpec {
             // Required scopes = explicit --scope flags, plus the matched
             // endpoint's declared scopes. These drive OAuth scope step-up at
             // credential time.
-            let flag_scopes = string_list(&ctx.args, "scope");
+            let flag_scopes = args.scope.clone();
             let endpoint_scopes = matched.map(|(_, ep)| ep.scopes.as_slice()).unwrap_or(&[]);
             let required = merge_required_scopes(flag_scopes, endpoint_scopes);
 
@@ -1213,7 +1151,7 @@ fn call_command() -> RuntimeCommandSpec {
             // Build request body: -F file > -d body, then merge -f fields on top
             let mut request_body: Option<Value> = None;
 
-            if let Some(file_path) = ctx.args.get("file").and_then(|v| v.as_str()) {
+            if let Some(file_path) = args.file.as_deref() {
                 let content = std::fs::read_to_string(file_path).map_err(|e| {
                     crate::error::GddyError::validation(format!(
                         "failed to read file '{file_path}': {e}"
@@ -1226,17 +1164,17 @@ fn call_command() -> RuntimeCommandSpec {
                     ))
                     .into_cli_error()
                 })?);
-            } else if let Some(body_str) = ctx.args.get("body").and_then(|v| v.as_str()) {
+            } else if let Some(body_str) = args.body.as_deref() {
                 request_body = Some(serde_json::from_str(body_str).map_err(|e| {
                     crate::error::GddyError::validation(format!("invalid JSON body: {e}"))
                         .into_cli_error()
                 })?);
             }
 
-            let fields = string_list(&ctx.args, "field");
+            let fields = &args.field;
             if !fields.is_empty() {
                 let body = request_body.get_or_insert_with(|| json!({}));
-                for s in &fields {
+                for s in fields {
                     let eq = s.find('=').ok_or_else(|| {
                         crate::error::GddyError::validation(format!(
                             "invalid field format '{s}': expected key=value"
@@ -1258,8 +1196,8 @@ fn call_command() -> RuntimeCommandSpec {
                 .header("x-request-id", uuid::Uuid::new_v4().to_string());
 
             // Apply user-supplied `--header KEY:VALUE` values (repeatable).
-            for h in string_list(&ctx.args, "header") {
-                let (key, val) = split_header(&h).ok_or_else(|| {
+            for h in &args.header {
+                let (key, val) = split_header(h).ok_or_else(|| {
                     crate::error::GddyError::validation(format!(
                         "invalid header '{h}': expected KEY:VALUE"
                     ))
@@ -1284,11 +1222,7 @@ fn call_command() -> RuntimeCommandSpec {
             let status_code = resp.status();
             let status_text = status_code.canonical_reason().unwrap_or("").to_owned();
             let response_headers_raw = resp.headers().clone();
-            let include_headers = ctx
-                .args
-                .get("include")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let include_headers = args.include;
             let body_bytes = resp
                 .bytes()
                 .await
@@ -1517,20 +1451,6 @@ mod tests {
         );
         assert!(super::graphql_errors(&json!({"data": {}, "errors": []})).is_none());
         assert!(super::graphql_errors(&json!({"data": {}})).is_none());
-    }
-
-    #[test]
-    fn string_list_handles_scalar_array_and_missing() {
-        use serde_json::json;
-        // A single occurrence serializes to a scalar String (the bug case).
-        let mut args = serde_json::Map::new();
-        args.insert("scope".to_owned(), json!("solo"));
-        assert_eq!(super::string_list(&args, "scope"), v(&["solo"]));
-        // Two-or-more serialize to an array.
-        args.insert("scope".to_owned(), json!(["a", "b"]));
-        assert_eq!(super::string_list(&args, "scope"), v(&["a", "b"]));
-        // Missing key.
-        assert!(super::string_list(&args, "absent").is_empty());
     }
 
     #[test]

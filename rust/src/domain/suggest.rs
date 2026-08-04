@@ -5,9 +5,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{
-    api_error, comma_joined, format_money, make_client, string_list, term_for_period,
-};
+use super::common::{api_error, comma_joined, format_money, make_client, term_for_period};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -75,9 +73,49 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
     Some(obj)
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct SuggestArgs {
+    /// Seed domain or keywords to base suggestions on.
+    #[arg(value_name = "QUERY")]
+    query: String,
+
+    /// Limit suggestions to these TLDs (repeatable).
+    #[arg(long, value_name = "TLD")]
+    tlds: Vec<String>,
+
+    // Local override of the engine's global `--limit`, typed `i64` to
+    // match it: clap's `global(true)` propagates a parsed value up into
+    // every ancestor `ArgMatches` under the shared `"limit"` id, and
+    // cli-engine's global-flag parsing always reads the root value back out
+    // as `i64` — a differently-typed local override (e.g. `u64`) panics
+    // there with a downcast mismatch. `allow_negative_numbers` (not the
+    // broader `allow_hyphen_values`) lets a negative value reach the range
+    // check below without also swallowing a following flag's name as this
+    // arg's value when one is omitted. The v3 suggestions endpoint
+    // hard-caps `pageSize` at 50 (DEVEX-883), so this command validates the
+    // bound itself via clap instead of forwarding an out-of-range value the
+    // server rejects with a raw `400 VALUE_OVER`, or silently clamping it.
+    #[arg(
+        long,
+        value_name = "N",
+        help = "Maximum suggestions to return (1-50)",
+        allow_negative_numbers = true,
+        value_parser = clap::value_parser!(i64).range(1..=50)
+    )]
+    limit: Option<i64>,
+
+    /// Only suggest names at least this many characters.
+    #[arg(long = "length-min", value_name = "N", value_parser = clap::value_parser!(i64).range(1..))]
+    length_min: Option<i64>,
+
+    /// Only suggest names at most this many characters.
+    #[arg(long = "length-max", value_name = "N", value_parser = clap::value_parser!(i64).range(1..))]
+    length_max: Option<i64>,
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("suggest", "Suggest available domains for a query")
+    RuntimeCommandSpec::new_typed_with_context::<SuggestArgs, _, _, _>(
+        CommandSpec::from_args::<SuggestArgs>("suggest", "Suggest available domains for a query")
             .with_long(
                 "Suggest available domains from a seed word, phrase, or domain. \
                  Narrow results with --tlds (repeatable), bound the name length \
@@ -88,72 +126,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("domain,price1Year,renewalPrice1Year,currency")
             .with_output_schema::<DomainSuggestResult>()
-            .with_scopes(&[DOMAINS_READ])
-            .with_arg(
-                clap::Arg::new("query")
-                    .value_name("QUERY")
-                    .required(true)
-                    .help("Seed domain or keywords to base suggestions on"),
-            )
-            .with_arg(
-                clap::Arg::new("tlds")
-                    .long("tlds")
-                    .value_name("TLD")
-                    .action(clap::ArgAction::Append)
-                    .help("Limit suggestions to these TLDs (repeatable)"),
-            )
-            .with_arg(
-                // Local override of the engine's global `--limit`, typed
-                // `i64` to match it: clap's `global(true)` propagates a
-                // parsed value up into every ancestor `ArgMatches` under the
-                // shared `"limit"` id, and cli-engine's global-flag parsing
-                // always reads the root value back out as `i64` — a
-                // differently-typed local override (e.g. `u64`) panics there
-                // with a downcast mismatch. `allow_negative_numbers` (not the
-                // broader `allow_hyphen_values`) lets a negative value reach
-                // the range check below without also swallowing a following
-                // flag's name as this arg's value when one is omitted. The
-                // v3 suggestions endpoint hard-caps `pageSize` at 50
-                // (DEVEX-883), so this command validates the bound itself
-                // via clap instead of forwarding an out-of-range value the
-                // server rejects with a raw `400 VALUE_OVER`, or silently
-                // clamping it.
-                clap::Arg::new("limit")
-                    .long("limit")
-                    .value_name("N")
-                    .allow_negative_numbers(true)
-                    .value_parser(clap::value_parser!(i64).range(1..=50))
-                    .help("Maximum suggestions to return (1-50)"),
-            )
-            .with_arg(
-                clap::Arg::new("length-min")
-                    .long("length-min")
-                    .value_name("N")
-                    .value_parser(clap::value_parser!(i64).range(1..))
-                    .help("Only suggest names at least this many characters"),
-            )
-            .with_arg(
-                clap::Arg::new("length-max")
-                    .long("length-max")
-                    .value_name("N")
-                    .value_parser(clap::value_parser!(i64).range(1..))
-                    .help("Only suggest names at most this many characters"),
-            ),
-        |ctx| async move {
-            let query = ctx
-                .args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
-            let tlds = string_list(&ctx, "tlds");
-            let limit = ctx
-                .args
-                .get("limit")
-                .and_then(|v| v.as_i64())
-                .and_then(nonzero);
-            let length_min = ctx.args.get("length-min").and_then(|v| v.as_i64());
-            let length_max = ctx.args.get("length-max").and_then(|v| v.as_i64());
+            .with_scopes(&[DOMAINS_READ]),
+        |ctx, args: SuggestArgs| async move {
+            let query = args.query;
+            let tlds = args.tlds;
+            let limit = args.limit.and_then(nonzero);
+            let length_min = args.length_min;
+            let length_max = args.length_max;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;

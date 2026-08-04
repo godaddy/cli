@@ -69,9 +69,25 @@ fn build_entries(command_scopes: &[(String, Vec<String>)]) -> Vec<ScopeEntryData
         .collect()
 }
 
+#[derive(Debug, Clone, clap::Args)]
+#[group(multiple = false)]
+struct ScopesArgs {
+    /// Only show scopes required by this command (e.g. "domain purchase").
+    #[arg(long, value_name = "PATH")]
+    command: Option<String>,
+
+    /// Only show scopes requested at login by default.
+    #[arg(long = "defaults-only")]
+    defaults_only: bool,
+
+    /// Only show scopes that require an explicit --scope at login.
+    #[arg(long = "non-default")]
+    non_default: bool,
+}
+
 pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("scopes", "List requestable OAuth scopes")
+    RuntimeCommandSpec::new_typed_with_context::<ScopesArgs, _, _, _>(
+        CommandSpec::from_args::<ScopesArgs>("scopes", "List requestable OAuth scopes")
             .with_long(
                 "List every OAuth scope the CLI can request, its description, whether \
                  it's requested at login by default, and which commands need it.\n\
@@ -85,58 +101,23 @@ pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_output_schema::<ScopeEntry>()
             .with_default_fields("scope,description,commands,default")
-            .no_auth(true)
-            .with_arg(
-                clap::Arg::new("command")
-                    .long("command")
-                    .value_name("PATH")
-                    .conflicts_with_all(["defaults-only", "non-default"])
-                    .help("Only show scopes required by this command (e.g. \"domain purchase\")"),
-            )
-            .with_arg(
-                clap::Arg::new("defaults-only")
-                    .long("defaults-only")
-                    .action(clap::ArgAction::SetTrue)
-                    .conflicts_with("non-default")
-                    .help("Only show scopes requested at login by default"),
-            )
-            .with_arg(
-                clap::Arg::new("non-default")
-                    .long("non-default")
-                    .action(clap::ArgAction::SetTrue)
-                    .help("Only show scopes that require an explicit --scope at login"),
-            ),
-        |ctx| async move {
+            .no_auth(true),
+        |_ctx, args: ScopesArgs| async move {
             let scopes_by_command = command_scopes();
             let entries = build_entries(&scopes_by_command);
-            let filtered = if let Some(path) = ctx
-                .args
-                .get("command")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-            {
-                if !scopes_by_command.iter().any(|(p, _)| p == path) {
+            let filtered = if let Some(path) = args.command.filter(|s| !s.is_empty()) {
+                if !scopes_by_command.iter().any(|(p, _)| p == &path) {
                     return Err(CliCoreError::message(format!(
                         "unknown command {path:?}; run `gddy tree` to see available commands"
                     )));
                 }
                 entries
                     .into_iter()
-                    .filter(|e| e.commands.iter().any(|c| c == path))
+                    .filter(|e| e.commands.iter().any(|c| c == &path))
                     .collect::<Vec<_>>()
-            } else if ctx
-                .args
-                .get("defaults-only")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
+            } else if args.defaults_only {
                 entries.into_iter().filter(|e| e.default).collect()
-            } else if ctx
-                .args
-                .get("non-default")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
+            } else if args.non_default {
                 entries.into_iter().filter(|e| !e.default).collect()
             } else {
                 entries

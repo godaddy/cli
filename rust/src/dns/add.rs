@@ -3,14 +3,13 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::domain::{make_client, string_list};
+use crate::domain::make_client;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::conflicts::{WriteErrorContext, describe_write_error};
 use super::records::{
-    RecordOptions, arg_str, v3_records, validate_caa_fields, verify_with_list_action,
-    with_record_write_args,
+    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, verify_with_list_action,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -79,14 +78,13 @@ fn summarize_add_outcomes(
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_with_context(
-        with_record_write_args(
-            CommandSpec::new(
-                "add",
-                "Add DNS records to a domain (appends; non-destructive)",
-            )
-            .with_long(
-                "Appends one or more DNS records to a domain without modifying any \
+    RuntimeCommandSpec::new_typed_with_context::<RecordWriteArgs, _, _, _>(
+        CommandSpec::from_args::<RecordWriteArgs>(
+            "add",
+            "Add DNS records to a domain (appends; non-destructive)",
+        )
+        .with_long(
+            "Appends one or more DNS records to a domain without modifying any \
                      existing records. Pass `--data` once per record value to add \
                      multiple records for the same type+name (each is a separate v3 \
                      create call). `--ttl` defaults to 3600 when omitted. DNS only \
@@ -94,19 +92,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
                      adding into a name that already has the other kind fails with a \
                      specific error naming the conflicting record. Use `dns set` to \
                      replace the full record set for a type+name.",
-            )
-            .with_system("domain")
-            .with_tier(Tier::Mutate)
-            .with_default_fields("domain,type,name,created,failed")
-            .with_output_schema::<DnsAddResult>()
-            .with_scopes(&[DOMAINS_DNS_UPDATE]),
-        ),
-        |ctx| async move {
-            let domain = arg_str(&ctx, "domain").unwrap_or_default();
-            let record_type = arg_str(&ctx, "type").unwrap_or_default();
-            let name = arg_str(&ctx, "name").unwrap_or_default();
-            let data = string_list(&ctx, "data");
-            let opts = RecordOptions::from_ctx(&ctx);
+        )
+        .with_system("domain")
+        .with_tier(Tier::Mutate)
+        .with_default_fields("domain,type,name,created,failed")
+        .with_output_schema::<DnsAddResult>()
+        .with_scopes(&[DOMAINS_DNS_UPDATE]),
+        |ctx, args: RecordWriteArgs| async move {
+            let opts = RecordOptions::from_write_args(&args);
+            let domain = args.domain;
+            let record_type = args.record_type;
+            let name = args.name;
+            let data = args.data;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
             let records = v3_records(&name, &record_type, &data, &opts);

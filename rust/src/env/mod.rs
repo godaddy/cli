@@ -86,6 +86,16 @@ fn active_env() -> String {
     get_env().unwrap_or_else(|| environments::DEFAULT_ENV.to_owned())
 }
 
+// Field name `environment` gives this a distinct arg id from the global
+// `--env` flag (id "env"); a shared id would make the positional collide
+// with the flag's default, so `env set <X>` would ignore <X>.
+#[derive(Debug, Clone, clap::Args)]
+struct EnvSetArgs {
+    /// Environment name to activate (prod or ote).
+    #[arg(value_name = "ENV")]
+    environment: String,
+}
+
 pub fn module() -> Module {
     Module::new("Admin", |_ctx| {
         RuntimeGroupSpec::new(
@@ -145,8 +155,13 @@ pub fn module() -> Module {
                 })))
             },
         ))
-        .with_command(RuntimeCommandSpec::new_with_context(
-            CommandSpec::new("set", "Set the active environment")
+        .with_command(RuntimeCommandSpec::new_typed_with_context::<
+            EnvSetArgs,
+            _,
+            _,
+            _,
+        >(
+            CommandSpec::from_args::<EnvSetArgs>("set", "Set the active environment")
                 .with_long(
                     "Switches the active environment and persists the choice to \
                          ~/.gdenv so all subsequent commands use the new environment \
@@ -162,23 +177,9 @@ pub fn module() -> Module {
                 .with_tier(Tier::Mutate)
                 .handles_dry_run(true)
                 .with_output_schema::<EnvSetResult>()
-                .no_auth(true)
-                .with_arg(
-                    // Distinct id from the global `--env` flag (also id "env");
-                    // a shared id makes the positional collide with the flag's
-                    // default, so `env set <X>` would ignore <X>.
-                    clap::Arg::new("environment")
-                        .value_name("ENV")
-                        .required(true)
-                        .help("Environment name to activate (prod or ote)"),
-                ),
-            |ctx| async move {
-                let env = ctx
-                    .args
-                    .get("environment")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_owned();
+                .no_auth(true),
+            |ctx, args: EnvSetArgs| async move {
+                let env = args.environment;
                 // Resolve up front: validates the env exists (built-in, env
                 // var, or local config) and yields its API URL for the reply.
                 // Runs unconditionally, including under `--dry-run`.
