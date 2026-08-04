@@ -2,10 +2,11 @@ use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::truncation::protect_payload;
 
 output_schema!(ActionSummary {
     "name": "string";
@@ -38,7 +39,7 @@ const ACTIONS: &[(&str, &str)] = &[
 
 /// Raw action schema JSON files embedded at compile time.
 /// Key is the action name; value is the full JSON schema.
-fn load_action_schema(name: &str) -> Option<serde_json::Value> {
+fn load_action_schema(name: &str) -> Option<Value> {
     let json_str = match name {
         "location.address.verify" => {
             include_str!("../../schemas/actions/location-address-verify.json")
@@ -138,7 +139,23 @@ pub fn group() -> RuntimeGroupSpec {
                         "action {name:?} not found; run `gddy platform actions list` to see available actions"
                     ))
                 })?;
-                Ok(CommandResult::new(schema))
+                let result = protect_payload(schema, &format!("actions-describe-{name}"));
+                let mut payload = result.value;
+                if let Value::Object(ref mut map) = payload {
+                    map.insert("truncated".to_string(), json!(result.metadata.is_some()));
+                    if let Some(metadata) = result.metadata {
+                        map.insert("total".to_string(), json!(metadata.total));
+                        map.insert("shown".to_string(), json!(metadata.shown));
+
+                        // Truncation should always produce a full_output file, but the write
+                        // is best-effort and can fail (e.g. disk full, permission denied), so
+                        // this stays an `if let` rather than an unconditional insert.
+                        if let Some(full_output) = metadata.full_output {
+                            map.insert("full_output".to_string(), json!(full_output));
+                        }
+                    }
+                }
+                Ok(CommandResult::new(payload))
             },
         ))
 }
