@@ -55,6 +55,12 @@ fn estimate_bytes(value: &Value) -> usize {
 fn write_full_output(command_id: &str, payload: &Value) -> Option<PathBuf> {
     let dir = std::env::temp_dir().join("godaddy-cli");
     std::fs::create_dir_all(&dir).ok()?;
+    #[cfg(unix)]
+    {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, Permissions::from_mode(0o700)).ok();
+    }
 
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -63,6 +69,12 @@ fn write_full_output(command_id: &str, payload: &Value) -> Option<PathBuf> {
     let path = dir.join(format!("{millis}-{}.json", slugify(command_id)));
     let contents = serde_json::to_string_pretty(payload).ok()?;
     std::fs::write(&path, contents).ok()?;
+    #[cfg(unix)]
+    {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, Permissions::from_mode(0o600)).ok();
+    }
 
     Some(path)
 }
@@ -90,6 +102,7 @@ pub(crate) fn truncate_list<T: Serialize>(
     command_id: &str,
 ) -> ListTruncationResult<T> {
     let total = items.len();
+    let shown = total.min(MAX_LIST_ITEMS);
     let truncated = total > MAX_LIST_ITEMS;
 
     if !truncated {
@@ -98,6 +111,7 @@ pub(crate) fn truncate_list<T: Serialize>(
             metadata: TruncationMetadata {
                 truncated: false,
                 total,
+                shown,
                 full_output: None,
             },
         };
@@ -114,6 +128,7 @@ pub(crate) fn truncate_list<T: Serialize>(
         metadata: TruncationMetadata {
             truncated: true,
             total,
+            shown,
             full_output,
         },
     }
@@ -129,6 +144,14 @@ pub(crate) fn protect_payload(value: Value, command_id: &str) -> PayloadTruncati
     let mut shown_bytes = estimate_bytes(&candidate);
     let mut truncated = total_bytes != shown_bytes;
 
+    if shown_bytes > MAX_SERIALIZED_BYTES {
+        truncated = true;
+        candidate = serde_json::json!({
+            "truncated": true,
+            "summary": "Output too large for inline payload",
+        });
+        shown_bytes = estimate_bytes(&candidate);
+    }
 
     if !truncated {
         return PayloadTruncationResult {
@@ -149,3 +172,84 @@ pub(crate) fn protect_payload(value: Value, command_id: &str) -> PayloadTruncati
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn truncate_list_under_limit_is_untouched() {
+        let items: Vec<u32> = (0..10).collect();
+        let result = truncate_list(items, "test-under");
+        assert_eq!(result.items.len(), 10);
+        assert!(!result.metadata.truncated);
+        assert_eq!(result.metadata.total, 10);
+        assert_eq!(result.metadata.shown, 10);
+        assert!(result.metadata.full_output.is_none());
+    }
+
+    #[test]
+    fn truncate_list_over_limit_caps_and_writes_full_output() {
+        let items: Vec<u32> = (0..75).collect();
+        let result = truncate_list(items, "test-over");
+        assert_eq!(result.items.len(), MAX_LIST_ITEMS);
+        assert!(result.metadata.truncated);
+        assert_eq!(result.metadata.total, 75);
+        assert_eq!(result.metadata.shown, MAX_LIST_ITEMS);
+        let full_output = result.metadata.full_output.expect("full_output path");
+        let contents = std::fs::read_to_string(&full_output).expect("full output file exists");
+        let parsed: Vec<u32> = serde_json::from_str(&contents).expect("valid json");
+        assert_eq!(parsed.len(), 75);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&full_output)
+                .expect("metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn truncate_strings_truncates_long_values_recursively() {
+        let long = "a".repeat(1500);
+        let value = json!({ "nested": [long.clone()] });
+        let truncated = truncate_strings(&value);
+        let nested = truncated["nested"][0].as_str().expect("string");
+        assert!(nested.ends_with("...(truncated)"));
+        assert_eq!(nested.len(), MAX_STRING_LENGTH + "...(truncated)".len());
+    }
+
+    #[test]
+    fn protect_payload_passes_through_small_values_unchanged() {
+        let value = json!({ "name": "short" });
+        let result = protect_payload(value.clone(), "test-small");
+        assert_eq!(result.value, value);
+        assert!(result.metadata.is_none());
+    }
+
+    #[test]
+    fn protect_payload_truncates_long_strings_and_reports_metadata() {
+        let long = "a".repeat(1500);
+        let value = json!({ "name": long });
+        let result = protect_payload(value, "test-strings");
+        let metadata = result.metadata.expect("metadata present");
+        assert!(metadata.truncated);
+        assert!(metadata.full_output.is_some());
+    }
+
+    #[test]
+    fn protect_payload_falls_back_to_summary_when_still_too_large() {
+        let big_array: Vec<String> = (0..2000).map(|i| format!("item-{i}")).collect();
+        let value = json!({ "items": big_array });
+        let result = protect_payload(value, "test-huge");
+        let metadata = result.metadata.expect("metadata present");
+        assert!(metadata.truncated);
+        assert_eq!(result.value["truncated"], json!(true));
+        assert!(result.value.get("summary").is_some());
+        let full_output = metadata.full_output.expect("full_output path");
+        std::fs::remove_file(full_output).ok();
+    }
+}
