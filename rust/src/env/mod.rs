@@ -31,7 +31,34 @@ output_schema!(EnvInfo {
     "env": "string";
     "apiUrl": "string";
     "graphqlUrl": "string";
+    "configFile": "string";
+    "configSummary": "object|null";
 });
+
+/// Path to the env's `godaddy.toml` / `godaddy.<env>.toml` (absolute when
+/// possible), plus an optional summary when the file exists and validates.
+/// Missing/invalid configs yield `configSummary: null`.
+fn config_context(env: &str) -> (String, Option<serde_json::Value>) {
+    let relative = crate::config::config_path(Some(env));
+    let absolute = std::env::current_dir()
+        .map(|cwd| cwd.join(&relative))
+        .unwrap_or_else(|_| relative.clone());
+    let path_str = absolute.display().to_string();
+    (path_str, config_summary_for_path(&absolute))
+}
+
+fn config_summary_for_path(path: &std::path::Path) -> Option<serde_json::Value> {
+    crate::config::read_config(path).ok().map(|c| {
+        json!({
+            "name": c.name,
+            "clientId": c.client_id,
+            "version": c.version,
+            "url": c.url,
+            "proxyUrl": c.proxy_url,
+            "authorizationScopes": c.authorization_scopes,
+        })
+    })
+}
 
 /// Resolve the path to the `.gdenv` state file in the user's home directory.
 ///
@@ -207,10 +234,15 @@ pub fn module() -> Module {
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("info", "Show details for the active environment")
                 .with_long(
-                    "Prints extended details for the active environment, \
-                         including both the REST API base URL and the GraphQL \
-                         endpoint used by application commands.\n\
-                         Use `gddy env get` for a shorter summary.",
+                    "Prints extended details for the active environment, including \
+                         the REST API base URL, GraphQL endpoint, and a summary of \
+                         the local `godaddy.toml` (or `godaddy.<env>.toml`) when \
+                         present.\n\
+                         `configFile` is always the expected manifest path for the \
+                         active environment; `configSummary` is null when that file \
+                         is missing or invalid.\n\
+                         Use `gddy env get` for a shorter summary, or `gddy env set` \
+                         to change the active environment.",
                 )
                 .with_system("env")
                 .with_tier(Tier::Read)
@@ -219,10 +251,13 @@ pub fn module() -> Module {
             |_cred, _args| async move {
                 let env = active_env();
                 let resolved = environments::resolve(&env)?;
+                let (config_file, config_summary) = config_context(&resolved.name);
                 Ok(CommandResult::new(json!({
                     "env": resolved.name,
                     "apiUrl": resolved.api_url,
                     "graphqlUrl": format!("{}/v1/applications/graphql", resolved.api_url),
+                    "configFile": config_file,
+                    "configSummary": config_summary,
                 })))
             },
         ))
@@ -307,5 +342,77 @@ mod tests {
             .await;
 
         assert_ne!(output.exit_code, 0, "{}", output.rendered);
+    }
+
+    #[tokio::test]
+    async fn env_info_returns_config_file_for_active_env() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
+        );
+
+        let output = cli.run(["gddy", "env", "info", "--output", "json"]).await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        let data = &json["data"];
+        assert!(data["env"].as_str().is_some(), "{data}");
+        assert!(
+            data["apiUrl"].as_str().is_some_and(|u| u.contains("://")),
+            "{data}"
+        );
+        assert!(
+            data["graphqlUrl"]
+                .as_str()
+                .is_some_and(|u| u.contains("/v1/applications/graphql")),
+            "{data}"
+        );
+        assert!(
+            data["configFile"]
+                .as_str()
+                .is_some_and(|p| p.contains("godaddy") && p.ends_with(".toml")),
+            "{data}"
+        );
+        // Absent/invalid local config → null summary (soft, not an error).
+        assert!(
+            data["configSummary"].is_null() || data["configSummary"].is_object(),
+            "{data}"
+        );
+    }
+
+    #[test]
+    fn config_summary_for_path_reads_a_valid_manifest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        std::fs::write(
+            &path,
+            r#"
+name = "my-app"
+client_id = "550e8400-e29b-41d4-a716-446655440000"
+version = "1.0.0"
+url = "https://example.com"
+proxy_url = "https://proxy.example.com"
+authorization_scopes = ["openid"]
+"#,
+        )
+        .expect("write config");
+
+        let summary = super::config_summary_for_path(&path).expect("valid config should summarize");
+        assert_eq!(summary["name"], "my-app");
+        assert_eq!(summary["clientId"], "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(summary["version"], "1.0.0");
+        assert_eq!(summary["url"], "https://example.com");
+        assert_eq!(summary["proxyUrl"], "https://proxy.example.com");
+        assert_eq!(
+            summary["authorizationScopes"],
+            serde_json::json!(["openid"])
+        );
+    }
+
+    #[test]
+    fn config_summary_for_path_returns_none_when_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        assert!(super::config_summary_for_path(&path).is_none());
     }
 }
