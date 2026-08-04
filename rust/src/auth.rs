@@ -213,19 +213,25 @@ impl AuthProvider for GoDaddyAuthProvider {
     }
 
     async fn list_environments(&self) -> Result<Vec<String>> {
-        // Enumerate stored credentials across built-ins + locally-configured
-        // envs (env-var-only envs are excluded from `listable`, matching the
-        // `env list` contract). `listable` falls back to built-ins on a
-        // malformed local config, so this never fails wholesale.
+        // List every environment that could plausibly have a cached
+        // credential — built-ins + locally-configured envs (env-var-only
+        // envs are excluded from `listable`, matching the `env list`
+        // contract) plus anything with a registered PAT. `listable` falls
+        // back to built-ins on a malformed local config, so this never fails
+        // wholesale.
         //
-        // `PkceAuthProvider::list_environments` only reflects its own
-        // in-memory token cache (keyring/file storage can't be enumerated by
-        // prefix), so a freshly-built provider always returns an empty list
-        // here — this loop is a no-op in practice today, same as before this
-        // module built one provider per call. Kept for whenever cli-engine
-        // gains real storage enumeration.
+        // `PkceAuthProvider::list_environments` can't help here: keyring and
+        // file-fallback storage aren't enumerable by prefix, so it only
+        // reflects its own in-memory token cache — and since `provider_for`
+        // builds a fresh provider per call, that cache is always empty. So
+        // rather than ask providers to enumerate, list every *known*
+        // environment name and let `Dispatcher::all_statuses` call `status`
+        // on each; `status` does read real persisted storage, so a
+        // "not logged in" result there is trustworthy in a way an empty
+        // enumeration result is not.
         let listable = environments::listable()?;
-        let mut envs = std::collections::BTreeSet::new();
+        let mut envs: std::collections::BTreeSet<String> =
+            listable.into_iter().map(|resolved| resolved.name).collect();
         match pat::registry_envs().await {
             Ok(pats) => envs.extend(pats),
             Err(err) => {
@@ -234,10 +240,6 @@ impl AuthProvider for GoDaddyAuthProvider {
                     "failed to load PAT registry while listing environments; continuing"
                 );
             }
-        }
-        for resolved in listable {
-            let provider = build_provider(&resolved);
-            envs.extend(provider.list_environments().await.unwrap_or_default());
         }
         Ok(envs.into_iter().collect())
     }
