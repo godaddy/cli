@@ -63,9 +63,9 @@ fn optional_u32(ctx: &CommandContext, key: &str) -> Option<u32> {
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
-/// Local override of the engine's global `--limit` is typed `i64` to match it.
-/// Only forward API-valid values (1..=50); missing/`<=0` omit the query param
-/// so the server applies its default (20).
+/// Turns `--limit` into the deployments query param. Missing or non-positive
+/// values are omitted so the global flag's default of 0 is never sent. The API
+/// accepts 1-50 and defaults to 20 when the param is absent.
 fn optional_api_limit(ctx: &CommandContext) -> Option<u32> {
     api_limit_from_value(ctx.args.get("limit"))
 }
@@ -427,14 +427,9 @@ fn deployment_list_command() -> RuntimeCommandSpec {
                     .help("Application ID"),
             )
             .with_arg(
-                // Local override of the engine's global `--limit`, typed
-                // `i64` to match it: clap's `global(true)` propagates a
-                // parsed value up into every ancestor `ArgMatches` under the
-                // shared `"limit"` id, and cli-engine's global-flag parsing
-                // always reads the root value back out as `i64` — a
-                // differently-typed local override (e.g. `u32`) panics there
-                // with a downcast mismatch. `allow_negative_numbers` lets a
-                // negative value reach the range check below.
+                // Must be i64 because this shares an id with the global `--limit`,
+                // which the engine always reads as i64. Using u32 here panics on
+                // downcast.
                 clap::Arg::new("limit")
                     .long("limit")
                     .value_name("N")
@@ -1110,8 +1105,7 @@ mod tests {
     };
     use serde_json::json;
 
-    /// Builds a standalone `clap::Command` from the real `--limit` arg
-    /// definition so range validation exercises the shipped arg, not a copy.
+    /// Builds a clap command from the real `--limit` arg rather than a hand-rolled copy.
     fn deployment_list_clap_command() -> clap::Command {
         clap::Command::new("list").args(deployment_list_command().spec.args)
     }
@@ -1141,8 +1135,7 @@ mod tests {
 
     #[test]
     fn api_limit_from_value_omits_missing_and_non_positive() {
-        // Safety net: global `--limit` defaults to 0; never forward that
-        // (or negatives) as the hosting deployments query param.
+        // The global `--limit` defaults to 0, which must not be forwarded to the API.
         assert_eq!(api_limit_from_value(None), None);
         assert_eq!(api_limit_from_value(Some(&json!(0))), None);
         assert_eq!(api_limit_from_value(Some(&json!(-1))), None);
