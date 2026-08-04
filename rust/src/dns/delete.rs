@@ -1,6 +1,6 @@
 //! `dns delete` — remove all records matching a type+name from a domain.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client};
@@ -126,6 +126,26 @@ struct DeleteArgs {
     name: String,
 }
 
+/// `records` only appears on the `--dry-run` preview (the real delete's
+/// success payload has no per-record breakdown), so it renders as an
+/// indented child table there instead of a raw JSON dump — and simply blank
+/// on a real delete, same as any other absent optional field.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("type", "Type"),
+        TableColumn::new("name", "Name"),
+        TableColumn::new("deleted", "Deleted"),
+        TableColumn::new("failed", "Failed"),
+        TableColumn::new("action", "Action"),
+        TableColumn::new("records", "Records").nested(vec![
+            TableColumn::new("recordId", "Record ID"),
+            TableColumn::new("data", "Data"),
+            TableColumn::new("status", "Status"),
+        ]),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<DeleteArgs, _, _, _>(
         CommandSpec::from_args::<DeleteArgs>(
@@ -144,6 +164,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .handles_dry_run(true)
         .with_default_fields("domain,type,name,deleted,failed,action,records")
         .with_output_schema::<DnsDeleteResult>()
+        .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: DeleteArgs| async move {
             let domain = args.domain;
@@ -333,5 +354,22 @@ mod tests {
                 "{field:?} was stripped by default_fields; preview: {projected}"
             );
         }
+    }
+
+    /// Proves `view_columns()`'s field names actually match what
+    /// `dry_run_delete_preview` emits — a mismatch here would silently drop
+    /// the record breakdown from human output the same way the `api
+    /// describe` view once dropped its ambiguous-match fields.
+    #[test]
+    fn dry_run_delete_preview_renders_records_as_a_nested_table() {
+        let existing = vec![test_record("r1", "1.2.3.4")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        let envelope = cli_engine::Envelope::success(preview, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Records:"), "{rendered}");
+        assert!(rendered.contains("RECORD ID"), "{rendered}");
+        assert!(rendered.contains("r1"), "{rendered}");
+        assert!(rendered.contains("1.2.3.4"), "{rendered}");
+        assert!(rendered.contains("would delete"), "{rendered}");
     }
 }
