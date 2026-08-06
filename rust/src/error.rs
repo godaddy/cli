@@ -12,6 +12,7 @@ use cli_engine::{CliCoreError, DetailedError};
 /// Stable agent-facing error codes.
 pub(crate) mod codes {
     pub(crate) const NOT_FOUND: &str = "NOT_FOUND";
+    pub(crate) const AMBIGUOUS_MATCH: &str = "AMBIGUOUS_MATCH";
     pub(crate) const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
     pub(crate) const NETWORK_ERROR: &str = "NETWORK_ERROR";
     pub(crate) const AUTH_REQUIRED: &str = "AUTH_REQUIRED";
@@ -23,6 +24,8 @@ pub(crate) mod codes {
 mod fixes {
     pub(super) const NOT_FOUND: &str =
         "Use discovery commands such as: gddy platform app list or gddy platform actions list.";
+    pub(super) const AMBIGUOUS_MATCH: &str =
+        "Narrow the query, or add --method, to match exactly one operation.";
     pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
     pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scopes, or re-authenticate with: gddy auth login";
@@ -91,6 +94,17 @@ impl GddyError {
     #[must_use]
     pub(crate) fn not_found(message: impl Into<String>) -> Self {
         Self::new(codes::NOT_FOUND, message).with_fix(fixes::NOT_FOUND)
+    }
+
+    /// Something *was* found, just more than one thing — e.g. a fuzzy
+    /// operation query matching several unrelated endpoints, or an exact
+    /// path shared by more than one HTTP method with no `--method` given to
+    /// pick one. Distinct from [`not_found`](Self::not_found): the caller's
+    /// input identified a real ambiguity, not a dead end. Callers
+    /// invariably override the default fix with the actual candidate list.
+    #[must_use]
+    pub(crate) fn ambiguous(message: impl Into<String>) -> Self {
+        Self::new(codes::AMBIGUOUS_MATCH, message).with_fix(fixes::AMBIGUOUS_MATCH)
     }
 
     #[must_use]
@@ -240,6 +254,24 @@ mod tests {
                 .as_deref()
                 .is_some_and(|f| f.contains("platform app list")),
             "envelope.fix missing: {envelope:?}"
+        );
+    }
+
+    #[test]
+    fn ambiguous_sets_code_and_default_fix_but_is_overridable() {
+        let err = GddyError::ambiguous("'order' matches 3 operations");
+        assert_eq!(err.error_code(), codes::AMBIGUOUS_MATCH);
+        assert!(
+            err.error_fix().is_some_and(|f| f.contains("--method")),
+            "expected default ambiguity fix, got {:?}",
+            err.error_fix()
+        );
+
+        let overridden = GddyError::ambiguous("'order' matches 3 operations")
+            .with_fix("Run one of: gddy api operation get createOrder");
+        assert_eq!(
+            overridden.error_fix().as_deref(),
+            Some("Run one of: gddy api operation get createOrder")
         );
     }
 
