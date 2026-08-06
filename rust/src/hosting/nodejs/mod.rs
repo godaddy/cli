@@ -74,12 +74,15 @@ pub fn nodejs_group() -> RuntimeGroupSpec {
 }
 
 fn app_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new("app", "Manage hosting applications"))
-        .with_command(app_list_command())
-        .with_command(app_get_command())
-        .with_command(app_create_command())
-        .with_command(app_update_command())
-        .with_command(app_delete_command())
+    RuntimeGroupSpec::new(GroupSpec::new(
+        "app",
+        "Create, inspect, update, and delete Node.js hosting apps",
+    ))
+    .with_command(app_list_command())
+    .with_command(app_get_command())
+    .with_command(app_create_command())
+    .with_command(app_update_command())
+    .with_command(app_delete_command())
 }
 
 fn job_group() -> RuntimeGroupSpec {
@@ -88,17 +91,23 @@ fn job_group() -> RuntimeGroupSpec {
 }
 
 fn deployment_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new("deployment", "Manage app deployments"))
-        .with_command(deployment_list_command())
-        .with_command(deployment_publish_command())
+    RuntimeGroupSpec::new(GroupSpec::new(
+        "deployment",
+        "Promote preview to live and view deployment history",
+    ))
+    .with_command(deployment_list_command())
+    .with_command(deployment_publish_command())
 }
 
 fn source_group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new("source", "Upload and track app source"))
-        .with_command(source_upload_command())
-        .with_command(source_status_command())
-        .with_command(source_git_command())
-        .with_command(source_git_status_command())
+    RuntimeGroupSpec::new(GroupSpec::new(
+        "source",
+        "Push code to an app's preview environment",
+    ))
+    .with_command(source_upload_command())
+    .with_command(source_status_command())
+    .with_command(source_git_command())
+    .with_command(source_git_status_command())
 }
 
 fn github_group() -> RuntimeGroupSpec {
@@ -186,8 +195,10 @@ fn app_create_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
         CommandSpec::from_args::<AppCreateArgs>("create", "Create a Node.js hosting application")
             .with_long(
-                "Create a Node.js hosting application. Returns a creation job; poll \
-                 `hosting nodejs job get` until the job is active.",
+                "One-time provisioning of a new app slot. Do not call this when pushing \
+                 code to an app that already exists — use `source upload` (zip) or \
+                 `source git` (GitHub) instead. Returns a creation job; poll `job get` \
+                 until status is `active`.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -245,7 +256,7 @@ fn app_update_command() -> RuntimeCommandSpec {
             "update",
             "Update Node.js hosting application metadata",
         )
-        .with_long("Update application metadata (name and/or root path).")
+        .with_long("Update app metadata (name and/or root path). Does not affect source code or deployments.")
         .with_system("hosting")
         .with_tier(Tier::Mutate)
         .mutates(true)
@@ -316,7 +327,9 @@ fn job_get_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<JobIdArgs, _, _, _>(
         CommandSpec::from_args::<JobIdArgs>("get", "Get app creation job status")
             .with_long(
-                "Poll an app creation job until status is active (app provisioned) or failed.",
+                "Poll an app creation job until status is `active` (app provisioned) or \
+                 `failed`. Only used after `app create` — for source upload or git import \
+                 jobs use `source status` or `source git-status`.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -419,15 +432,20 @@ fn deployment_list_command() -> RuntimeCommandSpec {
 
 fn deployment_publish_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
-        CommandSpec::from_args::<AppIdArgs>("publish", "Publish application (deploy latest code)")
-            .with_long(
-                "Deploy the latest uploaded source for a Node.js hosting application. \
-                 Poll `hosting nodejs status` and `hosting nodejs deployment list` for progress.",
-            )
-            .with_system("hosting")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .with_scopes(&[DEPLOY_EXECUTE]),
+        CommandSpec::from_args::<AppIdArgs>(
+            "publish",
+            "Promote the app's preview environment to live",
+        )
+        .with_long(
+            "Promote the app's current preview environment to live, making it \
+                 available to users. Run after a source upload or git import job reaches \
+                 `complete`. Poll `status` (variants[].lifecycleState on the publish \
+                 variant) and `deployment list` for progress.",
+        )
+        .with_system("hosting")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .with_scopes(&[DEPLOY_EXECUTE]),
         |ctx, args: AppIdArgs| async move {
             let app_id = args.app_id;
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
@@ -488,15 +506,21 @@ struct SourceUploadArgs {
 
 fn source_upload_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SourceUploadArgs, _, _, _>(
-        CommandSpec::from_args::<SourceUploadArgs>("upload", "Upload application source (zip)")
-            .with_long(
-                "Upload a zip archive of application source. Returns a job ID; poll \
-                 `hosting nodejs source status` until complete.",
-            )
-            .with_system("hosting")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .with_scopes(&[CODE_WRITE]),
+        CommandSpec::from_args::<SourceUploadArgs>(
+            "upload",
+            "Upload a zip of source code to an app's preview environment",
+        )
+        .with_long(
+            "Upload a zip of source code to an existing app. When the job completes, \
+                 the code is automatically deployed to the app's preview environment. Use \
+                 this whenever you want to update the app's code — do not create a new app \
+                 for each update. After upload completes, run `deployment publish` to \
+                 promote preview to live.",
+        )
+        .with_system("hosting")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .with_scopes(&[CODE_WRITE]),
         |ctx, args: SourceUploadArgs| async move {
             let app_id = args.app_id;
             let file = args.file;
@@ -547,7 +571,11 @@ struct AppJobIdArgs {
 fn source_status_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppJobIdArgs, _, _, _>(
         CommandSpec::from_args::<AppJobIdArgs>("status", "Poll zip upload status")
-            .with_long("Poll the status of a zip source upload job.")
+            .with_long(
+                "Poll a zip source upload job until status is `complete` or `failed`. \
+                 When `complete`, the source has been deployed to the app's preview \
+                 environment; run `deployment publish` to promote to live.",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[CODE_WRITE]),
@@ -613,15 +641,20 @@ struct SourceGitArgs {
 
 fn source_git_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SourceGitArgs, _, _, _>(
-        CommandSpec::from_args::<SourceGitArgs>("git", "Import source from a GitHub repository")
-            .with_long(
-                "Import source code from a GitHub repository branch. Returns a job ID; \
-                 poll `hosting nodejs source git-status` until complete, then publish.",
-            )
-            .with_system("hosting")
-            .with_tier(Tier::Mutate)
-            .mutates(true)
-            .with_scopes(&[CODE_WRITE]),
+        CommandSpec::from_args::<SourceGitArgs>(
+            "git",
+            "Pull a GitHub branch into an app's preview environment",
+        )
+        .with_long(
+            "Pull a branch from a connected GitHub repository into an existing app. \
+                 When the job completes, the code is automatically deployed to preview. \
+                 Use instead of `source upload` when the app's code lives in GitHub. \
+                 After import completes, run `deployment publish` to promote to live.",
+        )
+        .with_system("hosting")
+        .with_tier(Tier::Mutate)
+        .mutates(true)
+        .with_scopes(&[CODE_WRITE]),
         |ctx, args: SourceGitArgs| async move {
             let app_id = args.app_id;
             let branch = args.branch;
@@ -671,7 +704,11 @@ fn source_git_command() -> RuntimeCommandSpec {
 fn source_git_status_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppJobIdArgs, _, _, _>(
         CommandSpec::from_args::<AppJobIdArgs>("git-status", "Poll git import job status")
-            .with_long("Poll the status of a GitHub source import job.")
+            .with_long(
+                "Poll a GitHub source import job until status is `complete` or `failed`. \
+                 When `complete`, the source has been deployed to the app's preview \
+                 environment; run `deployment publish` to promote to live.",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[CODE_READ]),
@@ -888,7 +925,11 @@ fn secrets_update_command() -> RuntimeCommandSpec {
             "update",
             "Add, update, or delete application secrets",
         )
-        .with_long("Update secrets from a JSON file matching the PublicSecretsUpdateBody schema.")
+        .with_long(
+            "Add, update, or delete secrets from a JSON file. The file must match the \
+             `PublicSecretsUpdateBody` schema; use `secrets list` to see which secrets \
+             currently exist.",
+        )
         .with_system("hosting")
         .with_tier(Tier::Mutate)
         .mutates(true)
@@ -945,11 +986,10 @@ fn logs_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<LogsArgs, _, _, _>(
         CommandSpec::from_args::<LogsArgs>("logs", "Get application logs")
             .with_long(
-                "Fetch log entries for a Node.js hosting application. \
-                 Choose --source to select which stream to read: `stdout` and \
-                 `stderr` are the running app's own output, while `exec` \
-                 covers platform activity around it (source import, npm \
-                 install, and build output all land here, not in stderr).",
+                "Fetch logs for a Node.js hosting app. `--target preview` or `publish` \
+                 selects which environment. `stdout` and `stderr` are the running app's \
+                 output; `exec` covers platform activity (npm install, build output, \
+                 import failures) — use `exec` to help diagnose a failed deploy.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
