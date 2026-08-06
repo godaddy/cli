@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.2](https://github.com/godaddy/cli/compare/v0.2.1...v0.2.2) (2026-08-06)
+
+
+### Features
+
+* **api-explorer:** add command hyperlinks for large output [DEVEX-967] ([#187](https://github.com/godaddy/cli/issues/187)) ([bfcc4be](https://github.com/godaddy/cli/commit/bfcc4be60083c11b0c797ff95024bf489170766c))
+* **cli:** convert command args to cli-engine's typed-args API ([#181](https://github.com/godaddy/cli/issues/181)) ([b6bf793](https://github.com/godaddy/cli/commit/b6bf79300d04df023503628e1dd7c0785cd515c9))
+* **output:** render nested arrays/objects as tables instead of raw JSON [DEVEX-968] ([#180](https://github.com/godaddy/cli/issues/180)) ([9c15fd2](https://github.com/godaddy/cli/commit/9c15fd295a51cbff52d6838dff624147a6f1f172))
+
+
+### Bug Fixes
+
+* **auth:** report per-environment status and refresh-token availability ([#184](https://github.com/godaddy/cli/issues/184)) ([cf7d9f5](https://github.com/godaddy/cli/commit/cf7d9f554c9812f19cab14576d46f081cbfbba50))
+* **env:** add app config summary to env info [DEVEX-715] ([#185](https://github.com/godaddy/cli/issues/185)) ([9f85943](https://github.com/godaddy/cli/commit/9f85943e3f97165bc62d378b9e3ff720de390002))
+* **extensions:** Rust bundler/deploy path parity with TS [DEVEX-712] ([#177](https://github.com/godaddy/cli/issues/177)) ([e995f99](https://github.com/godaddy/cli/commit/e995f990f00d5d1e4ec9afc44ac1631691d0a977))
+* Node.js Hosting CLI deployments --limit flag typing issue ([#183](https://github.com/godaddy/cli/issues/183)) ([4028ff1](https://github.com/godaddy/cli/commit/4028ff1f612ddbf52d894e9c0ee0096af429ab7f))
+
+
+### Miscellaneous
+
+* **nodejs:** update --help descriptions for Node.js Hosting CLI com… ([#186](https://github.com/godaddy/cli/issues/186)) ([71ae7a5](https://github.com/godaddy/cli/commit/71ae7a5a55a863544a24725a927d45ac01ed8893))
+
 ## [0.2.1](https://github.com/godaddy/cli/compare/v0.2.0...v0.2.1) (2026-08-01)
 
 
