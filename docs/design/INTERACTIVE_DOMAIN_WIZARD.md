@@ -27,7 +27,7 @@ Compare to Shopify (`shopify app init`) or Cloudflare (`wrangler init`) which gu
 - Respect the existing quote-execute API model (v3 Domains API)
 - Support attaching DNS records and nameservers as part of the flow
 - Non-interactive mode falls back to the existing `domain available` + `quote` + `purchase` pipeline
-- Work within `cli-engine`'s output contract (JSON on stdout, prompts on stderr)
+- Interactive mode defaults to human-readable output; JSON available via `--output json`
 
 ## API Surface
 
@@ -300,9 +300,36 @@ The v3 suggestions API (`GET /v3/domains/suggestions`) has these constraints:
 **Non-interactive fallback:** In scripting mode, `--limit N` (1–50) controls the count directly, matching the existing `gddy domain suggest --limit` behavior.
 
 
-### Output Contract
+### Output Modes
 
-Interactive wizard steps write prompts and progress to **stderr** (where the terminal displays them). The final result goes to **stdout** as the standard JSON envelope:
+The wizard uses **human-readable output by default** in interactive mode. Preserving
+JSON scriptability is unnecessary when the user is actively participating in a guided
+experience — the interactive flow is inherently human.
+
+| Mode | Default output | Rationale |
+|------|---------------|-----------|
+| Interactive (TTY detected) | Human-friendly summary | User is present; colors, tables, and guidance are appropriate |
+| Non-interactive (`--non-interactive` or no TTY) | JSON envelope | Script/agent is driving; structured output for parsing |
+| Explicit override (`--output json`) | JSON envelope | User/agent explicitly requests structured output |
+
+**Interactive mode output (default):**
+
+```
+✓ example.com registered successfully!
+
+  Domain:       example.com
+  Period:       1 year
+  Privacy:      Enabled
+  Auto-renew:   Enabled
+  Total charged: $22.98
+
+  Next steps:
+    gddy domain get example.com        View domain details
+    gddy dns record add example.com    Configure DNS
+    gddy hosting deploy --domain ...   Deploy a site
+```
+
+**Non-interactive / `--output json` mode:**
 
 ```json
 {
@@ -325,7 +352,8 @@ Interactive wizard steps write prompts and progress to **stderr** (where the ter
 }
 ```
 
-This preserves scriptability: `gddy domain register 2>/dev/null` gives clean JSON even when the interactive wizard ran.
+This aligns with how Shopify CLI and `gh` handle interactive flows — human-friendly
+output by default, JSON as opt-in for when it's actually needed.
 
 ### Error Handling & Recovery
 
