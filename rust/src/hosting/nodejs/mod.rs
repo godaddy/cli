@@ -76,7 +76,7 @@ pub fn nodejs_group() -> RuntimeGroupSpec {
 fn app_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(GroupSpec::new(
         "app",
-        "Manage app slots (provision, inspect, rename, delete)",
+        "Create, inspect, update, and delete Node.js hosting apps",
     ))
     .with_command(app_list_command())
     .with_command(app_get_command())
