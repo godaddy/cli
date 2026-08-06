@@ -1,6 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, StreamSender, TableColumn, Tier,
+    CommandResult, CommandSpec, GroupSpec, NextAction, NextActionParam, PaginationConfig,
+    RuntimeCommandSpec, RuntimeGroupSpec, StreamSender, TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
@@ -251,7 +251,11 @@ fn list_command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status")
-            .with_output_schema::<ApplicationSummary>(),
+            .with_output_schema::<ApplicationSummary>()
+            .with_pagination(PaginationConfig {
+                max_limit: 200,
+                ..Default::default()
+            }),
         |ctx| async move {
             let client = make_client(&ctx).await?;
             let data = client.list_applications().await.map_err(client_err)?;
@@ -1846,18 +1850,29 @@ pub fn add_extension_group() -> RuntimeGroupSpec {
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig, Stage};
+    use cli_engine::{Cli, CliConfig, PaginationConfig, Stage};
     use serde_json::json;
 
     use super::{
-        add_config_next_actions, deploy_next_actions, init_view_columns, update_command,
-        validate_command, validate_remote_application,
+        add_config_next_actions, deploy_next_actions, init_view_columns, list_command,
+        update_command, validate_command, validate_remote_application,
     };
 
     #[test]
     fn reused_next_action_helpers_have_expected_size() {
         assert_eq!(add_config_next_actions("app").len(), 2);
         assert_eq!(deploy_next_actions("app").len(), 3);
+    }
+
+    #[test]
+    fn list_command_opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            list_command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 200,
+                ..Default::default()
+            })
+        );
     }
 
     #[test]

@@ -1555,7 +1555,11 @@ fn search_command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,method,path,summary")
-            .with_output_schema::<ApiEndpoint>(),
+            .with_output_schema::<ApiEndpoint>()
+            .with_pagination(PaginationConfig {
+                max_limit: 100,
+                ..Default::default()
+            }),
         |_cred, args: SearchArgs| async move {
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
@@ -2174,12 +2178,23 @@ fn schema_get_command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig};
+    use cli_engine::{Cli, CliConfig, PaginationConfig};
 
-    use super::{catalog, find_endpoint, merge_required_scopes};
+    use super::{catalog, find_endpoint, merge_required_scopes, search_command};
 
     fn v(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn search_command_opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            search_command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 100,
+                ..Default::default()
+            })
+        );
     }
 
     #[test]

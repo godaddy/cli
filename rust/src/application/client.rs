@@ -418,16 +418,11 @@ mod tests {
                 when.method(POST)
                     .path("/v1/apps/app-registry-subgraph")
                     .header("authorization", "Bearer test-token")
-                    .matches(|req| {
-                        req.body
-                            .as_ref()
-                            .map(|b| {
-                                let body = String::from_utf8_lossy(b);
-                                body.contains("activateRelease")
-                                    && body.contains("app-123")
-                                    && body.contains("rel-456")
-                            })
-                            .unwrap_or(false)
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("activateRelease")
+                            && body.contains("app-123")
+                            && body.contains("rel-456")
                     });
                 then.status(200).json_body(json!({
                     "data": { "activateRelease": { "id": "rel-456", "status": "ACTIVE" } }
@@ -476,15 +471,9 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/v1/apps/app-registry-subgraph")
-                    .matches(|req| {
-                        req.body
-                            .as_ref()
-                            .map(|b| {
-                                let body = String::from_utf8_lossy(b);
-                                body.contains("updateApplication")
-                                    && body.contains(r#""status":"ACTIVE""#)
-                            })
-                            .unwrap_or(false)
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("updateApplication") && body.contains(r#""status":"ACTIVE""#)
                     });
                 then.status(200).json_body(json!({
                     "data": { "updateApplication": { "id": "app-1", "status": "ACTIVE" } }
@@ -533,7 +522,7 @@ mod tests {
             matches!(err, ClientError::TooLarge { .. }),
             "unexpected: {err}"
         );
-        assert_eq!(mock.hits_async().await, 0);
+        assert_eq!(mock.calls_async().await, 0);
     }
 
     #[tokio::test]
@@ -565,7 +554,7 @@ mod tests {
             matches!(err, ClientError::Http { status: 403, .. }),
             "unexpected: {err}"
         );
-        assert_eq!(mock.hits_async().await, 1);
+        assert_eq!(mock.calls_async().await, 1);
     }
 
     #[tokio::test]
@@ -597,7 +586,7 @@ mod tests {
             matches!(err, ClientError::Http { status: 503, .. }),
             "unexpected: {err}"
         );
-        assert_eq!(mock.hits_async().await, 3);
+        assert_eq!(mock.calls_async().await, 3);
     }
 
     #[tokio::test]
@@ -609,10 +598,9 @@ mod tests {
                     .path("/upload")
                     .header("x-amz-signature", "sig")
                     // assert x-amz-meta-upload-id was stripped
-                    .matches(|req| {
-                        !req.headers
+                    .is_true(|req| {
+                        !req.headers_vec()
                             .iter()
-                            .flatten()
                             .any(|(k, _)| k.eq_ignore_ascii_case("x-amz-meta-upload-id"))
                     });
                 then.status(200).header("etag", "\"abc123\"");
@@ -673,7 +661,7 @@ mod tests {
             matches!(err, ClientError::InvalidHeader(_)),
             "unexpected: {err}"
         );
-        assert_eq!(mock.hits_async().await, 0);
+        assert_eq!(mock.calls_async().await, 0);
     }
 
     #[tokio::test]
@@ -710,6 +698,6 @@ mod tests {
                 .expect("upload shared payload");
         }
 
-        mock.assert_hits_async(2).await;
+        mock.assert_calls_async(2).await;
     }
 }
