@@ -1,14 +1,15 @@
 use std::sync::OnceLock;
 
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, RuntimeCommandSpec,
-    RuntimeGroupSpec, TableColumn, Tier,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextActionParam, PaginationConfig,
+    RuntimeCommandSpec, RuntimeGroupSpec, TableColumn, Tier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
+use crate::summary::Summary;
 
 output_schema!(ApiDomain {
     "domain": "string";
@@ -28,7 +29,7 @@ output_schema!(ApiEndpoint {
     "graphqlOperations": "number", optional;
 });
 
-// `api endpoint list --domain X` lists endpoints within one domain, so each row
+// `api operation list --domain X` lists endpoints within one domain, so each row
 // omits the (redundant) domain field that the cross-domain `api search` emits.
 output_schema!(ApiDomainEndpoint {
     "operationId": "string";
@@ -48,8 +49,7 @@ output_schema!(ApiOperation {
     "fullPath": "string";
     "summary": "string", optional;
     "description": "string", optional;
-    "parameters": "[]object";
-    "requestBody": "object", optional;
+    "parameters": "object";
     "responses": "object";
     "scopes": "[]string";
     "graphql": "object", optional;
@@ -215,7 +215,7 @@ fn catalog() -> &'static [Domain] {
             .filter_map(|(_, src)| serde_json::from_str::<Domain>(src).ok())
             .collect();
         // Sorted once here (not per-listing) so every consumer — `api domain
-        // list`, `api search`, `api describe` — sees the same stable order.
+        // list`, `api search`, `api operation get` — sees the same stable order.
         domains.sort_by(|a, b| a.name.cmp(&b.name));
         domains
     })
@@ -262,7 +262,7 @@ fn find_endpoint<'a>(catalog: &'a [Domain], query: &str) -> Option<(&'a Domain, 
 /// Exact (non-fuzzy) endpoint lookup by operationId, full path equality, or
 /// a concrete path against a templated catalog path (e.g. `/stores/abc123`
 /// against `/stores/{storeId}`), optionally narrowed to a specific HTTP
-/// method. Used by `api describe`'s primary resolution step, distinct from
+/// method. Used by `api operation get`'s primary resolution step, distinct from
 /// `find_endpoint`'s looser substring-`contains` match (which `api call`
 /// still relies on for scope resolution and is left untouched).
 ///
@@ -293,40 +293,65 @@ fn find_endpoint_exact<'a>(
         .collect()
 }
 
-/// Builds the `{message, matches}` response for an ambiguous resolution —
-/// shared by `api describe`'s exact-match step (same path, multiple methods)
-/// and its fuzzy fallback (same query, multiple unrelated endpoints) — with
-/// a `next_action` per candidate that carries both `endpoint` and `method`,
-/// since candidates sharing one path are only distinguishable by method.
-fn multi_match_result(query: &str, hits: &[(&Domain, &Endpoint)]) -> CommandResult {
-    let matches: Vec<Value> = hits
-        .iter()
-        .map(|(domain, ep)| {
-            json!({
-                "operationId": ep.operation_id,
-                "method": ep.method,
-                "path": ep.path,
-                "summary": ep.summary,
-                "domain": domain.name,
-            })
-        })
-        .collect();
-    let next_actions = hits
+/// Builds an "ambiguous match" error for `resolve_operation`'s two >1-hit
+/// branches — an exact path shared by several HTTP methods, or a fuzzy
+/// query hitting several unrelated endpoints. Every candidate is formatted
+/// as a runnable `gddy api operation get <path> --method <method>` line and
+/// joined into the error's `fix` field: cli-engine's error envelope has no
+/// hook today for a `DetailedError` to attach structured `next_actions`
+/// (`build_error_envelope` always sets `next_actions: Vec::new()`), so a
+/// formatted `fix` string is the richest thing available until that's
+/// closed upstream (filed as a follow-up ticket, matching DEVEX-968/972/981
+/// this session).
+fn ambiguous_operation_error(query: &str, hits: &[(&Domain, &Endpoint)]) -> CliCoreError {
+    let candidates = hits
         .iter()
         .map(|(_, ep)| {
-            next_action(
-                "api describe <endpoint> --method <method>",
-                format!("{} {} — {}", ep.method, ep.path, ep.summary),
+            format!(
+                "gddy api operation get {} --method {}  # {}",
+                ep.path, ep.method, ep.summary
             )
-            .with_param("endpoint", required_value(ep.path.clone()))
-            .with_param("method", required_value(ep.method.clone()))
         })
-        .collect();
-    CommandResult::new(json!({
-        "message": format!("Multiple endpoints match '{query}'. Be more specific:"),
-        "matches": matches,
-    }))
-    .with_next_actions(next_actions)
+        .collect::<Vec<_>>()
+        .join("\n  ");
+    crate::error::GddyError::ambiguous(format!(
+        "'{query}' matches {} operations. Be more specific:",
+        hits.len()
+    ))
+    .with_fix(format!("Run one of:\n  {candidates}"))
+    .into_cli_error()
+}
+
+/// Resolves a `--operation`/positional operation query against the catalog
+/// — shared by `operation get` and every command scoped by `--operation`
+/// (`parameter`/`response` list and get, `schema get`), since they all need
+/// the same exact/fuzzy/ambiguous cascade `operation_get_command` already
+/// implemented before this existed. Both "no match" and "more than one
+/// match" are errors — there's no single operation to act on either way.
+fn resolve_operation<'a>(
+    catalog: &'a [Domain],
+    query: &str,
+    method_filter: Option<&str>,
+) -> Result<(&'a Domain, &'a Endpoint), CliCoreError> {
+    let exact_hits = find_endpoint_exact(catalog, query, method_filter);
+    match exact_hits.len() {
+        1 => Ok((exact_hits[0].0, exact_hits[0].1)),
+        0 => {
+            let hits = search_endpoints(catalog, query);
+            match hits.len() {
+                0 => Err(crate::error::GddyError::not_found(format!(
+                    "no operation found matching '{query}' — try `gddy api search {query}`"
+                ))
+                .with_fix(format!(
+                    "Run: gddy api search {query} or gddy api domain list"
+                ))
+                .into_cli_error()),
+                1 => Ok((hits[0].0, hits[0].1)),
+                _ => Err(ambiguous_operation_error(query, &hits)),
+            }
+        }
+        _ => Err(ambiguous_operation_error(query, &exact_hits)),
+    }
 }
 
 /// Split a `--header` value of the form `KEY:VALUE` into trimmed parts.
@@ -415,7 +440,7 @@ fn search_endpoints<'a>(catalog: &'a [Domain], query: &str) -> Vec<(&'a Domain, 
 
 // ---------------------------------------------------------------------------
 // Schema summarization — condenses a raw JSON-schema fragment down to
-// top-level property names/types for `api describe`, so a caller sees a
+// top-level property names/types for `api operation get`, so a caller sees a
 // scannable summary instead of a full nested schema dump. Ported from the
 // original TypeScript CLI's `summarizeSchema`/`schemaTypeLabel` family.
 // ---------------------------------------------------------------------------
@@ -434,18 +459,6 @@ struct SchemaSummaryProperty {
     enum_values: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     items: Option<String>,
-}
-
-struct RequestBodySummary {
-    required: bool,
-    content_type: Option<String>,
-    description: Option<String>,
-    schema: Option<Vec<SchemaSummaryProperty>>,
-}
-
-struct ResponseSummary {
-    description: String,
-    schema: Option<Vec<SchemaSummaryProperty>>,
 }
 
 /// Max `$ref` hops to follow when resolving a schema fragment against a
@@ -518,6 +531,38 @@ fn schema_type_label(schema: &Value, defs: &Map<String, Value>) -> String {
     }
     // Only reached for a $ref that resolve_schema_ref couldn't follow
     // (unknown def, external ref, or a chain deeper than MAX_REF_DEPTH).
+    if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
+        return format!("ref({reference})");
+    }
+    "object".to_owned()
+}
+
+/// The same fallback chain as `schema_type_label`, but never recurses into
+/// array items or lists an object's property names — just the bare kind
+/// (`"object"`, `"array"`, `"string"`, ...). Used for a schema that already
+/// has a `schemaId` pointing at its full nested detail via `api schema
+/// get`: repeating that detail here too would be redundant, and for an
+/// object with many properties, unbounded.
+fn schema_base_type_label(schema: &Value, defs: &Map<String, Value>) -> String {
+    let schema = resolve_schema_ref(schema, defs);
+    let Some(obj) = schema.as_object() else {
+        return "unknown".to_owned();
+    };
+    if let Some(type_str) = obj.get("type").and_then(Value::as_str) {
+        return type_str.to_owned();
+    }
+    if obj.get("enum").and_then(Value::as_array).is_some() {
+        return "enum".to_owned();
+    }
+    if obj.get("oneOf").and_then(Value::as_array).is_some() {
+        return "oneOf".to_owned();
+    }
+    if obj.get("anyOf").and_then(Value::as_array).is_some() {
+        return "anyOf".to_owned();
+    }
+    if obj.get("allOf").and_then(Value::as_array).is_some() {
+        return "allOf".to_owned();
+    }
     if let Some(reference) = obj.get("$ref").and_then(Value::as_str) {
         return format!("ref({reference})");
     }
@@ -607,58 +652,500 @@ fn summarize_schema(
     )
 }
 
-fn summarize_request_body(
-    request_body: Option<&Value>,
+// ---------------------------------------------------------------------------
+// Full schema trees and their ids (DEVEX-967's `api schema get <id>`).
+//
+// Unlike `summarize_schema` above, which stops at one level and collapses a
+// nested object/array to a compact string via `schema_type_label`,
+// `build_schema_tree` recurses through every level — `api schema get` never
+// truncates (see `crate::summary::Summary`), so it always returns the
+// complete tree.
+//
+// A schema's id is computed here at runtime, not minted by
+// `generate-api-catalog`: a `$ref` schema already has a stable name (its
+// existing `$defs` key), and an inline/anonymous schema's dotted path is a
+// pure function of (operationId, where it sits in the operation), so
+// there's nothing to persist ahead of time.
+// ---------------------------------------------------------------------------
+
+/// Where a schema sits within an operation — used by `compute_schema_id`
+/// when the schema has no `$ref` name of its own, and by `parse_schema_id`
+/// to resolve an id back to a concrete schema.
+#[allow(dead_code)] // wired in once the `schema`/`parameter`/`response` commands land
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SchemaLocation {
+    RequestBody,
+    Parameter(String),
+    Response(String),
+}
+
+/// Reserved path segments in the dotted-id grammar. An operationId or
+/// parameter name that literally equals one of these would break
+/// `parse_schema_id`'s left-to-right keyword scan — verified against the
+/// real embedded catalog by
+/// `schema_id_grammar_has_no_collisions_in_the_real_catalog` below, but not
+/// structurally prevented (see the design doc's open questions).
+#[allow(dead_code)] // wired in once the `schema`/`parameter`/`response` commands land
+const SCHEMA_ID_KEYWORDS: [&str; 3] = ["parameters", "responses", "requestBody"];
+
+/// Computes a stable id for `schema`: its `$defs` key if it's a `$ref`, or a
+/// dotted path rooted at `operation_id` if it's inline/anonymous.
+#[allow(dead_code)] // wired in once the `schema`/`parameter`/`response` commands land
+fn compute_schema_id(operation_id: &str, location: &SchemaLocation, schema: &Value) -> String {
+    if let Some(name) = schema
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|r| r.strip_prefix("#/$defs/"))
+    {
+        return name.to_owned();
+    }
+    match location {
+        SchemaLocation::RequestBody => format!("{operation_id}.requestBody.schema"),
+        SchemaLocation::Parameter(name) => format!("{operation_id}.parameters.{name}.schema"),
+        SchemaLocation::Response(status) => format!("{operation_id}.responses.{status}.schema"),
+    }
+}
+
+/// A raw (pre-summarization) schema is a "bare inline scalar" — nothing
+/// worth minting a schema id/next_action for — when it's neither a `$ref`
+/// (which might resolve to something with real structure) nor an object
+/// with declared `properties`. This mirrors `summarize_schema`'s own
+/// `"(value)"`-placeholder branch exactly, so the two stay in lockstep:
+/// whatever gets flattened to a single placeholder row there gets its type
+/// surfaced directly here instead of a drill-down link that would just echo
+/// the same type back (e.g. a plain `{"type": "string"}` path parameter).
+fn scalar_schema_type(raw_schema: Option<&Value>, defs: &Map<String, Value>) -> Option<String> {
+    let obj = raw_schema?.as_object()?;
+    if obj.contains_key("$ref") || obj.get("properties").and_then(Value::as_object).is_some() {
+        return None;
+    }
+    if !(obj.contains_key("type") || obj.contains_key("enum")) {
+        return None;
+    }
+    Some(schema_type_label(raw_schema?, defs))
+}
+
+/// What to show for `raw_schema` in a parameter/response row: the `type`
+/// label to display, and whether it's worth minting a `schemaId` alongside
+/// it. A bare inline scalar (see `scalar_schema_type`) gets its full type
+/// label here since that label *is* the whole story — there's nothing else
+/// to drill into. Anything else (a `$ref`, or an inline object with
+/// declared `properties`) gets just the coarse base type (e.g. `"object"`
+/// for `Shipment`) plus `drillable: true`, since the full detail is a
+/// `schema get` away instead of being repeated inline.
+fn describe_schema(
+    raw_schema: Option<&Value>,
     defs: &Map<String, Value>,
-) -> Option<RequestBodySummary> {
-    let obj = request_body?.as_object()?;
-    Some(RequestBodySummary {
-        required: obj
+) -> (Option<String>, bool) {
+    let Some(raw) = raw_schema else {
+        return (None, false);
+    };
+    match scalar_schema_type(Some(raw), defs) {
+        Some(full_label) => (Some(full_label), false),
+        None => (Some(schema_base_type_label(raw, defs)), true),
+    }
+}
+
+/// Parses an id produced by `compute_schema_id`'s inline-path branch back
+/// into `(operationId, location)`. Scans left-to-right for the first
+/// segment matching a reserved keyword rather than assuming a fixed split
+/// position, since real operationIds and parameter names can themselves
+/// contain literal dots (e.g. `commerce.location.verify-address`,
+/// `registeredStores.storeId`).
+#[allow(dead_code)] // wired in once the `schema`/`parameter`/`response` commands land
+fn parse_schema_id(id: &str) -> Option<(String, SchemaLocation)> {
+    let segments: Vec<&str> = id.split('.').collect();
+    let keyword_idx = segments
+        .iter()
+        .position(|segment| SCHEMA_ID_KEYWORDS.contains(segment))?;
+    let operation_id = segments[..keyword_idx].join(".");
+    if operation_id.is_empty() {
+        return None;
+    }
+    let keyword = segments[keyword_idx];
+    let (last, middle) = segments[keyword_idx + 1..].split_last()?;
+    if *last != "schema" {
+        return None;
+    }
+    match keyword {
+        "requestBody" if middle.is_empty() => Some((operation_id, SchemaLocation::RequestBody)),
+        "responses" if middle.len() == 1 => {
+            Some((operation_id, SchemaLocation::Response(middle[0].to_owned())))
+        }
+        "parameters" if !middle.is_empty() => {
+            Some((operation_id, SchemaLocation::Parameter(middle.join("."))))
+        }
+        _ => None,
+    }
+}
+
+/// One node in a schema's full nested tree — see the module comment above.
+#[allow(dead_code)] // wired in once the `schema` command lands
+#[derive(Debug, Clone, Serialize)]
+struct SchemaNode {
+    name: String,
+    #[serde(rename = "type")]
+    node_type: String,
+    required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
+    #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
+    enum_values: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<Vec<SchemaNode>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<Box<SchemaNode>>,
+}
+
+/// Recursively expands `schema` into a `SchemaNode` tree. Reuses
+/// `resolve_schema_ref`/`MAX_REF_DEPTH` unchanged for `$ref`-cycle bounding
+/// — that bound is orthogonal to how deep object/array nesting itself is
+/// allowed to go, which is intentionally unbounded here.
+#[allow(dead_code)] // wired in once the `schema` command lands
+fn build_schema_tree(name: &str, schema: &Value, defs: &Map<String, Value>) -> SchemaNode {
+    let resolved = resolve_schema_ref(schema, defs);
+    let Some(obj) = resolved.as_object() else {
+        return SchemaNode {
+            name: name.to_owned(),
+            node_type: "unknown".to_owned(),
+            required: false,
+            description: None,
+            format: None,
+            enum_values: None,
+            properties: None,
+            items: None,
+        };
+    };
+    let description = obj
+        .get("description")
+        .and_then(Value::as_str)
+        .filter(|d| !d.is_empty())
+        .map(str::to_owned);
+    let format = obj.get("format").and_then(Value::as_str).map(str::to_owned);
+    let enum_values = obj.get("enum").and_then(Value::as_array).cloned();
+
+    let Some(type_str) = obj.get("type").and_then(Value::as_str) else {
+        // No `type` key: oneOf/anyOf/allOf/enum-only/unresolved-ref — reuse
+        // the same fallback vocabulary `schema_type_label` already has for
+        // these, rather than duplicating it.
+        return SchemaNode {
+            name: name.to_owned(),
+            node_type: schema_type_label(resolved, defs),
+            required: false,
+            description,
+            format,
+            enum_values,
+            properties: None,
+            items: None,
+        };
+    };
+
+    if type_str == "object" {
+        let required: std::collections::HashSet<&str> = obj
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let properties = obj
+            .get("properties")
+            .and_then(Value::as_object)
+            .map(|props| {
+                props
+                    .iter()
+                    .map(|(prop_name, prop_schema)| {
+                        let mut node = build_schema_tree(prop_name, prop_schema, defs);
+                        node.required = required.contains(prop_name.as_str());
+                        node
+                    })
+                    .collect()
+            });
+        return SchemaNode {
+            name: name.to_owned(),
+            node_type: "object".to_owned(),
+            required: false,
+            description,
+            format,
+            enum_values,
+            properties,
+            items: None,
+        };
+    }
+
+    if type_str == "array" {
+        let items = obj
+            .get("items")
+            .map(|items_schema| Box::new(build_schema_tree("(item)", items_schema, defs)));
+        return SchemaNode {
+            name: name.to_owned(),
+            node_type: "array".to_owned(),
+            required: false,
+            description,
+            format,
+            enum_values,
+            properties: None,
+            items,
+        };
+    }
+
+    SchemaNode {
+        name: name.to_owned(),
+        node_type: type_str.to_owned(),
+        required: false,
+        description,
+        format,
+        enum_values,
+        properties: None,
+        items: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `api parameter`/`api response` — first-class entities scoped by
+// `--operation`, backing `api parameter list/get` and `api response
+// list/get`. `api operation get` (below) summarizes the same rows for its
+// own preview.
+// ---------------------------------------------------------------------------
+
+/// Breadth cap on a parameter's/response's *embedded* schema preview — the
+/// full, untruncated tree is always one `api schema get <id>` away (see
+/// `build_schema_tree`), so this only bounds how much of it gets inlined
+/// here.
+const SCHEMA_PROPERTY_PREVIEW_CAP: usize = 20;
+
+/// Default page size for `api parameter list`/`api response list` (via
+/// `CommandSpec::with_pagination`) when neither `--limit` nor `--offset` is
+/// passed, and for `api operation get`'s own embedded parameter/response
+/// previews (which aren't paginated themselves — see `Summary::capped`
+/// there — but use the same "how many rows to show inline" size).
+const OPERATION_CHILD_LIST_DEFAULT_LIMIT: usize = 20;
+
+/// Upper bound a user can request with `--limit` on `api parameter list`/
+/// `api response list`. Generous relative to the real catalog (26
+/// parameters, 11 responses is the current max of either), just to guard
+/// against a client asking for something absurd.
+const OPERATION_CHILD_LIST_MAX_LIMIT: i64 = 200;
+
+#[derive(Debug, Clone, Serialize)]
+struct ParameterSummary {
+    name: String,
+
+    #[serde(rename = "in")]
+    location: String,
+
+    required: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<Summary<SchemaSummaryProperty>>,
+
+    /// Id for `api schema get`, present whenever this parameter's schema has
+    /// something to drill into — an object with properties, or a `$ref`
+    /// (which might resolve to one) — regardless of whether the embedded
+    /// preview above happens to be truncated, so a caller always knows what
+    /// shape a parameter (most importantly `body`) expects. `None` for a
+    /// bare inline scalar (see `scalar_type` below), where drilling in would
+    /// just echo the same type back.
+    #[serde(rename = "schemaId", skip_serializing_if = "Option::is_none")]
+    schema_id: Option<String>,
+
+    /// The type to show alongside `schema_id`/`schema`: the full label
+    /// (e.g. `"string(uuid)"`, `"array<string>"`) when `schema_id` is
+    /// absent (a bare scalar — the label is the whole story), or just the
+    /// coarse base type (e.g. `"object"`) when `schema_id` *is* present,
+    /// since the full nested detail is a `schema get` away instead of being
+    /// repeated here. Always present whenever there's a schema at all — see
+    /// `describe_schema`.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    scalar_type: Option<String>,
+}
+
+/// Every parameter on `ep`, plus — if it has a request body — a synthetic
+/// `{name: "body", in: "body"}` row. In the catalog's flattened shape
+/// (`ep.request_body`: `required`/`contentType`/`schema`, no `name`/`in` of
+/// its own), a request body is structurally just a parameter missing a
+/// name, so this is the one place both are normalized into the same shape.
+fn summarize_parameters(ep: &Endpoint, defs: &Map<String, Value>) -> Vec<ParameterSummary> {
+    let mut rows: Vec<ParameterSummary> = ep
+        .parameters
+        .iter()
+        .filter_map(|param| {
+            let obj = param.as_object()?;
+            let name = obj.get("name").and_then(Value::as_str)?.to_owned();
+            let location = obj
+                .get("in")
+                .and_then(Value::as_str)
+                .unwrap_or("query")
+                .to_owned();
+            let required = obj
+                .get("required")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let description = obj
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let raw_schema = obj.get("schema");
+            let schema = summarize_schema(raw_schema, defs)
+                .map(|props| Summary::capped(props, SCHEMA_PROPERTY_PREVIEW_CAP));
+            let (scalar_type, drillable) = describe_schema(raw_schema, defs);
+            let schema_id = if drillable {
+                raw_schema.map(|raw| {
+                    compute_schema_id(
+                        &ep.operation_id,
+                        &SchemaLocation::Parameter(name.clone()),
+                        raw,
+                    )
+                })
+            } else {
+                None
+            };
+            Some(ParameterSummary {
+                name,
+                location,
+                required,
+                description,
+                schema,
+                schema_id,
+                scalar_type,
+            })
+        })
+        .collect();
+
+    if let Some(body) = &ep.request_body {
+        let required = body
             .get("required")
             .and_then(Value::as_bool)
-            .unwrap_or(false),
-        content_type: obj
-            .get("contentType")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        description: obj
+            .unwrap_or(false);
+        let description = body
             .get("description")
             .and_then(Value::as_str)
-            .map(str::to_owned),
-        schema: summarize_schema(obj.get("schema"), defs),
+            .map(str::to_owned);
+        let raw_schema = body.get("schema");
+        let schema = summarize_schema(raw_schema, defs)
+            .map(|props| Summary::capped(props, SCHEMA_PROPERTY_PREVIEW_CAP));
+        let (scalar_type, drillable) = describe_schema(raw_schema, defs);
+        let schema_id = if drillable {
+            raw_schema
+                .map(|raw| compute_schema_id(&ep.operation_id, &SchemaLocation::RequestBody, raw))
+        } else {
+            None
+        };
+        rows.push(ParameterSummary {
+            name: "body".to_owned(),
+            location: "body".to_owned(),
+            required,
+            description,
+            schema,
+            schema_id,
+            scalar_type,
+        });
+    }
+
+    rows
+}
+
+/// Finds the raw (pre-summarization) schema `Value` for one of `ep`'s
+/// parameters by name, and the `SchemaLocation` to compute its id with.
+/// Handles the synthetic `"body"` name specially: unlike every other
+/// parameter, `body` isn't in `ep.parameters` at all — it's `ep.request_body`
+/// wearing a parameter-shaped hat (see `summarize_parameters` above), so its
+/// schema id must use the `RequestBody` location, not `Parameter("body")`.
+fn find_parameter_schema<'a>(ep: &'a Endpoint, name: &str) -> Option<(&'a Value, SchemaLocation)> {
+    if name == "body" {
+        return ep
+            .request_body
+            .as_ref()
+            .and_then(|b| b.get("schema"))
+            .map(|schema| (schema, SchemaLocation::RequestBody));
+    }
+    ep.parameters.iter().find_map(|param| {
+        let is_match = param.get("name").and_then(Value::as_str) == Some(name);
+        if !is_match {
+            return None;
+        }
+        param
+            .get("schema")
+            .map(|schema| (schema, SchemaLocation::Parameter(name.to_owned())))
     })
 }
 
-fn summarize_responses(
-    responses: &Value,
-    defs: &Map<String, Value>,
-) -> Option<Vec<(String, ResponseSummary)>> {
-    let obj = responses.as_object()?;
-    Some(
-        obj.iter()
-            .map(|(status, resp)| {
-                let description = resp
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_owned();
-                let schema = summarize_schema(resp.get("schema"), defs);
-                (
-                    status.clone(),
-                    ResponseSummary {
-                        description,
-                        schema,
-                    },
-                )
-            })
-            .collect(),
-    )
+#[derive(Debug, Clone, Serialize)]
+struct ResponseRow {
+    status: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<Summary<SchemaSummaryProperty>>,
+    /// See `ParameterSummary::schema_id` — same "nothing to drill into"
+    /// exception for a bare inline scalar.
+    #[serde(rename = "schemaId", skip_serializing_if = "Option::is_none")]
+    schema_id: Option<String>,
+    /// See `ParameterSummary::scalar_type`.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    scalar_type: Option<String>,
+}
+
+/// Every response on `ep`, sorted by status for a stable listing order
+/// (`ep.responses` is parsed straight from JSON and carries no ordering
+/// guarantee of its own).
+fn response_rows(ep: &Endpoint, defs: &Map<String, Value>) -> Vec<ResponseRow> {
+    let Some(responses) = ep.responses.as_object() else {
+        return Vec::new();
+    };
+    let mut rows: Vec<ResponseRow> = responses
+        .iter()
+        .map(|(status, resp)| {
+            let description = resp
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned();
+            let raw_schema = resp.get("schema");
+            let schema = summarize_schema(raw_schema, defs)
+                .map(|props| Summary::capped(props, SCHEMA_PROPERTY_PREVIEW_CAP));
+            let (scalar_type, drillable) = describe_schema(raw_schema, defs);
+            let schema_id = if drillable {
+                raw_schema.map(|raw| {
+                    compute_schema_id(
+                        &ep.operation_id,
+                        &SchemaLocation::Response(status.clone()),
+                        raw,
+                    )
+                })
+            } else {
+                None
+            };
+            ResponseRow {
+                status: status.clone(),
+                description,
+                scalar_type,
+                schema,
+                schema_id,
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.status.cmp(&b.status));
+    rows
+}
+
+/// Serializes `value` to a JSON `Value`, mapping the (practically
+/// unreachable for these plain-data types) serialization failure to a
+/// proper `CliCoreError` instead of panicking — mirrors the pattern already
+/// used in `webhook::group`.
+fn to_json(value: impl Serialize) -> Result<Value, CliCoreError> {
+    serde_json::to_value(value).map_err(|e| {
+        crate::error::GddyError::unexpected(format!("failed to serialize output: {e}"))
+            .into_cli_error()
+    })
 }
 
 // ---------------------------------------------------------------------------
 // GraphQL summarization — condenses a domain's embedded GraphQL schema
 // (parsed at catalog-build time) into a per-operation summary for
-// `api describe`. Ported from the original TypeScript CLI's
+// `api operation get`. Ported from the original TypeScript CLI's
 // `summarizeGraphqlSchema`, minus its operation-count cap: every operation
 // is included, full stop — no truncation until there's a real mechanism
 // for retrieving what got cut.
@@ -708,8 +1195,8 @@ pub fn module() -> Module {
         RuntimeGroupSpec::new(
             GroupSpec::new("api", "Explore and call GoDaddy API endpoints").with_long(
                 "Browse the GoDaddy API catalog and make authenticated requests \
-                     against any endpoint. Use `api domain list` / `api endpoint list` to \
-                     discover available operations, `api describe` to inspect parameters, \
+                     against any endpoint. Use `api domain list` / `api operation list` to \
+                     discover available operations, `api operation get` to inspect parameters, \
                      and `api call` to execute a request with automatic OAuth scope handling.",
             ),
         )
@@ -717,26 +1204,57 @@ pub fn module() -> Module {
             RuntimeGroupSpec::new(GroupSpec::new("domain", "Browse API domains").with_long(
                 "Browse the top-level API domains available in the embedded catalog. \
                      Each domain groups a related set of endpoints under a shared base URL. \
-                     Use `api endpoint list --domain <domain>` to see the endpoints \
+                     Use `api operation list --domain <domain>` to see the endpoints \
                      within a specific domain.",
             ))
             .with_command(domain_list_command()),
         )
         .with_group(
             RuntimeGroupSpec::new(
-                GroupSpec::new("endpoint", "Browse API endpoints").with_long(
-                    "Browse the endpoints within a single API domain. \
+                GroupSpec::new("operation", "Browse and inspect API operations").with_long(
+                    "Browse the operations within a single API domain. \
                      Use `api domain list` first to find available domain names, \
-                     then `api describe <operationId>` to inspect full parameter \
-                     and schema details for an individual endpoint.",
+                     then `api operation get <operationId>` to inspect full parameter \
+                     and schema details for an individual operation.",
                 ),
             )
-            .with_command(endpoint_list_command()),
+            .with_command(operation_list_command())
+            .with_command(operation_get_command()),
         )
-        .with_command(describe_command())
+        .with_group(
+            RuntimeGroupSpec::new(
+                GroupSpec::new("parameter", "Inspect an operation's parameters").with_long(
+                    "Inspect the parameters of a single operation, scoped by `--operation`. \
+                     A request body counts as a parameter here too, under the synthetic name \
+                     `body`.",
+                ),
+            )
+            .with_command(parameter_list_command())
+            .with_command(parameter_get_command()),
+        )
+        .with_group(
+            RuntimeGroupSpec::new(
+                GroupSpec::new("response", "Inspect an operation's responses").with_long(
+                    "Inspect the responses of a single operation, scoped by `--operation`.",
+                ),
+            )
+            .with_command(response_list_command())
+            .with_command(response_get_command()),
+        )
+        .with_group(
+            RuntimeGroupSpec::new(GroupSpec::new(
+                "schema",
+                "Inspect a named or inline API schema",
+            ))
+            .with_command(schema_get_command()),
+        )
         .with_command(search_command())
         .with_command(call_command())
     })
+    .with_guides_from_markdown([(
+        "api-explorer.md",
+        include_bytes!("guides/api-explorer.md").as_slice(),
+    )])
 }
 
 fn domain_list_command() -> RuntimeCommandSpec {
@@ -745,7 +1263,7 @@ fn domain_list_command() -> RuntimeCommandSpec {
             .with_long(
                 "Lists every API domain in the embedded catalog, together with the number \
                  of endpoints and base URL for each. No authentication is required. \
-                 Use `api endpoint list --domain <domain>` to drill into a specific domain, \
+                 Use `api operation list --domain <domain>` to drill into a specific domain, \
                  or `api search <query>` to find endpoints across all domains at once.",
             )
             .with_system("api")
@@ -774,7 +1292,7 @@ fn domain_list_command() -> RuntimeCommandSpec {
                 .collect();
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                 next_action(
-                    "api endpoint list --domain <domain>",
+                    "api operation list --domain <domain>",
                     "List endpoints in a specific domain",
                 )
                 .with_param("domain", NextActionParam::required()),
@@ -785,19 +1303,19 @@ fn domain_list_command() -> RuntimeCommandSpec {
 }
 
 #[derive(Debug, Clone, clap::Args)]
-struct EndpointListArgs {
+struct OperationListArgs {
     /// API domain whose endpoints to list (see `api domain list`).
     #[arg(long, value_name = "DOMAIN")]
     domain: String,
 }
 
-fn endpoint_list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_with_context::<EndpointListArgs, _, _, _>(
-        CommandSpec::from_args::<EndpointListArgs>("list", "List endpoints within an API domain")
+fn operation_list_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<OperationListArgs, _, _, _>(
+        CommandSpec::from_args::<OperationListArgs>("list", "List operations within an API domain")
             .with_long(
-                "Lists every endpoint in one API domain, showing the operation ID, HTTP \
+                "Lists every operation in one API domain, showing the operation ID, HTTP \
                  method, path, and summary. Use `api domain list` to find available domain \
-                 names, `api describe <operationId>` to view full parameter details, and \
+                 names, `api operation get <operationId>` to view full parameter details, and \
                  `api call <path>` to execute a request.",
             )
             .with_system("api")
@@ -805,9 +1323,9 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("operationId,method,path,summary")
             .with_output_schema::<ApiDomainEndpoint>(),
-        |_ctx, args: EndpointListArgs| async move {
+        |_cred, args: OperationListArgs| async move {
             let catalog = catalog();
-            let domain_filter = args.domain;
+            let domain_filter = args.domain.as_str();
             let domain = catalog
                 .iter()
                 .find(|d| d.name == domain_filter)
@@ -834,34 +1352,34 @@ fn endpoint_list_command() -> RuntimeCommandSpec {
                 .collect();
             Ok(CommandResult::new(json!(endpoints)).with_next_actions(vec![
                 next_action(
-                    "api describe <operationId>",
-                    "Get full details for an endpoint",
+                    "api operation get <operation>",
+                    "Get full details for an operation",
                 )
-                .with_param("operationId", NextActionParam::required()),
+                .with_param("operation", NextActionParam::required()),
             ]))
         },
     )
 }
 
 #[derive(Debug, Clone, clap::Args)]
-struct DescribeArgs {
+struct OperationGetArgs {
     /// Operation ID (e.g. createOrder) or path fragment (e.g. /v1/commerce/orders).
-    #[arg(value_name = "ENDPOINT")]
-    endpoint: String,
+    #[arg(value_name = "OPERATION")]
+    operation: String,
 
     /// Filter to a specific HTTP method (GET, POST, PUT, PATCH, DELETE).
     #[arg(long, short = 'm', value_name = "METHOD")]
     method: Option<String>,
 }
 
-fn describe_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_with_context::<DescribeArgs, _, _, _>(
-        CommandSpec::from_args::<DescribeArgs>(
-            "describe",
-            "Show schema and parameters for an endpoint",
+fn operation_get_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed_with_context::<OperationGetArgs, _, _, _>(
+        CommandSpec::from_args::<OperationGetArgs>(
+            "get",
+            "Show schema and parameters for an operation",
         )
         .with_long(
-            "Shows the full details of one API endpoint: HTTP method, path, required and \
+            "Shows the full details of one API operation: HTTP method, path, required and \
              optional parameters, request body schema, response shapes, and declared OAuth \
              scopes. Accepts an operation ID (e.g. createOrder) or a path fragment \
              (e.g. /v1/commerce/orders). No authentication is required.",
@@ -870,35 +1388,37 @@ fn describe_command() -> RuntimeCommandSpec {
         .with_tier(Tier::Read)
         .no_auth(true)
         .with_output_schema::<ApiOperation>()
-        // `parameters` is a flat array of OpenAPI parameter objects, so it
-        // renders as an indented child table instead of a raw JSON dump.
-        // `message`/`matches` cover the ambiguous-query shape (see
-        // `multi_match_result`) — without declaring them here, that response
-        // would render as a table of blank fields instead of the candidate
-        // list.
+        // `parameters.items` is a list of objects, so it renders as an
+        // indented child table instead of a raw JSON dump. The dotted path
+        // reaches through the `Summary<T>` envelope now wrapping it
+        // (cli-engine 0.7's `TableColumn::field` supports this). No
+        // `message`/`matches` columns here — an ambiguous or unresolved
+        // query is a hard error (see `resolve_operation`/
+        // `ambiguous_operation_error`), not a second shape this view has to
+        // cover, so this only ever needs to render one resolved operation.
         .with_view(vec![
             TableColumn::new("domain", "Domain"),
             TableColumn::new("operationId", "Operation ID"),
             TableColumn::new("method", "Method"),
             TableColumn::new("path", "Path"),
             TableColumn::new("summary", "Summary"),
-            TableColumn::new("parameters", "Parameters").nested(vec![
+            TableColumn::new("parameters.items", "Parameters").nested(vec![
                 TableColumn::new("name", "Name"),
                 TableColumn::new("in", "In"),
                 TableColumn::new("required", "Required"),
+                TableColumn::new("type", "Type"),
+                TableColumn::new("schemaId", "Schema ID"),
                 TableColumn::new("description", "Description"),
             ]),
-            TableColumn::new("message", "Message"),
-            TableColumn::new("matches", "Matches").nested(vec![
-                TableColumn::new("domain", "Domain"),
-                TableColumn::new("operationId", "Operation ID"),
-                TableColumn::new("method", "Method"),
-                TableColumn::new("path", "Path"),
-                TableColumn::new("summary", "Summary"),
+            TableColumn::new("responses.items", "Responses").nested(vec![
+                TableColumn::new("status", "Status"),
+                TableColumn::new("type", "Type"),
+                TableColumn::new("schemaId", "Schema ID"),
+                TableColumn::new("description", "Description"),
             ]),
         ]),
-        |ctx, args: DescribeArgs| async move {
-            let query = args.endpoint.as_str();
+        |ctx, args: OperationGetArgs| async move {
+            let query = args.operation.as_str();
             let method_filter = args.method.map(|m| m.to_uppercase());
             let catalog = catalog();
 
@@ -908,27 +1428,7 @@ fn describe_command() -> RuntimeCommandSpec {
             // Either step can legitimately produce more than one candidate
             // (e.g. GET/POST sharing a path with no --method given) — both
             // are treated as the same kind of ambiguity.
-            let exact_hits = find_endpoint_exact(catalog, query, method_filter.as_deref());
-            let (domain, ep) = match exact_hits.len() {
-                1 => exact_hits[0],
-                0 => {
-                    let hits = search_endpoints(catalog, query);
-                    match hits.len() {
-                        0 => {
-                            return Err(crate::error::GddyError::not_found(format!(
-                                "no endpoint found matching '{query}' — try `gddy api search {query}`"
-                            ))
-                            .with_fix(format!(
-                                "Run: gddy api search {query} or gddy api endpoint list"
-                            ))
-                            .into_cli_error());
-                        }
-                        1 => hits[0],
-                        _ => return Ok(multi_match_result(query, &hits)),
-                    }
-                }
-                _ => return Ok(multi_match_result(query, &exact_hits)),
-            };
+            let (domain, ep) = resolve_operation(catalog, query, method_filter.as_deref())?;
 
             // Env-aware base URL, matching `domain_list_command`/`call_command`
             // — the catalog's `baseUrl` is a static, prod-shaped value; this
@@ -940,27 +1440,18 @@ fn describe_command() -> RuntimeCommandSpec {
                 &ctx.middleware.env,
             );
 
-            let summarized_request = summarize_request_body(ep.request_body.as_ref(), &domain.defs);
-            let summarized_responses = summarize_responses(&ep.responses, &domain.defs);
-
-            let request_body_json = summarized_request.map(|r| {
-                json!({
-                    "required": r.required,
-                    "contentType": r.content_type,
-                    "description": r.description,
-                    "schema": r.schema,
-                })
-            });
-            let responses_json: Option<Map<String, Value>> = summarized_responses.map(|list| {
-                list.into_iter()
-                    .map(|(status, r)| {
-                        (
-                            status,
-                            json!({ "description": r.description, "schema": r.schema }),
-                        )
-                    })
-                    .collect()
-            });
+            // Summarized and capped, not inlined in full — a truncated
+            // preview here links to the standalone `parameter list`/
+            // `response list` (which do their own, independent truncation)
+            // rather than dumping everything inline.
+            let param_summary = Summary::capped(
+                summarize_parameters(ep, &domain.defs),
+                OPERATION_CHILD_LIST_DEFAULT_LIMIT,
+            );
+            let response_summary = Summary::capped(
+                response_rows(ep, &domain.defs),
+                OPERATION_CHILD_LIST_DEFAULT_LIMIT,
+            );
 
             // Strip `base_url`'s scheme+host generically (not a hard-coded
             // prod hostname) so `fullPath` stays a hostless path prefix +
@@ -978,6 +1469,53 @@ fn describe_command() -> RuntimeCommandSpec {
                 format!("{path_prefix}{}", ep.path)
             };
 
+            let mut next_actions = vec![next_action(
+                format!("api call {} --method {}", ep.path, ep.method),
+                "Make an authenticated call to this endpoint",
+            )];
+            next_actions.extend(
+                param_summary.next_action_if_truncated(
+                    next_action(
+                        "api parameter list --operation <operation>",
+                        "See all parameters",
+                    )
+                    .with_param("operation", required_value(ep.operation_id.clone())),
+                ),
+            );
+            next_actions.extend(
+                response_summary.next_action_if_truncated(
+                    next_action(
+                        "api response list --operation <operation>",
+                        "See all responses",
+                    )
+                    .with_param("operation", required_value(ep.operation_id.clone())),
+                ),
+            );
+            // A schema id shown in the table but not echoed anywhere in
+            // `next_actions` is a dead end unless the caller already knows
+            // `api schema get <id>` exists. One generic pointer to that
+            // command covers every parameter/response with a `schemaId` at
+            // once, rather than a same-command line repeated per row (most
+            // schema ids on one operation are typically shared, e.g. a
+            // common `Error` response schema across several status codes).
+            if param_summary
+                .items
+                .iter()
+                .any(|param| param.schema_id.is_some())
+                || response_summary
+                    .items
+                    .iter()
+                    .any(|resp| resp.schema_id.is_some())
+            {
+                next_actions.push(
+                    next_action(
+                        "api schema get <id>",
+                        "See a parameter's or response's full schema — use its Schema ID from the table above",
+                    )
+                    .with_param("id", NextActionParam::required()),
+                );
+            }
+
             Ok(CommandResult::new(json!({
                 "domain": domain.name,
                 "baseUrl": base_url,
@@ -987,16 +1525,12 @@ fn describe_command() -> RuntimeCommandSpec {
                 "fullPath": full_path,
                 "summary": ep.summary,
                 "description": ep.description,
-                "parameters": ep.parameters,
-                "requestBody": request_body_json,
-                "responses": responses_json,
+                "parameters": param_summary,
+                "responses": response_summary,
                 "scopes": ep.scopes,
                 "graphql": ep.graphql.as_ref().map(summarize_graphql_schema),
             }))
-            .with_next_actions(vec![next_action(
-                format!("api call {} --method {}", ep.path, ep.method),
-                "Make an authenticated call to this endpoint",
-            )]))
+            .with_next_actions(next_actions))
         },
     )
 }
@@ -1015,7 +1549,7 @@ fn search_command() -> RuntimeCommandSpec {
                 "Full-text searches across all API domains, matching against operation IDs, \
                  paths, summaries, and descriptions. Returns matching endpoints with domain, \
                  method, path, and summary. No authentication is required. Use \
-                 `api describe <operationId>` to inspect a result in full detail.",
+                 `api operation get <operationId>` to inspect a result in full detail.",
             )
             .with_system("api")
             .with_tier(Tier::Read)
@@ -1043,10 +1577,10 @@ fn search_command() -> RuntimeCommandSpec {
                 .collect();
             Ok(CommandResult::new(json!(results)).with_next_actions(vec![
                 next_action(
-                    "api describe <operationId>",
+                    "api operation get <operation>",
                     "Get full details for a result",
                 )
-                .with_param("operationId", NextActionParam::required()),
+                .with_param("operation", NextActionParam::required()),
             ]))
         },
     )
@@ -1083,6 +1617,9 @@ struct CallArgs {
     include: bool,
 
     /// Additional required OAuth scope(s), merged with the endpoint's.
+    // One value per occurrence, repeatable (`--scope a --scope b`) — a `Vec`
+    // field defaults to append-style, not `num_args(1..)`, so it can't
+    // greedily consume the ENDPOINT positional either.
     #[arg(long, short = 's', value_name = "SCOPE")]
     scope: Vec<String>,
 }
@@ -1101,7 +1638,7 @@ fn call_command() -> RuntimeCommandSpec {
                  `--body`, and `--field` values are merged on top of either. Use the global \
                  `--expr`/`--filter` flags (JMESPath) to extract or filter response data, and \
                  `--include` to see response headers alongside the body. Use \
-                 `api describe <endpoint>` first to inspect required parameters and scopes.",
+                 `api operation get <operationId>` first to inspect required parameters and scopes.",
             )
             .with_system("api")
             .with_tier(Tier::Mutate)
@@ -1132,7 +1669,7 @@ fn call_command() -> RuntimeCommandSpec {
             if !endpoint.starts_with('/') {
                 return Err(crate::error::GddyError::validation(format!(
                     "endpoint must be a URL path starting with '/', not {endpoint:?} — \
-                     use `api describe {endpoint}` to find the concrete path"
+                     use `api operation get {endpoint}` to find the concrete path"
                 ))
                 .into_cli_error());
             }
@@ -1344,6 +1881,297 @@ fn call_command() -> RuntimeCommandSpec {
     )
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct ParameterListArgs {
+    /// Operation ID to list parameters for (see `api operation list`).
+    #[arg(long, value_name = "OPERATION")]
+    operation: String,
+}
+
+fn parameter_list_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<ParameterListArgs, _, _, _>(
+        CommandSpec::from_args::<ParameterListArgs>("list", "List an operation's parameters")
+            .with_long(
+                "Lists every parameter on one operation — query/path/header/cookie \
+                 parameters, plus a synthetic `body` row if the operation has a request \
+                 body — with a truncated preview of each parameter's schema. Use `api \
+                 parameter get <name> --operation <id>` for one parameter's full detail.",
+            )
+            .with_view(vec![
+                TableColumn::new("name", "Name"),
+                TableColumn::new("in", "In"),
+                TableColumn::new("required", "Required"),
+                TableColumn::new("type", "Type"),
+                TableColumn::new("schemaId", "Schema ID"),
+                TableColumn::new("description", "Description"),
+            ])
+            .with_system("api")
+            .with_tier(Tier::Read)
+            .no_auth(true)
+            .with_pagination(PaginationConfig {
+                default_limit: OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
+                max_limit: OPERATION_CHILD_LIST_MAX_LIMIT,
+            }),
+        |_cred, args: ParameterListArgs| async move {
+            let operation = args.operation.as_str();
+            let catalog = catalog();
+            let (domain, ep) = resolve_operation(catalog, operation, None)?;
+            // Return every parameter, unsliced: cli-engine 0.8's pipeline
+            // slices a bare-array result per this command's own --limit/
+            // --offset (registered above via `with_pagination`), surfaces
+            // total/offset/limit/count/has_more as top-level `pagination`
+            // envelope metadata, and — when `has_more` — appends a "view the
+            // next page" next_action itself. No manual truncation or
+            // next-page hint needed here anymore.
+            let all = summarize_parameters(ep, &domain.defs);
+            let next_actions = vec![
+                next_action(
+                    "api parameter get <name> --operation <operation>",
+                    "See one parameter's full detail",
+                )
+                .with_param("name", NextActionParam::required())
+                .with_param("operation", required_value(ep.operation_id.clone())),
+            ];
+            Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
+        },
+    )
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct ParameterGetArgs {
+    /// Parameter name (or `body` for the request body, if present).
+    #[arg(value_name = "NAME")]
+    name: String,
+
+    /// Operation ID that owns this parameter (see `api operation list`).
+    #[arg(long, value_name = "OPERATION")]
+    operation: String,
+}
+
+fn parameter_get_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<ParameterGetArgs, _, _, _>(
+        CommandSpec::from_args::<ParameterGetArgs>(
+            "get",
+            "Show one operation parameter's full detail",
+        )
+        .with_long(
+            "Shows one parameter's full detail: location, required-ness, description, \
+                 and a preview of its schema (see `api schema get` for the complete, \
+                 never-truncated nested structure). Also resolves the synthetic `body` \
+                 name, if the operation has a request body.",
+        )
+        .with_system("api")
+        .with_tier(Tier::Read)
+        .no_auth(true),
+        |_cred, args: ParameterGetArgs| async move {
+            let name = args.name.as_str();
+            let operation = args.operation.as_str();
+            let catalog = catalog();
+            let (domain, ep) = resolve_operation(catalog, operation, None)?;
+            let row = summarize_parameters(ep, &domain.defs)
+                .into_iter()
+                .find(|p| p.name == name)
+                .ok_or_else(|| {
+                    crate::error::GddyError::not_found(format!(
+                        "parameter '{name}' not found on operation '{}'",
+                        ep.operation_id
+                    ))
+                    .with_fix(format!(
+                        "Run: gddy api parameter list --operation {}",
+                        ep.operation_id
+                    ))
+                    .into_cli_error()
+                })?;
+            let next_actions = row
+                .schema_id
+                .clone()
+                .map(|id| {
+                    next_action("api schema get <id>", "See the full parameter schema")
+                        .with_param("id", required_value(id))
+                })
+                .into_iter()
+                .collect();
+            Ok(CommandResult::new(to_json(row)?).with_next_actions(next_actions))
+        },
+    )
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct ResponseListArgs {
+    /// Operation ID to list responses for (see `api operation list`).
+    #[arg(long, value_name = "OPERATION")]
+    operation: String,
+}
+
+fn response_list_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<ResponseListArgs, _, _, _>(
+        CommandSpec::from_args::<ResponseListArgs>("list", "List an operation's responses")
+            .with_long(
+                "Lists every response on one operation by status code, with a truncated \
+                 preview of each response's schema. Use `api response get <status> \
+                 --operation <id>` for one response's full detail.",
+            )
+            // See `parameter_list_command`'s comment: a declared view avoids
+            // cli-engine's alphabetical no-view fallback and gives proper
+            // headers. Matches `operation get`'s own `responses.items`
+            // nested view's columns.
+            .with_view(vec![
+                TableColumn::new("status", "Status"),
+                TableColumn::new("type", "Type"),
+                TableColumn::new("schemaId", "Schema ID"),
+                TableColumn::new("description", "Description"),
+            ])
+            .with_system("api")
+            .with_tier(Tier::Read)
+            .no_auth(true)
+            .with_pagination(PaginationConfig {
+                default_limit: OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
+                max_limit: OPERATION_CHILD_LIST_MAX_LIMIT,
+            }),
+        |_cred, args: ResponseListArgs| async move {
+            let operation = args.operation.as_str();
+            let catalog = catalog();
+            let (domain, ep) = resolve_operation(catalog, operation, None)?;
+            // See parameter_list_command's comment: cli-engine 0.8's
+            // pipeline handles slicing, pagination metadata, and the
+            // next-page hint for a bare-array result on its own.
+            let all = response_rows(ep, &domain.defs);
+            let next_actions = vec![
+                next_action(
+                    "api response get <status> --operation <operation>",
+                    "See one response's full detail",
+                )
+                .with_param("status", NextActionParam::required())
+                .with_param("operation", required_value(ep.operation_id.clone())),
+            ];
+            Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
+        },
+    )
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct ResponseGetArgs {
+    /// HTTP status code (e.g. 200).
+    #[arg(value_name = "STATUS")]
+    status: String,
+
+    /// Operation ID that owns this response (see `api operation list`).
+    #[arg(long, value_name = "OPERATION")]
+    operation: String,
+}
+
+fn response_get_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<ResponseGetArgs, _, _, _>(
+        CommandSpec::from_args::<ResponseGetArgs>(
+            "get",
+            "Show one operation response's full detail",
+        )
+        .with_long(
+            "Shows one response's full detail: description and a preview of its schema \
+                 (see `api schema get` for the complete, never-truncated nested structure).",
+        )
+        .with_system("api")
+        .with_tier(Tier::Read)
+        .no_auth(true),
+        |_cred, args: ResponseGetArgs| async move {
+            let status = args.status.as_str();
+            let operation = args.operation.as_str();
+            let catalog = catalog();
+            let (domain, ep) = resolve_operation(catalog, operation, None)?;
+            let row = response_rows(ep, &domain.defs)
+                .into_iter()
+                .find(|r| r.status == status)
+                .ok_or_else(|| {
+                    crate::error::GddyError::not_found(format!(
+                        "response '{status}' not found on operation '{}'",
+                        ep.operation_id
+                    ))
+                    .with_fix(format!(
+                        "Run: gddy api response list --operation {}",
+                        ep.operation_id
+                    ))
+                    .into_cli_error()
+                })?;
+            let next_actions = row
+                .schema_id
+                .clone()
+                .map(|id| {
+                    next_action("api schema get <id>", "See the full response schema")
+                        .with_param("id", required_value(id))
+                })
+                .into_iter()
+                .collect();
+            Ok(CommandResult::new(to_json(row)?).with_next_actions(next_actions))
+        },
+    )
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct SchemaGetArgs {
+    /// Schema id — a component name, or a dotted path from a truncated preview.
+    #[arg(value_name = "ID")]
+    id: String,
+}
+
+fn schema_get_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed::<SchemaGetArgs, _, _, _>(
+        CommandSpec::from_args::<SchemaGetArgs>("get", "Show a schema's full nested tree")
+            .with_long(
+                "Shows the complete nested structure of a schema — every property at every \
+                 level, with $ref's resolved inline. This is the terminal drill-down target \
+                 for a truncated schema preview shown elsewhere: it never truncates itself. \
+                 Accepts either a shared component name (e.g. Business) or the dotted id \
+                 shown alongside a truncated preview (e.g. getUser.responses.200.schema).",
+            )
+            .with_system("api")
+            .with_tier(Tier::Read)
+            .no_auth(true),
+        |_cred, args: SchemaGetArgs| async move {
+            let id = args.id.as_str();
+            let catalog = catalog();
+
+            // A bare component name (no schema-id keyword segment) is looked
+            // up directly against every domain's `$defs` — it isn't scoped
+            // to one operation the way an inline dotted id is.
+            if let Some((domain_defs, schema)) = catalog
+                .iter()
+                .find_map(|d| d.defs.get(id).map(|schema| (&d.defs, schema)))
+            {
+                let tree = build_schema_tree(id, schema, domain_defs);
+                return Ok(CommandResult::new(to_json(tree)?));
+            }
+
+            let (operation_id, location) = parse_schema_id(id).ok_or_else(|| {
+                crate::error::GddyError::not_found(format!("no schema found for id '{id}'"))
+                    .with_fix("Run: gddy api operation get <operationId> to find schema ids")
+                    .into_cli_error()
+            })?;
+
+            let (domain, ep) = resolve_operation(catalog, &operation_id, None)?;
+
+            let raw_schema = match &location {
+                SchemaLocation::RequestBody => {
+                    ep.request_body.as_ref().and_then(|b| b.get("schema"))
+                }
+                SchemaLocation::Parameter(name) => {
+                    find_parameter_schema(ep, name).map(|(schema, _)| schema)
+                }
+                SchemaLocation::Response(status) => ep
+                    .responses
+                    .get(status.as_str())
+                    .and_then(|r| r.get("schema")),
+            };
+            let raw_schema = raw_schema.ok_or_else(|| {
+                crate::error::GddyError::not_found(format!("no schema found for id '{id}'"))
+                    .into_cli_error()
+            })?;
+
+            let tree = build_schema_tree(id, raw_schema, &domain.defs);
+            Ok(CommandResult::new(to_json(tree)?))
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use cli_engine::{Cli, CliConfig};
@@ -1398,7 +2226,7 @@ mod tests {
     }
 
     /// `catalog()` sorts once so every listing (`api domain list`, `api
-    /// search`, `api describe`) sees the same stable, alphabetical order.
+    /// search`, `api operation get`) sees the same stable, alphabetical order.
     #[test]
     fn catalog_domains_are_sorted_alphabetically() {
         let names: Vec<&str> = catalog().iter().map(|d| d.name.as_str()).collect();
@@ -1840,6 +2668,329 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Full schema trees and their ids
+    // -----------------------------------------------------------------------
+
+    use super::{
+        SCHEMA_ID_KEYWORDS, SchemaLocation, build_schema_tree, compute_schema_id, describe_schema,
+        parse_schema_id, scalar_schema_type, schema_base_type_label,
+    };
+
+    #[test]
+    fn build_schema_tree_recurses_through_nested_object_levels() {
+        let schema = json!({
+            "type": "object",
+            "required": ["address"],
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "required": ["city"],
+                    "properties": {
+                        "city": { "type": "string" },
+                    },
+                },
+            },
+        });
+        let tree = build_schema_tree("root", &schema, &no_defs());
+        assert_eq!(tree.node_type, "object");
+        let address = tree
+            .properties
+            .as_ref()
+            .expect("root has properties")
+            .iter()
+            .find(|p| p.name == "address")
+            .expect("address prop");
+        assert!(address.required);
+        assert_eq!(address.node_type, "object");
+        let city = address
+            .properties
+            .as_ref()
+            .expect("address has properties")
+            .iter()
+            .find(|p| p.name == "city")
+            .expect("city prop");
+        assert_eq!(city.node_type, "string");
+    }
+
+    #[test]
+    fn build_schema_tree_recurses_into_array_items() {
+        let schema = json!({
+            "type": "array",
+            "items": { "type": "object", "properties": { "id": { "type": "string" } } },
+        });
+        let tree = build_schema_tree("tags", &schema, &no_defs());
+        assert_eq!(tree.node_type, "array");
+        let item = tree.items.expect("array has an items node");
+        assert_eq!(item.node_type, "object");
+        assert!(
+            item.properties
+                .expect("item has properties")
+                .iter()
+                .any(|p| p.name == "id")
+        );
+    }
+
+    #[test]
+    fn build_schema_tree_ref_cycle_terminates() {
+        let mut defs = serde_json::Map::new();
+        defs.insert("A".to_owned(), json!({ "$ref": "#/$defs/B" }));
+        defs.insert("B".to_owned(), json!({ "$ref": "#/$defs/A" }));
+        let schema = json!({ "$ref": "#/$defs/A" });
+        let tree = build_schema_tree("root", &schema, &defs);
+        assert!(
+            tree.node_type.starts_with("ref(#/$defs/"),
+            "expected an unresolved ref fallback, got: {}",
+            tree.node_type
+        );
+    }
+
+    #[test]
+    fn compute_schema_id_uses_the_defs_key_for_a_ref_schema() {
+        let schema = json!({ "$ref": "#/$defs/Business" });
+        assert_eq!(
+            compute_schema_id("getUser", &SchemaLocation::RequestBody, &schema),
+            "Business"
+        );
+    }
+
+    #[test]
+    fn compute_schema_id_builds_a_dotted_path_for_each_inline_location() {
+        let schema = json!({ "type": "object" });
+        assert_eq!(
+            compute_schema_id("getUser", &SchemaLocation::RequestBody, &schema),
+            "getUser.requestBody.schema"
+        );
+        assert_eq!(
+            compute_schema_id(
+                "getUser",
+                &SchemaLocation::Parameter("limit".to_owned()),
+                &schema
+            ),
+            "getUser.parameters.limit.schema"
+        );
+        assert_eq!(
+            compute_schema_id(
+                "getUser",
+                &SchemaLocation::Response("200".to_owned()),
+                &schema
+            ),
+            "getUser.responses.200.schema"
+        );
+    }
+
+    #[test]
+    fn scalar_schema_type_is_none_for_a_ref_even_if_it_would_resolve_to_a_scalar() {
+        let schema = json!({ "$ref": "#/$defs/Confirmation" });
+        assert_eq!(scalar_schema_type(Some(&schema), &no_defs()), None);
+    }
+
+    #[test]
+    fn scalar_schema_type_is_none_for_an_object_with_properties() {
+        let schema = json!({ "type": "object", "properties": { "a": {} } });
+        assert_eq!(scalar_schema_type(Some(&schema), &no_defs()), None);
+    }
+
+    #[test]
+    fn scalar_schema_type_is_none_for_a_missing_schema() {
+        assert_eq!(scalar_schema_type(None, &no_defs()), None);
+    }
+
+    #[test]
+    fn scalar_schema_type_labels_a_bare_inline_scalar() {
+        let schema = json!({ "type": "string", "format": "uuid" });
+        assert_eq!(
+            scalar_schema_type(Some(&schema), &no_defs()),
+            Some("string(uuid)".to_owned())
+        );
+    }
+
+    #[test]
+    fn scalar_schema_type_labels_a_bare_inline_array() {
+        let schema = json!({ "type": "array", "items": { "type": "string" } });
+        assert_eq!(
+            scalar_schema_type(Some(&schema), &no_defs()),
+            Some("array<string>".to_owned())
+        );
+    }
+
+    #[test]
+    fn schema_base_type_label_does_not_list_property_names_or_recurse_into_items() {
+        let object_schema = json!({
+            "type": "object",
+            "properties": { "a": {}, "b": {}, "c": {} },
+        });
+        assert_eq!(schema_base_type_label(&object_schema, &no_defs()), "object");
+
+        let array_schema =
+            json!({ "type": "array", "items": { "type": "object", "properties": { "a": {} } } });
+        assert_eq!(schema_base_type_label(&array_schema, &no_defs()), "array");
+    }
+
+    #[test]
+    fn schema_base_type_label_resolves_a_ref_to_its_base_type() {
+        let mut defs = no_defs();
+        defs.insert(
+            "Shipment".to_owned(),
+            json!({ "type": "object", "properties": { "id": {} } }),
+        );
+        let schema = json!({ "$ref": "#/$defs/Shipment" });
+        assert_eq!(schema_base_type_label(&schema, &defs), "object");
+    }
+
+    #[test]
+    fn describe_schema_is_drillable_with_the_base_type_for_a_ref() {
+        let mut defs = no_defs();
+        defs.insert(
+            "Shipment".to_owned(),
+            json!({ "type": "object", "properties": { "id": {} } }),
+        );
+        let schema = json!({ "$ref": "#/$defs/Shipment" });
+        assert_eq!(
+            describe_schema(Some(&schema), &defs),
+            (Some("object".to_owned()), true)
+        );
+    }
+
+    #[test]
+    fn describe_schema_is_drillable_with_the_base_type_for_an_inline_object() {
+        let schema = json!({ "type": "object", "properties": { "a": {} } });
+        assert_eq!(
+            describe_schema(Some(&schema), &no_defs()),
+            (Some("object".to_owned()), true)
+        );
+    }
+
+    #[test]
+    fn describe_schema_is_not_drillable_with_the_full_label_for_a_bare_scalar() {
+        let schema = json!({ "type": "string", "format": "uuid" });
+        assert_eq!(
+            describe_schema(Some(&schema), &no_defs()),
+            (Some("string(uuid)".to_owned()), false)
+        );
+    }
+
+    #[test]
+    fn describe_schema_is_not_drillable_for_a_missing_schema() {
+        assert_eq!(describe_schema(None, &no_defs()), (None, false));
+    }
+
+    #[test]
+    fn parse_schema_id_round_trips_each_location_kind() {
+        assert_eq!(
+            parse_schema_id("getUser.requestBody.schema"),
+            Some(("getUser".to_owned(), SchemaLocation::RequestBody))
+        );
+        assert_eq!(
+            parse_schema_id("getUser.parameters.limit.schema"),
+            Some((
+                "getUser".to_owned(),
+                SchemaLocation::Parameter("limit".to_owned())
+            ))
+        );
+        assert_eq!(
+            parse_schema_id("getUser.responses.200.schema"),
+            Some((
+                "getUser".to_owned(),
+                SchemaLocation::Response("200".to_owned())
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_schema_id_handles_dotted_operation_ids_and_parameter_names() {
+        // Real catalog data: an operationId and a parameter name can each
+        // contain literal dots, so the parser can't assume a fixed split
+        // position — it has to scan for the keyword segment.
+        assert_eq!(
+            parse_schema_id(
+                "commerce.location.verify-address.parameters.registeredStores.storeId.schema"
+            ),
+            Some((
+                "commerce.location.verify-address".to_owned(),
+                SchemaLocation::Parameter("registeredStores.storeId".to_owned())
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_schema_id_rejects_malformed_ids() {
+        assert_eq!(parse_schema_id("justAnOperationId"), None);
+        assert_eq!(parse_schema_id("getUser.requestBody"), None); // missing trailing "schema"
+        assert_eq!(parse_schema_id(".parameters.limit.schema"), None); // empty operationId
+    }
+
+    #[test]
+    fn schema_id_round_trip_holds_across_the_real_catalog() {
+        for domain in catalog() {
+            for ep in &domain.endpoints {
+                let check = |location: SchemaLocation, schema: &serde_json::Value| {
+                    let id = compute_schema_id(&ep.operation_id, &location, schema);
+                    if schema.get("$ref").is_some() {
+                        // A $ref schema's id is its bare $defs key, resolved
+                        // directly against the defs map elsewhere — it's
+                        // never round-tripped through parse_schema_id.
+                        return;
+                    }
+                    assert_eq!(
+                        parse_schema_id(&id),
+                        Some((ep.operation_id.clone(), location)),
+                        "id was {id:?}"
+                    );
+                };
+
+                if let Some(schema) = ep.request_body.as_ref().and_then(|b| b.get("schema")) {
+                    check(SchemaLocation::RequestBody, schema);
+                }
+                for param in &ep.parameters {
+                    if let (Some(name), Some(schema)) = (
+                        param.get("name").and_then(serde_json::Value::as_str),
+                        param.get("schema"),
+                    ) {
+                        check(SchemaLocation::Parameter(name.to_owned()), schema);
+                    }
+                }
+                if let Some(responses) = ep.responses.as_object() {
+                    for (status, resp) in responses {
+                        if let Some(schema) = resp.get("schema") {
+                            check(SchemaLocation::Response(status.clone()), schema);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn schema_id_grammar_has_no_collisions_in_the_real_catalog() {
+        let collides = |segment: &str| SCHEMA_ID_KEYWORDS.contains(&segment) || segment == "schema";
+        for domain in catalog() {
+            for ep in &domain.endpoints {
+                for segment in ep.operation_id.split('.') {
+                    assert!(
+                        !collides(segment),
+                        "operationId {:?} has a segment ({segment:?}) that collides with the \
+                         schema-id grammar",
+                        ep.operation_id
+                    );
+                }
+                for param in &ep.parameters {
+                    let Some(name) = param.get("name").and_then(serde_json::Value::as_str) else {
+                        continue;
+                    };
+                    for segment in name.split('.') {
+                        assert!(
+                            !collides(segment),
+                            "parameter {name:?} on {:?} has a segment ({segment:?}) that \
+                             collides with the schema-id grammar",
+                            ep.operation_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // GraphQL summarization
     // -----------------------------------------------------------------------
 
@@ -1919,10 +3070,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // api describe — exact/method/fuzzy resolution, schema + GraphQL summary
+    // api operation get — exact/method/fuzzy resolution, schema + GraphQL summary
     // -----------------------------------------------------------------------
 
-    fn describe_cli() -> Cli {
+    fn operation_cli() -> Cli {
         // `resolve_catalog_base_url` needs `ctx.middleware.env` to actually
         // resolve to `DEFAULT_ENV` ("prod") rather than an empty default, so
         // wire environments the same way `main.rs` does for the real CLI.
@@ -1934,15 +3085,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn describe_exact_operation_id_match() {
+    async fn operation_get_exact_operation_id_match() {
         // Pin `--env` explicitly: `fullPath` depends on env-resolved base
         // URL, and the default env is read from ambient local config
         // (`gdenv`), so a bare run isn't hermetic across machines/CI.
-        let output = describe_cli()
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "commerce.location.verify-address",
                 "--env",
                 "prod",
@@ -1968,12 +3120,13 @@ mod tests {
     /// (e.g. `api.ote-godaddy.com`), so stripping only the literal prod host
     /// would silently leave the scheme+host in place here.
     #[tokio::test]
-    async fn describe_full_path_is_hostless_in_a_non_prod_env() {
-        let output = describe_cli()
+    async fn operation_get_full_path_is_hostless_in_a_non_prod_env() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "commerce.location.verify-address",
                 "--env",
                 "ote",
@@ -1995,12 +3148,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn describe_exact_match_narrowed_by_method_flag() {
-        let output = describe_cli()
+    async fn operation_get_exact_match_narrowed_by_method_flag() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "/location/addresses",
                 "--method",
                 "GET",
@@ -2022,12 +3176,13 @@ mod tests {
     /// search, which ignores the method filter entirely — so this still
     /// resolves to the (wrong-method) endpoint rather than erroring.
     #[tokio::test]
-    async fn describe_method_filter_is_ignored_during_fuzzy_fallback() {
-        let output = describe_cli()
+    async fn operation_get_method_filter_is_ignored_during_fuzzy_fallback() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "/location/addresses",
                 "--method",
                 "POST",
@@ -2046,12 +3201,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn describe_single_fuzzy_match_resolves_transparently() {
-        let output = describe_cli()
+    async fn operation_get_single_fuzzy_match_resolves_transparently() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "verify-address",
                 "--output",
                 "json",
@@ -2066,64 +3222,72 @@ mod tests {
         );
     }
 
+    /// A fuzzy query matching several unrelated endpoints is a hard error
+    /// (see `resolve_operation`/`ambiguous_operation_error`), not a
+    /// success-shaped `{message, matches}` response — cli-engine's error
+    /// envelope has no structured `next_actions` hook, so every candidate
+    /// is instead a runnable command line inside the error's `fix` string.
     #[tokio::test]
-    async fn describe_multiple_fuzzy_matches_lists_candidates() {
-        let output = describe_cli()
-            .run(["gddy", "api", "describe", "/location", "--output", "json"])
+    async fn operation_get_multiple_fuzzy_matches_is_an_ambiguous_error() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "/location",
+                "--output",
+                "json",
+            ])
             .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["error"]["code"], json!("AMBIGUOUS_MATCH"));
         assert!(
-            rendered["data"]["message"]
+            rendered["error"]["message"]
                 .as_str()
                 .unwrap_or_default()
-                .starts_with("Multiple endpoints match"),
+                .contains("matches 2 operations"),
             "{}",
             output.rendered
         );
-        let matches = rendered["data"]["matches"]
-            .as_array()
-            .expect("matches array");
-        assert_eq!(matches.len(), 2);
-        assert_eq!(
-            rendered["next_actions"]
-                .as_array()
-                .expect("next_actions array")
-                .len(),
-            2
-        );
+        let fix = rendered["fix"].as_str().expect("fix present");
+        assert!(fix.contains("/location/address-verifications"), "{fix}");
+        assert!(fix.contains("/location/addresses"), "{fix}");
+        assert!(fix.contains("gddy api operation get"), "{fix}");
     }
 
-    /// The `describe` view's declared columns cover the single-match shape
-    /// (domain/operationId/method/path/summary/parameters); without also
-    /// declaring `message`/`matches`, a view still only ever shows its own
-    /// declared fields — so the ambiguous-match shape would render as a
-    /// table of blank fields with the explanatory message and candidate
-    /// list silently dropped. Covers that human-output path directly, since
-    /// every other test here only exercises `--output json`.
+    /// Same ambiguity, but through human output — covers that rendering
+    /// path directly, since every other test here only exercises
+    /// `--output json`. Human error rendering is `Error: {message}` /
+    /// `Fix: {fix}` (`cli_engine::output::human::render_human_with_view`).
     #[tokio::test]
-    async fn describe_multiple_fuzzy_matches_human_output_shows_message_and_candidates() {
-        let output = describe_cli()
-            .run(["gddy", "api", "describe", "/location", "--output", "human"])
+    async fn operation_get_multiple_fuzzy_matches_human_output_shows_message_and_candidates() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "/location",
+                "--output",
+                "human",
+            ])
             .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
         assert!(
-            output
-                .rendered
-                .contains("Multiple endpoints match '/location'. Be more specific:"),
+            output.rendered.contains("'/location' matches 2 operations"),
             "{}",
             output.rendered
         );
         assert!(
-            output.rendered.contains("commerce.location.verify-address"),
+            output.rendered.contains("/location/address-verifications"),
             "{}",
             output.rendered
         );
         assert!(
-            output
-                .rendered
-                .contains("commerce.location.search-addresses"),
+            output.rendered.contains("/location/addresses"),
             "{}",
             output.rendered
         );
@@ -2134,35 +3298,38 @@ mod tests {
     /// `--method`, exact-match resolution must treat that the same as an
     /// ambiguous fuzzy match, not silently pick whichever one it saw first.
     #[tokio::test]
-    async fn describe_exact_path_shared_by_multiple_methods_is_ambiguous() {
-        let output = describe_cli()
-            .run(["gddy", "api", "describe", "/businesses", "--output", "json"])
+    async fn operation_get_exact_path_shared_by_multiple_methods_is_ambiguous() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "/businesses",
+                "--output",
+                "json",
+            ])
             .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
-        let matches = rendered["data"]["matches"]
-            .as_array()
-            .expect("matches array");
-        assert_eq!(matches.len(), 2, "{}", output.rendered);
-        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
-        assert_eq!(next_actions.len(), 2);
+        assert_eq!(rendered["error"]["code"], json!("AMBIGUOUS_MATCH"));
         // Candidates sharing one path are only distinguishable by method, so
-        // each next_action must carry both params, not just `endpoint`.
-        for action in next_actions {
-            assert!(action["params"]["endpoint"]["value"].is_string());
-            assert!(action["params"]["method"]["value"].is_string());
-        }
+        // the fix must spell out both.
+        let fix = rendered["fix"].as_str().expect("fix present");
+        assert!(fix.contains("--method GET"), "{fix}");
+        assert!(fix.contains("--method POST"), "{fix}");
     }
 
     /// The same ambiguity, resolved by adding `--method`.
     #[tokio::test]
-    async fn describe_exact_path_shared_by_multiple_methods_resolves_with_method_flag() {
-        let output = describe_cli()
+    async fn operation_get_exact_path_shared_by_multiple_methods_resolves_with_method_flag() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "/businesses",
                 "--method",
                 "POST",
@@ -2180,12 +3347,13 @@ mod tests {
     /// must resolve via template matching, same as `api call` already does
     /// via `find_endpoint`/`path_matches_template`.
     #[tokio::test]
-    async fn describe_concrete_path_resolves_via_template_matching() {
-        let output = describe_cli()
+    async fn operation_get_concrete_path_resolves_via_template_matching() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "/businesses/abc123",
                 "--method",
                 "GET",
@@ -2200,12 +3368,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn describe_zero_matches_is_an_error() {
-        let output = describe_cli()
+    async fn operation_get_zero_matches_is_an_error() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
                 "totally-fake-endpoint-xyz",
                 "--output",
                 "json",
@@ -2213,23 +3382,52 @@ mod tests {
             .await;
         assert_ne!(output.exit_code, 0, "{}", output.rendered);
         assert!(
-            output.rendered.contains("no endpoint found matching"),
+            output.rendered.contains("no operation found matching"),
             "{}",
             output.rendered
         );
     }
 
-    /// Most catalog request bodies are a bare `$ref` with no inline
-    /// `properties` (63/82 in the embedded catalog) — `createBusiness`'s is
-    /// `{"$ref": "#/$defs/Business"}`. Without $ref resolution this
-    /// summarizes to `null`; with it, the real fields show up.
+    /// Regression: `.with_view(...)` covered `parameters.items` but had no
+    /// `responses.items` column at all, so `responses` — present in the
+    /// JSON the whole time — silently never rendered in `--output human`,
+    /// with no error or missing-column notice to say so.
     #[tokio::test]
-    async fn describe_resolves_a_pure_ref_request_body_against_defs() {
-        let output = describe_cli()
+    async fn operation_get_human_output_shows_a_responses_table() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
+                "createShipment",
+                "--output",
+                "human",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("Responses:"),
+            "{}",
+            output.rendered
+        );
+        assert!(output.rendered.contains("STATUS"), "{}", output.rendered);
+        assert!(output.rendered.contains("200"), "{}", output.rendered);
+    }
+
+    /// Most catalog request bodies are a bare `$ref` with no inline
+    /// `properties` (63/82 in the embedded catalog) — `createBusiness`'s is
+    /// `{"$ref": "#/$defs/Business"}`. Without $ref resolution this
+    /// summarizes to `null`; with it, the real fields show up. The request
+    /// body is folded into `parameters` as the synthetic `body` row.
+    #[tokio::test]
+    async fn operation_get_resolves_a_pure_ref_request_body_against_defs() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
                 "createBusiness",
                 "--output",
                 "json",
@@ -2238,23 +3436,224 @@ mod tests {
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
-        let schema = rendered["data"]["requestBody"]["schema"]
+        let parameters = rendered["data"]["parameters"]["items"]
             .as_array()
-            .expect("requestBody.schema resolves to a property list, not null");
+            .expect("parameters items array");
+        let body = parameters
+            .iter()
+            .find(|p| p["name"] == "body")
+            .expect("synthetic body row");
+        let schema = body["schema"]["items"]
+            .as_array()
+            .expect("body.schema resolves to a property list, not null");
         let active_since = schema
             .iter()
             .find(|p| p["name"] == "activeSince")
             .expect("activeSince property");
         assert_eq!(active_since["type"], json!("string(date-time)"));
+        assert_eq!(body["schemaId"], json!("Business"));
     }
 
+    /// `getChannels` has 6 parameters — under the preview cap, so its
+    /// `operation get` output isn't truncated and shouldn't link to the
+    /// standalone `parameter list`.
     #[tokio::test]
-    async fn describe_graphql_endpoint_gets_summary() {
-        let output = describe_cli()
+    async fn operation_get_does_not_link_to_parameter_list_when_untruncated() {
+        let output = operation_cli()
             .run([
                 "gddy",
                 "api",
-                "describe",
+                "operation",
+                "get",
+                "getChannels",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(
+            rendered["data"]["parameters"]["pagination"]["total"],
+            json!(6)
+        );
+        assert!(
+            !rendered["data"]["parameters"]["pagination"]["has_more"]
+                .as_bool()
+                .unwrap_or(true)
+        );
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        assert!(
+            next_actions
+                .iter()
+                .any(|a| a["command"].as_str().unwrap_or("").contains("api call")),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            !next_actions.iter().any(|a| a["command"]
+                .as_str()
+                .unwrap_or("")
+                .contains("parameter list")),
+            "an untruncated preview should not link to the standalone list: {}",
+            output.rendered
+        );
+    }
+
+    /// `createShipment`'s synthetic `body` parameter has a `schemaId`
+    /// (`Shipment`, a `$ref`) — a caller needs to be told `api schema get`
+    /// exists at all to make use of it, or the id in the table is a dead
+    /// end. One generic hint covers every parameter/response with a
+    /// `schemaId`, rather than a same-command line repeated per row.
+    #[tokio::test]
+    async fn operation_get_links_to_schema_get_when_any_row_has_a_schema_id() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "createShipment",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        let hint = next_actions
+            .iter()
+            .find(|a| a["command"] == json!("gddy api schema get <id>"))
+            .expect("generic schema-get hint");
+        assert!(hint["params"]["id"]["required"].as_bool().unwrap_or(false));
+        assert!(hint["params"]["id"]["value"].is_null());
+    }
+
+    /// `deleteDNSRecord` has no schema anywhere (every parameter is a bare
+    /// scalar, and its one response is a bare `204` with no body) — the
+    /// schema-get hint must not appear when there's nothing for it to point
+    /// at.
+    #[tokio::test]
+    async fn operation_get_does_not_link_to_schema_get_when_no_row_has_a_schema_id() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "deleteDNSRecord",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        assert!(
+            !next_actions
+                .iter()
+                .any(|a| a["command"] == json!("gddy api schema get <id>")),
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// `get_transaction_disputes` has 26 parameters — over the preview cap
+    /// — so its `operation get` output must be truncated and link to the
+    /// standalone `parameter list` for the rest, per the "list truncated →
+    /// standalone list command" convention.
+    #[tokio::test]
+    async fn operation_get_links_to_parameter_list_when_truncated() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "get_transaction_disputes",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        // `Summary`'s only field beyond `items` is `pagination` (a
+        // `PaginationMeta`) — the same shape cli-engine's own top-level
+        // pagination uses, so cli-engine 0.8.2 (DEVEX-985) can read it as a
+        // sibling of a nested column's array and render the same "(N of M
+        // rows, offset O, limit L)" footer a top-level paginated array gets.
+        assert_eq!(
+            rendered["data"]["parameters"]["pagination"]["total"],
+            json!(26)
+        );
+        assert_eq!(
+            rendered["data"]["parameters"]["pagination"]["count"],
+            json!(20)
+        );
+        assert_eq!(
+            rendered["data"]["parameters"]["pagination"]["limit"],
+            json!(20)
+        );
+        assert_eq!(
+            rendered["data"]["parameters"]["pagination"]["has_more"],
+            json!(true)
+        );
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        let link = next_actions
+            .iter()
+            .find(|a| {
+                a["command"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("parameter list")
+            })
+            .expect("next_action linking to the standalone parameter list");
+        assert_eq!(
+            link["params"]["operation"]["value"],
+            json!("get_transaction_disputes")
+        );
+    }
+
+    /// Same fixture as `operation_get_links_to_parameter_list_when_truncated`,
+    /// through human output: DEVEX-985 (cli-engine 0.8.2) lets a nested
+    /// table render a truncation footer at all, so this is the first time
+    /// `--output human` can show "not all rows are here" for `operation
+    /// get`'s embedded parameter preview, rather than a bare `(20 rows)`
+    /// with no hint that 6 more exist.
+    #[tokio::test]
+    async fn operation_get_human_output_shows_truncation_footer_for_parameters() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
+                "get_transaction_disputes",
+                "--output",
+                "human",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output
+                .rendered
+                .contains("(20 of 26 rows, offset 0, limit 20)"),
+            "{}",
+            output.rendered
+        );
+    }
+
+    #[tokio::test]
+    async fn operation_get_graphql_endpoint_gets_summary() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "operation",
+                "get",
                 "postCatalogGraphql",
                 "--output",
                 "json",
@@ -2271,6 +3670,530 @@ mod tests {
                 .expect("operations array")
                 .len(),
             149
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // api parameter / api response / api schema
+    // -----------------------------------------------------------------------
+
+    /// `commerce.location.verify-address` has no real parameters, only a
+    /// request body — so its parameter list is exactly the synthetic `body`
+    /// row, folded in per DEVEX-967.
+    #[tokio::test]
+    async fn parameter_list_folds_in_the_synthetic_body_row() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "commerce.location.verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let items = rendered["data"].as_array().expect("data array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["name"], json!("body"));
+        assert_eq!(items[0]["in"], json!("body"));
+        assert_eq!(items[0]["required"], json!(true));
+    }
+
+    /// Regression: without a declared view, cli-engine's no-view human
+    /// renderer falls back to alphabetical column order for a bare array
+    /// (`dynamic_columns` in cli-engine's `output/human.rs`), which
+    /// scrambled this relative to `operation get`'s own `parameters.items`
+    /// nested view. `parameter_list_command` declares a matching
+    /// `.with_view(...)` specifically to avoid that.
+    #[tokio::test]
+    async fn parameter_list_human_output_uses_the_declared_column_order() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "createShipment",
+                "--output",
+                "human",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let header_line = output
+            .rendered
+            .lines()
+            .next()
+            .expect("at least a header line")
+            .trim_end();
+        assert_eq!(
+            header_line, "NAME     IN    REQUIRED  TYPE    SCHEMA ID  DESCRIPTION",
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// Same regression, for `response_list_command`. `createShipment`'s rows
+    /// (long descriptions, a long dotted schema id) push the declared
+    /// `Description` column past the default terminal width, so it's the
+    /// lowest-priority column cli-engine drops to make everything else fit
+    /// — the header below is missing it for that reason, not because the
+    /// view only has three columns. Assert the drop is reported, so this
+    /// doesn't read as `Description` being absent from the view too.
+    #[tokio::test]
+    async fn response_list_human_output_uses_the_declared_column_order() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "response",
+                "list",
+                "--operation",
+                "createShipment",
+                "--output",
+                "human",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let header_line = output
+            .rendered
+            .lines()
+            .next()
+            .expect("at least a header line")
+            .trim_end();
+        assert_eq!(
+            header_line, "STATUS  TYPE    SCHEMA ID",
+            "{}",
+            output.rendered
+        );
+        assert!(
+            output
+                .rendered
+                .contains("hidden to fit the display width (Description)"),
+            "Description should be declared but dropped for width, not absent from the view: {}",
+            output.rendered
+        );
+    }
+
+    /// `--limit`/`--offset` here come from `CommandSpec::with_pagination`
+    /// (cli-engine 0.7.0's builder), and the resulting page + pagination
+    /// metadata + "next page" hint are entirely cli-engine 0.8's doing —
+    /// this command returns the full unsliced list and does none of that
+    /// itself. Exercises the whole pipeline end-to-end, not a unit in
+    /// isolation.
+    #[tokio::test]
+    async fn parameter_list_honors_engine_provided_limit_and_offset() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "get_transaction_disputes",
+                "--limit",
+                "5",
+                "--offset",
+                "20",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"].as_array().expect("data array").len(), 5);
+        let pagination = &rendered["pagination"];
+        assert_eq!(pagination["total"], json!(26));
+        assert_eq!(pagination["offset"], json!(20));
+        assert_eq!(pagination["limit"], json!(5));
+        assert_eq!(pagination["count"], json!(5));
+        // 20 + 5 = 25 < 26, so one more remains.
+        assert_eq!(pagination["has_more"], json!(true));
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        assert!(
+            next_actions
+                .iter()
+                .any(|a| a["command"].as_str().unwrap_or("").contains("--offset 25")),
+            "expected an auto-generated next-page hint: {}",
+            output.rendered
+        );
+    }
+
+    /// `--limit 0` means "all" per cli-engine's own generated help text for
+    /// `with_pagination` — must show every item, not zero. With both
+    /// `--limit`/`--offset` at their "disabled" value (0), cli-engine 0.8's
+    /// pipeline skips pagination entirely rather than reporting a page of
+    /// everything, so there's no `pagination` envelope field at all here.
+    #[tokio::test]
+    async fn parameter_list_limit_zero_means_all() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "get_transaction_disputes",
+                "--limit",
+                "0",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"].as_array().expect("data array").len(), 26);
+        assert!(rendered.get("pagination").is_none(), "{}", output.rendered);
+    }
+
+    /// `max_limit` (`OPERATION_CHILD_LIST_MAX_LIMIT`) rejects an
+    /// out-of-range `--limit` at parse time, before the handler even runs.
+    #[tokio::test]
+    async fn parameter_list_limit_above_max_is_rejected() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "get_transaction_disputes",
+                "--limit",
+                "999",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+    }
+
+    #[tokio::test]
+    async fn parameter_get_resolves_the_synthetic_body_name() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "get",
+                "body",
+                "--operation",
+                "commerce.location.verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["name"], json!("body"));
+        assert_eq!(rendered["data"]["in"], json!("body"));
+        assert!(rendered["data"]["schema"]["items"].is_array());
+        assert_eq!(rendered["data"]["type"], json!("object"));
+        let schema_id = rendered["data"]["schemaId"]
+            .as_str()
+            .expect("schemaId present whenever a schema exists");
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        let link = next_actions
+            .iter()
+            .find(|a| a["command"].as_str().unwrap_or("").contains("schema get"))
+            .expect("schema next_action attached even though the preview isn't truncated");
+        assert_eq!(link["params"]["id"]["value"], json!(schema_id));
+    }
+
+    /// `storeId` on `queryCarriers` has no `schema` at all — the id and its
+    /// "see full schema" next_action should both be absent, not present with
+    /// an empty/garbage value.
+    #[tokio::test]
+    async fn parameter_get_without_a_schema_has_no_schema_id_or_next_action() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "get",
+                "storeId",
+                "--operation",
+                "queryCarriers",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert!(rendered["data"]["schemaId"].is_null());
+        assert!(
+            rendered["next_actions"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true),
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// `pageSize` on `queryCarriers` has a bare inline scalar schema
+    /// (`{"type": "integer", "format": "int64", ...}`, no `properties`, no
+    /// `$ref`) — there's nothing to drill into, so it should surface `type`
+    /// directly rather than a `schemaId`/next_action pointing at a
+    /// `schema get` that would just echo the same type back.
+    #[tokio::test]
+    async fn parameter_get_scalar_schema_shows_type_instead_of_schema_id() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "get",
+                "pageSize",
+                "--operation",
+                "queryCarriers",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert!(rendered["data"]["schemaId"].is_null());
+        assert_eq!(rendered["data"]["type"], json!("integer(int64)"));
+        assert!(
+            rendered["next_actions"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true),
+            "{}",
+            output.rendered
+        );
+    }
+
+    #[tokio::test]
+    async fn parameter_get_unknown_name_is_a_not_found_error() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "get",
+                "does-not-exist",
+                "--operation",
+                "commerce.location.verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(output.rendered.contains("not found"), "{}", output.rendered);
+    }
+
+    /// `getChannels`'s `registeredStores.storeId` parameter has a literal
+    /// dot in its name — a real edge case for the schema-id grammar (see
+    /// `schema_id_round_trip_holds_across_the_real_catalog`), exercised here
+    /// end-to-end through the actual command.
+    #[tokio::test]
+    async fn parameter_get_handles_a_dotted_parameter_name() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "get",
+                "registeredStores.storeId",
+                "--operation",
+                "getChannels",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["name"], json!("registeredStores.storeId"));
+    }
+
+    #[tokio::test]
+    async fn response_list_returns_every_status_sorted() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "response",
+                "list",
+                "--operation",
+                "patchBusiness",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        let items = rendered["data"].as_array().expect("data array");
+        let statuses: Vec<&str> = items
+            .iter()
+            .map(|r| r["status"].as_str().expect("status"))
+            .collect();
+        assert_eq!(statuses, vec!["200", "404", "default"]);
+    }
+
+    #[tokio::test]
+    async fn response_get_returns_one_status_with_its_schema_preview() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "response",
+                "get",
+                "200",
+                "--operation",
+                "commerce.location.verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["status"], json!("200"));
+        let schema_items = rendered["data"]["schema"]["items"]
+            .as_array()
+            .expect("schema items array");
+        let names: Vec<&str> = schema_items
+            .iter()
+            .map(|p| p["name"].as_str().expect("name"))
+            .collect();
+        assert!(names.contains(&"status"));
+        assert!(names.contains(&"data"));
+        assert_eq!(rendered["data"]["type"], json!("object"));
+        let schema_id = rendered["data"]["schemaId"]
+            .as_str()
+            .expect("schemaId present whenever a schema exists");
+        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
+        let link = next_actions
+            .iter()
+            .find(|a| a["command"].as_str().unwrap_or("").contains("schema get"))
+            .expect("schema next_action attached even though the preview isn't truncated");
+        assert_eq!(link["params"]["id"]["value"], json!(schema_id));
+    }
+
+    #[tokio::test]
+    async fn response_get_unknown_status_is_a_not_found_error() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "response",
+                "get",
+                "599",
+                "--operation",
+                "commerce.location.verify-address",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(output.rendered.contains("not found"), "{}", output.rendered);
+    }
+
+    /// A `$ref` schema's id is its bare `$defs` key — no operation scoping
+    /// needed to look it up.
+    #[tokio::test]
+    async fn schema_get_resolves_a_bare_defs_name() {
+        let output = operation_cli()
+            .run([
+                "gddy", "api", "schema", "get", "address", "--output", "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["type"], json!("object"));
+        let properties = rendered["data"]["properties"]
+            .as_array()
+            .expect("properties array");
+        assert!(properties.iter().any(|p| p["name"] == "addressDetails"));
+    }
+
+    /// An inline response schema's id is a dotted path rooted at the
+    /// operationId — which, for this operation, itself contains dots, so
+    /// this also exercises the schema-id parser's keyword-scan (not a fixed
+    /// split position).
+    #[tokio::test]
+    async fn schema_get_resolves_an_inline_response_schema_by_dotted_id() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "schema",
+                "get",
+                "commerce.location.verify-address.responses.200.schema",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["type"], json!("object"));
+        let properties = rendered["data"]["properties"]
+            .as_array()
+            .expect("properties array");
+        let names: Vec<&str> = properties
+            .iter()
+            .map(|p| p["name"].as_str().expect("name"))
+            .collect();
+        assert!(names.contains(&"status"));
+        assert!(names.contains(&"data"));
+    }
+
+    /// An inline request body's id is a dotted path too — `patchBusiness`'s
+    /// top-level schema is `{type: array, items: {$ref: ...}}`, inline at
+    /// the top level even though its items aren't.
+    #[tokio::test]
+    async fn schema_get_resolves_an_inline_request_body_schema_by_dotted_id() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "schema",
+                "get",
+                "patchBusiness.requestBody.schema",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json");
+        assert_eq!(rendered["data"]["type"], json!("array"));
+        assert!(rendered["data"]["items"].is_object());
+    }
+
+    #[tokio::test]
+    async fn schema_get_unknown_id_is_a_not_found_error() {
+        let output = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "schema",
+                "get",
+                "not-a-defs-name-and-not-a-dotted-id",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("no schema found for id"),
+            "{}",
+            output.rendered
         );
     }
 }

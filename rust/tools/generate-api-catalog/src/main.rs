@@ -1048,7 +1048,7 @@ fn collect_unresolved_refs_inner(value: &Value, found: &mut Vec<String>) {
 ///
 /// The OpenAPI `discriminator.mapping` holds schema references as *plain strings*,
 /// not `$ref` objects, so `dereference()` never touches them — leaving broken
-/// external file paths in the generated catalog that surface through `api describe`.
+/// external file paths in the generated catalog that surface through `api operation get`.
 /// The referenced subschemas are lifted into `$defs` via the same key derivation
 /// (`derive_defs_key_for_path`), so we rewrite each mapping value to the matching
 /// `#/$defs/<key>` — but only when that def exists, so a mapping is never pointed

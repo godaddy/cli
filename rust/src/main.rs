@@ -20,6 +20,7 @@ mod platform;
 mod quote_cache;
 mod scopes;
 mod scopes_cmd;
+mod summary;
 mod update;
 mod webhook;
 
