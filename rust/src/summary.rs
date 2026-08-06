@@ -1,7 +1,7 @@
 use cli_engine::{NextAction, PaginationMeta};
 use serde::Serialize;
 
-/// Envelope for an list of data that may be paginated
+/// Envelope for a list of data that may be paginated
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Summary<T: Serialize> {
     pub(crate) items: Vec<T>,

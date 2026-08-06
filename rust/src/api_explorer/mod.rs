@@ -343,7 +343,7 @@ fn resolve_operation<'a>(
                     "no operation found matching '{query}' — try `gddy api search {query}`"
                 ))
                 .with_fix(format!(
-                    "Run: gddy api search {query} or gddy api operation list"
+                    "Run: gddy api search {query} or gddy api domain list"
                 ))
                 .into_cli_error()),
                 1 => Ok((hits[0].0, hits[0].1)),
@@ -1929,6 +1929,7 @@ fn parameter_list_command() -> RuntimeCommandSpec {
                     "api parameter get <name> --operation <operation>",
                     "See one parameter's full detail",
                 )
+                .with_param("name", NextActionParam::required())
                 .with_param("operation", required_value(ep.operation_id.clone())),
             ];
             Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
@@ -1955,8 +1956,9 @@ fn parameter_get_command() -> RuntimeCommandSpec {
         )
         .with_long(
             "Shows one parameter's full detail: location, required-ness, description, \
-                 and its complete schema (never truncated — see `api schema get`). Also \
-                 resolves the synthetic `body` name, if the operation has a request body.",
+                 and a preview of its schema (see `api schema get` for the complete, \
+                 never-truncated nested structure). Also resolves the synthetic `body` \
+                 name, if the operation has a request body.",
         )
         .with_system("api")
         .with_tier(Tier::Read)
@@ -2039,6 +2041,7 @@ fn response_list_command() -> RuntimeCommandSpec {
                     "api response get <status> --operation <operation>",
                     "See one response's full detail",
                 )
+                .with_param("status", NextActionParam::required())
                 .with_param("operation", required_value(ep.operation_id.clone())),
             ];
             Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
@@ -2064,8 +2067,8 @@ fn response_get_command() -> RuntimeCommandSpec {
             "Show one operation response's full detail",
         )
         .with_long(
-            "Shows one response's full detail: description and its complete schema \
-                 (never truncated — see `api schema get`).",
+            "Shows one response's full detail: description and a preview of its schema \
+                 (see `api schema get` for the complete, never-truncated nested structure).",
         )
         .with_system("api")
         .with_tier(Tier::Read)
@@ -3735,7 +3738,13 @@ mod tests {
         );
     }
 
-    /// Same regression, for `response_list_command`.
+    /// Same regression, for `response_list_command`. `createShipment`'s rows
+    /// (long descriptions, a long dotted schema id) push the declared
+    /// `Description` column past the default terminal width, so it's the
+    /// lowest-priority column cli-engine drops to make everything else fit
+    /// — the header below is missing it for that reason, not because the
+    /// view only has three columns. Assert the drop is reported, so this
+    /// doesn't read as `Description` being absent from the view too.
     #[tokio::test]
     async fn response_list_human_output_uses_the_declared_column_order() {
         let output = operation_cli()
@@ -3760,6 +3769,13 @@ mod tests {
         assert_eq!(
             header_line, "STATUS  TYPE    SCHEMA ID",
             "{}",
+            output.rendered
+        );
+        assert!(
+            output
+                .rendered
+                .contains("hidden to fit the display width (Description)"),
+            "Description should be declared but dropped for width, not absent from the view: {}",
             output.rendered
         );
     }
