@@ -60,13 +60,68 @@ After domain registration, the wizard offers to attach:
 
 ## Command Design
 
-### Command Signature
+### Multi-Entry-Point Approach
+
+The wizard is not limited to a single `domain register` command. Any domain subcommand
+can serve as an entry point into the purchase flow via the `--interactive` flag. The
+command does its normal work, then hands off to the wizard from the appropriate step
+with pre-filled state.
+
+```
+gddy domain <subcommand> [args] --interactive
+```
+
+#### Entry Points
+
+| Command | What it does first | Wizard starts at | Pre-filled state |
+|---------|-------------------|------------------|------------------|
+| `gddy domain register` | Nothing (dedicated wizard entry) | Step 1: Discovery | — |
+| `gddy domain suggest example --interactive` | Fetches suggestions | Step 1: Pick from results | Search term + suggestions |
+| `gddy domain available example.com --interactive` | Checks availability | Step 2 (if available) or Step 1 suggestions (if taken) | Domain + availability status |
+| `gddy domain quote example.com --interactive` | Locks a quote | Step 5: Review & Confirm | Domain + quote token + price |
+
+#### How it works
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  gddy domain suggest "cool startup" --interactive                   │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  1. Normal command logic runs:                                     │
+│     → calls /v1/domains/suggest, gets results                      │
+│                                                                    │
+│  2. --interactive detected + TTY present:                          │
+│     → injects results into WizardState { suggestions: [...] }      │
+│     → enters wizard at Step 1 (user picks from suggestions)        │
+│     → continues through Steps 2 → 3 → 4 → 5 → 5b → 6             │
+│                                                                    │
+│  Without --interactive:                                            │
+│     → prints JSON results and exits (existing behavior)            │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+#### Commands that ignore `--interactive`
+
+Not all domain subcommands lead naturally into a purchase. These ignore the flag
+(or warn that it's not applicable):
+
+- `gddy domain list` — shows owned domains, not a purchase path
+- `gddy domain get` — inspects an existing domain
+- `gddy domain contacts init` — local file setup, no purchase context
+- `gddy domain dns *` — DNS management for existing domains
+
+#### Primary entry: `gddy domain register`
+
+The dedicated wizard command remains the canonical entry point:
 
 ```
 gddy domain register [DOMAIN] [--interactive | --non-interactive]
 ```
 
-When `DOMAIN` is provided and `--non-interactive` is set (or stdin is not a TTY), it falls through to the existing `quote` + `purchase` pipeline. Otherwise, it enters the interactive wizard.
+When `DOMAIN` is provided and `--non-interactive` is set (or stdin is not a TTY), it
+falls through to the existing `quote` + `purchase` pipeline. Otherwise, it enters the
+interactive wizard at Step 1.
 
 ### Wizard Flow
 
