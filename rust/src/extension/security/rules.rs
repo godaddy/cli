@@ -1,5 +1,8 @@
 //! SEC101–SEC115 rule data.
-//! Ported from src/core/security/rules/bundle/ in the TypeScript CLI.
+//! SEC101–SEC110 ported from src/core/security/rules/bundle/ in the TypeScript
+//! CLI. SEC111–SEC115 were added during the Rust port and have no TS
+//! baseline (SEC111/SEC112/SEC115 block, SEC113/SEC114 warn — see the
+//! comments above each for why).
 
 use crate::extension::types::Severity;
 
@@ -231,10 +234,10 @@ pub(super) static RULE_DEFS: &[RuleDef] = &[
             r#"https?://(?!(?:(?:[a-zA-Z0-9-]+\.)*godaddy\.com|localhost|127\.0\.0\.1)(?:[:/?#\s]|$))[^\s"'\x60<>]+"#,
         ],
     },
-    // SEC113 — any encoded payload (no signal, block)
+    // SEC113 — any encoded payload (no signal, warn)
     RuleDef {
         id: "SEC113",
-        severity: Severity::Block,
+        severity: Severity::Warn,
         description: "Bundled code uses base64/hex encoding that could conceal malicious payloads",
         signal_patterns: &[],
         patterns: &[
@@ -242,10 +245,10 @@ pub(super) static RULE_DEFS: &[RuleDef] = &[
             r#"Buffer\.from\s*\(\s*['"][^'"]+['"]\s*,\s*['"](?:base64|hex)['"]"#,
         ],
     },
-    // SEC114 — debugger statement (no signal, block)
+    // SEC114 — debugger statement (no signal, warn)
     RuleDef {
         id: "SEC114",
-        severity: Severity::Block,
+        severity: Severity::Warn,
         description: "Bundled code contains a debugger statement which enables remote debugging access",
         signal_patterns: &[],
         patterns: &[r#"\bdebugger\b"#],
