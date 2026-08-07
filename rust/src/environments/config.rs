@@ -58,6 +58,17 @@ pub struct GddyEnvConfig {
         default_fn = default_account_url
     )]
     pub account_url: String,
+
+    /// Base URL for the DevX Core API gateway used by onboarding. Custom
+    /// environments set this in `environments.toml`; built-in environments
+    /// receive their defaults from `BaseEnvConfig`. Shell overrides are
+    /// applied separately by `devx_core_url` so their legacy precedence is
+    /// preserved.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        default_fn = default_devx_core_url
+    )]
+    pub devx_core_url: String,
 }
 
 /// `name`'s `default_fn`: the field itself is never set by any real TOML/env
@@ -97,6 +108,13 @@ fn default_domains_api_url(sources: &SourceChain<'_>) -> String {
 
 fn default_account_url(sources: &SourceChain<'_>) -> String {
     derive_account_url(sources.env_name().unwrap_or_default())
+}
+
+fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
+    // A custom environment must configure this value explicitly. The empty
+    // default keeps the field optional for unrelated CLI commands; callers
+    // that require DevX Core report a missing URL through `devx_core_url`.
+    String::new()
 }
 
 fn derive_account_url(env_name: &str) -> String {
