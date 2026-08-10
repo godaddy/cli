@@ -144,8 +144,9 @@ fn apply_command() -> RuntimeCommandSpec {
         .with_default_fields("previousVersion,newVersion,status"),
         |_cred, args: ApplyArgs| async move {
             let result = run_apply(args.force).await?;
-            let status = result["status"].as_str().unwrap_or_default().to_owned();
-            Ok(CommandResult::new(result).with_next_actions(completion_next_actions(&status)))
+            let next_actions =
+                completion_next_actions(result["status"].as_str().unwrap_or_default());
+            Ok(CommandResult::new(result).with_next_actions(next_actions))
         },
     )
 }
@@ -545,7 +546,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn completion_next_actions_suggests_reinstall_only_after_a_real_update() {
+    fn completion_next_actions_suggests_refresh_only_after_a_real_update() {
         let actions = completion_next_actions("updated");
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].command, "gddy completion --install");
