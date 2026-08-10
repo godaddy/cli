@@ -1,10 +1,16 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
-    Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use crate::next_action::next_action;
+use crate::output_schema::output_schema;
+
+output_schema!(ActionSummary {
+    "name": "string";
+    "description": "string";
+});
 
 /// Static catalog of available GoDaddy action names.
 /// Loaded from the manifest at compile time.
@@ -89,13 +95,19 @@ pub fn group() -> RuntimeGroupSpec {
                 )
                 .with_system("actions")
                 .with_tier(Tier::Read)
-                .no_auth(true),
+                .no_auth(true)
+                .with_default_fields("name,description")
+                .with_output_schema::<ActionSummary>()
+                .with_pagination(PaginationConfig {
+                    default_limit: 50,
+                    max_limit: 200,
+                }),
             |_cred, _args| async move {
                 let actions: Vec<_> = ACTIONS
                     .iter()
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
-                Ok(CommandResult::new(json!({ "actions": actions })).with_next_actions(vec![
+                Ok(CommandResult::new(json!(actions)).with_next_actions(vec![
                     next_action(
                         "platform actions describe <action>",
                         "See an action's full schema",
