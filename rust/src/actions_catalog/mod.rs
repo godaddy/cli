@@ -89,7 +89,9 @@ pub fn group() -> RuntimeGroupSpec {
             CommandSpec::new("list", "List all available action contracts")
                 .with_long(
                     "Prints the name and short description of every action your \
-                     application can declare.\n\
+                     application can declare. Shows up to 50 actions by default; \
+                     use --limit/--offset to page through the rest once the \
+                     catalog grows past that.\n\
                      Run `gddy platform actions describe <ACTION>` to see the full \
                      input/output schema for a specific action.",
                 )
