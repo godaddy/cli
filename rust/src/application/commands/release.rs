@@ -166,6 +166,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn command_accepts_version_flag() {
+        super::command()
+            .spec
+            .clap_command()
+            .try_get_matches_from([
+                "release",
+                "--application-id",
+                "app-123",
+                "--version",
+                "1.2.3",
+            ])
+            .expect("release version flag should be accepted");
+    }
+
+    #[test]
     fn ui_extension_entry_maps_fields_and_target() {
         use crate::config::ExtensionTarget;
 
