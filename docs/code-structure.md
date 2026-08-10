@@ -6,7 +6,7 @@
 
 - One file per leaf subcommand, named after the subcommand (`domain/purchase.rs` for `gddy domain purchase`).
 - One `mod.rs` per command group, containing *only* wiring: `mod` declarations, a `pub fn module()` (top level) or `pub(super) fn group()` (nested), and nothing that could stand alone as a unit of behavior.
-- Shared cross-cutting helpers (an authenticated client, error-body rendering, money/format helpers, validation) live in a sibling `common.rs`, exposed at `pub(super)`/`pub(crate)` — not duplicated per subcommand file, and not left in `mod.rs`. If the `common.rs` file grows too large, like over 1000 lines of code, split it in to appropriately named modules per theme.
+- Shared cross-cutting helpers (an authenticated client, error-body rendering, money/format helpers, validation) live in a sibling `common.rs`, exposed at `pub(super)`/`pub(crate)` — not duplicated per subcommand file, and not left in `mod.rs`. `common.rs` is not exempt from the 1000-line CI limit below; once it crosses that line, split it into appropriately named modules per theme.
 - A nested group (a subcommand that itself has subcommands, e.g. `domain nameservers set`) gets its own file exporting `pub(super) fn group() -> RuntimeGroupSpec`. If that group's own commands grow past the point a flat file can hold comfortably, promote it to a subdirectory with its own `mod.rs` plus one file per leaf, the same way a top-level module works.
 - CI enforces a 1000-line ceiling on every hand-written `.rs` file — see `rust/scripts/check-module-size.sh`. There's no allowlist; if a file is over the line, split it before merging.
 
