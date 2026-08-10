@@ -22,6 +22,7 @@ This is a command-line application. Source code is written in Rust and lives und
 - `cargo clippy -- -D warnings` — must pass with zero warnings
 - `cargo test` — must pass
 - `cargo fmt --check` — must be clean
+- `./rust/scripts/check-module-size.sh` — must pass
 
 ## Architecture
 
@@ -51,6 +52,12 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 - Prefer `crate::error::GddyError::{not_found,validation,auth,config,security,network,…}` (and `GddyError::from` for module client errors) so agents get stable `error.code` + top-level `fix`. Use `Err(cli_engine::CliCoreError::message("..."))` only for one-off cases that do not yet have a shared mapping.
 - Streaming commands use `RuntimeCommandSpec::new_streaming` and emit events via `StreamSender`.
 
+## Code File Structure (Required)
+
+- Rust source files should mirror the CLI command tree structure. See 
+[Code file structure](./docs/code-structure.md) for specifics.
+- CI fails any `.rs` file over 1000 lines. Split file exceeding this limit.
+
 ## Key Concepts
 
 ### Authentication
@@ -65,7 +72,7 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 
 ### Extension security scanner
 
-- Post-bundle regex scanner in `extension/mod.rs`.
+- Post-bundle regex scanner in `extension/security.rs`.
 - Rules SEC101–SEC115; uses `fancy-regex` for lookahead support.
 - `scan_bundle(content, path) -> Vec<Finding>`, `is_blocked(findings) -> bool`.
 

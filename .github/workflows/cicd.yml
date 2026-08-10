@@ -49,6 +49,10 @@ jobs:
       - name: Test
         run: cargo test
 
+      - name: Check module size limits
+        working-directory: .
+        run: ./rust/scripts/check-module-size.sh
+
       - name: Audit dependencies for known vulnerabilities
         uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
