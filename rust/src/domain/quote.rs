@@ -9,7 +9,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, validate_domain_name, validate_nameserver_hosts,
+    api_error, format_money, make_client, period_label, validate_domain_name,
+    validate_nameserver_hosts,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -25,6 +26,7 @@ output_schema!(DomainQuoteResult {
     "currency": "string", optional;
     "renewalPrice": "string", optional;
     "period": "number", optional;
+    "periodLabel": "string", optional;
     "quoteToken": "string", optional;
     "expiresAt": "string", optional;
     "irreversible": "bool", optional;
@@ -123,6 +125,7 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     }
     if let Some(period) = quote.period {
         out["period"] = json!(period.get());
+        out["periodLabel"] = json!(period_label(period.get()));
     }
     if let Some(token) = quote.quote_token.as_ref() {
         out["quoteToken"] = json!(token.to_string());
@@ -212,7 +215,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("price", "Price"),
         TableColumn::new("renewalPrice", "Renewal Price"),
         TableColumn::new("currency", "Currency"),
-        TableColumn::new("period", "Period"),
+        TableColumn::new("periodLabel", "Period"),
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
         TableColumn::new("expiresAt", "Expires At"),
         TableColumn::new("irreversible", "Irreversible"),
@@ -252,7 +255,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Read)
         .with_default_fields(
-            "domain,available,price,renewalPrice,currency,period,quoteToken,expiresAt,agreements",
+            "domain,available,price,renewalPrice,currency,period,periodLabel,quoteToken,expiresAt,agreements",
         )
         .with_output_schema::<DomainQuoteResult>()
         .with_view(view_columns())
@@ -371,6 +374,22 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    #[test]
+    fn period_renders_with_its_unit_in_the_default_table() {
+        // The bare `period` number ("1") read as ambiguous; the table must show
+        // `periodLabel` ("1 year") instead, while `period` itself stays numeric
+        // in the payload for scripting against `--output json`.
+        let quote = json!({
+            "domain": "example.com",
+            "available": true,
+            "period": 1,
+            "periodLabel": "1 year",
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("1 year"), "{rendered}");
     }
 
     /// Proves `view_columns()` renders `requiredAgreements`/`resolved` shaped
