@@ -415,12 +415,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/v1/hosting/nodejs/apps/app-1/source")
-                    .matches(|req| {
-                        req.body
-                            .as_ref()
-                            .map(|b| String::from_utf8_lossy(b).contains("zipFile"))
-                            .unwrap_or(false)
-                    });
+                    .is_true(|req| req.body_string().contains("zipFile"));
                 then.status(200).json_body(json!({ "jobId": "upload-1" }));
             })
             .await;

@@ -1,6 +1,8 @@
 //! `api search`.
 
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
 use crate::next_action::next_action;
@@ -38,7 +40,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .no_auth(true)
             .with_default_fields("domain,method,path,summary")
-            .with_output_schema::<ApiEndpoint>(),
+            .with_output_schema::<ApiEndpoint>()
+            .with_pagination(PaginationConfig {
+                max_limit: 100,
+                ..Default::default()
+            }),
         |_cred, args: SearchArgs| async move {
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
@@ -67,4 +73,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
             ]))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::PaginationConfig;
+
+    use super::command;
+
+    #[test]
+    fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 100,
+                ..Default::default()
+            })
+        );
+    }
 }

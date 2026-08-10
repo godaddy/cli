@@ -1,6 +1,8 @@
 //! `gddy platform app list` — list all applications visible to the account.
 
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, Tier,
+};
 
 use super::schemas::ApplicationSummary;
 use crate::next_action::next_action;
@@ -16,7 +18,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("applications")
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status")
-            .with_output_schema::<ApplicationSummary>(),
+            .with_output_schema::<ApplicationSummary>()
+            .with_pagination(PaginationConfig {
+                max_limit: 200,
+                ..Default::default()
+            }),
         |ctx| async move {
             let client = super::make_client(&ctx).await?;
             let data = client
@@ -40,7 +46,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig, Stage};
+    use cli_engine::{Cli, CliConfig, PaginationConfig, Stage};
+
+    use super::command;
+
+    #[test]
+    fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 200,
+                ..Default::default()
+            })
+        );
+    }
 
     /// API commands must stay fail-closed: `platform app list` calls the backend,
     /// so it must require authentication. Built with **no auth provider

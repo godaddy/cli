@@ -1,7 +1,8 @@
 //! `gddy domain list` — list the domains in the account (v1).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, PaginationConfig, Result,
+    RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
@@ -48,14 +49,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "List the domains registered to your account. Shows domain, status, \
                  expiry, and auto-renew by default; use --fields to pick columns. Hides \
                  domains that are cancelled or otherwise not visible unless --show-hidden \
-                 is passed; use --status to filter to specific status values (repeatable, \
-                 overrides the default filter).",
+                 is passed; use --status to filter to specific status values (repeatable).",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
             .with_default_fields("domain,status,expires,renewAuto")
             .with_json_schema::<types::V1DomainSummary>()
-            .with_scopes(&[DOMAINS_READ]),
+            .with_scopes(&[DOMAINS_READ])
+            .with_pagination(PaginationConfig {
+                max_limit: 500,
+                ..Default::default()
+            }),
         |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
             let statuses = parse_statuses(&args.status)?;
@@ -89,8 +93,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_statuses, wants_visible_only};
+    use super::{command, parse_statuses, wants_visible_only};
+    use cli_engine::PaginationConfig;
     use domains_client::types;
+
+    /// Regression pin: `domain list` opts into pagination with no forced
+    /// `default_limit` (an unflagged invocation must keep returning every
+    /// domain, exactly like before this feature existed) but a `max_limit`
+    /// so `--limit` can't be pointed at an absurd value.
+    #[test]
+    fn opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 500,
+                ..Default::default()
+            })
+        );
+    }
 
     #[test]
     fn parse_statuses_is_case_insensitive_and_validates() {

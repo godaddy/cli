@@ -501,12 +501,12 @@ mod tests {
         .await;
 
         assert_eq!(
-            create.hits_async().await,
+            create.calls_async().await,
             0,
             "no create for a no-op replace"
         );
         assert_eq!(
-            delete.hits_async().await,
+            delete.calls_async().await,
             0,
             "no delete for a no-op replace"
         );
@@ -546,7 +546,7 @@ mod tests {
         .await;
 
         assert_eq!(
-            delete.hits_async().await,
+            delete.calls_async().await,
             0,
             "the old record must not be touched when the create fails"
         );

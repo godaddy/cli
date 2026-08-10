@@ -1,6 +1,8 @@
 //! `dns list` — list DNS records for a domain, with optional type/name filters.
 
-use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CliCoreError, CommandResult, CommandSpec, PaginationConfig, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
@@ -38,7 +40,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("type,name,data,ttl")
             .with_json_schema::<types::DnsRecord>()
-            .with_scopes(&[DOMAINS_READ]),
+            .with_scopes(&[DOMAINS_READ])
+            .with_pagination(PaginationConfig {
+                max_limit: 500,
+                ..Default::default()
+            }),
         |ctx, args: ListArgs| async move {
             let domain = args.domain;
             let type_opt = args.record_type;
@@ -65,4 +71,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(json!(out)))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command;
+    use cli_engine::PaginationConfig;
+
+    #[test]
+    fn opts_into_pagination_with_no_default_and_a_max_limit() {
+        assert_eq!(
+            command().spec.pagination,
+            Some(PaginationConfig {
+                max_limit: 500,
+                ..Default::default()
+            })
+        );
+    }
 }
