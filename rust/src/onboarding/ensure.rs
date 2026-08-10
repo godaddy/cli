@@ -225,7 +225,7 @@ mod tests {
         );
         assert!(stderr.is_empty());
         status.assert_async().await;
-        assert_eq!(complete.hits_async().await, 0);
+        assert_eq!(complete.calls_async().await, 0);
     }
 
     #[tokio::test]
@@ -262,7 +262,7 @@ mod tests {
         .expect_err("agreements required");
 
         assert!(err.to_string().contains("agreements must be accepted"));
-        assert_eq!(complete.hits_async().await, 0);
+        assert_eq!(complete.calls_async().await, 0);
     }
 
     #[tokio::test]
@@ -376,6 +376,6 @@ mod tests {
         .expect_err("prompt I/O error must be reported");
 
         assert!(err.to_string().contains("writer unavailable"));
-        assert_eq!(complete.hits_async().await, 0);
+        assert_eq!(complete.calls_async().await, 0);
     }
 }
