@@ -17,13 +17,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextAction, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 
 output_schema!(UpdateCheckResult {
@@ -141,8 +142,28 @@ fn apply_command() -> RuntimeCommandSpec {
         .no_auth(true)
         .with_output_schema::<UpdateApplyResult>()
         .with_default_fields("previousVersion,newVersion,status"),
-        |_cred, args: ApplyArgs| async move { Ok(CommandResult::new(run_apply(args.force).await?)) },
+        |_cred, args: ApplyArgs| async move {
+            let result = run_apply(args.force).await?;
+            let status = result["status"].as_str().unwrap_or_default().to_owned();
+            Ok(CommandResult::new(result).with_next_actions(completion_next_actions(&status)))
+        },
     )
+}
+
+/// Suggests refreshing shell completions after a real binary swap — the
+/// command tree may have changed since completions were last generated.
+/// Skipped when nothing actually changed (`"already up to date"`) so the
+/// hint doesn't nag on every run of this frequently-scripted, no-auth
+/// command.
+fn completion_next_actions(status: &str) -> Vec<NextAction> {
+    if status == "updated" {
+        vec![next_action(
+            "completion --install",
+            "Refresh shell completions for the updated command set",
+        )]
+    } else {
+        Vec::new()
+    }
 }
 
 async fn run_apply(force: bool) -> Result<serde_json::Value, CliCoreError> {
@@ -522,6 +543,15 @@ mod tests {
     use httpmock::prelude::*;
 
     use super::*;
+
+    #[test]
+    fn completion_next_actions_suggests_reinstall_only_after_a_real_update() {
+        let actions = completion_next_actions("updated");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy completion --install");
+
+        assert!(completion_next_actions("already up to date").is_empty());
+    }
 
     #[test]
     fn parses_tags_with_and_without_v_prefix() {

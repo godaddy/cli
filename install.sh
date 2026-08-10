@@ -248,6 +248,7 @@ info "gddy (${VERSION:-latest}) installed successfully!"
 echo ""
 echo "  Binary:    ${PREFIX}/${BIN}"
 echo "  Verify:    gddy --version"
+echo "  Tip:       run 'gddy completion --install' for shell tab-completion"
 echo ""
 if ! printf '%s' ":$PATH:" | grep -qF ":${PREFIX}:"; then
   warn "${PREFIX} is not on your PATH — add it to use 'gddy' directly."
