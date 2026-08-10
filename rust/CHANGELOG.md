@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/godaddy/cli/compare/v0.2.2...v0.2.3) (2026-08-10)
+
+
+### Features
+
+* **cli:** opt into cli-engine's pagination for domain/dns list and api search [DEVEX-972] ([#189](https://github.com/godaddy/cli/issues/189)) ([8482450](https://github.com/godaddy/cli/commit/8482450805073acc1050ca800ca7f6ba0f2ae3a4))
+
 ## [0.2.2](https://github.com/godaddy/cli/compare/v0.2.1...v0.2.2) (2026-08-06)
 
 
