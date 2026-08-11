@@ -143,6 +143,8 @@ gddy api graphql type get <TypeName>
 
 which shows the same kind of field list (or, for an enum, the allowed values) for that type on its own, independent of any operation. Repeat with whatever type name shows up next — `edges` might be a `[SomethingEdge]`, look up `SomethingEdge`, find a `node` field, look up its type, and so on — until every segment of your `--select` path resolves to a real field.
 
+A GraphQL type name is only unique within its own domain's schema — two domains can each declare an unrelated type sharing a name (e.g. `ReferenceValueFilter` on both `taxes` and `catalog-products`). When that happens, `api graphql type get <TypeName>` errors out listing every domain that defines it; add `--domain <domain>` to pick one.
+
 A `mutation` operation is short-circuited under the global `--dry-run` flag the same way any other mutating call is; a `query` operation still runs for real, since there's nothing unsafe to preview.
 
 ### Getting the whole schema at once

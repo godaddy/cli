@@ -508,21 +508,32 @@ pub(super) fn graphql_resolve_type<'a>(
         .find(|t| t.name == base_name)
 }
 
-/// Looks up a named GraphQL type (object/input/enum) by its bare name across
-/// every loaded GraphQL schema — the standalone counterpart to
-/// [`graphql_resolve_type`] for `api graphql type get`, which has no
-/// operation to scope the search to. First match wins; in practice GraphQL
-/// type names are already distinct per-subgraph.
-pub(super) fn find_graphql_type<'a>(catalog: &'a [Domain], name: &str) -> Option<&'a GraphqlType> {
-    catalog.iter().find_map(|d| {
-        d.endpoints
-            .iter()
-            .find_map(|ep| ep.graphql.as_ref()?.types.iter().find(|t| t.name == name))
-    })
+/// Every domain whose own GraphQL schema defines a type named `name` — the
+/// standalone counterpart to [`graphql_resolve_type`] for `api graphql type
+/// get`, which has no operation to scope the search to. A GraphQL type name
+/// is only unique *within* a single subgraph; two independently-authored
+/// domain schemas can (and do — e.g. `ReferenceValueFilter` on both `taxes`
+/// and `catalog-products`, with different fields) declare their own,
+/// unrelated type sharing a name. Callers must handle more than one hit
+/// rather than assume the first is the one the user meant.
+pub(super) fn find_graphql_types<'a>(
+    catalog: &'a [Domain],
+    name: &str,
+) -> Vec<(&'a Domain, &'a GraphqlType)> {
+    catalog
+        .iter()
+        .filter_map(|d| {
+            d.endpoints
+                .iter()
+                .find_map(|ep| ep.graphql.as_ref()?.types.iter().find(|t| t.name == name))
+                .map(|t| (d, t))
+        })
+        .collect()
 }
 
 /// Error for `api graphql type get` given a name that doesn't resolve to any
-/// known GraphQL object/input/enum.
+/// known GraphQL object/input/enum (in the requested domain, if `--domain`
+/// was given).
 pub(super) fn graphql_type_not_found_error(name: &str) -> CliCoreError {
     crate::error::GddyError::not_found(format!("no GraphQL type found named '{name}'"))
         .with_fix(
@@ -530,6 +541,22 @@ pub(super) fn graphql_type_not_found_error(name: &str) -> CliCoreError {
              exact name to look up",
         )
         .into_cli_error()
+}
+
+/// Error for `api graphql type get` when `name` resolves in more than one
+/// domain's GraphQL schema with no `--domain` given to disambiguate.
+pub(super) fn ambiguous_graphql_type_error(name: &str, domains: &[&str]) -> CliCoreError {
+    crate::error::GddyError::ambiguous(format!(
+        "'{name}' is defined by {} different domains ({}) with no guarantee they're the same \
+         shape — be more specific:",
+        domains.len(),
+        domains.join(", "),
+    ))
+    .with_fix(format!(
+        "Run: gddy api graphql type get {name} --domain <domain>, one of: {}",
+        domains.join(", "),
+    ))
+    .into_cli_error()
 }
 
 /// Every valid `--arg` name for `g`'s call — the wrapper's own parameters

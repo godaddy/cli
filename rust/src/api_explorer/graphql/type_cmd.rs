@@ -9,7 +9,9 @@ use serde_json::json;
 
 use crate::output_schema::output_schema;
 
-use super::super::catalog::{catalog, find_graphql_type, graphql_type_not_found_error};
+use super::super::catalog::{
+    ambiguous_graphql_type_error, catalog, find_graphql_types, graphql_type_not_found_error,
+};
 
 output_schema!(ApiGraphqlType {
     "name": "string";
@@ -23,6 +25,11 @@ struct GraphqlTypeGetArgs {
     /// GraphQL type name (see a field's `Type` column in `api graphql get`).
     #[arg(value_name = "NAME")]
     name: String,
+
+    /// Domain to look up the type in, when the name is defined by more than
+    /// one domain's GraphQL schema (see `api domain list`).
+    #[arg(long, value_name = "DOMAIN")]
+    domain: Option<String>,
 }
 
 fn get_command() -> RuntimeCommandSpec {
@@ -54,8 +61,23 @@ fn get_command() -> RuntimeCommandSpec {
         ]),
         |_cred, args: GraphqlTypeGetArgs| async move {
             let name = args.name.as_str();
-            let t = find_graphql_type(catalog(), name)
-                .ok_or_else(|| graphql_type_not_found_error(name))?;
+            let matches = find_graphql_types(catalog(), name);
+            let t = match args.domain.as_deref() {
+                Some(domain) => matches
+                    .iter()
+                    .find(|(d, _)| d.name == domain)
+                    .map(|(_, t)| *t)
+                    .ok_or_else(|| graphql_type_not_found_error(name))?,
+                None => match matches.as_slice() {
+                    [] => return Err(graphql_type_not_found_error(name)),
+                    [(_, t)] => *t,
+                    hits => {
+                        let domains: Vec<&str> =
+                            hits.iter().map(|(d, _)| d.name.as_str()).collect();
+                        return Err(ambiguous_graphql_type_error(name, &domains));
+                    }
+                },
+            };
 
             let fields = (!t.fields.is_empty()).then(|| {
                 t.fields
@@ -138,6 +160,8 @@ mod tests {
                 "type",
                 "get",
                 &object_name,
+                "--domain",
+                "taxes",
                 "--output",
                 "json",
             ])
@@ -157,7 +181,8 @@ mod tests {
         let (_, enum_name) = an_object_and_enum_type_name();
         let output = graphql_cli()
             .run([
-                "gddy", "api", "graphql", "type", "get", &enum_name, "--output", "json",
+                "gddy", "api", "graphql", "type", "get", &enum_name, "--domain", "taxes",
+                "--output", "json",
             ])
             .await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
@@ -168,6 +193,84 @@ mod tests {
                 .expect("values array")
                 .is_empty()
         );
+    }
+
+    /// Regression for a name collision caught in PR #200 review: `taxes`
+    /// and `catalog-products` each declare their own, differently-shaped
+    /// `ReferenceValueFilter` input type. Without `--domain`, that must be
+    /// an ambiguous-match error rather than silently returning whichever
+    /// domain happens to sort first — and each `--domain` value must return
+    /// that domain's own fields, not the other's.
+    #[tokio::test]
+    async fn graphql_type_get_disambiguates_a_name_shared_by_two_domains() {
+        let ambiguous = graphql_cli()
+            .run([
+                "gddy",
+                "api",
+                "graphql",
+                "type",
+                "get",
+                "ReferenceValueFilter",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(ambiguous.exit_code, 0, "{}", ambiguous.rendered);
+        assert!(ambiguous.rendered.contains("taxes"));
+        assert!(ambiguous.rendered.contains("catalog-products"));
+
+        let taxes = graphql_cli()
+            .run([
+                "gddy",
+                "api",
+                "graphql",
+                "type",
+                "get",
+                "ReferenceValueFilter",
+                "--domain",
+                "taxes",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(taxes.exit_code, 0, "{}", taxes.rendered);
+        let taxes_fields: Value = serde_json::from_str(&taxes.rendered).expect("valid json");
+        let taxes_field_names: Vec<&str> = taxes_fields["data"]["fields"]
+            .as_array()
+            .expect("fields array")
+            .iter()
+            .map(|f| f["name"].as_str().expect("field name"))
+            .collect();
+        assert_eq!(taxes_field_names, ["in"]);
+
+        let catalog_products = graphql_cli()
+            .run([
+                "gddy",
+                "api",
+                "graphql",
+                "type",
+                "get",
+                "ReferenceValueFilter",
+                "--domain",
+                "catalog-products",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(
+            catalog_products.exit_code, 0,
+            "{}",
+            catalog_products.rendered
+        );
+        let cp_fields: Value =
+            serde_json::from_str(&catalog_products.rendered).expect("valid json");
+        let cp_field_names: Vec<&str> = cp_fields["data"]["fields"]
+            .as_array()
+            .expect("fields array")
+            .iter()
+            .map(|f| f["name"].as_str().expect("field name"))
+            .collect();
+        assert_eq!(cp_field_names, ["eq", "in"]);
     }
 
     #[tokio::test]
