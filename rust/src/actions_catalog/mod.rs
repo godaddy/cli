@@ -1,10 +1,16 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
-    Tier,
+    CommandResult, CommandSpec, GroupSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec,
+    RuntimeGroupSpec, Tier,
 };
 use serde_json::json;
 
 use crate::next_action::next_action;
+use crate::output_schema::output_schema;
+
+output_schema!(ActionSummary {
+    "name": "string";
+    "description": "string";
+});
 
 /// Static catalog of available GoDaddy action names.
 /// Loaded from the manifest at compile time.
@@ -83,19 +89,27 @@ pub fn group() -> RuntimeGroupSpec {
             CommandSpec::new("list", "List all available action contracts")
                 .with_long(
                     "Prints the name and short description of every action your \
-                     application can declare.\n\
+                     application can declare. Shows up to 50 actions by default; \
+                     use --limit/--offset to page through the rest once the \
+                     catalog grows past that.\n\
                      Run `gddy platform actions describe <ACTION>` to see the full \
                      input/output schema for a specific action.",
                 )
                 .with_system("actions")
                 .with_tier(Tier::Read)
-                .no_auth(true),
+                .no_auth(true)
+                .with_default_fields("name,description")
+                .with_output_schema::<ActionSummary>()
+                .with_pagination(PaginationConfig {
+                    default_limit: 50,
+                    max_limit: 200,
+                }),
             |_cred, _args| async move {
                 let actions: Vec<_> = ACTIONS
                     .iter()
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
-                Ok(CommandResult::new(json!({ "actions": actions })).with_next_actions(vec![
+                Ok(CommandResult::new(json!(actions)).with_next_actions(vec![
                     next_action(
                         "platform actions describe <action>",
                         "See an action's full schema",
