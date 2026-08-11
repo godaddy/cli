@@ -32,7 +32,7 @@ min_stage = "experimental"
 "some-flag-key" = "beta"
 ```
 
-Or via env vars, without a file: `<ENV>_MIN_STAGE=experimental`, `<ENV>_FEATURE_<KEY>=beta` (e.g. `DEV_MIN_STAGE`, `TEST_FEATURE_SOME_FLAG_KEY`).
+You can also override the minimum stage with the `GDDY_MIN_STAGE` environment variable (for example, `GDDY_MIN_STAGE=experimental`).
 
 ## Inspecting flags at runtime
 

@@ -66,8 +66,6 @@ async fn main() -> ExitCode {
                  • domain   — list your domains, check availability, get suggestions, and register new ones\n  \
                  • dns      — view and edit a domain's DNS records\n  \
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
-                 • platform — build and manage GoDaddy Platform integrations\n  \
-                 • hosting  — manage Node.js PaaS applications (create, upload, deploy)\n  \
                  • payment-methods — manage the payment methods used for purchases\n\
                  \n\
                  Most commands need authentication; run `gddy auth login` first, or use a PAT via `gddy pat add` / `GDDY_PAT` for non-interactive workflows (or just run a\n\
