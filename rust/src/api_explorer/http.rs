@@ -222,11 +222,12 @@ pub(super) async fn send_and_report(
 
 #[cfg(test)]
 mod tests {
+    use httpmock::MockServer;
     use serde_json::json;
 
     use super::{
         graphql_errors, is_mutating_method, merge_required_scopes, parse_response_body,
-        split_header,
+        send_and_report, split_header,
     };
     use crate::api_explorer::catalog::{catalog, find_endpoint};
 
@@ -322,5 +323,101 @@ mod tests {
         assert!(is_mutating_method("PUT"));
         assert!(is_mutating_method("PATCH"));
         assert!(is_mutating_method("DELETE"));
+    }
+
+    #[tokio::test]
+    async fn send_and_report_surfaces_graphql_errors_from_a_200_response() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST).path("/graphql");
+                then.status(200)
+                    .json_body(json!({"data": null, "errors": [{"message": "boom"}]}));
+            })
+            .await;
+
+        let err = send_and_report(
+            &reqwest::Client::new(),
+            reqwest::Method::POST,
+            "POST",
+            &format!("{}/graphql", server.base_url()),
+            "test-token",
+            &[],
+            None,
+            false,
+            true,
+            &[],
+            "postTaxGraphql",
+        )
+        .await
+        .expect_err("a top-level GraphQL errors array must fail even on HTTP 200");
+
+        assert!(err.to_string().contains("GraphQL request returned 1 error"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn send_and_report_reports_missing_scopes_on_403() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/thing");
+                then.status(403);
+            })
+            .await;
+
+        let err = send_and_report(
+            &reqwest::Client::new(),
+            reqwest::Method::GET,
+            "GET",
+            &format!("{}/thing", server.base_url()),
+            "test-token",
+            &[],
+            None,
+            false,
+            false,
+            &v(&["commerce.order:write"]),
+            "getThing",
+        )
+        .await
+        .expect_err("403 with a required scope must fail with a re-login hint");
+
+        let msg = err.to_string();
+        assert!(msg.contains("403 Forbidden"));
+        assert!(msg.contains("commerce.order:write"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn send_and_report_truncates_a_long_non_2xx_body() {
+        let server = MockServer::start_async().await;
+        let long_detail = "x".repeat(10_000);
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/thing");
+                then.status(500).json_body(json!({"detail": long_detail}));
+            })
+            .await;
+
+        let err = send_and_report(
+            &reqwest::Client::new(),
+            reqwest::Method::GET,
+            "GET",
+            &format!("{}/thing", server.base_url()),
+            "test-token",
+            &[],
+            None,
+            false,
+            false,
+            &[],
+            "getThing",
+        )
+        .await
+        .expect_err("a non-2xx status must fail");
+
+        let msg = err.to_string();
+        assert!(msg.len() < 5_000, "expected the body to be truncated");
+        assert!(!msg.contains(&"x".repeat(10_000)));
+        mock.assert_async().await;
     }
 }

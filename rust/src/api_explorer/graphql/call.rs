@@ -214,7 +214,7 @@ fn build_graphql_call(
     let mut variables = Map::new();
     for (name, value) in &variable_values {
         if let Some(a) = g.op.args.iter().find(|a| &a.name == name) {
-            variables.insert(name.clone(), coerce_graphql_arg(value, &a.arg_type));
+            variables.insert(name.clone(), coerce_graphql_arg(name, value, &a.arg_type)?);
         }
     }
 
@@ -265,18 +265,28 @@ fn build_graphql_call(
 
 /// Coerces a `--arg` raw CLI string into JSON, given the GraphQL type
 /// string it will be bound to as a query variable. A list type (any type
-/// string containing `[`) is always JSON-parsed, since scalar-style
-/// coercion would silently treat the whole raw string as one value instead
-/// of a list (e.g. `--arg ids='["a","b"]'`). A non-list custom type (input
-/// object or enum) is JSON-parsed first, falling back to a bare JSON
-/// string — covering `--arg input='{"name":"x"}'` and `--arg
-/// status=ACTIVE` (not valid JSON on its own, and a string is the right
-/// encoding either way).
-fn coerce_graphql_arg(raw: &str, gql_type: &str) -> Value {
+/// string containing `[`) must be a JSON array (e.g. `--arg
+/// ids='["a","b"]'`) — falling back to a bare JSON string like the scalar
+/// cases below would silently send the server a String where it expects a
+/// List, trading a clear CLI validation error for a confusing server-side
+/// type error. A non-list custom type (input object or enum) is JSON-parsed
+/// first, falling back to a bare JSON string — covering `--arg
+/// input='{"name":"x"}'` and `--arg status=ACTIVE` (not valid JSON on its
+/// own, and a string is the right encoding either way).
+fn coerce_graphql_arg(
+    name: &str,
+    raw: &str,
+    gql_type: &str,
+) -> Result<Value, cli_engine::CliCoreError> {
     if gql_type.contains('[') {
-        return serde_json::from_str(raw).unwrap_or_else(|_| json!(raw));
+        return serde_json::from_str(raw).map_err(|e| {
+            crate::error::GddyError::validation(format!(
+                "invalid --arg {name}={raw}: expected a JSON array for list type {gql_type} ({e})"
+            ))
+            .into_cli_error()
+        });
     }
-    match graphql_base_type_name(gql_type) {
+    Ok(match graphql_base_type_name(gql_type) {
         "Int" => raw
             .parse::<i64>()
             .map(Value::from)
@@ -291,7 +301,7 @@ fn coerce_graphql_arg(raw: &str, gql_type: &str) -> Value {
             .unwrap_or_else(|_| json!(raw)),
         "String" | "ID" => json!(raw),
         _ => serde_json::from_str(raw).unwrap_or_else(|_| json!(raw)),
-    }
+    })
 }
 
 /// Selection-set text for a GraphQL call's `--select` flag (or its
@@ -406,29 +416,47 @@ mod tests {
 
     #[test]
     fn coerce_graphql_arg_scalar_and_fallback_cases() {
-        assert_eq!(coerce_graphql_arg("5", "Int"), serde_json::json!(5));
-        assert_eq!(coerce_graphql_arg("5.5", "Float"), serde_json::json!(5.5));
         assert_eq!(
-            coerce_graphql_arg("true", "Boolean"),
+            coerce_graphql_arg("n", "5", "Int").expect("valid"),
+            serde_json::json!(5)
+        );
+        assert_eq!(
+            coerce_graphql_arg("n", "5.5", "Float").expect("valid"),
+            serde_json::json!(5.5)
+        );
+        assert_eq!(
+            coerce_graphql_arg("n", "true", "Boolean").expect("valid"),
             serde_json::json!(true)
         );
         assert_eq!(
-            coerce_graphql_arg("abc", "String!"),
+            coerce_graphql_arg("n", "abc", "String!").expect("valid"),
             serde_json::json!("abc")
         );
-        assert_eq!(coerce_graphql_arg("abc", "ID"), serde_json::json!("abc"));
         assert_eq!(
-            coerce_graphql_arg(r#"["a","b"]"#, "[String!]!"),
+            coerce_graphql_arg("n", "abc", "ID").expect("valid"),
+            serde_json::json!("abc")
+        );
+        assert_eq!(
+            coerce_graphql_arg("n", r#"["a","b"]"#, "[String!]!").expect("valid"),
             serde_json::json!(["a", "b"])
         );
         assert_eq!(
-            coerce_graphql_arg("ACTIVE", "StatusEnum"),
+            coerce_graphql_arg("n", "ACTIVE", "StatusEnum").expect("valid"),
             serde_json::json!("ACTIVE")
         );
         assert_eq!(
-            coerce_graphql_arg(r#"{"a":1}"#, "SomeInput"),
+            coerce_graphql_arg("n", r#"{"a":1}"#, "SomeInput").expect("valid"),
             serde_json::json!({"a": 1})
         );
+    }
+
+    #[test]
+    fn coerce_graphql_arg_rejects_a_non_json_list_value() {
+        let err = coerce_graphql_arg("ids", "not-json", "[String!]!")
+            .expect_err("a non-JSON-array value for a list type must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("ids"));
+        assert!(msg.contains("[String!]!"));
     }
 
     #[test]
