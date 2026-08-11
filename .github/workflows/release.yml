@@ -143,18 +143,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # release-please creates the release as a draft (see
-          # release-please-config.json). A draft is never served as "latest",
-          # so `releases/latest/download/...` keeps resolving to the previous,
-          # fully-populated release until we publish below — closing the window
-          # where the one-liner would 404 on assets (including install.sh
-          # itself) that haven't finished uploading yet.
+          # Release is a draft (release-please-config.json) so `latest` never
+          # points at it until every asset is attached — avoids a 404 window.
           TAG="${{ needs.release-please.outputs.tag_name }}"
           if [ -z "$TAG" ]; then
-            # Fallback for the workflow_dispatch publish_only retry path, which
-            # skips release-please and therefore has no tag_name output. Drafts
-            # are included in `gh release list` by default, so this still finds
-            # the pending draft release.
+            # publish_only retry path has no tag_name; drafts are listed here.
             TAG="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
           fi
           gh release upload "$TAG" \
@@ -164,8 +157,5 @@ jobs:
             install.sh \
             install.ps1 \
             --clobber
-          # Publish only now that every asset is attached. Marking it latest
-          # flips the `releases/latest` pointer atomically to a release that is
-          # already complete. If build/attach fail, the release stays a draft
-          # and is never exposed to users — re-run via the publish_only input.
+          # Publish only now assets are complete; stays a draft if build fails.
           gh release edit "$TAG" --draft=false --latest
