@@ -61,9 +61,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let g = resolve_graphql_operation(catalog(), id)
                 .ok_or_else(|| graphql_operation_not_found_error(id))?;
 
+            // Validate unconditionally, including under `--dry-run` (same
+            // rationale as `api call`'s method/endpoint checks) — otherwise
+            // missing/invalid `--arg`/`--select` would return a successful
+            // dry-run preview even though a real run would reject it here.
+            let built = build_graphql_call(&g, &args)?;
+
             // A query is safe to actually execute under `--dry-run` (same
             // treatment as GET/HEAD in `api call`'s raw-path flow); only a
-            // mutation short-circuits.
+            // mutation short-circuits, and only after the validation above.
             if ctx.dry_run() && g.op.kind == "mutation" {
                 return Ok(CommandResult::new(json!({
                     "command": "api:graphql:call",
@@ -72,8 +78,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }))
                 .with_dry_run());
             }
-
-            let built = build_graphql_call(&g, &args)?;
 
             let required = merge_required_scopes(args.scope.clone(), &g.parent.scopes);
             let token = ctx.credential_with_scopes(&required).await?.token;
@@ -445,6 +449,25 @@ mod tests {
         super::super::super::catalog::graphql_operation_id(&ep.operation_id, &op.kind, &op.name)
     }
 
+    /// `--arg name=placeholder` for every one of `id`'s wrapper call
+    /// requirements and GraphQL args, so a test can invoke it without
+    /// tripping "missing required --arg" validation it isn't exercising.
+    fn placeholder_arg_flags(id: &str) -> Vec<String> {
+        let g = resolve_graphql_operation(catalog(), id).expect("id resolves");
+        let mut flags = Vec::new();
+        for p in &g.parent.parameters {
+            if let Some(name) = p.get("name").and_then(serde_json::Value::as_str) {
+                flags.push("--arg".to_owned());
+                flags.push(format!("{name}=placeholder"));
+            }
+        }
+        for a in &g.op.args {
+            flags.push("--arg".to_owned());
+            flags.push(format!("{}=placeholder", a.name));
+        }
+        flags
+    }
+
     #[test]
     fn coerce_graphql_arg_scalar_and_fallback_cases() {
         assert_eq!(
@@ -551,6 +574,49 @@ mod tests {
     #[tokio::test]
     async fn graphql_call_dry_run_short_circuits_mutation_but_not_query() {
         let mutation_id = a_mutation_id();
+        let mut cmd: Vec<String> = ["gddy", "api", "graphql", "call", &mutation_id]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        cmd.extend(placeholder_arg_flags(&mutation_id));
+        cmd.extend(
+            ["--dry-run", "--output", "json"]
+                .into_iter()
+                .map(str::to_owned),
+        );
+        let output = graphql_cli().run(cmd).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(output.rendered.contains("dry-run: would execute"));
+
+        // A query has nothing unsafe to preview, so it isn't short-circuited
+        // — it falls through to a real (auth-requiring, here failing) send.
+        let query_id = a_query_id();
+        let mut cmd: Vec<String> = ["gddy", "api", "graphql", "call", &query_id]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        cmd.extend(placeholder_arg_flags(&query_id));
+        cmd.extend(
+            ["--dry-run", "--output", "json"]
+                .into_iter()
+                .map(str::to_owned),
+        );
+        let output = graphql_cli().run(cmd).await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            !output.rendered.contains("dry-run: would execute"),
+            "{}",
+            output.rendered
+        );
+    }
+
+    /// Regression for PR #200 review feedback: a dry-run mutation call must
+    /// fail on missing/invalid `--arg` the same way a real call would,
+    /// instead of returning a successful "would execute" preview that then
+    /// fails as soon as `--dry-run` is dropped.
+    #[tokio::test]
+    async fn graphql_call_dry_run_still_validates_missing_required_args() {
+        let mutation_id = a_mutation_id();
         let output = graphql_cli()
             .run([
                 "gddy",
@@ -563,27 +629,14 @@ mod tests {
                 "json",
             ])
             .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
-        assert!(output.rendered.contains("dry-run: would execute"));
-
-        // A query has nothing unsafe to preview, so it isn't short-circuited
-        // — it falls through to a real (auth-requiring, here failing) send.
-        let query_id = a_query_id();
-        let output = graphql_cli()
-            .run([
-                "gddy",
-                "api",
-                "graphql",
-                "call",
-                &query_id,
-                "--dry-run",
-                "--output",
-                "json",
-            ])
-            .await;
         assert_ne!(output.exit_code, 0, "{}", output.rendered);
         assert!(
             !output.rendered.contains("dry-run: would execute"),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            output.rendered.contains("missing required"),
             "{}",
             output.rendered
         );

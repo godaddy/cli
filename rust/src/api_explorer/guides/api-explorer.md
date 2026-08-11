@@ -130,7 +130,7 @@ The CLI builds the GraphQL query text and `variables` object for you, sends it t
 By default the response selects just `{ __typename }` for an object-shaped return type (or nothing at all for a plain scalar). To ask for specific fields, use `--select`, comma-separated and dot-nested for fields on a nested object:
 
 ```
-gddy api graphql call postTaxGraphql::query::classification --arg id=<id> --select id,name,rate.percentage
+gddy api graphql call postTaxGraphql::query::classification --arg storeId=<uuid> --arg x-store-id=<uuid> --arg id=<id> --select id,name,rate.percentage
 ```
 
 ### Finding out what's selectable
