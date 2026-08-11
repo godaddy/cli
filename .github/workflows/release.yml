@@ -147,8 +147,14 @@ jobs:
           # points at it until every asset is attached — avoids a 404 window.
           TAG="${{ needs.release-please.outputs.tag_name }}"
           if [ -z "$TAG" ]; then
-            # publish_only retry path has no tag_name; drafts are listed here.
-            TAG="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+            # publish_only retry path has no tag_name: pick the newest *draft*
+            # only (never a published release) and fail fast if none exists.
+            TAG="$(gh release list --limit 30 --json tagName,isDraft \
+              --jq 'map(select(.isDraft)) | .[0].tagName // empty')"
+            if [ -z "$TAG" ]; then
+              echo "No draft release found to publish." >&2
+              exit 1
+            fi
           fi
           gh release upload "$TAG" \
             dist/gddy-*.tar.gz \
