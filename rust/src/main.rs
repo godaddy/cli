@@ -144,9 +144,9 @@ mod tests {
     /// The other half of the guard: an environment whose resolved
     /// `min_stage` is lower than the global default reveals those same
     /// modules. This is exactly the mechanism `environments.toml`'s
-    /// `min_stage`/`feature_overrides` keys (or `<ENV>_MIN_STAGE`/
-    /// `<ENV>_FEATURE_<KEY>` env vars) are meant to drive — see
-    /// `crate::environments`'s module doc.
+    /// `min_stage`/`feature_overrides` keys are meant to drive (there is no
+    /// per-environment env var equivalent — see `crate::environments`'s
+    /// module doc).
     #[tokio::test]
     async fn an_environment_min_stage_override_reveals_beta_and_experimental_modules() {
         let environments = Arc::new(
