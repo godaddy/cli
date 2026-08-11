@@ -169,7 +169,7 @@ gddy api operation get postTaxGraphql --output json
 
 The result's `graphql` field has it all: `operations` and `types`. This is the same data `api graphql get`/`api graphql type get` read from, just all at once instead of one hop at a time — useful if you want to script against the JSON shape rather than parse GraphQL SDL yourself.
 
-The wrapper operation itself (`postTaxGraphql`, `postCatalogGraphql`) keeps working exactly as before under the regular REST commands, if you'd rather hand-write the GraphQL query text yourself — `gddy api call postTaxGraphql --body '{"query": "...", "variables": {...}}'` is unaffected by any of the above.
+The wrapper operation itself (`postTaxGraphql`, `postCatalogGraphql`) keeps working exactly as before under the regular REST commands, if you'd rather hand-write the GraphQL query text yourself. `api call` takes a concrete path, not an operationId — grab it from `fullPath` in `api operation get postTaxGraphql`'s output — so it looks like `gddy api call /v2/commerce/stores/<storeId>/tax-subgraph --body '{"query": "...", "variables": {...}}'`, unaffected by any of the above.
 
 ## Quick reference
 
