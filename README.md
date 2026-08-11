@@ -35,7 +35,7 @@ claude plugin marketplace add godaddy/cli
 claude plugin install gddy@godaddy
 ```
 
-For other agents, install using the [`skills`](https://github.com/anthropics/skills) CLI.
+For other agents, install using the [`skills`](https://github.com/vercel-labs/skills) CLI.
 
 ```bash
 npx skills add godaddy/cli --skill gddy --agent <agent>
