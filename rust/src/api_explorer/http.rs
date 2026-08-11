@@ -1,8 +1,11 @@
-//! Small, pure helpers used only by `api call` (see `super::call`): header
-//! parsing, mutating-method detection for `--dry-run` gating, response-body
-//! parsing, GraphQL error extraction, and OAuth scope merging.
+//! Small, pure helpers plus the shared HTTP transport tail used by `api
+//! call` (see `super::call`) and `api graphql call` (see
+//! `super::graphql::call`): header parsing, mutating-method detection for
+//! `--dry-run` gating, response-body parsing, GraphQL error extraction, and
+//! OAuth scope merging.
 
-use serde_json::{Value, json};
+use cli_engine::CommandResult;
+use serde_json::{Map, Value, json};
 
 /// Split a `--header` value of the form `KEY:VALUE` into trimmed parts.
 /// Splits on the first colon only, so values may themselves contain colons
@@ -57,6 +60,159 @@ pub(super) fn merge_required_scopes(
         }
     }
     required
+}
+
+/// Parses repeatable `--header KEY:VALUE` flags into a validated list.
+pub(super) fn parsed_extra_headers(
+    raw: &[String],
+) -> Result<Vec<(String, String)>, cli_engine::CliCoreError> {
+    raw.iter()
+        .map(|h| {
+            split_header(h)
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .ok_or_else(|| {
+                    crate::error::GddyError::validation(format!(
+                        "invalid header '{h}': expected KEY:VALUE"
+                    ))
+                    .into_cli_error()
+                })
+        })
+        .collect()
+}
+
+/// Sends a fully-built request and reports the result as a `CommandResult`
+/// — shared by `call_command`'s raw-path flow and
+/// `graphql::call::call_command`'s synthesized flow, since both need the
+/// same status/GraphQL-error/403/non-2xx handling once the request itself
+/// differs (raw path + user body vs. synthesized GraphQL query + variables).
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn send_and_report(
+    client: &reqwest::Client,
+    parsed_method: reqwest::Method,
+    method: &str,
+    url: &str,
+    token: &str,
+    extra_headers: &[(String, String)],
+    request_body: Option<Value>,
+    include_headers: bool,
+    is_graphql: bool,
+    required: &[String],
+    endpoint: &str,
+) -> Result<CommandResult, cli_engine::CliCoreError> {
+    let mut req = client
+        .request(parsed_method, url)
+        .bearer_auth(token)
+        .header("x-request-id", uuid::Uuid::new_v4().to_string());
+
+    for (key, val) in extra_headers {
+        req = req.header(key, val);
+    }
+
+    if let Some(body) = request_body {
+        req = req.json(&body);
+    }
+
+    let request = req
+        .build()
+        .map_err(|e| crate::error::GddyError::validation(e.to_string()))?;
+    cli_engine::transport::debug_log_reqwest_request(&request);
+    let resp = client
+        .execute(request)
+        .await
+        .map_err(|e| crate::error::GddyError::network(e.to_string()))?;
+
+    let status_code = resp.status();
+    let status_text = status_code.canonical_reason().unwrap_or("").to_owned();
+    let response_headers_raw = resp.headers().clone();
+    let body_bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| crate::error::GddyError::network(e.to_string()))?;
+    cli_engine::transport::debug_log_reqwest_response(
+        status_code,
+        &response_headers_raw,
+        &body_bytes,
+    );
+
+    let status = status_code.as_u16();
+    let response_headers: Option<Map<String, Value>> = if include_headers {
+        Some(
+            response_headers_raw
+                .iter()
+                .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.to_string(), json!(s))))
+                .collect(),
+        )
+    } else {
+        None
+    };
+
+    let body: Value = parse_response_body(&body_bytes);
+
+    // GraphQL endpoints return HTTP 200 even on failure, carrying the error
+    // in a top-level `errors` array.
+    if is_graphql && let Some(errors) = graphql_errors(&body) {
+        return Err(crate::error::GddyError::from_graphql(
+            format!(
+                "GraphQL request returned {} error(s):\n{}",
+                errors.len(),
+                serde_json::to_string_pretty(&json!(errors)).unwrap_or_default(),
+            ),
+            "api",
+        )
+        .into());
+    }
+
+    // Scope step-up already ran up front (the token was requested with
+    // `required`). A 403 here means the granted token still lacks a
+    // required scope — surface it with a re-login hint.
+    if status == 403 && !required.is_empty() {
+        // `auth login --scope` is append-style (one value per flag), so
+        // repeat the flag rather than space-joining.
+        let login_hint = required
+            .iter()
+            .map(|s| format!("--scope {s}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Err(crate::error::GddyError::auth(format!(
+            "403 Forbidden — the authorized token is missing required scope(s): {}. \
+             Re-run `gddy auth login {login_hint}` and try again.",
+            required.join(", "),
+        ))
+        .with_fix(format!("Run: gddy auth login {login_hint}"))
+        .into());
+    }
+
+    // Any other non-2xx is a failure, not a success envelope. Include the
+    // status line and (truncated) response body so the caller sees the
+    // detail instead of a success result that happens to carry an error
+    // payload.
+    if !(200..300).contains(&status) {
+        let detail: String = serde_json::to_string_pretty(&body)
+            .unwrap_or_else(|_| body.to_string())
+            .chars()
+            .take(4000)
+            .collect();
+        return Err(crate::error::GddyError::from_http(
+            status,
+            format!("{status_text}\n{detail}"),
+            "api",
+        )
+        .into_cli_error());
+    }
+
+    // Identify the call and its outcome in the result envelope.
+    let mut result = json!({
+        "endpoint": endpoint,
+        "method": method,
+        "status": status,
+        "status_text": status_text,
+        "data": body,
+    });
+    if let Some(headers) = response_headers {
+        result["headers"] = Value::Object(headers);
+    }
+
+    Ok(CommandResult::new(result))
 }
 
 #[cfg(test)]

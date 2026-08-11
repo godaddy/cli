@@ -1,6 +1,10 @@
 use std::{collections::HashMap, path::Path};
 
 use anyhow::{Context, Result};
+use async_graphql_parser::types::{
+    FieldDefinition, InputValueDefinition, ServiceDocument, TypeKind, TypeSystemDefinition,
+};
+use async_graphql_value::ConstValue;
 use serde::Serialize;
 
 use crate::github::SpecSource;
@@ -10,7 +14,7 @@ use crate::openapi::{CatalogDomain, CatalogEndpoint, CatalogResponse};
 // GraphQL output types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct CatalogGraphqlArgument {
     pub(crate) name: String,
     #[serde(rename = "type")]
@@ -22,7 +26,7 @@ pub(crate) struct CatalogGraphqlArgument {
     pub(crate) default_value: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct CatalogGraphqlOperation {
     pub(crate) name: String,
     pub(crate) kind: String,
@@ -36,13 +40,40 @@ pub(crate) struct CatalogGraphqlOperation {
     pub(crate) args: Vec<CatalogGraphqlArgument>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct CatalogGraphqlField {
+    pub(crate) name: String,
+    #[serde(rename = "type")]
+    pub(crate) field_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
+}
+
+/// A named GraphQL object/input/enum type, captured so `api graphql get`/
+/// `api graphql type get` can resolve an operation's return type (or any
+/// nested field's type) into its real field list instead of a bare name.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct CatalogGraphqlType {
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) fields: Vec<CatalogGraphqlField>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) values: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct CatalogGraphqlSchema {
     #[serde(rename = "schemaRef")]
     pub(crate) schema_ref: String,
     #[serde(rename = "operationCount")]
     pub(crate) operation_count: usize,
     pub(crate) operations: Vec<CatalogGraphqlOperation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) types: Vec<CatalogGraphqlType>,
+    /// The raw GraphQL SDL source verbatim — see `api graphql sdl get`.
+    #[serde(default)]
+    pub(crate) sdl: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -57,91 +88,95 @@ pub(crate) fn load_graphql_schema(
     let src = std::fs::read_to_string(path)
         .with_context(|| format!("cannot read GraphQL schema {}", path.display()))?;
 
-    let operations = parse_graphql_operations(&src).unwrap_or_else(|e| {
+    let (operations, types) = parse_graphql_document(&src).unwrap_or_else(|e| {
         eprintln!(
             "WARNING: failed to parse GraphQL schema {}: {e}",
             path.display()
         );
-        Vec::new()
+        (Vec::new(), Vec::new())
     });
 
     Ok(CatalogGraphqlSchema {
         schema_ref: schema_ref.to_owned(),
         operation_count: operations.len(),
         operations,
+        types,
+        sdl: src,
     })
 }
 
-fn parse_graphql_operations(source: &str) -> Result<Vec<CatalogGraphqlOperation>> {
-    use graphql_parser::schema::{Definition, TypeDefinition};
-
-    let doc = graphql_parser::parse_schema::<String>(source)
+/// Parses `source` with `async-graphql-parser` — chosen over the older
+/// `graphql-parser` crate specifically because it natively understands
+/// Apollo Federation's `extend schema @link(...)` directive, which several
+/// upstream subgraph schemas use and `graphql-parser` cannot parse at all.
+fn parse_graphql_document(
+    source: &str,
+) -> Result<(Vec<CatalogGraphqlOperation>, Vec<CatalogGraphqlType>)> {
+    let doc: ServiceDocument = async_graphql_parser::parse_schema(source)
         .map_err(|e| anyhow::anyhow!("GraphQL parse error: {e}"))?;
 
     let mut operations: Vec<CatalogGraphqlOperation> = Vec::new();
+    let mut types: Vec<CatalogGraphqlType> = Vec::new();
 
     for def in &doc.definitions {
-        let type_def = match def {
-            Definition::TypeDefinition(td) => td,
-            _ => continue,
+        let TypeSystemDefinition::Type(pos_td) = def else {
+            continue;
         };
-        let obj = match type_def {
-            TypeDefinition::Object(o) => o,
-            _ => continue,
-        };
-        let kind = match obj.name.as_str() {
-            "Query" => "query",
-            "Mutation" => "mutation",
-            _ => continue,
-        };
+        let td = &pos_td.node;
 
-        for field in &obj.fields {
-            let deprecated = field.directives.iter().any(|d| d.name == "deprecated");
-            let deprecation_reason = field
-                .directives
-                .iter()
-                .find(|d| d.name == "deprecated")
-                .and_then(|d| d.arguments.iter().find(|(k, _)| k == "reason"))
-                .and_then(|(_, v)| {
-                    if let graphql_parser::query::Value::String(s) = v {
-                        Some(s.clone())
-                    } else {
-                        None
-                    }
-                });
-
-            let args: Vec<CatalogGraphqlArgument> = field
-                .arguments
-                .iter()
-                .map(|arg| {
-                    let type_str = graphql_type_to_string(&arg.value_type);
-                    let required =
-                        matches!(arg.value_type, graphql_parser::schema::Type::NonNullType(_))
-                            && arg.default_value.is_none();
-                    let default_value = arg.default_value.as_ref().map(|v| format!("{v}"));
-                    CatalogGraphqlArgument {
-                        name: arg.name.clone(),
-                        arg_type: type_str,
-                        required,
-                        description: arg.description.clone(),
-                        default_value,
-                    }
-                })
-                .collect();
-
-            operations.push(CatalogGraphqlOperation {
-                name: field.name.clone(),
-                kind: kind.to_owned(),
-                return_type: graphql_type_to_string(&field.field_type),
-                description: field.description.clone(),
-                deprecated,
-                deprecation_reason,
-                args,
-            });
+        match &td.kind {
+            TypeKind::Object(obj) => match td.name.node.as_str() {
+                "Query" => operations.extend(
+                    obj.fields
+                        .iter()
+                        .map(|f| operation_from_field("query", &f.node)),
+                ),
+                "Mutation" => operations.extend(
+                    obj.fields
+                        .iter()
+                        .map(|f| operation_from_field("mutation", &f.node)),
+                ),
+                name => types.push(CatalogGraphqlType {
+                    name: name.to_owned(),
+                    kind: "object".to_owned(),
+                    fields: obj
+                        .fields
+                        .iter()
+                        .map(|f| field_from_definition(&f.node))
+                        .collect(),
+                    values: Vec::new(),
+                }),
+            },
+            TypeKind::InputObject(io) => types.push(CatalogGraphqlType {
+                name: td.name.node.to_string(),
+                kind: "input".to_owned(),
+                fields: io
+                    .fields
+                    .iter()
+                    .map(|f| input_field_from_definition(&f.node))
+                    .collect(),
+                values: Vec::new(),
+            }),
+            TypeKind::Enum(en) => types.push(CatalogGraphqlType {
+                name: td.name.node.to_string(),
+                kind: "enum".to_owned(),
+                fields: Vec::new(),
+                values: en
+                    .values
+                    .iter()
+                    .map(|v| v.node.value.node.to_string())
+                    .collect(),
+            }),
+            // Interfaces, unions, and scalars aren't modeled by `api
+            // graphql type get` (there's no field/value list to drill
+            // into for a bare scalar, and interface/union member
+            // resolution isn't something a CLI call needs) — skipped.
+            TypeKind::Interface(_) | TypeKind::Union(_) | TypeKind::Scalar => {}
         }
     }
 
-    // Sort: queries before mutations, then alphabetical
+    // Sort: queries before mutations, then alphabetical — matches the
+    // original TypeScript CLI's ordering.
     operations.sort_by(|a, b| {
         if a.kind == b.kind {
             a.name.cmp(&b.name)
@@ -151,21 +186,67 @@ fn parse_graphql_operations(source: &str) -> Result<Vec<CatalogGraphqlOperation>
             std::cmp::Ordering::Greater
         }
     });
+    types.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(operations)
+    Ok((operations, types))
 }
 
-fn graphql_type_to_string<'a, T: graphql_parser::query::Text<'a>>(
-    t: &graphql_parser::schema::Type<'a, T>,
-) -> String
-where
-    T::Value: std::fmt::Display,
-{
-    use graphql_parser::schema::Type;
-    match t {
-        Type::NamedType(name) => name.as_ref().to_string(),
-        Type::NonNullType(inner) => format!("{}!", graphql_type_to_string(inner.as_ref())),
-        Type::ListType(inner) => format!("[{}]", graphql_type_to_string(inner.as_ref())),
+fn operation_from_field(kind: &str, field: &FieldDefinition) -> CatalogGraphqlOperation {
+    let deprecated_directive = field
+        .directives
+        .iter()
+        .find(|d| d.node.name.node.as_str() == "deprecated");
+    let deprecation_reason = deprecated_directive.and_then(|d| {
+        d.node
+            .arguments
+            .iter()
+            .find(|(name, _)| name.node.as_str() == "reason")
+            .and_then(|(_, v)| match &v.node {
+                ConstValue::String(s) => Some(s.clone()),
+                _ => None,
+            })
+    });
+
+    let args: Vec<CatalogGraphqlArgument> = field
+        .arguments
+        .iter()
+        .map(|a| {
+            let a = &a.node;
+            let required = !a.ty.node.nullable && a.default_value.is_none();
+            CatalogGraphqlArgument {
+                name: a.name.node.to_string(),
+                arg_type: a.ty.node.to_string(),
+                required,
+                description: a.description.as_ref().map(|d| d.node.clone()),
+                default_value: a.default_value.as_ref().map(|v| v.node.to_string()),
+            }
+        })
+        .collect();
+
+    CatalogGraphqlOperation {
+        name: field.name.node.to_string(),
+        kind: kind.to_owned(),
+        return_type: field.ty.node.to_string(),
+        description: field.description.as_ref().map(|d| d.node.clone()),
+        deprecated: deprecated_directive.is_some(),
+        deprecation_reason,
+        args,
+    }
+}
+
+fn field_from_definition(field: &FieldDefinition) -> CatalogGraphqlField {
+    CatalogGraphqlField {
+        name: field.name.node.to_string(),
+        field_type: field.ty.node.to_string(),
+        description: field.description.as_ref().map(|d| d.node.clone()),
+    }
+}
+
+fn input_field_from_definition(field: &InputValueDefinition) -> CatalogGraphqlField {
+    CatalogGraphqlField {
+        name: field.name.node.to_string(),
+        field_type: field.ty.node.to_string(),
+        description: field.description.as_ref().map(|d| d.node.clone()),
     }
 }
 
@@ -187,6 +268,8 @@ pub(crate) fn synthesize_graphql_domain(
                 schema_ref: "./schema.graphql".to_owned(),
                 operation_count: 0,
                 operations: Vec::new(),
+                types: Vec::new(),
+                sdl: String::new(),
             }
         });
 
