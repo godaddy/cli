@@ -9,9 +9,14 @@ use serde_json::{Map, Value, json};
 
 /// Split a `--header` value of the form `KEY:VALUE` into trimmed parts.
 /// Splits on the first colon only, so values may themselves contain colons
-/// (e.g. a URL). Returns None when there is no colon.
+/// (e.g. a URL). Returns None when there is no colon or the key is empty
+/// (e.g. `":value"`) — reqwest rejects an empty header name with a less
+/// actionable "invalid header name" error than the caller's own
+/// `expected KEY:VALUE` validation.
 pub(super) fn split_header(raw: &str) -> Option<(&str, &str)> {
-    raw.split_once(':').map(|(k, v)| (k.trim(), v.trim()))
+    let (k, v) = raw.split_once(':')?;
+    let k = k.trim();
+    (!k.is_empty()).then(|| (k, v.trim()))
 }
 
 /// Whether an HTTP method mutates server state, for `--dry-run` gating.
@@ -284,6 +289,12 @@ mod tests {
             Some(("Location", "https://x/y"))
         );
         assert_eq!(split_header("no-colon"), None);
+    }
+
+    #[test]
+    fn split_header_rejects_an_empty_key() {
+        assert_eq!(split_header(":value"), None);
+        assert_eq!(split_header("  :value"), None);
     }
 
     #[test]
