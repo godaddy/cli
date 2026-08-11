@@ -230,6 +230,9 @@ fn build_graphql_call(
             .filter(|a| variables.contains_key(&a.name))
             .map(|a| format!("{0}: ${0}", a.name))
             .collect();
+    if let Some(select) = args.select.as_deref() {
+        validate_selection_expr(select)?;
+    }
     let selection = build_selection(args.select.as_deref(), &g.op.return_type);
 
     let var_clause = if var_decls.is_empty() {
@@ -312,6 +315,34 @@ fn coerce_graphql_arg(
 /// real custom scalar with a capitalized name would be misclassified and
 /// rejected loudly by the server (not silently wrong), an acceptable
 /// tradeoff against forcing `--select` on every object-returning call.
+/// Rejects a `--select` value containing anything but comma/dot-separated
+/// GraphQL field names before it's concatenated into the synthesized query
+/// string. `build_selection_from_fields` does no escaping of its own — a
+/// segment carrying braces, colons, quotes, or `$` would inject arbitrary
+/// GraphQL syntax into the request (extra sibling fields, directives, or a
+/// broken selection set) rather than naming a nested field.
+fn validate_selection_expr(raw: &str) -> Result<(), cli_engine::CliCoreError> {
+    let is_valid_name = |segment: &str| {
+        let mut chars = segment.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    };
+    let all_valid = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .all(|field| field.split('.').all(is_valid_name));
+    if all_valid {
+        Ok(())
+    } else {
+        Err(crate::error::GddyError::validation(format!(
+            "invalid --select '{raw}': expected comma-separated, dot-nested GraphQL field names \
+             (e.g. 'id,name,address.city')"
+        ))
+        .into_cli_error())
+    }
+}
+
 fn build_selection(select: Option<&str>, return_type: &str) -> String {
     match select.map(str::trim).filter(|s| !s.is_empty()) {
         Some(fields) => build_selection_from_fields(fields),
@@ -496,6 +527,25 @@ mod tests {
             "path params substituted: {}",
             built.path
         );
+    }
+
+    #[test]
+    fn build_graphql_call_rejects_a_select_value_that_breaks_out_of_the_selection_set() {
+        let id = a_query_id();
+        let g = resolve_graphql_operation(catalog(), &id).expect("id resolves");
+        let mut args =
+            graphql_call_args_with(&id, vec![], Some("id } } mutation Evil { deleteEverything"));
+        for p in &g.parent.parameters {
+            if let Some(name) = p.get("name").and_then(serde_json::Value::as_str) {
+                args.arg.push(format!("{name}=placeholder"));
+            }
+        }
+        for a in &g.op.args {
+            args.arg.push(format!("{}=placeholder", a.name));
+        }
+        let err = build_graphql_call(&g, &args)
+            .expect_err("a --select value containing GraphQL syntax must be rejected");
+        assert!(err.to_string().contains("invalid --select"));
     }
 
     #[tokio::test]
