@@ -1,11 +1,15 @@
 //! `gddy domain available` — check whether a domain can be registered (v3).
 
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+};
 use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, headline_price, make_client, validate_domain_name};
+use super::common::{
+    api_error, format_money, headline_price, make_client, period_label, validate_domain_name,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -22,7 +26,23 @@ output_schema!(DomainAvailableResult {
     "currency": "string", optional;
     "renewalPrice": "string", optional;
     "period": "number", optional;
+    "periodLabel": "string", optional;
 });
+
+/// `period` alone would render in the default table as a bare number, so swap
+/// it for the unit-bearing `periodLabel` there; `period` stays available (via
+/// `--fields all`/explicit selection) for scripting against `--output json`.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("available", "Available"),
+        TableColumn::new("definitive", "Definitive"),
+        TableColumn::new("price", "Price"),
+        TableColumn::new("renewalPrice", "Renewal Price"),
+        TableColumn::new("currency", "Currency"),
+        TableColumn::new("periodLabel", "Period"),
+    ]
+}
 
 #[derive(Debug, Clone, clap::Args)]
 struct AvailableArgs {
@@ -47,8 +67,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("domain,available,definitive,price,renewalPrice,currency,period")
+            .with_default_fields(
+                "domain,available,definitive,price,renewalPrice,currency,period,periodLabel",
+            )
             .with_output_schema::<DomainAvailableResult>()
+            .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: AvailableArgs| async move {
             let domain = validate_domain_name(&args.domain)?;
@@ -94,6 +117,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
                 if let Some(period) = term.period {
                     result["period"] = json!(period.get());
+                    result["periodLabel"] = json!(period_label(period.get()));
                 }
             }
 
@@ -117,7 +141,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::command;
+    use super::{command, view_columns};
+    use serde_json::json;
 
     #[test]
     fn default_fields_includes_renewal_price() {
@@ -127,5 +152,22 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    #[test]
+    fn period_renders_with_its_unit_in_the_default_table() {
+        // The bare `period` number ("1") read as ambiguous; the table must show
+        // `periodLabel` ("1 year") instead, while `period` itself stays numeric
+        // in the payload for scripting against `--output json`.
+        let available = json!({
+            "domain": "example.com",
+            "available": true,
+            "definitive": true,
+            "period": 1,
+            "periodLabel": "1 year",
+        });
+        let envelope = cli_engine::Envelope::success(available, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("1 year"), "{rendered}");
     }
 }

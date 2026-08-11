@@ -102,6 +102,18 @@ pub(super) fn term_for_period(
     prices.iter().find(|p| p.period == Some(period))
 }
 
+/// A registration length with its unit spelled out ("1 year", "2 years") — a
+/// bare number reads ambiguously in a table, so `quote`/`available` show this
+/// alongside the numeric `period` field (which stays a plain number for
+/// scripting against `--output json`).
+pub(super) fn period_label(period: u64) -> String {
+    if period == 1 {
+        "1 year".to_owned()
+    } else {
+        format!("{period} years")
+    }
+}
+
 /// Validate that `raw` (trimmed) is syntactically a valid domain name. Rejects
 /// the shapes from DEVEX-885's bug report — embedded whitespace, null bytes, a
 /// "protocol://" prefix, a "/path" suffix — via `url::Host::parse`'s WHATWG
@@ -729,6 +741,13 @@ mod tests {
             false,
         );
         assert!(!msg.contains("some fields are invalid"), "{msg}");
+    }
+
+    #[test]
+    fn period_label_pluralizes_correctly() {
+        assert_eq!(period_label(1), "1 year");
+        assert_eq!(period_label(2), "2 years");
+        assert_eq!(period_label(10), "10 years");
     }
 
     #[test]
