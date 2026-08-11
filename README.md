@@ -8,14 +8,14 @@ Agent-first CLI for interacting with the GoDaddy Developer Platform.
 
 ## Installation
 
-**macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows):**
+### macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows)
 
 ```bash
 curl -fsSL https://github.com/godaddy/cli/releases/latest/download/install.sh | bash
 gddy --version
 ```
 
-**Windows (PowerShell):**
+### Windows (PowerShell)
 
 ```powershell
 irm https://github.com/godaddy/cli/releases/latest/download/install.ps1 | iex
@@ -25,6 +25,23 @@ gddy --version
 Both installers download, checksum-verify, and install the binary for your platform. If you'd rather install by hand, download the archives from the [latest release](https://github.com/godaddy/cli/releases/latest) and put the binary on your `PATH`.
 
 Once installed, `gddy update check` / `gddy update apply` handles upgrades in place.
+
+### Agentic Skills
+
+To install Claude Code skills for the `gddy` CLI, run the following:
+
+```bash
+claude plugin marketplace add godaddy/cli
+claude plugin install gddy@godaddy
+```
+
+For other agents, install using the [`skills`](https://github.com/vercel-labs/skills) CLI.
+
+```bash
+npx skills add godaddy/cli --skill gddy --agent <agent>
+```
+
+Swap `<agent>` for whichever agent you use (`claude-code`, `cursor`, `codex`, `windsurf`, `opencode`, ...). Run `npx skills add --help` for the full list of supported agents.
 
 ## Quickstart
 
@@ -46,13 +63,19 @@ Use `gddy --help` or `gddy tree` to get a comprehensive list of available comman
 - `domain` — list your domains, check availability, get suggestions, and register new ones
 - `dns` — view and edit a domain's DNS records
 
+We're actively working to expand the CLI to cover additional GoDaddy products.
+
 ### Developer Platform
 
-- `platform app` — create, configure, release, and deploy GoDaddy Platform apps
-- `platform actions` — discover the action contracts an app can declare
-- `platform webhook` — inspect webhook event types for app subscriptions
+The Developer Platform command tree is currently an Experimental preview. [Enable
+Experimental commands](./docs/feature-flags.md) in your environment:
 
-The Developer Platform command tree is currently an Experimental preview. Enable
-Experimental commands in your environment, then begin with `gddy platform app init`.
+```bash
+export GDDY_MIN_STAGE=experimental
+```
 
-We're actively working to expand the CLI to cover additional GoDaddy products.
+...then begin with `gddy platform app init`.
+
+- `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
+- `gddy platform actions` — discover the action contracts an app can declare
+- `gddy platform webhook` — inspect webhook event types for app subscriptions
