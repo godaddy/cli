@@ -108,13 +108,13 @@ Before running anything that changes data, preview it with the global `--dry-run
 
 Some domains are backed by GraphQL rather than plain REST. In the catalog they still show up as one wrapper operation (`postTaxGraphql`, `postCatalogGraphql`) that accepts a generic `{query, variables}` body — but every GraphQL query and mutation that wrapper proxies to is also individually addressable.
 
-A GraphQL operations have their own dedicated set of commands. Run this to show a GraphQL operation's details:
+GraphQL operations have their own dedicated set of commands. Run this to show a GraphQL operation's details:
 
 ```
 gddy api graphql get <id>
 ```
 
-A GraphQL operation contains: 
+A GraphQL operation contains:
 
 - **Call Requirements** — what the underlying wrapper endpoint needs to route and authenticate the request (e.g. path parameters and HTTP headers). These are transport plumbing, not GraphQL semantics.
 - **Arguments** — the GraphQL operation's own inputs.

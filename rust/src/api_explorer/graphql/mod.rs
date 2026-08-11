@@ -19,10 +19,10 @@ pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("graphql", "Inspect and call individual GraphQL operations").with_long(
             "Some API domains are backed by GraphQL rather than REST — \
-            `api operation list  --domain <domain>` and `api search` tag each \
+            `api operation list --domain <domain>` and `api search` tag each \
             of their addressable query/mutation fields with a `kind`. Use \
             `api graphql get <id>` for that operation's details and \
-            `api graphql call <id>` to execute it — `api  operation get`/\
+            `api graphql call <id>` to execute it — `api operation get`/\
             `api call` redirect here for a GraphQL operation id, since their \
              REST-shaped output doesn't fit a GraphQL operation.",
         ),
