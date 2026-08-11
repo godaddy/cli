@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "domains-client"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bytes",
  "futures",
@@ -1137,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "generate-api-catalog"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "base64",
@@ -1202,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "godaddy-cli"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "bytes",

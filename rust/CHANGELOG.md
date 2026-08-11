@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.4](https://github.com/godaddy/cli/compare/v0.2.3...v0.2.4) (2026-08-11)
+
+
+### Features
+
+* **domain:** show registration period with its unit in the default table ([#199](https://github.com/godaddy/cli/issues/199)) ([4de0e3e](https://github.com/godaddy/cli/commit/4de0e3e32716ea5b75603b1784d7578ab9cb0aa9))
+* **update:** nudge shell-completion refresh after a real update ([#197](https://github.com/godaddy/cli/issues/197)) ([7b49a46](https://github.com/godaddy/cli/commit/7b49a4601e6d8385340db2c6678480b0c88c2675))
+
+
+### Bug Fixes
+
+* **cli:** render platform actions list as a table with pagination ([#198](https://github.com/godaddy/cli/issues/198)) ([3c7deca](https://github.com/godaddy/cli/commit/3c7deca563946ffa3563e56fbd93895ca079574f))
+* **release:** update version argument support ([#195](https://github.com/godaddy/cli/issues/195)) ([2964db2](https://github.com/godaddy/cli/commit/2964db2fd567e5d389270f323b62c5afb810d0fe))
+
+
+### Miscellaneous
+
+* **rust:** enforce command-tree file structure; split oversized modules ([#192](https://github.com/godaddy/cli/issues/192)) ([0b5b131](https://github.com/godaddy/cli/commit/0b5b1312c65c8e9607754b8672ee1b3f6d60c594))
+
 ## [0.2.3](https://github.com/godaddy/cli/compare/v0.2.2...v0.2.3) (2026-08-10)
 
 
