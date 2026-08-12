@@ -5,7 +5,7 @@ mod manifest;
 mod openapi;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -35,7 +35,7 @@ struct ManifestEntry {
 #[derive(Debug, Serialize)]
 struct CatalogManifest {
     generated: String,
-    domains: HashMap<String, ManifestEntry>,
+    domains: BTreeMap<String, ManifestEntry>,
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ fn main() -> Result<()> {
 
     let mut manifest = CatalogManifest {
         generated: chrono::Utc::now().to_rfc3339(),
-        domains: HashMap::new(),
+        domains: BTreeMap::new(),
     };
     let mut active_files: HashSet<String> = HashSet::new();
     let mut total_endpoints = 0usize;

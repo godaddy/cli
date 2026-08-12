@@ -178,15 +178,7 @@
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the metafield is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
@@ -232,6 +224,10 @@
           "example": "my_key",
           "type": "string"
         },
+        "metafieldDefinitionId": {
+          "description": "The unique identifier for an existing metafield definition to link this metafield to. Optional: when omitted, the server resolves or creates the definition from the metafield's namespace, key, and resourceType and assigns it. The created metafield always has a metafieldDefinitionId in the response.",
+          "type": "string"
+        },
         "namespace": {
           "description": "The namespace of the metafield.",
           "example": "my_namespace",
@@ -242,39 +238,24 @@
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the metafield is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
         "scope": {
-          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties",
-          "enum": [
-            "PUBLIC",
-            "PRIVATE"
-          ],
+          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties. Supported values: PUBLIC, PRIVATE.",
           "example": "PUBLIC",
           "type": "string"
         },
-        "storeId": {
-          "$ref": "#/$defs/uuid"
-        },
         "type": {
-          "description": "The type of the metafield.",
+          "description": "The type of the metafield. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
           "example": "string",
           "type": "string"
         },
         "validations": {
           "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",
           "items": {
-            "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+            "description": "A validation that can be performed on the metafield value.",
             "properties": {
               "name": {
                 "description": "The name of the validation",
@@ -308,11 +289,12 @@
         }
       },
       "required": [
-        "storeId",
         "resourceId",
+        "resourceType",
         "namespace",
         "key",
-        "value"
+        "value",
+        "type"
       ],
       "title": "metafield-create-input",
       "type": "object"
@@ -320,7 +302,7 @@
     "metafield-definition": {
       "$id": "https://godaddy.com/schemas/commerce/metafields/metafield-definition.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A metafield is a custom value that can be associated with a GoDaddy commerce top-level entitiy (e.g. Order).",
+      "description": "A metafield definition describes the schema/shape of a metafield, including its type, validations, and scope.",
       "properties": {
         "archivedAt": {
           "$ref": "#/$defs/date-time"
@@ -331,49 +313,27 @@
         "deletedAt": {
           "$ref": "#/$defs/date-time"
         },
-        "description": {
-          "description": "The description of the metafield.",
-          "example": "My Metafield Description",
-          "type": "string"
-        },
         "id": {
-          "description": "The unique identifier for the metafield.",
+          "description": "The unique identifier for the metafield definition.",
           "type": "string"
         },
         "key": {
-          "description": "The key of the metafield.",
+          "description": "The key of the metafield definition.",
           "example": "my_key",
           "type": "string"
         },
-        "name": {
-          "description": "The name of the metafield.",
-          "example": "My Metafield",
-          "type": "string"
-        },
         "namespace": {
-          "description": "The namespace of the metafield.",
+          "description": "The namespace of the metafield definition.",
           "example": "my_namespace",
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the definition is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
         "scope": {
-          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties",
-          "enum": [
-            "PUBLIC",
-            "PRIVATE"
-          ],
+          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties. Supported values: PUBLIC, PRIVATE.",
           "example": "PUBLIC",
           "type": "string"
         },
@@ -381,7 +341,7 @@
           "$ref": "#/$defs/uuid"
         },
         "type": {
-          "description": "The type of the metafield.",
+          "description": "The type of the metafield definition. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
           "example": "string",
           "type": "string"
         },
@@ -391,7 +351,7 @@
         "validations": {
           "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",
           "items": {
-            "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+            "description": "A validation that can be performed on the metafield value.",
             "properties": {
               "name": {
                 "description": "The name of the validation",
@@ -424,7 +384,6 @@
         "storeId",
         "resourceType",
         "scope",
-        "name",
         "namespace",
         "key",
         "type",
@@ -439,60 +398,35 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Input object for creating a metafield definition",
       "properties": {
-        "description": {
-          "description": "The description of the metafield.",
-          "example": "My Metafield Description",
-          "type": "string"
-        },
         "key": {
-          "description": "The key of the metafield.",
+          "description": "The key of the metafield definition.",
           "example": "my_key",
           "type": "string"
         },
-        "name": {
-          "description": "The name of the metafield.",
-          "example": "My Metafield",
-          "type": "string"
-        },
         "namespace": {
-          "description": "The namespace of the metafield.",
+          "description": "The namespace of the metafield definition.",
           "example": "my_namespace",
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the definition is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
         "scope": {
-          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties",
-          "enum": [
-            "PUBLIC",
-            "PRIVATE"
-          ],
+          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties. Supported values: PUBLIC, PRIVATE.",
           "example": "PUBLIC",
           "type": "string"
         },
-        "storeId": {
-          "$ref": "#/$defs/uuid"
-        },
         "type": {
-          "description": "The type of the metafield.",
+          "description": "The type of the metafield definition. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
           "example": "string",
           "type": "string"
         },
         "validations": {
           "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",
           "items": {
-            "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+            "description": "A validation that can be performed on the metafield value.",
             "properties": {
               "name": {
                 "description": "The name of the validation",
@@ -521,10 +455,8 @@
         }
       },
       "required": [
-        "storeId",
         "resourceType",
         "scope",
-        "name",
         "namespace",
         "key",
         "type"
@@ -535,12 +467,12 @@
     "metafield-definition-type": {
       "$id": "https://godaddy.com/schemas/commerce/metafields/metafield-definition-type.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+      "description": "A metafield definition type describes a supported type and its available validations.",
       "properties": {
         "availableValidations": {
-          "description": "The list of validations that can be performed on the metafield value when it is being created or updated.",
+          "description": "The list of validations that can be applied to metafields of this type.",
           "items": {
-            "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+            "description": "A validation that can be performed on the metafield value.",
             "properties": {
               "name": {
                 "description": "The name of the validation",
@@ -568,15 +500,13 @@
           "type": "array"
         },
         "name": {
-          "description": "The name of the metafield definition type",
+          "description": "The name of the metafield definition type.",
           "example": "string",
           "type": "string"
         }
       },
       "required": [
-        "name",
-        "value",
-        "valueType"
+        "name"
       ],
       "title": "metafield-definition-type",
       "type": "object"
@@ -584,66 +514,37 @@
     "metafield-definition-update-input": {
       "$id": "https://godaddy.com/schemas/commerce/metafields/metafield-definition-update-input.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Input object for updating a metafield definition",
+      "description": "Input object for updating a metafield definition. All fields are optional.",
       "properties": {
-        "description": {
-          "description": "The description of the metafield.",
-          "example": "My Metafield Description",
-          "type": "string"
-        },
-        "id": {
-          "description": "The unique identifier for the store.",
-          "type": "string"
-        },
         "key": {
-          "description": "The key of the metafield.",
+          "description": "The key of the metafield definition.",
           "example": "my_key",
           "type": "string"
         },
-        "name": {
-          "description": "The name of the metafield.",
-          "example": "My Metafield",
-          "type": "string"
-        },
         "namespace": {
-          "description": "The namespace of the metafield.",
+          "description": "The namespace of the metafield definition.",
           "example": "my_namespace",
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the definition is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
         "scope": {
-          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties",
-          "enum": [
-            "PUBLIC",
-            "PRIVATE"
-          ],
+          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties. Supported values: PUBLIC, PRIVATE.",
           "example": "PUBLIC",
           "type": "string"
         },
-        "storeId": {
-          "$ref": "#/$defs/uuid"
-        },
         "type": {
-          "description": "The type of the metafield.",
+          "description": "The type of the metafield definition. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
           "example": "string",
           "type": "string"
         },
         "validations": {
           "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",
           "items": {
-            "description": "A object that represents a validation that can be performed on the metafield value when it is being created or updated.",
+            "description": "A validation that can be performed on the metafield value.",
             "properties": {
               "name": {
                 "description": "The name of the validation",
@@ -671,37 +572,76 @@
           "type": "array"
         }
       },
-      "required": [
-        "id",
-        "storeId"
-      ],
       "title": "metafield-definition-update-input",
       "type": "object"
     },
     "metafield-update-input": {
       "$id": "https://godaddy.com/schemas/commerce/metafields/metafield-update-input.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Input object for creating a metafield",
+      "description": "Input object for updating a metafield",
       "properties": {
-        "id": {
-          "description": "The unique identifier for the metafield.",
+        "key": {
+          "description": "The key of the metafield.",
+          "example": "my_key",
+          "type": "string"
+        },
+        "metafieldDefinitionId": {
+          "description": "The unique identifier for an existing metafield definition.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The namespace of the metafield.",
+          "example": "my_namespace",
+          "type": "string"
+        },
+        "resourceId": {
+          "description": "The unique identifier for the resource of the metafield.",
           "type": "string"
         },
         "resourceType": {
-          "description": "The type of entity that the definition is associated with.",
-          "enum": [
-            "STORE",
-            "CHANNEL",
-            "ORDER",
-            "PRODUCT",
-            "PRODUCT_VARIANT",
-            "CUSTOMER"
-          ],
+          "description": "The type of entity that the metafield is associated with. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "example": "ORDER",
           "type": "string"
         },
-        "storeId": {
-          "$ref": "#/$defs/uuid"
+        "scope": {
+          "description": "The definition scope. Determines whether a metafield can be viewed or updated by other parties. Supported values: PUBLIC, PRIVATE.",
+          "example": "PUBLIC",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of the metafield. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
+          "example": "string",
+          "type": "string"
+        },
+        "validations": {
+          "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",
+          "items": {
+            "description": "A validation that can be performed on the metafield value.",
+            "properties": {
+              "name": {
+                "description": "The name of the validation",
+                "example": "min",
+                "type": "string"
+              },
+              "value": {
+                "description": "The value of the validation that the metafield value is compared against",
+                "example": "10",
+                "type": "string"
+              },
+              "valueType": {
+                "description": "Representation of what data type the validation value is.",
+                "example": "number",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value",
+              "valueType"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         },
         "value": {
           "description": "The value of the metafield.",
@@ -710,9 +650,7 @@
         }
       },
       "required": [
-        "id",
-        "storeId",
-        "value"
+        "resourceType"
       ],
       "title": "metafield-update-input",
       "type": "object"
@@ -821,8 +759,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -878,29 +816,16 @@
           "required": false,
           "schema": {
             "default": "FORWARD",
-            "description": "Page token direction",
-            "enum": [
-              "BACKWARD",
-              "FORWARD"
-            ],
+            "description": "Direction indicating whether to fetch the next or previous page of results. Supported values: BACKWARD, FORWARD.",
             "type": "string"
           }
         },
         {
-          "description": "The resource type that the metafield definitions belong to",
+          "description": "The resource type that the metafield definitions belong to. Supported values: CHANNEL, STORE, PRODUCT, ORDER, CUSTOMER, PRODUCT_VARIANT, SKU_GROUP, SKU, OPTION, OPTION_VALUE, ATTRIBUTE, ATTRIBUTE_VALUE, LIST, LIST_TREE, LOCATION, MEDIA_OBJECT, INVENTORY_ADJUSTMENT, TAX_CLASSIFICATION, TAX_JURISDICTION, TAX_OVERRIDE, TAX_RATE, PRICE_ADJUSTMENT_DISCOUNT, PRICE_ADJUSTMENT_DISCOUNT_CODE, PRICE_ADJUSTMENT_FEE, PRICE_ADJUSTMENT_RULESET.",
           "in": "query",
           "name": "resourceType",
           "required": true,
           "schema": {
-            "description": "Resource type enum value",
-            "enum": [
-              "STORE",
-              "CHANNEL",
-              "ORDER",
-              "PRODUCT",
-              "PRODUCT_VARIANT",
-              "CUSTOMER"
-            ],
             "type": "string"
           }
         },
@@ -955,8 +880,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1026,8 +951,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1093,8 +1018,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1173,8 +1098,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1220,11 +1145,7 @@
                 "type": "string"
               },
               "status": {
-                "description": "The status of the deleted metafield definition",
-                "enum": [
-                  "success",
-                  "error"
-                ],
+                "description": "The status of the deleted metafield definition. Supported values: success, error.",
                 "type": "string"
               }
             },
@@ -1249,8 +1170,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1306,11 +1227,7 @@
           "required": false,
           "schema": {
             "default": "FORWARD",
-            "description": "Page token direction",
-            "enum": [
-              "BACKWARD",
-              "FORWARD"
-            ],
+            "description": "Direction indicating whether to fetch the next or previous page of results. Supported values: BACKWARD, FORWARD.",
             "type": "string"
           }
         },
@@ -1375,8 +1292,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1441,8 +1358,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1452,6 +1369,92 @@
         "commerce.metafield:create"
       ],
       "summary": "Create metafield"
+    },
+    {
+      "description": "This endpoint upserts metafields. Creates new metafields, or updates existing ones if a metafield with the same namespace, key, and resourceId already exists.",
+      "method": "POST",
+      "operationId": "bulkUpsertMetafields",
+      "parameters": [
+        {
+          "description": "The store ID that metafields are scoped to",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/metafields/bulk",
+      "requestBody": {
+        "contentType": "application/json",
+        "description": "The metafields to upsert",
+        "required": true,
+        "schema": {
+          "properties": {
+            "metafields": {
+              "items": {
+                "$ref": "#/$defs/metafield-create-input"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "metafields"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Success response when bulk upserting metafields",
+          "schema": {
+            "properties": {
+              "metafieldDefinitions": {
+                "items": {
+                  "$ref": "#/$defs/metafield-definition"
+                },
+                "type": "array"
+              },
+              "metafields": {
+                "items": {
+                  "$ref": "#/$defs/metafield"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "401": {
+          "description": "Authorization info not sent or is invalid",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Invalid request",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Resource not found",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "default": {
+          "description": "Unexpected error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.metafield:create"
+      ],
+      "summary": "Bulk upsert metafields"
     },
     {
       "description": "This endpoint bulk deletes metafields by resourceId, namespace, and key.",
@@ -1512,8 +1515,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1579,8 +1582,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1659,8 +1662,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1706,11 +1709,7 @@
                 "type": "string"
               },
               "status": {
-                "description": "Status of the delete operation",
-                "enum": [
-                  "success",
-                  "failure"
-                ],
+                "description": "Status of the delete operation. Supported values: success, failure.",
                 "type": "string"
               }
             },
@@ -1735,8 +1734,8 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Server error",
+        "default": {
+          "description": "Unexpected error",
           "schema": {
             "$ref": "#/$defs/error"
           }
@@ -1750,5 +1749,5 @@
   ],
   "name": "metafields",
   "title": "Metafields API",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
