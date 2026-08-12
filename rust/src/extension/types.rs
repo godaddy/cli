@@ -80,8 +80,10 @@ pub enum Severity {
 pub struct Finding {
     pub rule_id: &'static str,
     pub severity: Severity,
-    pub message: &'static str,
+    pub message: String,
     pub file: String,
     pub line: usize,
+    /// 1-based column for AST findings; `0` for bundle regex matches.
+    pub col: usize,
     pub snippet: String,
 }

@@ -72,12 +72,16 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 
 ### Extension security scanner
 
+- Pre-bundle AST scan in `extension/security/` (oxc): SEC001–SEC010, SEC012, plus
+  SEC011 package scripts (`scan_extension`).
 - Post-bundle regex scanner in `extension/security/mod.rs` (rule data in
   `extension/security/rules.rs`).
 - Rules SEC101–SEC110 ported from the TS scanner; SEC111–SEC115 added in the
   Rust port with no TS baseline (SEC111/SEC112/SEC115 block, SEC113/SEC114
   warn). Uses `fancy-regex` for lookahead support.
-- `scan_bundle(content, path) -> Vec<Finding>`, `is_blocked(findings) -> bool`.
+- `scan_extension(dir) -> Result<ScanReport>`, `scan_bundle(content, path) -> Vec<Finding>`,
+  `is_blocked(findings) -> bool`.
+- Deploy runs pre-bundle scan before esbuild, then post-bundle scan on the artifact.
 
 ### esbuild dependency
 
