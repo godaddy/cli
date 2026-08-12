@@ -5,6 +5,13 @@ use serde_json::{Value, json};
 const GRAPHQL_PATH: &str = "/v1/apps/app-registry-subgraph";
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 
+/// App Registry `ApplicationStatus` enum values (see app-registry-api GraphQL schema).
+///
+/// The `applications` query defaults to ACTIVE-only when `status` is omitted, so
+/// callers that want every app must pass an explicit `status.in` containing these.
+pub const APPLICATION_STATUSES: &[&str] =
+    &["ACTIVE", "ARCHIVED", "BLOCKED", "INACTIVE", "VERIFYING"];
+
 /// Builds a reqwest Client with the standard GoDaddy CLI User-Agent.
 pub fn make_http_client() -> Client {
     Client::builder()
@@ -132,11 +139,18 @@ impl ApplicationClient {
         Ok(payload["data"].clone())
     }
 
+    /// Lists applications across every App Registry status.
+    ///
+    /// Always sends an explicit `status.in` of [`APPLICATION_STATUSES`]. Omitting
+    /// the GraphQL `status` argument is *not* equivalent: the API defaults to
+    /// ACTIVE-only.
     pub async fn list_applications(&self) -> Result<Value, ClientError> {
-        let data = self.query(json!({
-            "query": "query ApplicationsList { applications { edges { node { id label name description status url proxyUrl } } } }"
-        }))
-        .await?;
+        let data = self
+            .query(json!({
+                "query": "query ApplicationsList($status: ApplicationStatusFilter) { applications(status: $status) { edges { node { id label name description status url proxyUrl } } } }",
+                "variables": { "status": { "in": APPLICATION_STATUSES } }
+            }))
+            .await?;
         let nodes: Vec<Value> = data["applications"]["edges"]
             .as_array()
             .map(|edges| {
@@ -408,6 +422,42 @@ mod tests {
         let err = api_url_for_env("definitely-not-a-real-env-xyz")
             .expect_err("unknown env must not resolve");
         assert!(err.to_string().contains("definitely-not-a-real-env-xyz"));
+    }
+
+    #[tokio::test]
+    async fn list_applications_sends_all_app_registry_statuses() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("ApplicationsList")
+                            && body.contains(r#""in":["ACTIVE","ARCHIVED","BLOCKED","INACTIVE","VERIFYING"]"#)
+                    });
+                then.status(200).json_body(json!({
+                    "data": {
+                        "applications": {
+                            "edges": [
+                                { "node": { "id": "a1", "name": "active-app", "status": "ACTIVE" } },
+                                { "node": { "id": "a2", "name": "inactive-app", "status": "INACTIVE" } }
+                            ]
+                        }
+                    }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .list_applications()
+            .await
+            .expect("list applications");
+
+        mock.assert_async().await;
+        assert_eq!(data.as_array().expect("array").len(), 2);
+        assert_eq!(data[1]["status"], "INACTIVE");
     }
 
     #[tokio::test]

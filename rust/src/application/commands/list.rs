@@ -12,8 +12,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::new("list", "List all applications")
             .with_long(
                 "List all GoDaddy developer-platform applications visible to \
-                the current account. Use `gddy platform app info --name <name>` \
-                to fetch full details for a single application.",
+                the current account, across every App Registry status. Use \
+                `gddy platform app info --name <name>` to fetch full details \
+                for a single application.",
             )
             .with_system("applications")
             .with_tier(Tier::Read)
@@ -49,6 +50,7 @@ mod tests {
     use cli_engine::{Cli, CliConfig, PaginationConfig, Stage};
 
     use super::command;
+    use crate::application::client::APPLICATION_STATUSES;
 
     #[test]
     fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
@@ -58,6 +60,14 @@ mod tests {
                 max_limit: 200,
                 ..Default::default()
             })
+        );
+    }
+
+    #[test]
+    fn application_statuses_match_app_registry_enum() {
+        assert_eq!(
+            APPLICATION_STATUSES,
+            ["ACTIVE", "ARCHIVED", "BLOCKED", "INACTIVE", "VERIFYING"]
         );
     }
 
