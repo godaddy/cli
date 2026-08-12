@@ -103,8 +103,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // via the exact/template `locate_by_path`, or a bare operation id
             // via `resolve_operation`.
             let (matched, mut path) = if endpoint.starts_with('/') {
+                // Catalog paths never carry a query string — strip one off
+                // before matching so a literal path like `/v1/foo?limit=10`
+                // still resolves, while `path` (used for the request URL and
+                // for `existing_query_param_names`) keeps it.
+                let path_only = endpoint.split_once('?').map_or(endpoint, |(p, _)| p);
                 (
-                    locate_by_path(catalog(), endpoint, method)?,
+                    locate_by_path(catalog(), path_only, method)?,
                     endpoint.to_owned(),
                 )
             } else {
@@ -272,6 +277,21 @@ fn partition_call_params(
             ep.parameters
                 .iter()
                 .find(|p| p.get("name").and_then(Value::as_str) == Some(name))
+                .or_else(|| {
+                    // HTTP header names are case-insensitive (RFC 9110), so
+                    // e.g. `--param idempotency-key=...` should still match
+                    // a declared `Idempotency-Key` header/cookie parameter,
+                    // even though path/query names are exact-case.
+                    ep.parameters.iter().find(|p| {
+                        matches!(
+                            p.get("in").and_then(Value::as_str),
+                            Some("header" | "cookie")
+                        ) && p
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+                    })
+                })
                 .and_then(|p| p.get("in").and_then(Value::as_str))
         });
         match location {
@@ -328,7 +348,9 @@ fn validate_required_params(
                 Some("query") => {
                     parts.query.iter().any(|(n, _)| n == name) || existing_query.contains(&name)
                 }
-                Some("header" | "cookie") => headers.iter().any(|(n, _)| n == name),
+                Some("header" | "cookie") => {
+                    headers.iter().any(|(n, _)| n.eq_ignore_ascii_case(name))
+                }
                 _ => true,
             };
             (!satisfied).then_some(name)
@@ -604,6 +626,45 @@ mod tests {
         );
     }
 
+    /// A literal path with its own `?...` query string still resolves via
+    /// `locate_by_path` (which strips it before matching against templated
+    /// catalog paths) — an unmatched fallback would silently skip
+    /// required-value validation, so this exercises the regression by
+    /// confirming a still-missing required header is still caught.
+    #[tokio::test]
+    async fn call_dry_run_literal_path_with_query_string_still_resolves() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_module(super::super::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "/v3/domains/domain-names/example.com/nameservers?foo=bar",
+                "--method",
+                "PUT",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output
+                .rendered
+                .contains("missing required --param value(s)"),
+            "{}",
+            output.rendered
+        );
+        assert!(
+            output.rendered.contains("Idempotency-Key"),
+            "{}",
+            output.rendered
+        );
+    }
+
     /// An unmatched literal path has no schema to route `--param` against, so
     /// every value falls through to the body — same permissiveness as
     /// `--field`, and the same thing that happens for an unrecognized
@@ -671,6 +732,31 @@ mod tests {
             vec![("x-trace-id".to_owned(), "t1".to_owned())]
         );
         assert_eq!(parts.body, vec![("note".to_owned(), "hello".to_owned())]);
+    }
+
+    /// HTTP header names are case-insensitive (RFC 9110) — a `--param` with
+    /// different casing than the declared header parameter must still route
+    /// to `header`, not fall through to the body.
+    #[test]
+    fn partition_call_params_routes_a_header_case_insensitively() {
+        let ep = endpoint_fixture(
+            r#"{
+                "operationId": "testOp",
+                "method": "PUT",
+                "path": "/things",
+                "summary": "",
+                "parameters": [
+                    {"name": "Idempotency-Key", "in": "header", "required": true}
+                ]
+            }"#,
+        );
+        let parts = partition_call_params(Some(&ep), &["idempotency-key=abc".to_owned()])
+            .expect("valid args");
+        assert!(parts.body.is_empty(), "must not fall through to the body");
+        assert_eq!(
+            parts.header,
+            vec![("idempotency-key".to_owned(), "abc".to_owned())]
+        );
     }
 
     /// No matched endpoint (e.g. an unmatched literal path) means no
@@ -789,6 +875,27 @@ mod tests {
         let headers = vec![("Idempotency-Key".to_owned(), "abc".to_owned())];
         validate_required_params(&ep, "/things", &PartitionedParams::default(), &headers)
             .expect("Idempotency-Key was supplied via a plain --header flag");
+    }
+
+    /// Header names are case-insensitive (RFC 9110) — a required
+    /// `Idempotency-Key` is satisfied by a differently-cased `--header`
+    /// entry too, not just an exact-case match.
+    #[test]
+    fn validate_required_params_header_satisfied_case_insensitively() {
+        let ep = endpoint_fixture(
+            r#"{
+                "operationId": "testOp",
+                "method": "PUT",
+                "path": "/things",
+                "summary": "",
+                "parameters": [
+                    {"name": "Idempotency-Key", "in": "header", "required": true}
+                ]
+            }"#,
+        );
+        let headers = vec![("idempotency-key".to_owned(), "abc".to_owned())];
+        validate_required_params(&ep, "/things", &PartitionedParams::default(), &headers)
+            .expect("differently-cased header name still satisfies the requirement");
     }
 
     #[test]

@@ -20,7 +20,7 @@ pub(super) fn split_header(raw: &str) -> Option<(&str, &str)> {
 }
 
 /// Split a `NAME=VALUE` value on the first `=`. Shared by `--field` and
-/// `--arg` parsing; callers attach their own flag-specific error message.
+/// `--param` parsing; callers attach their own flag-specific error message.
 pub(super) fn split_kv(raw: &str) -> Option<(&str, &str)> {
     raw.split_once('=')
 }
