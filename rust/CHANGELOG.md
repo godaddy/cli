@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.5](https://github.com/godaddy/cli/compare/v0.2.4...v0.2.5) (2026-08-12)
+
+
+### Features
+
+* **api-explorer:** add `api graphql` command group for GraphQL-backed domains ([#200](https://github.com/godaddy/cli/issues/200)) ([c35ecd8](https://github.com/godaddy/cli/commit/c35ecd8a6348b0b6dacb543ed4f8746e36757a82))
+
+
+### Bug Fixes
+
+* **api-catalog:** parse federated GraphQL schemas and stabilize manifest order ([#204](https://github.com/godaddy/cli/issues/204)) ([118f3f2](https://github.com/godaddy/cli/commit/118f3f2bc44cdc3022b5f85c93c747a81eef6131))
+* **platform:** list apps across all App Registry statuses ([#206](https://github.com/godaddy/cli/issues/206)) ([737e91b](https://github.com/godaddy/cli/commit/737e91b60a1375385d11cb772d521ba3e4175c8d))
+
+
+### Documentation
+
+* Improve new user experience ([#202](https://github.com/godaddy/cli/issues/202)) ([90fb564](https://github.com/godaddy/cli/commit/90fb564e4d04b307b78866b44605e0b7ea394f15))
+
+
+### Miscellaneous
+
+* **scanner:** Review Scan blocking rules ([acc3c9c](https://github.com/godaddy/cli/commit/acc3c9caeb4742eb518400c6cfff6291067cbe04))
+* **scanner:** Review Scan blocking rules ([#191](https://github.com/godaddy/cli/issues/191)) ([acc3c9c](https://github.com/godaddy/cli/commit/acc3c9caeb4742eb518400c6cfff6291067cbe04))
+
 ## [0.2.4](https://github.com/godaddy/cli/compare/v0.2.3...v0.2.4) (2026-08-11)
 
 
