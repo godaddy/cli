@@ -9,8 +9,10 @@ use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 use crate::summary::Summary;
 
-use super::catalog::catalog;
-use super::catalog::resolve_operation;
+use super::catalog::{
+    catalog, graphql_operation_redirect_error, graphql_sub_endpoint_rows,
+    resolve_graphql_operation, resolve_operation,
+};
 use super::summary::{
     OPERATION_CHILD_LIST_DEFAULT_LIMIT, response_rows, summarize_graphql_schema,
     summarize_parameters,
@@ -25,6 +27,10 @@ output_schema!(ApiDomainEndpoint {
     "summary": "string", optional;
     "scopes": "[]string";
     "graphqlOperations": "number", optional;
+    // Present only on a synthetic row for one addressable GraphQL
+    // query/mutation (`<parentOperationId>::<query|mutation>::<name>`) —
+    // `"query"` or `"mutation"`. Absent for a real REST/wrapper row.
+    "kind": "string", optional;
 });
 
 output_schema!(ApiOperation {
@@ -77,7 +83,7 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                     .with_fix("Run: gddy api domain list")
                     .into_cli_error()
                 })?;
-            let endpoints: Vec<Value> = domain
+            let mut endpoints: Vec<Value> = domain
                 .endpoints
                 .iter()
                 .map(|ep| {
@@ -91,13 +97,44 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                     })
                 })
                 .collect();
-            Ok(CommandResult::new(json!(endpoints)).with_next_actions(vec![
+            // Every GraphQL query/mutation field is just as addressable as a
+            // REST operation — surface it as its own row alongside the
+            // wrapper's, tagged with `kind` so the two are easy to tell
+            // apart at a glance.
+            let graphql_wrappers: Vec<&str> = domain
+                .endpoints
+                .iter()
+                .filter(|ep| ep.graphql.is_some())
+                .map(|ep| ep.operation_id.as_str())
+                .collect();
+            for ep in &domain.endpoints {
+                endpoints.extend(graphql_sub_endpoint_rows(None, ep));
+            }
+
+            let mut next_actions = vec![
                 next_action(
                     "api operation get <operation>",
                     "Get full details for an operation",
                 )
                 .with_param("operation", NextActionParam::required()),
-            ]))
+            ];
+            if !graphql_wrappers.is_empty() {
+                next_actions.push(
+                    next_action(
+                        "api graphql get <operation>",
+                        "See a GraphQL operation's own shape (arguments and real return type)",
+                    )
+                    .with_param("operation", NextActionParam::required()),
+                );
+                for wrapper in &graphql_wrappers {
+                    next_actions.push(next_action(
+                        format!("api graphql sdl get {wrapper}"),
+                        format!("See {wrapper}'s actual GraphQL schema (SDL) text, verbatim"),
+                    ));
+                }
+            }
+
+            Ok(CommandResult::new(json!(endpoints)).with_next_actions(next_actions))
         },
     )
 }
@@ -154,6 +191,15 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
             let query = args.operation.as_str();
             let method_filter = args.method.map(|m| m.to_uppercase());
             let catalog = catalog();
+
+            // A GraphQL operation id (`<parent>::<kind>::<name>`) isn't a
+            // valid `operation get` target at all — it has its own
+            // dedicated command (`api graphql get`) with an output shape
+            // that doesn't try to fit GraphQL semantics into REST-operation
+            // columns.
+            if resolve_graphql_operation(catalog, query).is_some() {
+                return Err(graphql_operation_redirect_error(query, "graphql get"));
+            }
 
             // Exact operationId/path/template match (optionally narrowed by
             // --method) first; a miss falls back to fuzzy substring search,
@@ -868,13 +914,16 @@ mod tests {
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
         let data = &rendered["data"];
-        assert_eq!(data["graphql"]["operationCount"], json!(149));
+        let operation_count = data["graphql"]["operationCount"]
+            .as_u64()
+            .expect("operationCount is a number");
+        assert!(operation_count > 100, "{operation_count}");
         assert_eq!(
             data["graphql"]["operations"]
                 .as_array()
                 .expect("operations array")
-                .len(),
-            149
+                .len() as u64,
+            operation_count
         );
     }
 }

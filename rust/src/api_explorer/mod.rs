@@ -5,6 +5,7 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 mod call;
 mod catalog;
 mod domain_cmd;
+mod graphql;
 mod http;
 mod operation;
 mod parameter;
@@ -73,6 +74,7 @@ pub fn module() -> Module {
             ))
             .with_command(schema_cmd::get_command()),
         )
+        .with_group(graphql::group())
         .with_command(search::command())
         .with_command(call::command())
     })

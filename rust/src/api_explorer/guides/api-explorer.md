@@ -104,6 +104,75 @@ gddy api call <path> --method POST --file body.json
 
 Before running anything that changes data, preview it with the global `--dry-run` flag — it short-circuits before sending the request for any method that mutates state (a plain `GET`/`HEAD` still runs for real under `--dry-run`, since there's nothing unsafe to preview there).
 
+## GraphQL operations
+
+Some domains are backed by GraphQL rather than plain REST. In the catalog they still show up as one wrapper operation (`postTaxGraphql`, `postCatalogGraphql`) that accepts a generic `{query, variables}` body — but every GraphQL query and mutation that wrapper proxies to is also individually addressable.
+
+GraphQL operations have their own dedicated set of commands. Run this to show a GraphQL operation's details:
+
+```
+gddy api graphql get <id>
+```
+
+A GraphQL operation contains:
+
+- **Call Requirements** — what the underlying wrapper endpoint needs to route and authenticate the request (e.g. path parameters and HTTP headers). These are transport plumbing, not GraphQL semantics.
+- **Arguments** — the GraphQL operation's own inputs.
+
+Supply both of these with `--arg name=value` (repeatable).
+
+```
+gddy api graphql call postTaxGraphql::query::classification --arg storeId=<uuid> --arg x-store-id=<uuid> --arg id=<id>
+```
+
+The CLI builds the GraphQL query text and `variables` object for you, sends it to the HTTP wrapper, and reports the response or errors.
+
+By default the response selects just `{ __typename }` for an object-shaped return type (or nothing at all for a plain scalar). To ask for specific fields, use `--select`, comma-separated and dot-nested for fields on a nested object:
+
+```
+gddy api graphql call postTaxGraphql::query::classification --arg storeId=<uuid> --arg x-store-id=<uuid> --arg id=<id> --select id,name,rate.percentage
+```
+
+### Finding out what's selectable
+
+`gddy api graphql get <id>` lists the operation's **Return Type** and its **Return Fields** — one level deep. If a field's `Type` column is a plain scalar (`String`, `Int`, `ID`, ...) that's the whole story; if it's something else (e.g. `ClassificationListsConnection`), look that name up to see *its* fields:
+
+```
+gddy api graphql type get <TypeName>
+```
+
+which shows the same kind of field list (or, for an enum, the allowed values) for that type on its own, independent of any operation. Repeat with whatever type name shows up next — `edges` might be a `[SomethingEdge]`, look up `SomethingEdge`, find a `node` field, look up its type, and so on — until every segment of your `--select` path resolves to a real field.
+
+A GraphQL type name is only unique within its own domain's schema — two domains can each declare an unrelated type sharing a name (e.g. `ReferenceValueFilter` on both `taxes` and `catalog-products`). When that happens, `api graphql type get <TypeName>` errors out listing every domain that defines it; add `--domain <domain>` to pick one.
+
+A `mutation` operation is short-circuited under the global `--dry-run` flag the same way any other mutating call is; a `query` operation still runs for real, since there's nothing unsafe to preview.
+
+### Getting the whole schema at once
+
+Drilling one type at a time is the right flow for shaping a specific `--select`. If you want the actual GraphQL specification instead — the real SDL text, not a JSON reconstruction of it — ask for it directly:
+
+```
+gddy api graphql sdl get postTaxGraphql
+```
+
+This prints the `.graphql` schema source. Pass the domain's wrapper operation id (`postTaxGraphql`, `postCatalogGraphql`), not an individual query/mutation id.
+
+Unlike every other command here, this one prints the SDL as plain text.
+
+```
+gddy api graphql sdl get postTaxGraphql > schema.graphql
+```
+
+If you'd rather have a structured, JSON-native dump instead of the raw SDL text — every operation and every type, with full field/arg detail and descriptions, already broken into our summary shape — that's available too:
+
+```
+gddy api operation get postTaxGraphql --output json
+```
+
+The result's `graphql` field has it all: `operations` and `types`. This is the same data `api graphql get`/`api graphql type get` read from, just all at once instead of one hop at a time — useful if you want to script against the JSON shape rather than parse GraphQL SDL yourself.
+
+The wrapper operation itself (`postTaxGraphql`, `postCatalogGraphql`) keeps working exactly as before under the regular REST commands, if you'd rather hand-write the GraphQL query text yourself. `api call` takes a concrete path, not an operationId — grab it from `fullPath` in `api operation get postTaxGraphql`'s output — so it looks like `gddy api call /v2/commerce/stores/<storeId>/tax-subgraph --body '{"query": "...", "variables": {...}}'`, unaffected by any of the above.
+
 ## Quick reference
 
 | Command | Purpose |
@@ -111,8 +180,12 @@ Before running anything that changes data, preview it with the global `--dry-run
 | `api domain list` | List every API domain |
 | `api operation list --domain <domain>` | List operations in a domain |
 | `api search <query>` | Full-text search across every domain |
-| `api operation get <operationId>` | Full detail for one operation |
-| `api parameter list/get --operation <id>` | An operation's parameters |
-| `api response list/get --operation <id>` | An operation's responses |
+| `api operation get <operationId>` | Full detail for one REST operation |
+| `api parameter list/get --operation <id>` | A REST operation's parameters |
+| `api response list/get --operation <id>` | A REST operation's responses |
 | `api schema get <id>` | Full structure of a schema |
-| `api call <path> --method <method>` | Make an authenticated request |
+| `api call <path> --method <method>` | Make an authenticated REST request |
+| `api graphql get <id>` | Full detail for one GraphQL operation |
+| `api graphql call <id> --arg name=value` | Call a GraphQL operation |
+| `api graphql type get <TypeName>` | Fields/values of a named GraphQL type |
+| `api graphql sdl get <wrapperOperationId>` | The actual GraphQL schema (SDL) text, verbatim |

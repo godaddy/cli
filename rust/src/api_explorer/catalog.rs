@@ -62,6 +62,8 @@ pub(super) struct GraphqlArgument {
     #[serde(rename = "type")]
     pub(super) arg_type: String,
     pub(super) required: bool,
+    #[serde(default)]
+    pub(super) description: Option<String>,
     #[serde(default, rename = "defaultValue")]
     pub(super) default_value: Option<String>,
 }
@@ -73,11 +75,35 @@ pub(super) struct GraphqlOperation {
     #[serde(rename = "returnType")]
     pub(super) return_type: String,
     #[serde(default)]
+    pub(super) description: Option<String>,
+    #[serde(default)]
     pub(super) deprecated: bool,
     #[serde(default, rename = "deprecationReason")]
     pub(super) deprecation_reason: Option<String>,
     #[serde(default)]
     pub(super) args: Vec<GraphqlArgument>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct GraphqlField {
+    pub(super) name: String,
+    #[serde(rename = "type")]
+    pub(super) field_type: String,
+    #[serde(default)]
+    pub(super) description: Option<String>,
+}
+
+/// A named GraphQL object/input/enum type — used by `api graphql get`
+/// (resolving an operation's return type into its real field list) and `api
+/// graphql type get` (looking one up directly by name).
+#[derive(Debug, Deserialize)]
+pub(super) struct GraphqlType {
+    pub(super) name: String,
+    pub(super) kind: String,
+    #[serde(default)]
+    pub(super) fields: Vec<GraphqlField>,
+    #[serde(default)]
+    pub(super) values: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +113,11 @@ pub(super) struct GraphqlSchema {
     #[serde(rename = "operationCount")]
     pub(super) operation_count: usize,
     pub(super) operations: Vec<GraphqlOperation>,
+    #[serde(default)]
+    pub(super) types: Vec<GraphqlType>,
+    /// The raw GraphQL SDL source verbatim — see `api graphql sdl get`.
+    #[serde(default)]
+    pub(super) sdl: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +377,197 @@ pub(super) fn search_endpoints<'a>(
                 if matches { Some((domain, ep)) } else { None }
             })
         })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL operation ids and resolution
+// ---------------------------------------------------------------------------
+//
+// A GraphQL query/mutation field isn't its own catalog endpoint — it's
+// addressed as `<parentOperationId>::<query|mutation>::<fieldName>`, e.g.
+// `postTaxGraphql::query::classification`, resolved against the wrapper
+// endpoint's own `graphql.operations`. `api graphql get`/`api graphql call`
+// are this id's only real targets; `operation get`/`parameter list`/`api
+// call` redirect to them instead of rendering REST-shaped output for a
+// GraphQL operation (see `graphql_operation_redirect_error`).
+
+pub(super) fn graphql_operation_id(parent_operation_id: &str, kind: &str, name: &str) -> String {
+    format!("{parent_operation_id}::{kind}::{name}")
+}
+
+fn parse_graphql_op_id(id: &str) -> Option<(&str, &str, &str)> {
+    let mut parts = id.splitn(3, "::");
+    let parent = parts.next()?;
+    let kind = parts.next()?;
+    let name = parts.next()?;
+    (!parent.is_empty() && !name.is_empty() && matches!(kind, "query" | "mutation"))
+        .then_some((parent, kind, name))
+}
+
+pub(super) struct GraphqlOpRef<'a> {
+    pub(super) domain: &'a Domain,
+    pub(super) parent: &'a Endpoint,
+    pub(super) op: &'a GraphqlOperation,
+}
+
+pub(super) fn resolve_graphql_operation<'a>(
+    catalog: &'a [Domain],
+    id: &str,
+) -> Option<GraphqlOpRef<'a>> {
+    let (parent_id, kind, name) = parse_graphql_op_id(id)?;
+    let (domain, parent) = find_endpoint_exact(catalog, parent_id, None)
+        .into_iter()
+        .next()?;
+    let op = parent
+        .graphql
+        .as_ref()?
+        .operations
+        .iter()
+        .find(|o| o.kind == kind && o.name == name)?;
+    Some(GraphqlOpRef { domain, parent, op })
+}
+
+/// Error for `operation get`/`parameter list`/`parameter get`/`call` given a
+/// GraphQL operation id — these commands render REST-shaped output that
+/// doesn't fit a GraphQL operation at all, so they redirect to the dedicated
+/// `api graphql` equivalent instead of trying to render anything.
+pub(super) fn graphql_operation_redirect_error(id: &str, next: &str) -> CliCoreError {
+    crate::error::GddyError::validation(format!(
+        "'{id}' is a GraphQL operation — use `gddy api {next} {id}` instead"
+    ))
+    .with_fix(format!("Run: gddy api {next} {id}"))
+    .into_cli_error()
+}
+
+/// Error for any `api graphql` command given an id that doesn't resolve to a
+/// real GraphQL operation — either malformed, or naming a domain/wrapper
+/// operation that exists but isn't itself addressable this way (e.g. the
+/// wrapper id `postTaxGraphql` rather than one of its operations).
+pub(super) fn graphql_operation_not_found_error(id: &str) -> CliCoreError {
+    crate::error::GddyError::not_found(format!(
+        "no GraphQL operation found for id '{id}' — expected \
+         <parentOperationId>::<query|mutation>::<fieldName>, e.g. \
+         postTaxGraphql::query::classification"
+    ))
+    .with_fix("Run: gddy api operation list --domain <domain>, or gddy api search <query>")
+    .into_cli_error()
+}
+
+/// Every GraphQL query/mutation field on `ep`'s schema, as a synthetic
+/// endpoint-list row addressed via [`graphql_operation_id`] — appended
+/// alongside the wrapper's own row by `operation_list_command`/
+/// `search_command` so a GraphQL operation is just as discoverable as a
+/// REST one.
+pub(super) fn graphql_sub_endpoint_rows(domain_name: Option<&str>, ep: &Endpoint) -> Vec<Value> {
+    let Some(schema) = ep.graphql.as_ref() else {
+        return Vec::new();
+    };
+    schema
+        .operations
+        .iter()
+        .map(|op| {
+            let mut row = serde_json::json!({
+                "operationId": graphql_operation_id(&ep.operation_id, &op.kind, &op.name),
+                "method": ep.method,
+                "path": ep.path,
+                "summary": op.description.clone().unwrap_or_else(|| format!("{} {}", op.kind, op.name)),
+                "scopes": ep.scopes,
+                "kind": op.kind,
+            });
+            if let Some(name) = domain_name {
+                row["domain"] = serde_json::json!(name);
+            }
+            row
+        })
+        .collect()
+}
+
+/// Strips GraphQL's Non-Null (`!`) and List (`[...]`) type modifiers down to
+/// the bare named type, e.g. `"[Widget!]!"` -> `"Widget"` — the name that
+/// `GraphqlType::name` and `coerce_graphql_arg`'s scalar match key off of.
+pub(super) fn graphql_base_type_name(type_str: &str) -> &str {
+    type_str.trim_matches(|c: char| matches!(c, '!' | '[' | ']'))
+}
+
+/// Looks up a named GraphQL type (object/input/enum) by its bare name
+/// against the domain schema `g` belongs to — used to resolve an operation's
+/// `returnType` string into its real field list. `type_str` may be a full
+/// GraphQL type string (e.g. `"[Widget!]!"`); only its base name is looked
+/// up (see [`graphql_base_type_name`]).
+pub(super) fn graphql_resolve_type<'a>(
+    g: &GraphqlOpRef<'a>,
+    type_str: &str,
+) -> Option<&'a GraphqlType> {
+    let base_name = graphql_base_type_name(type_str);
+    g.parent
+        .graphql
+        .as_ref()?
+        .types
+        .iter()
+        .find(|t| t.name == base_name)
+}
+
+/// Every domain whose own GraphQL schema defines a type named `name` — the
+/// standalone counterpart to [`graphql_resolve_type`] for `api graphql type
+/// get`, which has no operation to scope the search to. A GraphQL type name
+/// is only unique *within* a single subgraph; two independently-authored
+/// domain schemas can (and do — e.g. `ReferenceValueFilter` on both `taxes`
+/// and `catalog-products`, with different fields) declare their own,
+/// unrelated type sharing a name. Callers must handle more than one hit
+/// rather than assume the first is the one the user meant.
+pub(super) fn find_graphql_types<'a>(
+    catalog: &'a [Domain],
+    name: &str,
+) -> Vec<(&'a Domain, &'a GraphqlType)> {
+    catalog
+        .iter()
+        .filter_map(|d| {
+            d.endpoints
+                .iter()
+                .find_map(|ep| ep.graphql.as_ref()?.types.iter().find(|t| t.name == name))
+                .map(|t| (d, t))
+        })
+        .collect()
+}
+
+/// Error for `api graphql type get` given a name that doesn't resolve to any
+/// known GraphQL object/input/enum (in the requested domain, if `--domain`
+/// was given).
+pub(super) fn graphql_type_not_found_error(name: &str) -> CliCoreError {
+    crate::error::GddyError::not_found(format!("no GraphQL type found named '{name}'"))
+        .with_fix(
+            "Run: gddy api graphql get <operationId> and check a field's Type column for the \
+             exact name to look up",
+        )
+        .into_cli_error()
+}
+
+/// Error for `api graphql type get` when `name` resolves in more than one
+/// domain's GraphQL schema with no `--domain` given to disambiguate.
+pub(super) fn ambiguous_graphql_type_error(name: &str, domains: &[&str]) -> CliCoreError {
+    crate::error::GddyError::ambiguous(format!(
+        "'{name}' is defined by {} different domains ({}) with no guarantee they're the same \
+         shape — be more specific:",
+        domains.len(),
+        domains.join(", "),
+    ))
+    .with_fix(format!(
+        "Run: gddy api graphql type get {name} --domain <domain>, one of: {}",
+        domains.join(", "),
+    ))
+    .into_cli_error()
+}
+
+/// Every valid `--arg` name for `g`'s call — the wrapper's own parameters
+/// plus the GraphQL field's own arguments — used in the "unknown --arg"
+/// validation error's suggestion list.
+pub(super) fn graphql_valid_arg_names(g: &GraphqlOpRef<'_>) -> Vec<String> {
+    g.parent
+        .parameters
+        .iter()
+        .filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_owned))
+        .chain(g.op.args.iter().map(|a| a.name.clone()))
         .collect()
 }
 

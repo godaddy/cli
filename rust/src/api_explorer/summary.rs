@@ -279,14 +279,32 @@ pub(super) fn summarize_graphql_schema(graphql: &GraphqlSchema) -> Value {
                 "name": op.name,
                 "kind": op.kind,
                 "returnType": op.return_type,
+                "description": op.description,
                 "deprecated": op.deprecated,
                 "deprecationReason": op.deprecation_reason,
                 "args": op.args.iter().map(|a| json!({
                     "name": a.name,
                     "type": a.arg_type,
                     "required": a.required,
+                    "description": a.description,
                     "defaultValue": a.default_value,
                 })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let types: Vec<Value> = graphql
+        .types
+        .iter()
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "kind": t.kind,
+                "fields": t.fields.iter().map(|f| json!({
+                    "name": f.name,
+                    "type": f.field_type,
+                    "description": f.description,
+                })).collect::<Vec<_>>(),
+                "values": t.values,
             })
         })
         .collect();
@@ -296,6 +314,8 @@ pub(super) fn summarize_graphql_schema(graphql: &GraphqlSchema) -> Value {
         "queryCount": query_count,
         "mutationCount": mutation_count,
         "operations": operations,
+        "typeCount": types.len(),
+        "types": types,
     })
 }
 
@@ -312,6 +332,7 @@ mod tests {
                 name: format!("op{i}"),
                 kind: if i % 2 == 0 { "query" } else { "mutation" }.to_owned(),
                 return_type: "String".to_owned(),
+                description: None,
                 deprecated: false,
                 deprecation_reason: None,
                 args: vec![],
@@ -325,6 +346,8 @@ mod tests {
             schema_ref: "./schema.graphql".to_owned(),
             operation_count: 25,
             operations: make_graphql_operations(25),
+            types: vec![],
+            sdl: String::new(),
         };
         let summary = summarize_graphql_schema(&schema);
         assert_eq!(summary["operationCount"], json!(25));
@@ -348,22 +371,70 @@ mod tests {
                 name: "widgets".to_owned(),
                 kind: "query".to_owned(),
                 return_type: "[Widget]".to_owned(),
+                description: Some("Lists widgets.".to_owned()),
                 deprecated: true,
                 deprecation_reason: Some("use widgetsV2".to_owned()),
                 args: vec![GraphqlArgument {
                     name: "id".to_owned(),
                     arg_type: "String!".to_owned(),
                     required: true,
+                    description: Some("The widget id.".to_owned()),
                     default_value: None,
                 }],
             }],
+            types: vec![],
+            sdl: String::new(),
         };
         let summary = summarize_graphql_schema(&schema);
         assert_eq!(summary["operations"][0]["name"], json!("widgets"));
         assert_eq!(summary["operations"][0]["deprecated"], json!(true));
         assert_eq!(
+            summary["operations"][0]["description"],
+            json!("Lists widgets.")
+        );
+        assert_eq!(
             summary["operations"][0]["args"][0]["type"],
             json!("String!")
         );
+        assert_eq!(
+            summary["operations"][0]["args"][0]["description"],
+            json!("The widget id.")
+        );
+        assert_eq!(summary["typeCount"], json!(0));
+    }
+
+    #[test]
+    fn summarize_graphql_schema_carries_type_detail() {
+        use super::super::catalog::{GraphqlField, GraphqlType};
+
+        let schema = GraphqlSchema {
+            schema_ref: "./schema.graphql".to_owned(),
+            operation_count: 0,
+            operations: vec![],
+            types: vec![
+                GraphqlType {
+                    name: "Widget".to_owned(),
+                    kind: "object".to_owned(),
+                    fields: vec![GraphqlField {
+                        name: "id".to_owned(),
+                        field_type: "ID!".to_owned(),
+                        description: Some("The widget id.".to_owned()),
+                    }],
+                    values: vec![],
+                },
+                GraphqlType {
+                    name: "WidgetStatus".to_owned(),
+                    kind: "enum".to_owned(),
+                    fields: vec![],
+                    values: vec!["ACTIVE".to_owned(), "RETIRED".to_owned()],
+                },
+            ],
+            sdl: "type Widget { id: ID! }".to_owned(),
+        };
+        let summary = summarize_graphql_schema(&schema);
+        assert_eq!(summary["typeCount"], json!(2));
+        assert_eq!(summary["types"][0]["name"], json!("Widget"));
+        assert_eq!(summary["types"][0]["fields"][0]["name"], json!("id"));
+        assert_eq!(summary["types"][1]["values"], json!(["ACTIVE", "RETIRED"]));
     }
 }

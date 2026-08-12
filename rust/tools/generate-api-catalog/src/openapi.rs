@@ -3,9 +3,7 @@ use std::{collections::HashMap, path::Path};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::graphql::{
-    CatalogGraphqlArgument, CatalogGraphqlOperation, CatalogGraphqlSchema, load_graphql_schema,
-};
+use crate::graphql::{CatalogGraphqlSchema, load_graphql_schema};
 
 const HTTP_METHODS: &[&str] = &[
     "get", "post", "put", "patch", "delete", "options", "head", "trace",
@@ -360,67 +358,16 @@ fn process_operation(
             let resolved = spec_dir.join(schema_ref);
             let cache_key = resolved.to_string_lossy().into_owned();
             if let Some(cached) = graphql_cache.get(&cache_key) {
-                // Return a clone with original schema_ref
+                // Return a clone with the original (per-operation) schema_ref
+                // — everything else is identical to the cached parse.
                 Some(CatalogGraphqlSchema {
                     schema_ref: schema_ref.to_owned(),
-                    operation_count: cached.operation_count,
-                    operations: cached
-                        .operations
-                        .iter()
-                        .map(|op| CatalogGraphqlOperation {
-                            name: op.name.clone(),
-                            kind: op.kind.clone(),
-                            return_type: op.return_type.clone(),
-                            description: op.description.clone(),
-                            deprecated: op.deprecated,
-                            deprecation_reason: op.deprecation_reason.clone(),
-                            args: op
-                                .args
-                                .iter()
-                                .map(|a| CatalogGraphqlArgument {
-                                    name: a.name.clone(),
-                                    arg_type: a.arg_type.clone(),
-                                    required: a.required,
-                                    description: a.description.clone(),
-                                    default_value: a.default_value.clone(),
-                                })
-                                .collect(),
-                        })
-                        .collect(),
+                    ..cached.clone()
                 })
             } else {
                 match load_graphql_schema(&resolved, schema_ref, common_types_dir) {
                     Ok(gql) => {
-                        graphql_cache.insert(
-                            cache_key,
-                            CatalogGraphqlSchema {
-                                schema_ref: gql.schema_ref.clone(),
-                                operation_count: gql.operation_count,
-                                operations: gql
-                                    .operations
-                                    .iter()
-                                    .map(|op| CatalogGraphqlOperation {
-                                        name: op.name.clone(),
-                                        kind: op.kind.clone(),
-                                        return_type: op.return_type.clone(),
-                                        description: op.description.clone(),
-                                        deprecated: op.deprecated,
-                                        deprecation_reason: op.deprecation_reason.clone(),
-                                        args: op
-                                            .args
-                                            .iter()
-                                            .map(|a| CatalogGraphqlArgument {
-                                                name: a.name.clone(),
-                                                arg_type: a.arg_type.clone(),
-                                                required: a.required,
-                                                description: a.description.clone(),
-                                                default_value: a.default_value.clone(),
-                                            })
-                                            .collect(),
-                                    })
-                                    .collect(),
-                            },
-                        );
+                        graphql_cache.insert(cache_key, gql.clone());
                         Some(gql)
                     }
                     Err(e) => {

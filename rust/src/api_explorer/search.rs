@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 
-use super::catalog::{catalog, search_endpoints};
+use super::catalog::{catalog, graphql_sub_endpoint_rows, search_endpoints};
 
 output_schema!(ApiEndpoint {
     "domain": "string";
@@ -18,6 +18,9 @@ output_schema!(ApiEndpoint {
     "summary": "string", optional;
     "scopes": "[]string";
     "graphqlOperations": "number", optional;
+    // See `ApiDomainEndpoint`'s `kind` field in `operation.rs` — present
+    // only on a synthetic row for one addressable GraphQL query/mutation.
+    "kind": "string", optional;
 });
 
 #[derive(Debug, Clone, clap::Args)]
@@ -50,7 +53,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if hits.is_empty() {
                 return Ok(CommandResult::new(json!([])));
             }
-            let results: Vec<Value> = hits
+            let mut results: Vec<Value> = hits
                 .iter()
                 .map(|(domain, ep)| {
                     json!({
@@ -64,13 +67,55 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     })
                 })
                 .collect();
-            Ok(CommandResult::new(json!(results)).with_next_actions(vec![
+            // A matched GraphQL wrapper's own query/mutation fields are
+            // just as addressable as any REST operation — surface whichever
+            // of them also match the search term as their own rows.
+            let query_lower = args.query.to_lowercase();
+            for (domain, ep) in &hits {
+                for row in graphql_sub_endpoint_rows(Some(&domain.name), ep) {
+                    let matches = row
+                        .get("operationId")
+                        .and_then(Value::as_str)
+                        .is_some_and(|s| s.to_lowercase().contains(&query_lower))
+                        || row
+                            .get("summary")
+                            .and_then(Value::as_str)
+                            .is_some_and(|s| s.to_lowercase().contains(&query_lower));
+                    if matches {
+                        results.push(row);
+                    }
+                }
+            }
+
+            let mut next_actions = vec![
                 next_action(
                     "api operation get <operation>",
                     "Get full details for a result",
                 )
                 .with_param("operation", NextActionParam::required()),
-            ]))
+            ];
+            let graphql_wrappers: Vec<&str> = {
+                let mut wrappers: Vec<&str> = results
+                    .iter()
+                    .filter(|r| r.get("kind").is_some())
+                    .filter_map(|r| r.get("operationId").and_then(Value::as_str))
+                    .filter_map(|id| id.split_once("::").map(|(wrapper, _)| wrapper))
+                    .collect();
+                wrappers.sort_unstable();
+                wrappers.dedup();
+                wrappers
+            };
+            if !graphql_wrappers.is_empty() {
+                next_actions.push(
+                    next_action(
+                        "api graphql get <operation>",
+                        "See a GraphQL result's own shape (arguments and real return type)",
+                    )
+                    .with_param("operation", NextActionParam::required()),
+                );
+            }
+
+            Ok(CommandResult::new(json!(results)).with_next_actions(next_actions))
         },
     )
 }

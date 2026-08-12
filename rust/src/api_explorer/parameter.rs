@@ -8,7 +8,9 @@ use serde_json::json;
 
 use crate::next_action::{next_action, required_value};
 
-use super::catalog::{catalog, resolve_operation};
+use super::catalog::{
+    catalog, graphql_operation_redirect_error, resolve_graphql_operation, resolve_operation,
+};
 use super::summary::{
     OPERATION_CHILD_LIST_DEFAULT_LIMIT, OPERATION_CHILD_LIST_MAX_LIMIT, summarize_parameters,
     to_json,
@@ -47,6 +49,9 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
         |_cred, args: ParameterListArgs| async move {
             let operation = args.operation.as_str();
             let catalog = catalog();
+            if resolve_graphql_operation(catalog, operation).is_some() {
+                return Err(graphql_operation_redirect_error(operation, "graphql get"));
+            }
             let (domain, ep) = resolve_operation(catalog, operation, None)?;
             let all = summarize_parameters(ep, &domain.defs);
             let next_actions = vec![
@@ -91,6 +96,9 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
             let name = args.name.as_str();
             let operation = args.operation.as_str();
             let catalog = catalog();
+            if resolve_graphql_operation(catalog, operation).is_some() {
+                return Err(graphql_operation_redirect_error(operation, "graphql get"));
+            }
             let (domain, ep) = resolve_operation(catalog, operation, None)?;
             let row = summarize_parameters(ep, &domain.defs)
                 .into_iter()

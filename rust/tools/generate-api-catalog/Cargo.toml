@@ -6,9 +6,10 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+async-graphql-parser = "7"
+async-graphql-value = "7"
 base64 = "0.22.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-graphql-parser = "0.4"
 indexmap = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

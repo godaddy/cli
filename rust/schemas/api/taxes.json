@@ -942,7 +942,2273 @@
             "returnType": "Rate"
           }
         ],
-        "schemaRef": "./graphql/schema.graphql"
+        "schemaRef": "./graphql/schema.graphql",
+        "sdl": "\"\"\"An individual line item that was calculated.\"\"\"\ntype CalculatedLine {\n  calculationLine: CalculationLine!\n\n  \"\"\"\n  The individual tax amounts for the rates that were applied to the line.\n  \"\"\"\n  taxAmounts: [TaxAmount!]!\n\n  \"\"\"The total money amount of tax calculated for the line.\"\"\"\n  totalTaxAmount: TotalTaxAmount!\n}\n\n\"\"\"The rate that was used for the calculated amount.\"\"\"\ntype CalculatedRate {\n  \"\"\"The method that was used to apply the rate to a purchase amount.\"\"\"\n  calculationMethod: RateCalculationMethodEnum!\n\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID\n\n  \"\"\"The label for display.\"\"\"\n  label: String\n\n  \"\"\"The unique human-friendly identifier.\"\"\"\n  name: String\n\n  \"\"\"The rate's value\"\"\"\n  value: CalculatedRateValue!\n}\n\n\"\"\"The rate value represented as a fixed money amount.\"\"\"\ntype CalculatedRateAmount {\n  amount: SimpleMoney\n  appliedAmount: SimpleMoney\n}\n\n\"\"\"The rate value represented as a percentage.\"\"\"\ntype CalculatedRatePercentage {\n  \"\"\"The percentage applied by the rate, out of 100.\"\"\"\n  appliedPercentage: String!\n\n  \"\"\"The percentage value of the rate, out of 100.\"\"\"\n  percentage: String!\n}\n\nunion CalculatedRateValue = CalculatedRateAmount | CalculatedRatePercentage\n\ninput CalculationAddressInput {\n  \"\"\"The first line of the address. For example, number and street name.\"\"\"\n  addressLine1: String\n\n  \"\"\"\n  The second line of the address. For example, office suite or apartment number.\n  \"\"\"\n  addressLine2: String\n\n  \"\"\"The third line of the address, if needed.\"\"\"\n  addressLine3: String\n\n  \"\"\"\n  The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.\n  \"\"\"\n  adminArea1: String\n\n  \"\"\"The city, town, or village. Smaller than `adminArea1`.\"\"\"\n  adminArea2: String\n\n  \"\"\"\n  The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.\n  \"\"\"\n  adminArea3: String\n\n  \"\"\"\n  The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`.\n  \"\"\"\n  adminArea4: String\n\n  \"\"\"\n  The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.\n  \"\"\"\n  countryCode: String\n\n  \"\"\"The postal code, which is the zip code or equivalent.\"\"\"\n  postalCode: String\n}\n\n\"\"\"\nAn individual line item that was used in the calculation, passed back unmodified from the request.\n\"\"\"\ntype CalculationLine {\n  \"\"\"The client-defined ID for the line.\"\"\"\n  id: String!\n}\n\n\"\"\"An individual line item to be calculated.\"\"\"\ninput CalculationLineInput {\n  \"\"\"The ID or code for the item's classification.\"\"\"\n  classification: String\n\n  \"\"\"\n  The location to which the item is being sent. e.g. the customer's address. Overrides the top-level value if provided.\n  \"\"\"\n  destination: CalculationLocationInput\n\n  \"\"\"\n  The client-defined ID for the line. This could be a UUID of the SKU, or a shipping method/package name.\n  \"\"\"\n  id: String!\n\n  \"\"\"\n  The location from which the item is originating. Overrides the top-level value if provided.\n  \"\"\"\n  origin: CalculationLocationInput\n\n  \"\"\"The number of units being purchased.\"\"\"\n  quantity: Float\n\n  \"\"\"The money amount for the total quantity being purchased.\"\"\"\n  subtotalPrice: SimpleMoneyInput!\n  type: CalculationLineType!\n\n  \"\"\"The money amount for a single unit of the item being purchased.\"\"\"\n  unitPrice: SimpleMoneyInput\n}\n\nenum CalculationLineType {\n  FEE\n  SHIPPING\n  SKU\n}\n\n\"\"\"The location address.\"\"\"\ntype CalculationLocation {\n  \"\"\"The location address.\"\"\"\n  address: CalculationLocationAddress!\n}\n\n\"\"\"The location address.\"\"\"\ntype CalculationLocationAddress {\n  \"\"\"The first line of the address.\"\"\"\n  addressLine1: String\n\n  \"\"\"The second line of the address.\"\"\"\n  addressLine2: String\n\n  \"\"\"The third line of the address.\"\"\"\n  addressLine3: String\n\n  \"\"\"\n  The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision.\n  \"\"\"\n  adminArea1: String\n\n  \"\"\"The city, town, or village.\"\"\"\n  adminArea2: String\n\n  \"\"\"The sub-locality, suburb, neighborhood, or district.\"\"\"\n  adminArea3: String\n\n  \"\"\"The neighborhood, ward, or district.\"\"\"\n  adminArea4: String\n\n  \"\"\"The country code of the address.\"\"\"\n  countryCode: String!\n\n  \"\"\"The postal code of the address.\"\"\"\n  postalCode: String\n}\n\ninput CalculationLocationInput {\n  \"\"\"The location address.\"\"\"\n  address: CalculationAddressInput\n}\n\ntype CalculationResult {\n  lines: [CalculatedLine!]!\n\n  \"\"\"\n  The individual tax amounts for the rates that were applied to the purchase. A combined summary of all of the rates that applied across all of the lines.\n  \"\"\"\n  taxAmounts: [TaxAmount!]!\n\n  \"\"\"\n  The total money amount of tax calculated for the purchase. A sum of each individual line tax amount.\n  \"\"\"\n  totalTaxAmount: TotalTaxAmount!\n}\n\n\"\"\"\nA list is a group of SKU groups that are generally organized by similar characteristics.\n\"\"\"\ntype CatalogList {\n  \"\"\"The globally-unique ID of the list.\"\"\"\n  id: ID!\n}\n\n\"\"\"A SKU represents a stock keeping unit (SKU) in the catalog.\"\"\"\ntype CatalogSKU {\n  \"\"\"The globally-unique ID of the SKU.\"\"\"\n  id: ID!\n}\n\n\"\"\"A SKU Group is a grouping of SKUs.\"\"\"\ntype CatalogSKUGroup {\n  \"\"\"The globally-unique ID of the SKU group.\"\"\"\n  id: ID!\n}\n\n\"\"\"A grouping of rates that share common taxation criteria.\"\"\"\ntype Classification {\n  \"\"\"The data & time at which the classification was created.\"\"\"\n  createdAt: DateTime!\n\n  \"\"\"The human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID!\n\n  \"\"\"The label for display.\"\"\"\n  label: String!\n\n  \"\"\"The catalog lists to which the classification applies.\"\"\"\n  lists(after: String, before: String, first: Int, last: Int): ClassificationListsConnection\n  metafields(\n    after: String\n    before: String\n    first: Int\n\n    \"\"\"The key of the metafield\"\"\"\n    key: String\n    last: Int\n\n    \"\"\"The namespace of the metafield\"\"\"\n    namespace: String\n  ): ClassificationMetafieldsConnection\n\n  \"\"\"The unique human-friendly identifier.\"\"\"\n  name: String!\n\n  \"\"\"The rates associated with the classification.\"\"\"\n  rates(after: String, before: String, first: Int, last: Int, orderBy: RateOrderBy, status: RateStatusFilter): ClassificationRatesConnection\n\n  \"\"\"A reference to the resource in an external service.\"\"\"\n  references(after: String, before: String, first: Int, last: Int, orderBy: ReferenceOrderByInput): ClassificationReferencesConnection\n\n  \"\"\"The catalog SKU groups to which the classification applies.\"\"\"\n  skuGroups(after: String, before: String, first: Int, last: Int): ClassificationSkuGroupsConnection\n\n  \"\"\"The catalog SKUs to which the classification applies.\"\"\"\n  skus(after: String, before: String, first: Int, last: Int): ClassificationSkusConnection\n\n  \"\"\"The data & time at which the classification was last updated.\"\"\"\n  updatedAt: DateTime!\n}\n\ninput ClassificationIdFilter {\n  in: [ID!]\n}\n\ntype ClassificationListsConnection {\n  edges: [ClassificationListsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationListsConnectionEdge {\n  cursor: String!\n  node: CatalogList\n}\n\ntype ClassificationMetafieldsConnection {\n  edges: [ClassificationMetafieldsEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationMetafieldsEdge {\n  cursor: String!\n  node: Metafield\n}\n\ninput ClassificationOrderBy {\n  createdAt: OrderByDirectionEnum\n  id: OrderByDirectionEnum\n  name: OrderByDirectionEnum\n  updatedAt: OrderByDirectionEnum\n}\n\ntype ClassificationRatesConnection {\n  edges: [ClassificationRatesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationRatesConnectionEdge {\n  cursor: String!\n  node: Rate\n}\n\ntype ClassificationReferencesConnection {\n  edges: [ClassificationReferencesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationReferencesConnectionEdge {\n  cursor: String!\n  node: Reference\n}\n\ntype ClassificationSkuGroupsConnection {\n  edges: [ClassificationSkuGroupsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationSkuGroupsConnectionEdge {\n  cursor: String!\n  node: CatalogSKUGroup\n}\n\ntype ClassificationSkusConnection {\n  edges: [ClassificationSkusConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype ClassificationSkusConnectionEdge {\n  cursor: String!\n  node: CatalogSKU\n}\n\ninput CreateMetafieldInput {\n  key: String!\n  namespace: String!\n  type: String!\n  value: String!\n}\n\ninput CreateReferenceInput {\n  \"\"\"The origin of the reference.\"\"\"\n  origin: String!\n\n  \"\"\"The value of the reference.\"\"\"\n  value: String!\n}\n\n\"\"\"\nA date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.\n\"\"\"\nscalar DateTime\n\n\"\"\"A geographic area or \"zone\" in which a rate or set of rates applies.\"\"\"\ntype Jurisdiction {\n  \"\"\"\n  The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision.\n  \"\"\"\n  adminArea1: String\n\n  \"\"\"The city, town, or village.\"\"\"\n  adminArea2: String\n\n  \"\"\"The sub-locality, suburb, neighborhood, or district.\"\"\"\n  adminArea3: String\n\n  \"\"\"The neighborhood, ward, or district.\"\"\"\n  adminArea4: String\n\n  \"\"\"The country code of the address.\"\"\"\n  countryCode: String!\n\n  \"\"\"The data & time at which the jurisdiction was created.\"\"\"\n  createdAt: DateTime!\n\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID!\n  metafields(\n    after: String\n    before: String\n    first: Int\n\n    \"\"\"The key of the metafield\"\"\"\n    key: String\n    last: Int\n\n    \"\"\"The namespace of the metafield\"\"\"\n    namespace: String\n  ): JurisdictionMetafieldsConnection\n\n  \"\"\"The postal code of the address.\"\"\"\n  postalCode: String\n\n  \"\"\"The rates associated with the jurisdiction.\"\"\"\n  rates(after: String, before: String, first: Int, last: Int, orderBy: RateOrderBy, status: RateStatusFilter): JurisdictionRatesConnection\n\n  \"\"\"The data & time at which the jurisdiction was last updated.\"\"\"\n  updatedAt: DateTime!\n}\n\ninput JurisdictionIdFilter {\n  in: [ID!]\n}\n\ntype JurisdictionMetafieldsConnection {\n  edges: [JurisdictionMetafieldsEdge]\n  pageInfo: PageInfo!\n}\n\ntype JurisdictionMetafieldsEdge {\n  cursor: String!\n  node: Metafield\n}\n\ninput JurisdictionOrderBy {\n  createdAt: OrderByDirectionEnum\n  id: OrderByDirectionEnum\n  updatedAt: OrderByDirectionEnum\n}\n\ntype JurisdictionRatesConnection {\n  edges: [JurisdictionRatesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype JurisdictionRatesConnectionEdge {\n  cursor: String!\n  node: Rate\n}\n\n\"\"\"Custom data\"\"\"\ntype Metafield {\n  createdAt: String\n  id: ID\n  key: String\n  namespace: String\n  resourceId: ID\n  type: String\n  updatedAt: String\n  value: String\n}\n\ntype Mutation {\n  \"\"\"Activate an existing override.\"\"\"\n  activateOverride(id: ID!): Override\n\n  \"\"\"Activate an existing rate.\"\"\"\n  activateRate(id: ID!): Rate\n\n  \"\"\"Add existing lists to an existing classification.\"\"\"\n  addListsToClassification(\n    \"\"\"The ID of the classification to which the lists should be added.\"\"\"\n    classificationId: ID!\n    input: MutationAddListsToClassificationInput!\n  ): Classification\n\n  \"\"\"Add existing lists to an existing override.\"\"\"\n  addListsToOverride(input: MutationAddListsToOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Add existing rates to an existing classification.\"\"\"\n  addRatesToClassification(\n    \"\"\"The ID of the classification to which the rates should be added.\"\"\"\n    classificationId: ID!\n    input: MutationAddRatesToClassificationInput!\n  ): Classification\n\n  \"\"\"Add existing rates to an existing override.\"\"\"\n  addRatesToOverride(input: MutationAddRatesToOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Add existing SKU groups to an existing override.\"\"\"\n  addSkuGroupsToOverride(input: MutationAddSkuGroupsToOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Add existing SKU groups to an existing classification.\"\"\"\n  addSkusGroupsToClassification(\n    \"\"\"The ID of the classification to which the SKU groups should be added.\"\"\"\n    classificationId: ID!\n    input: MutationAddSkusGroupsToClassificationInput!\n  ): Classification\n\n  \"\"\"Add existing SKUs to an existing classification.\"\"\"\n  addSkusToClassification(\n    \"\"\"The ID of the classification to which the SKUs should be added.\"\"\"\n    classificationId: ID!\n    input: MutationAddSkusToClassificationInput!\n  ): Classification\n\n  \"\"\"Add existing SKUs to an existing override.\"\"\"\n  addSkusToOverride(input: MutationAddSkusToOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Calculate taxes.\"\"\"\n  calculateTaxes(channelId: ID!, input: MutationCalculateTaxesInput!): CalculationResult\n\n  \"\"\"Create a new classification.\"\"\"\n  createClassification(input: MutationCreateClassificationInput!): Classification\n\n  \"\"\"Create a new jurisdiction.\"\"\"\n  createJurisdiction(input: MutationCreateJurisdictionInput!): Jurisdiction\n\n  \"\"\"Create a new override.\"\"\"\n  createOverride(input: MutationCreateOverrideInput!): Override\n\n  \"\"\"Create a new rate.\"\"\"\n  createRate(input: MutationCreateRateInput!): Rate\n\n  \"\"\"Create references for an existing classifiction.\"\"\"\n  createReferencesForClassification(\n    \"\"\"\n    The ID of the classification for which the references should be created.\n    \"\"\"\n    id: ID!\n    input: MutationCreateReferencesForClassificationInput!\n  ): Classification\n\n  \"\"\"Create references for an existing override.\"\"\"\n  createReferencesForOverride(id: ID!, input: MutationCreateReferencesForOverrideInput!): Override\n\n  \"\"\"Create references for an existing rate.\"\"\"\n  createReferencesForRate(id: ID!, input: MutationCreateReferencesForRateInput!): Rate\n\n  \"\"\"Deactivate an existing override.\"\"\"\n  deactivateOverride(id: ID!): Override\n\n  \"\"\"Deactivate an existing rate.\"\"\"\n  deactivateRate(id: ID!): Rate\n\n  \"\"\"Delete an existing classification.\"\"\"\n  deleteClassification(\n    \"\"\"The ID of the classification to be deleted.\"\"\"\n    id: ID!\n  ): Classification\n\n  \"\"\"Delete an existing jurisdiction.\"\"\"\n  deleteJurisdiction(\n    \"\"\"The ID of the jurisdiction to be deleted.\"\"\"\n    id: ID!\n  ): Jurisdiction\n\n  \"\"\"Delete an existing override.\"\"\"\n  deleteOverride(id: ID!): Override\n\n  \"\"\"Delete an existing rate.\"\"\"\n  deleteRate(id: ID!): Rate\n\n  \"\"\"Delete references from an existing classification.\"\"\"\n  deleteReferencesFromClassification(\n    \"\"\"\n    The ID of the classification for which the references should be deleted.\n    \"\"\"\n    id: ID!\n    input: MutationDeleteReferencesFromClassificationInput!\n  ): Classification\n\n  \"\"\"Delete references from an existing override.\"\"\"\n  deleteReferencesFromOverride(id: ID!, input: MutationDeleteReferencesFromOverrideInput!): Override\n\n  \"\"\"Delete references from an existing rate.\"\"\"\n  deleteReferencesFromRate(id: ID!, input: MutationDeleteReferencesFromRateInput!): Rate\n\n  \"\"\"Remove existing lists from an existing classification.\"\"\"\n  removeListsFromClassification(\n    \"\"\"The ID of the classification to which the lists should be removed.\"\"\"\n    classificationId: ID!\n    input: MutationRemoveListsFromClassificationInput!\n  ): Classification\n\n  \"\"\"Remove existing lists from an existing override.\"\"\"\n  removeListsFromOverride(input: MutationRemoveListsFromOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Remove existing rates from an existing classification.\"\"\"\n  removeRatesFromClassification(\n    \"\"\"The ID of the classification to which the rates should be removed.\"\"\"\n    classificationId: ID!\n    input: MutationRemoveRatesFromClassificationInput!\n  ): Classification\n\n  \"\"\"Remove existing rates from an existing override.\"\"\"\n  removeRatesFromOverride(input: MutationRemoveRatesFromOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Remove existing SKUs from an existing classification.\"\"\"\n  removeSkusFromClassification(\n    \"\"\"The ID of the classification to which the SKUs should be removed.\"\"\"\n    classificationId: ID!\n    input: MutationRemoveSkusFromClassificationInput!\n  ): Classification\n\n  \"\"\"Remove existing SKUs from an existing override.\"\"\"\n  removeSkusFromOverride(input: MutationRemoveSkusFromOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Remove existing SKU groups from an existing classification.\"\"\"\n  removeSkusGroupsFromClassification(\n    \"\"\"The ID of the classification to which the SKU groups should be added.\"\"\"\n    classificationId: ID!\n    input: MutationRemoveSkusGroupsFromClassificationInput!\n  ): Classification\n\n  \"\"\"Remove existing SKU groups from an existing override.\"\"\"\n  removeSkusGroupsFromOverride(input: MutationRemoveSkusGroupsFromOverrideInput!, overrideId: ID!): Override\n\n  \"\"\"Update an existing classification.\"\"\"\n  updateClassification(\n    \"\"\"The ID of the classification to be updated.\"\"\"\n    id: ID!\n    input: MutationUpdateClassificationInput!\n  ): Classification\n\n  \"\"\"Update an existing jurisdiction.\"\"\"\n  updateJurisdiction(\n    \"\"\"The ID of the jurisdiction to be updated.\"\"\"\n    id: ID!\n    input: MutationUpdateJurisdictionInput!\n  ): Jurisdiction\n\n  \"\"\"Update an existing override.\"\"\"\n  updateOverride(id: ID!, input: MutationUpdateOverrideInput!): Override\n\n  \"\"\"Update an existing rate.\"\"\"\n  updateRate(id: ID!, input: MutationUpdateRateInput!): Rate\n}\n\ninput MutationAddListsToClassificationInput {\n  \"\"\"The IDs of the lists to be added to the classification.\"\"\"\n  listIds: [ID!]!\n}\n\ninput MutationAddListsToOverrideInput {\n  listIds: [ID!]!\n}\n\ninput MutationAddRatesToClassificationInput {\n  \"\"\"The IDs of the rates to be added to the classification.\"\"\"\n  rateIds: [ID!]!\n}\n\ninput MutationAddRatesToOverrideInput {\n  rateIds: [ID!]!\n}\n\ninput MutationAddSkuGroupsToOverrideInput {\n  skuGroupIds: [ID!]!\n}\n\ninput MutationAddSkusGroupsToClassificationInput {\n  \"\"\"The IDs of the SKU groups to be added to the classification.\"\"\"\n  skuGroupIds: [ID!]!\n}\n\ninput MutationAddSkusToClassificationInput {\n  \"\"\"The IDs of the SKUs to be added to the classification.\"\"\"\n  skuIds: [ID!]!\n}\n\ninput MutationAddSkusToOverrideInput {\n  skuIds: [ID!]!\n}\n\ninput MutationCalculateTaxesInput {\n  destination: CalculationLocationInput\n  lines: [CalculationLineInput!]!\n  origin: CalculationLocationInput\n}\n\ninput MutationCreateClassificationInput {\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"A label for display.\"\"\"\n  label: String!\n\n  \"\"\"Any metafields to be created and assigned to the new classification.\"\"\"\n  metafields: [CreateMetafieldInput!]\n\n  \"\"\"\n  A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.\n  \"\"\"\n  name: String\n\n  \"\"\"Any references to be created and assigned to the new classification.\"\"\"\n  references: [CreateReferenceInput!]\n}\n\ninput MutationCreateJurisdictionInput {\n  \"\"\"\n  The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.\n  \"\"\"\n  adminArea1: String\n\n  \"\"\"The city, town, or village. Smaller than `adminArea1`.\"\"\"\n  adminArea2: String\n\n  \"\"\"\n  The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.\n  \"\"\"\n  adminArea3: String\n\n  \"\"\"The neighborhood, ward, or district. Smaller than `adminArea3`.\"\"\"\n  adminArea4: String\n\n  \"\"\"\n  The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.\n  \"\"\"\n  countryCode: String!\n\n  \"\"\"Any metafields to be created and assigned to the new jurisdiction.\"\"\"\n  metafields: [CreateMetafieldInput!]\n\n  \"\"\"The postal code, which is the zip code or equivalent.\"\"\"\n  postalCode: String\n}\n\ninput MutationCreateOverrideInput {\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  createdAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"A custom rate to be applied by the override.\"\"\"\n  customRate: OverrideCustomRateCreateInput\n\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"A label for display.\"\"\"\n  label: String!\n\n  \"\"\"Any metafields to be created and assigned to the new override.\"\"\"\n  metafields: [CreateMetafieldInput!]\n\n  \"\"\"\n  A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.\n  \"\"\"\n  name: String\n\n  \"\"\"Any references to be created and assigned to the new override.\"\"\"\n  references: [CreateReferenceInput!]\n\n  \"\"\"The desired status.\"\"\"\n  status: OverrideStatusEnum = ACTIVE\n\n  \"\"\"The ID of the target rate that this override references.\"\"\"\n  targetRateId: ID\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  updatedAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n}\n\ninput MutationCreateRateInput {\n  \"\"\"The method to be used when applying the rate to a purchase amount.\"\"\"\n  calculationMethod: RateCalculationMethodEnum = ADDITIVE\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  createdAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"The ID of the jurisdiction in which this rate applies.\"\"\"\n  jurisdictionId: ID\n\n  \"\"\"A label for display.\"\"\"\n  label: String!\n\n  \"\"\"Any metafields to be created and assigned to the new rate.\"\"\"\n  metafields: [CreateMetafieldInput!]\n\n  \"\"\"\n  A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.\n  \"\"\"\n  name: String\n\n  \"\"\"Any references to be created and assigned to the new rate.\"\"\"\n  references: [CreateReferenceInput!]\n\n  \"\"\"The desired status.\"\"\"\n  status: RateStatusEnum = ACTIVE\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  updatedAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"The rate's value.\"\"\"\n  value: RateValueInput\n}\n\ninput MutationCreateReferencesForClassificationInput {\n  \"\"\"The references to be created for the classification.\"\"\"\n  references: [CreateReferenceInput!]!\n}\n\ninput MutationCreateReferencesForOverrideInput {\n  references: [CreateReferenceInput!]!\n}\n\ninput MutationCreateReferencesForRateInput {\n  references: [CreateReferenceInput!]!\n}\n\ninput MutationDeleteReferencesFromClassificationInput {\n  \"\"\"The IDs of the references to be deleted from the classification.\"\"\"\n  referenceIds: [ID!]!\n}\n\ninput MutationDeleteReferencesFromOverrideInput {\n  referenceIds: [ID!]!\n}\n\ninput MutationDeleteReferencesFromRateInput {\n  referenceIds: [ID!]!\n}\n\ninput MutationRemoveListsFromClassificationInput {\n  \"\"\"The IDs of the lists to be removed from the classification.\"\"\"\n  listIds: [ID!]!\n}\n\ninput MutationRemoveListsFromOverrideInput {\n  listIds: [ID!]!\n}\n\ninput MutationRemoveRatesFromClassificationInput {\n  \"\"\"The IDs of the rates to be remove from the classification.\"\"\"\n  rateIds: [ID!]!\n}\n\ninput MutationRemoveRatesFromOverrideInput {\n  rateIds: [ID!]!\n}\n\ninput MutationRemoveSkusFromClassificationInput {\n  \"\"\"The IDs of the SKUs to be removed from the classification.\"\"\"\n  skuIds: [ID!]!\n}\n\ninput MutationRemoveSkusFromOverrideInput {\n  skuIds: [ID!]!\n}\n\ninput MutationRemoveSkusGroupsFromClassificationInput {\n  \"\"\"The IDs of the SKU groups to be removed from the classification.\"\"\"\n  skuGroupIds: [ID!]!\n}\n\ninput MutationRemoveSkusGroupsFromOverrideInput {\n  skuGroupIds: [ID!]!\n}\n\ninput MutationUpdateClassificationInput {\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"A label for display.\"\"\"\n  label: String\n\n  \"\"\"A unique human-friendly identifier.\"\"\"\n  name: String\n}\n\ninput MutationUpdateJurisdictionInput {\n  \"\"\"\n  The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.\n  \"\"\"\n  adminArea1: String\n\n  \"\"\"The city, town, or village. Smaller than `adminArea1`.\"\"\"\n  adminArea2: String\n\n  \"\"\"\n  The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.\n  \"\"\"\n  adminArea3: String\n\n  \"\"\"The neighborhood, ward, or district. Smaller than `adminArea3`.\"\"\"\n  adminArea4: String\n\n  \"\"\"\n  The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.\n  \"\"\"\n  countryCode: String\n\n  \"\"\"The postal code, which is the zip code or equivalent.\"\"\"\n  postalCode: String\n}\n\ninput MutationUpdateOverrideInput {\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  createdAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"A custom rate to be applied by the override.\"\"\"\n  customRate: OverrideCustomRateUpdateInput\n\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"A label for display.\"\"\"\n  label: String\n\n  \"\"\"A unique human-friendly identifier.\"\"\"\n  name: String\n\n  \"\"\"The desired status.\"\"\"\n  status: OverrideStatusEnum\n\n  \"\"\"The ID of the target rate that this override references.\"\"\"\n  targetRateId: ID\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  updatedAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n}\n\ninput MutationUpdateRateInput {\n  \"\"\"The method to be used when applying the rate to a purchase amount.\"\"\"\n  calculationMethod: RateCalculationMethodEnum\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  createdAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"A human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"The ID of the jurisdiction in which this rate applies.\"\"\"\n  jurisdictionId: ID\n\n  \"\"\"A label for display.\"\"\"\n  label: String\n\n  \"\"\"A unique human-friendly identifier.\"\"\"\n  name: String\n\n  \"\"\"The desired status.\"\"\"\n  status: RateStatusEnum\n\n  \"\"\"WARNING: DO NOT USE.\"\"\"\n  updatedAt: DateTime @deprecated(reason: \"This field is deprecated and only used for Tax v1 to v2 migration syncs.\")\n\n  \"\"\"The rate's value.\"\"\"\n  value: RateValueInput\n}\n\nenum OrderByDirectionEnum {\n  ASC\n  DESC\n}\n\n\"\"\"\nA rule to override any other taxation criteria for the associated skus, groups, or lists.\n\"\"\"\ntype Override {\n  \"\"\"The data & time at which the override was last activated.\"\"\"\n  activatedAt: DateTime\n\n  \"\"\"The data & time at which the override was created.\"\"\"\n  createdAt: DateTime!\n  customRate: OverrideCustomRate\n\n  \"\"\"The human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID!\n\n  \"\"\"The label for display.\"\"\"\n  label: String!\n\n  \"\"\"The catalog lists to which the override applies.\"\"\"\n  lists(after: String, before: String, first: Int, last: Int): OverrideListsConnection\n  metafields(\n    after: String\n    before: String\n    first: Int\n\n    \"\"\"The key of the metafield\"\"\"\n    key: String\n    last: Int\n\n    \"\"\"The namespace of the metafield\"\"\"\n    namespace: String\n  ): OverrideMetafieldsConnection\n\n  \"\"\"The unique human-friendly identifier.\"\"\"\n  name: String!\n\n  \"\"\"The rates associated with the override.\"\"\"\n  rates(after: String, before: String, first: Int, last: Int, orderBy: RateOrderBy, status: RateStatusFilter): OverrideRatesConnection\n\n  \"\"\"A reference to a resource in an external service.\"\"\"\n  references(after: String, before: String, first: Int, last: Int, orderBy: ReferenceOrderByInput): OverrideReferencesConnection\n\n  \"\"\"The catalog SKU groups to which the override applies.\"\"\"\n  skuGroups(after: String, before: String, first: Int, last: Int): OverrideSkuGroupsConnection\n\n  \"\"\"The catalog SKUs to which the override applies.\"\"\"\n  skus(after: String, before: String, first: Int, last: Int): OverrideSkusConnection\n\n  \"\"\"The current status.\"\"\"\n  status: OverrideStatusEnum!\n\n  \"\"\"The rate that this override targets.\"\"\"\n  targetRate: Rate\n\n  \"\"\"The data & time at which the override was last updated.\"\"\"\n  updatedAt: DateTime!\n}\n\nenum OverrideCalculationMethodEnum {\n  ADDITIVE\n  INCLUSIVE\n}\n\n\"\"\"The custom rate to be applied by the override.\"\"\"\ntype OverrideCustomRate {\n  \"\"\"The method to be used when applying the override during calculation.\"\"\"\n  calculationMethod: OverrideCalculationMethodEnum!\n\n  \"\"\"The rate's value\"\"\"\n  value: RateValue!\n}\n\ninput OverrideCustomRateCreateInput {\n  \"\"\"\n  The method to be used when applying the custom rate to a purchase amount.\n  \"\"\"\n  calculationMethod: OverrideCalculationMethodEnum = ADDITIVE\n\n  \"\"\"The custom rate's value.\"\"\"\n  value: RateValueInput!\n}\n\ninput OverrideCustomRateUpdateInput {\n  \"\"\"\n  The method to be used when applying the custom rate to a purchase amount.\n  \"\"\"\n  calculationMethod: OverrideCalculationMethodEnum\n\n  \"\"\"The custom rate's value.\"\"\"\n  value: RateValueInput\n}\n\ninput OverrideIdFilter {\n  in: [ID!]\n}\n\ntype OverrideListsConnection {\n  edges: [OverrideListsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideListsConnectionEdge {\n  cursor: String!\n  node: CatalogList\n}\n\ntype OverrideMetafieldsConnection {\n  edges: [OverrideMetafieldsEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideMetafieldsEdge {\n  cursor: String!\n  node: Metafield\n}\n\ninput OverrideOrderBy {\n  createdAt: OrderByDirectionEnum\n  id: OrderByDirectionEnum\n  updatedAt: OrderByDirectionEnum\n}\n\ntype OverrideRatesConnection {\n  edges: [OverrideRatesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideRatesConnectionEdge {\n  cursor: String!\n  node: Rate\n}\n\ntype OverrideReferencesConnection {\n  edges: [OverrideReferencesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideReferencesConnectionEdge {\n  cursor: String!\n  node: Reference\n}\n\ntype OverrideSkuGroupsConnection {\n  edges: [OverrideSkuGroupsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideSkuGroupsConnectionEdge {\n  cursor: String!\n  node: CatalogSKUGroup\n}\n\ntype OverrideSkusConnection {\n  edges: [OverrideSkusConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype OverrideSkusConnectionEdge {\n  cursor: String!\n  node: CatalogSKU\n}\n\nenum OverrideStatusEnum {\n  ACTIVE\n  INACTIVE\n}\n\ntype PageInfo {\n  endCursor: String\n  hasNextPage: Boolean!\n  hasPreviousPage: Boolean!\n  startCursor: String\n}\n\ntype Query {\n  \"\"\"Get a single classification.\"\"\"\n  classification(\n    \"\"\"The classification ID.\"\"\"\n    id: ID!\n  ): Classification\n\n  \"\"\"Get a collection of classifications.\"\"\"\n  classifications(after: String, before: String, first: Int, id: ClassificationIdFilter, last: Int, orderBy: ClassificationOrderBy): QueryClassificationsConnection\n\n  \"\"\"Get a single jurisdiction.\"\"\"\n  jurisdiction(\n    \"\"\"The jurisdiction ID.\"\"\"\n    id: ID!\n  ): Jurisdiction\n\n  \"\"\"Get a collection of jurisdictions.\"\"\"\n  jurisdictions(after: String, before: String, first: Int, id: JurisdictionIdFilter, last: Int, orderBy: JurisdictionOrderBy): QueryJurisdictionsConnection\n\n  \"\"\"Get a single override.\"\"\"\n  override(\n    \"\"\"The override ID.\"\"\"\n    id: ID!\n  ): Override\n\n  \"\"\"Get a collection of overrides.\"\"\"\n  overrides(after: String, before: String, first: Int, id: OverrideIdFilter, last: Int, orderBy: OverrideOrderBy, referenceValue: ReferenceValueFilter): QueryOverridesConnection\n\n  \"\"\"Get a single rate.\"\"\"\n  rate(\n    \"\"\"The rate ID.\"\"\"\n    id: ID!\n  ): Rate\n\n  \"\"\"Get a collection of rates.\"\"\"\n  rates(after: String, before: String, first: Int, id: RateIdFilter, last: Int, orderBy: RateOrderBy, referenceValue: ReferenceValueFilter, status: RateStatusFilter): QueryRatesConnection\n}\n\ntype QueryClassificationsConnection {\n  edges: [QueryClassificationsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype QueryClassificationsConnectionEdge {\n  cursor: String!\n  node: Classification\n}\n\ntype QueryJurisdictionsConnection {\n  edges: [QueryJurisdictionsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype QueryJurisdictionsConnectionEdge {\n  cursor: String!\n  node: Jurisdiction\n}\n\ntype QueryOverridesConnection {\n  edges: [QueryOverridesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype QueryOverridesConnectionEdge {\n  cursor: String!\n  node: Override\n}\n\ntype QueryRatesConnection {\n  edges: [QueryRatesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype QueryRatesConnectionEdge {\n  cursor: String!\n  node: Rate\n}\n\n\"\"\"An individual tax rate.\"\"\"\ntype Rate {\n  \"\"\"The data & time at which the rate was first activated.\"\"\"\n  activatedAt: DateTime\n\n  \"\"\"The method to be used when applying the rate to a purchase amount.\"\"\"\n  calculationMethod: RateCalculationMethodEnum!\n\n  \"\"\"The classifications associated with the rate.\"\"\"\n  classifications(after: String, before: String, first: Int, last: Int, orderBy: ClassificationOrderBy): RateClassificationsConnection\n\n  \"\"\"The data & time at which the rate was created.\"\"\"\n  createdAt: DateTime!\n\n  \"\"\"The human-friendly description.\"\"\"\n  description: String\n\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID!\n\n  \"\"\"The jurisdiction in which this rate applies.\"\"\"\n  jurisdiction: Jurisdiction\n\n  \"\"\"The label for display.\"\"\"\n  label: String!\n  metafields(\n    after: String\n    before: String\n    first: Int\n\n    \"\"\"The key of the metafield\"\"\"\n    key: String\n    last: Int\n\n    \"\"\"The namespace of the metafield\"\"\"\n    namespace: String\n  ): RateMetafieldsConnection\n\n  \"\"\"The unique human-friendly identifier.\"\"\"\n  name: String!\n\n  \"\"\"A reference to the resource in an external service.\"\"\"\n  references(after: String, before: String, first: Int, last: Int, orderBy: ReferenceOrderByInput): RateReferencesConnection\n\n  \"\"\"The current status.\"\"\"\n  status: RateStatusEnum!\n\n  \"\"\"The data & time at which the rate was last updated.\"\"\"\n  updatedAt: DateTime!\n\n  \"\"\"The rate's value\"\"\"\n  value: RateValue!\n}\n\n\"\"\"The rate value represented as a fixed money amount.\"\"\"\ntype RateAmount {\n  amount: SimpleMoney\n}\n\nenum RateCalculationMethodEnum {\n  ADDITIVE\n  INCLUSIVE\n}\n\ntype RateClassificationsConnection {\n  edges: [RateClassificationsConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype RateClassificationsConnectionEdge {\n  cursor: String!\n  node: Classification\n}\n\ninput RateIdFilter {\n  in: [ID!]\n}\n\ntype RateMetafieldsConnection {\n  edges: [RateMetafieldsEdge]\n  pageInfo: PageInfo!\n}\n\ntype RateMetafieldsEdge {\n  cursor: String!\n  node: Metafield\n}\n\ninput RateOrderBy {\n  createdAt: OrderByDirectionEnum\n  id: OrderByDirectionEnum\n  name: OrderByDirectionEnum\n  updatedAt: OrderByDirectionEnum\n}\n\n\"\"\"The rate value represented as a percentage.\"\"\"\ntype RatePercentage {\n  \"\"\"The percentage applied by the rate, out of 100.\"\"\"\n  percentage: String!\n}\n\ntype RateReferencesConnection {\n  edges: [RateReferencesConnectionEdge]\n  pageInfo: PageInfo!\n}\n\ntype RateReferencesConnectionEdge {\n  cursor: String!\n  node: Reference\n}\n\nenum RateStatusEnum {\n  ACTIVE\n  INACTIVE\n}\n\ninput RateStatusFilter {\n  eq: RateStatusEnum\n  in: [RateStatusEnum!]\n}\n\nunion RateValue = RateAmount | RatePercentage\n\ninput RateValueInput {\n  \"\"\"\n  The rate value represented as a fixed money amount. Required if `percentage` is not provided.\n  \"\"\"\n  amount: SimpleMoneyInput\n\n  \"\"\"\n  The percentage applied by the rate, out of 100. Required if `amount` is not provided.\n  \"\"\"\n  percentage: String\n}\n\n\"\"\"A reference to the resource in an external service.\"\"\"\ntype Reference {\n  \"\"\"The globally-unique ID.\"\"\"\n  id: ID!\n\n  \"\"\"The origin of the reference.\"\"\"\n  origin: String!\n\n  \"\"\"The value of the reference.\"\"\"\n  value: String!\n}\n\ninput ReferenceOrderByInput {\n  createdAt: OrderByDirectionEnum\n  id: OrderByDirectionEnum\n  updatedAt: OrderByDirectionEnum\n}\n\ninput ReferenceValueFilter {\n  in: [String!]\n}\n\n\"\"\"\nThe currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.\n\"\"\"\ntype SimpleMoney {\n  \"\"\"A three-character ISO-4217 currency code.\"\"\"\n  currencyCode: String!\n\n  \"\"\"\n  The value, which might be: An integer for currencies like JPY that are not typically fractional; or, a decimal fraction for currencies like TND that are subdivided into thousandths. For the required number of decimal places for a currency code, see ISO-4217 Currency Codes.\n  \"\"\"\n  value: Float!\n}\n\ninput SimpleMoneyInput {\n  \"\"\"A three-character ISO-4217 currency code.\"\"\"\n  currencyCode: String!\n\n  \"\"\"\n  The value, which might be: An integer for currencies like JPY that are not typically fractional; or, a decimal fraction for currencies like TND that are subdivided into thousandths. For the required number of decimal places for a currency code, see ISO-4217 Currency Codes.\n  \"\"\"\n  value: Float!\n}\n\n\"\"\"Store object.\"\"\"\ntype Store {\n  \"\"\"The globally-unique ID of the Store.\"\"\"\n  id: ID!\n}\n\n\"\"\"An individual tax amount calculated.\"\"\"\ntype TaxAmount {\n  rate: CalculatedRate!\n  totalTaxAmount: TotalTaxAmount!\n}\n\n\"\"\"The total tax amount calculated.\"\"\"\ntype TotalTaxAmount {\n  currencyCode: String!\n  value: Float!\n}",
+        "types": [
+          {
+            "fields": [
+              {
+                "name": "calculationLine",
+                "type": "CalculationLine!"
+              },
+              {
+                "description": "The individual tax amounts for the rates that were applied to the line.",
+                "name": "taxAmounts",
+                "type": "[TaxAmount!]!"
+              },
+              {
+                "description": "The total money amount of tax calculated for the line.",
+                "name": "totalTaxAmount",
+                "type": "TotalTaxAmount!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculatedLine"
+          },
+          {
+            "fields": [
+              {
+                "description": "The method that was used to apply the rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "RateCalculationMethodEnum!"
+              },
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID"
+              },
+              {
+                "description": "The label for display.",
+                "name": "label",
+                "type": "String"
+              },
+              {
+                "description": "The unique human-friendly identifier.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "The rate's value",
+                "name": "value",
+                "type": "CalculatedRateValue!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculatedRate"
+          },
+          {
+            "fields": [
+              {
+                "name": "amount",
+                "type": "SimpleMoney"
+              },
+              {
+                "name": "appliedAmount",
+                "type": "SimpleMoney"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculatedRateAmount"
+          },
+          {
+            "fields": [
+              {
+                "description": "The percentage applied by the rate, out of 100.",
+                "name": "appliedPercentage",
+                "type": "String!"
+              },
+              {
+                "description": "The percentage value of the rate, out of 100.",
+                "name": "percentage",
+                "type": "String!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculatedRatePercentage"
+          },
+          {
+            "fields": [
+              {
+                "description": "The first line of the address. For example, number and street name.",
+                "name": "addressLine1",
+                "type": "String"
+              },
+              {
+                "description": "The second line of the address. For example, office suite or apartment number.",
+                "name": "addressLine2",
+                "type": "String"
+              },
+              {
+                "description": "The third line of the address, if needed.",
+                "name": "addressLine3",
+                "type": "String"
+              },
+              {
+                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.",
+                "name": "adminArea1",
+                "type": "String"
+              },
+              {
+                "description": "The city, town, or village. Smaller than `adminArea1`.",
+                "name": "adminArea2",
+                "type": "String"
+              },
+              {
+                "description": "The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.",
+                "name": "adminArea3",
+                "type": "String"
+              },
+              {
+                "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`.",
+                "name": "adminArea4",
+                "type": "String"
+              },
+              {
+                "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.",
+                "name": "countryCode",
+                "type": "String"
+              },
+              {
+                "description": "The postal code, which is the zip code or equivalent.",
+                "name": "postalCode",
+                "type": "String"
+              }
+            ],
+            "kind": "input",
+            "name": "CalculationAddressInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The client-defined ID for the line.",
+                "name": "id",
+                "type": "String!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculationLine"
+          },
+          {
+            "fields": [
+              {
+                "description": "The ID or code for the item's classification.",
+                "name": "classification",
+                "type": "String"
+              },
+              {
+                "description": "The location to which the item is being sent. e.g. the customer's address. Overrides the top-level value if provided.",
+                "name": "destination",
+                "type": "CalculationLocationInput"
+              },
+              {
+                "description": "The client-defined ID for the line. This could be a UUID of the SKU, or a shipping method/package name.",
+                "name": "id",
+                "type": "String!"
+              },
+              {
+                "description": "The location from which the item is originating. Overrides the top-level value if provided.",
+                "name": "origin",
+                "type": "CalculationLocationInput"
+              },
+              {
+                "description": "The number of units being purchased.",
+                "name": "quantity",
+                "type": "Float"
+              },
+              {
+                "description": "The money amount for the total quantity being purchased.",
+                "name": "subtotalPrice",
+                "type": "SimpleMoneyInput!"
+              },
+              {
+                "name": "type",
+                "type": "CalculationLineType!"
+              },
+              {
+                "description": "The money amount for a single unit of the item being purchased.",
+                "name": "unitPrice",
+                "type": "SimpleMoneyInput"
+              }
+            ],
+            "kind": "input",
+            "name": "CalculationLineInput"
+          },
+          {
+            "kind": "enum",
+            "name": "CalculationLineType",
+            "values": [
+              "FEE",
+              "SHIPPING",
+              "SKU"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "description": "The location address.",
+                "name": "address",
+                "type": "CalculationLocationAddress!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculationLocation"
+          },
+          {
+            "fields": [
+              {
+                "description": "The first line of the address.",
+                "name": "addressLine1",
+                "type": "String"
+              },
+              {
+                "description": "The second line of the address.",
+                "name": "addressLine2",
+                "type": "String"
+              },
+              {
+                "description": "The third line of the address.",
+                "name": "addressLine3",
+                "type": "String"
+              },
+              {
+                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision.",
+                "name": "adminArea1",
+                "type": "String"
+              },
+              {
+                "description": "The city, town, or village.",
+                "name": "adminArea2",
+                "type": "String"
+              },
+              {
+                "description": "The sub-locality, suburb, neighborhood, or district.",
+                "name": "adminArea3",
+                "type": "String"
+              },
+              {
+                "description": "The neighborhood, ward, or district.",
+                "name": "adminArea4",
+                "type": "String"
+              },
+              {
+                "description": "The country code of the address.",
+                "name": "countryCode",
+                "type": "String!"
+              },
+              {
+                "description": "The postal code of the address.",
+                "name": "postalCode",
+                "type": "String"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculationLocationAddress"
+          },
+          {
+            "fields": [
+              {
+                "description": "The location address.",
+                "name": "address",
+                "type": "CalculationAddressInput"
+              }
+            ],
+            "kind": "input",
+            "name": "CalculationLocationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "lines",
+                "type": "[CalculatedLine!]!"
+              },
+              {
+                "description": "The individual tax amounts for the rates that were applied to the purchase. A combined summary of all of the rates that applied across all of the lines.",
+                "name": "taxAmounts",
+                "type": "[TaxAmount!]!"
+              },
+              {
+                "description": "The total money amount of tax calculated for the purchase. A sum of each individual line tax amount.",
+                "name": "totalTaxAmount",
+                "type": "TotalTaxAmount!"
+              }
+            ],
+            "kind": "object",
+            "name": "CalculationResult"
+          },
+          {
+            "fields": [
+              {
+                "description": "The globally-unique ID of the list.",
+                "name": "id",
+                "type": "ID!"
+              }
+            ],
+            "kind": "object",
+            "name": "CatalogList"
+          },
+          {
+            "fields": [
+              {
+                "description": "The globally-unique ID of the SKU.",
+                "name": "id",
+                "type": "ID!"
+              }
+            ],
+            "kind": "object",
+            "name": "CatalogSKU"
+          },
+          {
+            "fields": [
+              {
+                "description": "The globally-unique ID of the SKU group.",
+                "name": "id",
+                "type": "ID!"
+              }
+            ],
+            "kind": "object",
+            "name": "CatalogSKUGroup"
+          },
+          {
+            "fields": [
+              {
+                "description": "The data & time at which the classification was created.",
+                "name": "createdAt",
+                "type": "DateTime!"
+              },
+              {
+                "description": "The human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID!"
+              },
+              {
+                "description": "The label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "description": "The catalog lists to which the classification applies.",
+                "name": "lists",
+                "type": "ClassificationListsConnection"
+              },
+              {
+                "name": "metafields",
+                "type": "ClassificationMetafieldsConnection"
+              },
+              {
+                "description": "The unique human-friendly identifier.",
+                "name": "name",
+                "type": "String!"
+              },
+              {
+                "description": "The rates associated with the classification.",
+                "name": "rates",
+                "type": "ClassificationRatesConnection"
+              },
+              {
+                "description": "A reference to the resource in an external service.",
+                "name": "references",
+                "type": "ClassificationReferencesConnection"
+              },
+              {
+                "description": "The catalog SKU groups to which the classification applies.",
+                "name": "skuGroups",
+                "type": "ClassificationSkuGroupsConnection"
+              },
+              {
+                "description": "The catalog SKUs to which the classification applies.",
+                "name": "skus",
+                "type": "ClassificationSkusConnection"
+              },
+              {
+                "description": "The data & time at which the classification was last updated.",
+                "name": "updatedAt",
+                "type": "DateTime!"
+              }
+            ],
+            "kind": "object",
+            "name": "Classification"
+          },
+          {
+            "fields": [
+              {
+                "name": "in",
+                "type": "[ID!]"
+              }
+            ],
+            "kind": "input",
+            "name": "ClassificationIdFilter"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationListsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationListsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogList"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationListsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationMetafieldsEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationMetafieldsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Metafield"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationMetafieldsEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "id",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "name",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "updatedAt",
+                "type": "OrderByDirectionEnum"
+              }
+            ],
+            "kind": "input",
+            "name": "ClassificationOrderBy"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationRatesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationRatesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Rate"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationRatesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationReferencesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationReferencesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Reference"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationReferencesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationSkuGroupsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationSkuGroupsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogSKUGroup"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationSkuGroupsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[ClassificationSkusConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationSkusConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogSKU"
+              }
+            ],
+            "kind": "object",
+            "name": "ClassificationSkusConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "key",
+                "type": "String!"
+              },
+              {
+                "name": "namespace",
+                "type": "String!"
+              },
+              {
+                "name": "type",
+                "type": "String!"
+              },
+              {
+                "name": "value",
+                "type": "String!"
+              }
+            ],
+            "kind": "input",
+            "name": "CreateMetafieldInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The origin of the reference.",
+                "name": "origin",
+                "type": "String!"
+              },
+              {
+                "description": "The value of the reference.",
+                "name": "value",
+                "type": "String!"
+              }
+            ],
+            "kind": "input",
+            "name": "CreateReferenceInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision.",
+                "name": "adminArea1",
+                "type": "String"
+              },
+              {
+                "description": "The city, town, or village.",
+                "name": "adminArea2",
+                "type": "String"
+              },
+              {
+                "description": "The sub-locality, suburb, neighborhood, or district.",
+                "name": "adminArea3",
+                "type": "String"
+              },
+              {
+                "description": "The neighborhood, ward, or district.",
+                "name": "adminArea4",
+                "type": "String"
+              },
+              {
+                "description": "The country code of the address.",
+                "name": "countryCode",
+                "type": "String!"
+              },
+              {
+                "description": "The data & time at which the jurisdiction was created.",
+                "name": "createdAt",
+                "type": "DateTime!"
+              },
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID!"
+              },
+              {
+                "name": "metafields",
+                "type": "JurisdictionMetafieldsConnection"
+              },
+              {
+                "description": "The postal code of the address.",
+                "name": "postalCode",
+                "type": "String"
+              },
+              {
+                "description": "The rates associated with the jurisdiction.",
+                "name": "rates",
+                "type": "JurisdictionRatesConnection"
+              },
+              {
+                "description": "The data & time at which the jurisdiction was last updated.",
+                "name": "updatedAt",
+                "type": "DateTime!"
+              }
+            ],
+            "kind": "object",
+            "name": "Jurisdiction"
+          },
+          {
+            "fields": [
+              {
+                "name": "in",
+                "type": "[ID!]"
+              }
+            ],
+            "kind": "input",
+            "name": "JurisdictionIdFilter"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[JurisdictionMetafieldsEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "JurisdictionMetafieldsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Metafield"
+              }
+            ],
+            "kind": "object",
+            "name": "JurisdictionMetafieldsEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "id",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "updatedAt",
+                "type": "OrderByDirectionEnum"
+              }
+            ],
+            "kind": "input",
+            "name": "JurisdictionOrderBy"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[JurisdictionRatesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "JurisdictionRatesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Rate"
+              }
+            ],
+            "kind": "object",
+            "name": "JurisdictionRatesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "String"
+              },
+              {
+                "name": "id",
+                "type": "ID"
+              },
+              {
+                "name": "key",
+                "type": "String"
+              },
+              {
+                "name": "namespace",
+                "type": "String"
+              },
+              {
+                "name": "resourceId",
+                "type": "ID"
+              },
+              {
+                "name": "type",
+                "type": "String"
+              },
+              {
+                "name": "updatedAt",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "String"
+              }
+            ],
+            "kind": "object",
+            "name": "Metafield"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the lists to be added to the classification.",
+                "name": "listIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddListsToClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "listIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddListsToOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the rates to be added to the classification.",
+                "name": "rateIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddRatesToClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "rateIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddRatesToOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "skuGroupIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddSkuGroupsToOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the SKU groups to be added to the classification.",
+                "name": "skuGroupIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddSkusGroupsToClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the SKUs to be added to the classification.",
+                "name": "skuIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddSkusToClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "skuIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationAddSkusToOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "destination",
+                "type": "CalculationLocationInput"
+              },
+              {
+                "name": "lines",
+                "type": "[CalculationLineInput!]!"
+              },
+              {
+                "name": "origin",
+                "type": "CalculationLocationInput"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCalculateTaxesInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "description": "Any metafields to be created and assigned to the new classification.",
+                "name": "metafields",
+                "type": "[CreateMetafieldInput!]"
+              },
+              {
+                "description": "A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "Any references to be created and assigned to the new classification.",
+                "name": "references",
+                "type": "[CreateReferenceInput!]"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.",
+                "name": "adminArea1",
+                "type": "String"
+              },
+              {
+                "description": "The city, town, or village. Smaller than `adminArea1`.",
+                "name": "adminArea2",
+                "type": "String"
+              },
+              {
+                "description": "The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.",
+                "name": "adminArea3",
+                "type": "String"
+              },
+              {
+                "description": "The neighborhood, ward, or district. Smaller than `adminArea3`.",
+                "name": "adminArea4",
+                "type": "String"
+              },
+              {
+                "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.",
+                "name": "countryCode",
+                "type": "String!"
+              },
+              {
+                "description": "Any metafields to be created and assigned to the new jurisdiction.",
+                "name": "metafields",
+                "type": "[CreateMetafieldInput!]"
+              },
+              {
+                "description": "The postal code, which is the zip code or equivalent.",
+                "name": "postalCode",
+                "type": "String"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateJurisdictionInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "createdAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "A custom rate to be applied by the override.",
+                "name": "customRate",
+                "type": "OverrideCustomRateCreateInput"
+              },
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "description": "Any metafields to be created and assigned to the new override.",
+                "name": "metafields",
+                "type": "[CreateMetafieldInput!]"
+              },
+              {
+                "description": "A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "Any references to be created and assigned to the new override.",
+                "name": "references",
+                "type": "[CreateReferenceInput!]"
+              },
+              {
+                "description": "The desired status.",
+                "name": "status",
+                "type": "OverrideStatusEnum"
+              },
+              {
+                "description": "The ID of the target rate that this override references.",
+                "name": "targetRateId",
+                "type": "ID"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "updatedAt",
+                "type": "DateTime"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The method to be used when applying the rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "RateCalculationMethodEnum"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "createdAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "The ID of the jurisdiction in which this rate applies.",
+                "name": "jurisdictionId",
+                "type": "ID"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "description": "Any metafields to be created and assigned to the new rate.",
+                "name": "metafields",
+                "type": "[CreateMetafieldInput!]"
+              },
+              {
+                "description": "A unique human-friendly identifier. If omitted, a name will be generated from the `label` value.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "Any references to be created and assigned to the new rate.",
+                "name": "references",
+                "type": "[CreateReferenceInput!]"
+              },
+              {
+                "description": "The desired status.",
+                "name": "status",
+                "type": "RateStatusEnum"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "updatedAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "The rate's value.",
+                "name": "value",
+                "type": "RateValueInput"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateRateInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The references to be created for the classification.",
+                "name": "references",
+                "type": "[CreateReferenceInput!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateReferencesForClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "references",
+                "type": "[CreateReferenceInput!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateReferencesForOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "references",
+                "type": "[CreateReferenceInput!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationCreateReferencesForRateInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the references to be deleted from the classification.",
+                "name": "referenceIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationDeleteReferencesFromClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "referenceIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationDeleteReferencesFromOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "referenceIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationDeleteReferencesFromRateInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the lists to be removed from the classification.",
+                "name": "listIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveListsFromClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "listIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveListsFromOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the rates to be remove from the classification.",
+                "name": "rateIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveRatesFromClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "rateIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveRatesFromOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the SKUs to be removed from the classification.",
+                "name": "skuIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveSkusFromClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "skuIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveSkusFromOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The IDs of the SKU groups to be removed from the classification.",
+                "name": "skuGroupIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveSkusGroupsFromClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "skuGroupIds",
+                "type": "[ID!]!"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationRemoveSkusGroupsFromOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String"
+              },
+              {
+                "description": "A unique human-friendly identifier.",
+                "name": "name",
+                "type": "String"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationUpdateClassificationInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery.",
+                "name": "adminArea1",
+                "type": "String"
+              },
+              {
+                "description": "The city, town, or village. Smaller than `adminArea1`.",
+                "name": "adminArea2",
+                "type": "String"
+              },
+              {
+                "description": "The sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`.",
+                "name": "adminArea3",
+                "type": "String"
+              },
+              {
+                "description": "The neighborhood, ward, or district. Smaller than `adminArea3`.",
+                "name": "adminArea4",
+                "type": "String"
+              },
+              {
+                "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region.",
+                "name": "countryCode",
+                "type": "String"
+              },
+              {
+                "description": "The postal code, which is the zip code or equivalent.",
+                "name": "postalCode",
+                "type": "String"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationUpdateJurisdictionInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "createdAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "A custom rate to be applied by the override.",
+                "name": "customRate",
+                "type": "OverrideCustomRateUpdateInput"
+              },
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String"
+              },
+              {
+                "description": "A unique human-friendly identifier.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "The desired status.",
+                "name": "status",
+                "type": "OverrideStatusEnum"
+              },
+              {
+                "description": "The ID of the target rate that this override references.",
+                "name": "targetRateId",
+                "type": "ID"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "updatedAt",
+                "type": "DateTime"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationUpdateOverrideInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The method to be used when applying the rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "RateCalculationMethodEnum"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "createdAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "A human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "The ID of the jurisdiction in which this rate applies.",
+                "name": "jurisdictionId",
+                "type": "ID"
+              },
+              {
+                "description": "A label for display.",
+                "name": "label",
+                "type": "String"
+              },
+              {
+                "description": "A unique human-friendly identifier.",
+                "name": "name",
+                "type": "String"
+              },
+              {
+                "description": "The desired status.",
+                "name": "status",
+                "type": "RateStatusEnum"
+              },
+              {
+                "description": "WARNING: DO NOT USE.",
+                "name": "updatedAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "The rate's value.",
+                "name": "value",
+                "type": "RateValueInput"
+              }
+            ],
+            "kind": "input",
+            "name": "MutationUpdateRateInput"
+          },
+          {
+            "kind": "enum",
+            "name": "OrderByDirectionEnum",
+            "values": [
+              "ASC",
+              "DESC"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "description": "The data & time at which the override was last activated.",
+                "name": "activatedAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "The data & time at which the override was created.",
+                "name": "createdAt",
+                "type": "DateTime!"
+              },
+              {
+                "name": "customRate",
+                "type": "OverrideCustomRate"
+              },
+              {
+                "description": "The human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID!"
+              },
+              {
+                "description": "The label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "description": "The catalog lists to which the override applies.",
+                "name": "lists",
+                "type": "OverrideListsConnection"
+              },
+              {
+                "name": "metafields",
+                "type": "OverrideMetafieldsConnection"
+              },
+              {
+                "description": "The unique human-friendly identifier.",
+                "name": "name",
+                "type": "String!"
+              },
+              {
+                "description": "The rates associated with the override.",
+                "name": "rates",
+                "type": "OverrideRatesConnection"
+              },
+              {
+                "description": "A reference to a resource in an external service.",
+                "name": "references",
+                "type": "OverrideReferencesConnection"
+              },
+              {
+                "description": "The catalog SKU groups to which the override applies.",
+                "name": "skuGroups",
+                "type": "OverrideSkuGroupsConnection"
+              },
+              {
+                "description": "The catalog SKUs to which the override applies.",
+                "name": "skus",
+                "type": "OverrideSkusConnection"
+              },
+              {
+                "description": "The current status.",
+                "name": "status",
+                "type": "OverrideStatusEnum!"
+              },
+              {
+                "description": "The rate that this override targets.",
+                "name": "targetRate",
+                "type": "Rate"
+              },
+              {
+                "description": "The data & time at which the override was last updated.",
+                "name": "updatedAt",
+                "type": "DateTime!"
+              }
+            ],
+            "kind": "object",
+            "name": "Override"
+          },
+          {
+            "kind": "enum",
+            "name": "OverrideCalculationMethodEnum",
+            "values": [
+              "ADDITIVE",
+              "INCLUSIVE"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "description": "The method to be used when applying the override during calculation.",
+                "name": "calculationMethod",
+                "type": "OverrideCalculationMethodEnum!"
+              },
+              {
+                "description": "The rate's value",
+                "name": "value",
+                "type": "RateValue!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideCustomRate"
+          },
+          {
+            "fields": [
+              {
+                "description": "The method to be used when applying the custom rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "OverrideCalculationMethodEnum"
+              },
+              {
+                "description": "The custom rate's value.",
+                "name": "value",
+                "type": "RateValueInput!"
+              }
+            ],
+            "kind": "input",
+            "name": "OverrideCustomRateCreateInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The method to be used when applying the custom rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "OverrideCalculationMethodEnum"
+              },
+              {
+                "description": "The custom rate's value.",
+                "name": "value",
+                "type": "RateValueInput"
+              }
+            ],
+            "kind": "input",
+            "name": "OverrideCustomRateUpdateInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "in",
+                "type": "[ID!]"
+              }
+            ],
+            "kind": "input",
+            "name": "OverrideIdFilter"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideListsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideListsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogList"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideListsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideMetafieldsEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideMetafieldsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Metafield"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideMetafieldsEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "id",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "updatedAt",
+                "type": "OrderByDirectionEnum"
+              }
+            ],
+            "kind": "input",
+            "name": "OverrideOrderBy"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideRatesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideRatesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Rate"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideRatesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideReferencesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideReferencesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Reference"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideReferencesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideSkuGroupsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideSkuGroupsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogSKUGroup"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideSkuGroupsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[OverrideSkusConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideSkusConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "CatalogSKU"
+              }
+            ],
+            "kind": "object",
+            "name": "OverrideSkusConnectionEdge"
+          },
+          {
+            "kind": "enum",
+            "name": "OverrideStatusEnum",
+            "values": [
+              "ACTIVE",
+              "INACTIVE"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "name": "endCursor",
+                "type": "String"
+              },
+              {
+                "name": "hasNextPage",
+                "type": "Boolean!"
+              },
+              {
+                "name": "hasPreviousPage",
+                "type": "Boolean!"
+              },
+              {
+                "name": "startCursor",
+                "type": "String"
+              }
+            ],
+            "kind": "object",
+            "name": "PageInfo"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[QueryClassificationsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryClassificationsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Classification"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryClassificationsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[QueryJurisdictionsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryJurisdictionsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Jurisdiction"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryJurisdictionsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[QueryOverridesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryOverridesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Override"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryOverridesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[QueryRatesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryRatesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Rate"
+              }
+            ],
+            "kind": "object",
+            "name": "QueryRatesConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "description": "The data & time at which the rate was first activated.",
+                "name": "activatedAt",
+                "type": "DateTime"
+              },
+              {
+                "description": "The method to be used when applying the rate to a purchase amount.",
+                "name": "calculationMethod",
+                "type": "RateCalculationMethodEnum!"
+              },
+              {
+                "description": "The classifications associated with the rate.",
+                "name": "classifications",
+                "type": "RateClassificationsConnection"
+              },
+              {
+                "description": "The data & time at which the rate was created.",
+                "name": "createdAt",
+                "type": "DateTime!"
+              },
+              {
+                "description": "The human-friendly description.",
+                "name": "description",
+                "type": "String"
+              },
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID!"
+              },
+              {
+                "description": "The jurisdiction in which this rate applies.",
+                "name": "jurisdiction",
+                "type": "Jurisdiction"
+              },
+              {
+                "description": "The label for display.",
+                "name": "label",
+                "type": "String!"
+              },
+              {
+                "name": "metafields",
+                "type": "RateMetafieldsConnection"
+              },
+              {
+                "description": "The unique human-friendly identifier.",
+                "name": "name",
+                "type": "String!"
+              },
+              {
+                "description": "A reference to the resource in an external service.",
+                "name": "references",
+                "type": "RateReferencesConnection"
+              },
+              {
+                "description": "The current status.",
+                "name": "status",
+                "type": "RateStatusEnum!"
+              },
+              {
+                "description": "The data & time at which the rate was last updated.",
+                "name": "updatedAt",
+                "type": "DateTime!"
+              },
+              {
+                "description": "The rate's value",
+                "name": "value",
+                "type": "RateValue!"
+              }
+            ],
+            "kind": "object",
+            "name": "Rate"
+          },
+          {
+            "fields": [
+              {
+                "name": "amount",
+                "type": "SimpleMoney"
+              }
+            ],
+            "kind": "object",
+            "name": "RateAmount"
+          },
+          {
+            "kind": "enum",
+            "name": "RateCalculationMethodEnum",
+            "values": [
+              "ADDITIVE",
+              "INCLUSIVE"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[RateClassificationsConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "RateClassificationsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Classification"
+              }
+            ],
+            "kind": "object",
+            "name": "RateClassificationsConnectionEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "in",
+                "type": "[ID!]"
+              }
+            ],
+            "kind": "input",
+            "name": "RateIdFilter"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[RateMetafieldsEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "RateMetafieldsConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Metafield"
+              }
+            ],
+            "kind": "object",
+            "name": "RateMetafieldsEdge"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "id",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "name",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "updatedAt",
+                "type": "OrderByDirectionEnum"
+              }
+            ],
+            "kind": "input",
+            "name": "RateOrderBy"
+          },
+          {
+            "fields": [
+              {
+                "description": "The percentage applied by the rate, out of 100.",
+                "name": "percentage",
+                "type": "String!"
+              }
+            ],
+            "kind": "object",
+            "name": "RatePercentage"
+          },
+          {
+            "fields": [
+              {
+                "name": "edges",
+                "type": "[RateReferencesConnectionEdge]"
+              },
+              {
+                "name": "pageInfo",
+                "type": "PageInfo!"
+              }
+            ],
+            "kind": "object",
+            "name": "RateReferencesConnection"
+          },
+          {
+            "fields": [
+              {
+                "name": "cursor",
+                "type": "String!"
+              },
+              {
+                "name": "node",
+                "type": "Reference"
+              }
+            ],
+            "kind": "object",
+            "name": "RateReferencesConnectionEdge"
+          },
+          {
+            "kind": "enum",
+            "name": "RateStatusEnum",
+            "values": [
+              "ACTIVE",
+              "INACTIVE"
+            ]
+          },
+          {
+            "fields": [
+              {
+                "name": "eq",
+                "type": "RateStatusEnum"
+              },
+              {
+                "name": "in",
+                "type": "[RateStatusEnum!]"
+              }
+            ],
+            "kind": "input",
+            "name": "RateStatusFilter"
+          },
+          {
+            "fields": [
+              {
+                "description": "The rate value represented as a fixed money amount. Required if `percentage` is not provided.",
+                "name": "amount",
+                "type": "SimpleMoneyInput"
+              },
+              {
+                "description": "The percentage applied by the rate, out of 100. Required if `amount` is not provided.",
+                "name": "percentage",
+                "type": "String"
+              }
+            ],
+            "kind": "input",
+            "name": "RateValueInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The globally-unique ID.",
+                "name": "id",
+                "type": "ID!"
+              },
+              {
+                "description": "The origin of the reference.",
+                "name": "origin",
+                "type": "String!"
+              },
+              {
+                "description": "The value of the reference.",
+                "name": "value",
+                "type": "String!"
+              }
+            ],
+            "kind": "object",
+            "name": "Reference"
+          },
+          {
+            "fields": [
+              {
+                "name": "createdAt",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "id",
+                "type": "OrderByDirectionEnum"
+              },
+              {
+                "name": "updatedAt",
+                "type": "OrderByDirectionEnum"
+              }
+            ],
+            "kind": "input",
+            "name": "ReferenceOrderByInput"
+          },
+          {
+            "fields": [
+              {
+                "name": "in",
+                "type": "[String!]"
+              }
+            ],
+            "kind": "input",
+            "name": "ReferenceValueFilter"
+          },
+          {
+            "fields": [
+              {
+                "description": "A three-character ISO-4217 currency code.",
+                "name": "currencyCode",
+                "type": "String!"
+              },
+              {
+                "description": "The value, which might be: An integer for currencies like JPY that are not typically fractional; or, a decimal fraction for currencies like TND that are subdivided into thousandths. For the required number of decimal places for a currency code, see ISO-4217 Currency Codes.",
+                "name": "value",
+                "type": "Float!"
+              }
+            ],
+            "kind": "object",
+            "name": "SimpleMoney"
+          },
+          {
+            "fields": [
+              {
+                "description": "A three-character ISO-4217 currency code.",
+                "name": "currencyCode",
+                "type": "String!"
+              },
+              {
+                "description": "The value, which might be: An integer for currencies like JPY that are not typically fractional; or, a decimal fraction for currencies like TND that are subdivided into thousandths. For the required number of decimal places for a currency code, see ISO-4217 Currency Codes.",
+                "name": "value",
+                "type": "Float!"
+              }
+            ],
+            "kind": "input",
+            "name": "SimpleMoneyInput"
+          },
+          {
+            "fields": [
+              {
+                "description": "The globally-unique ID of the Store.",
+                "name": "id",
+                "type": "ID!"
+              }
+            ],
+            "kind": "object",
+            "name": "Store"
+          },
+          {
+            "fields": [
+              {
+                "name": "rate",
+                "type": "CalculatedRate!"
+              },
+              {
+                "name": "totalTaxAmount",
+                "type": "TotalTaxAmount!"
+              }
+            ],
+            "kind": "object",
+            "name": "TaxAmount"
+          },
+          {
+            "fields": [
+              {
+                "name": "currencyCode",
+                "type": "String!"
+              },
+              {
+                "name": "value",
+                "type": "Float!"
+              }
+            ],
+            "kind": "object",
+            "name": "TotalTaxAmount"
+          }
+        ]
       },
       "method": "POST",
       "operationId": "postTaxGraphql",
