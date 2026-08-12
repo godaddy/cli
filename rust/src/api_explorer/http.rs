@@ -19,6 +19,12 @@ pub(super) fn split_header(raw: &str) -> Option<(&str, &str)> {
     (!k.is_empty()).then(|| (k, v.trim()))
 }
 
+/// Split a `NAME=VALUE` value on the first `=`. Shared by `--field` and
+/// `--arg` parsing; callers attach their own flag-specific error message.
+pub(super) fn split_kv(raw: &str) -> Option<(&str, &str)> {
+    raw.split_once('=')
+}
+
 /// Whether an HTTP method mutates server state, for `--dry-run` gating.
 /// `call`'s tier is fixed at spec-build time, but the method is a runtime
 /// arg — this decides per-invocation whether `--dry-run` should actually
