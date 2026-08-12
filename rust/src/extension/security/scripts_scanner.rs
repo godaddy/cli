@@ -68,16 +68,25 @@ static PATTERNS: LazyLock<Vec<SuspiciousPattern>> = LazyLock::new(|| {
     .collect()
 });
 
-/// Scan `package.json` lifecycle scripts. Missing/invalid file → empty findings.
-pub fn scan_package_scripts(package_json: &Path) -> Vec<Finding> {
-    let Ok(content) = std::fs::read_to_string(package_json) else {
-        return Vec::new();
+/// Scan `package.json` lifecycle scripts.
+///
+/// Missing `package.json` is ignored. Other read/parse failures bubble up so the
+/// pre-bundle scan can fail closed.
+pub fn scan_package_scripts(package_json: &Path) -> Result<Vec<Finding>, String> {
+    let content = match std::fs::read_to_string(package_json) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(format!(
+                "failed to read '{}': {err}",
+                package_json.display()
+            ));
+        }
     };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Vec::new();
-    };
+    let value: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|err| format!("invalid package.json '{}': {err}", package_json.display()))?;
     let Some(scripts) = value.get("scripts").and_then(|s| s.as_object()) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
     let mut findings = Vec::new();
@@ -104,5 +113,5 @@ pub fn scan_package_scripts(package_json: &Path) -> Vec<Finding> {
             }
         }
     }
-    findings
+    Ok(findings)
 }

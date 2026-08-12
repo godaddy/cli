@@ -39,9 +39,17 @@ const MODULE_PATCH_PROPS: &[&str] = &["_load", "_extensions", "_compile", "_reso
 
 const SENSITIVE_PATHS: &[&str] = &["~/.ssh", "/etc/passwd", "/etc/shadow", "/var/run/secrets"];
 
-pub fn scan_source_file(path: &str, source: &str) -> Vec<Finding> {
+pub fn scan_source_file(path: &str, source: &str) -> Result<Vec<Finding>, String> {
     let allocator = oxc_allocator::Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+    if parsed.panicked || !parsed.diagnostics.is_empty() {
+        let detail = parsed
+            .diagnostics
+            .first()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "parser panicked".to_owned());
+        return Err(format!("failed to parse '{path}': {detail}"));
+    }
     let aliases = build_alias_maps(&parsed.program);
     let config = security_config();
 
@@ -56,7 +64,7 @@ pub fn scan_source_file(path: &str, source: &str) -> Vec<Finding> {
 
     let mut findings = visitor.findings;
     findings.extend(scan_dom_escape(path, source, &parsed.program));
-    findings
+    Ok(findings)
 }
 
 struct RuleVisitor<'a> {
