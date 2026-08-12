@@ -39,7 +39,7 @@ A name can hold a CNAME or other record types, never both. Adding into a name th
 
 ## Replacing records (`set`, destructive)
 
-`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it. It reconciles rather than deleting and recreating everything: it reuses existing record IDs, deletes whatever's no longer in your list, and creates whatever's new.
+`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it. It reconciles rather than deleting and recreating everything: existing records are paired with your `--data` values, whatever's no longer in your list is deleted, and whatever's new is created. There's no atomic in-place replace in v3, so each paired value is written as a new record before the old one it's replacing is deleted — record IDs are not reused across a replace.
 
 ```
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all"
