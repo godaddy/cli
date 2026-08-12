@@ -53,6 +53,7 @@ pub fn module() -> Module {
         .with_command(set::command())
         .with_command(delete::command())
     })
+    .with_guides_from_markdown([("dns.md", include_bytes!("guides/dns.md").as_slice())])
 }
 
 #[cfg(test)]
