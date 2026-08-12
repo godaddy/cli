@@ -13,7 +13,7 @@ use crate::extension::{Finding, Severity};
 use super::alias_builder::build_alias_maps;
 use super::config::{is_trusted_domain, security_config};
 use super::dom_escape::scan_dom_escape;
-use super::types::{AliasMaps, SecurityConfig};
+use super::types::{AliasMaps, ScanError, SecurityConfig};
 use super::util::{first_string_arg, matches_http_url, offset_to_line_col, snippet_at};
 
 const CP_METHODS: &[&str] = &[
@@ -39,7 +39,7 @@ const MODULE_PATCH_PROPS: &[&str] = &["_load", "_extensions", "_compile", "_reso
 
 const SENSITIVE_PATHS: &[&str] = &["~/.ssh", "/etc/passwd", "/etc/shadow", "/var/run/secrets"];
 
-pub fn scan_source_file(path: &str, source: &str) -> Result<Vec<Finding>, String> {
+pub fn scan_source_file(path: &str, source: &str) -> Result<Vec<Finding>, ScanError> {
     let allocator = oxc_allocator::Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
     if parsed.panicked || !parsed.diagnostics.is_empty() {
@@ -48,7 +48,10 @@ pub fn scan_source_file(path: &str, source: &str) -> Result<Vec<Finding>, String
             .first()
             .map(ToString::to_string)
             .unwrap_or_else(|| "parser panicked".to_owned());
-        return Err(format!("failed to parse '{path}': {detail}"));
+        return Err(ScanError::Parse {
+            path: path.to_owned(),
+            detail,
+        });
     }
     let aliases = build_alias_maps(&parsed.program);
     let config = security_config();

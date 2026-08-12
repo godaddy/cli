@@ -6,7 +6,7 @@ use super::engine::scan_source_file;
 use super::file_discovery::find_files_to_scan;
 use super::is_blocked;
 use super::scripts_scanner::scan_package_scripts;
-use super::types::{ScanReport, build_summary};
+use super::types::{ScanError, ScanReport, build_summary};
 
 /// Orchestrate a full pre-bundle security scan of an extension package directory.
 ///
@@ -14,13 +14,14 @@ use super::types::{ScanReport, build_summary};
 /// 2. Discover source files (respecting excludes)
 /// 3. AST-scan each file with oxc (SEC001–SEC010, SEC012)
 ///
-/// Returns `Err` when the package directory cannot be scanned (discovery/read/parse failures).
-pub fn scan_extension(package_dir: &Path) -> Result<ScanReport, String> {
+/// Returns [`ScanError`] when the package directory cannot be scanned
+/// (discovery/read/parse failures). Rule hits are returned in [`ScanReport`].
+pub fn scan_extension(package_dir: &Path) -> Result<ScanReport, ScanError> {
     if !package_dir.is_dir() {
-        return Err(format!(
-            "file discovery failed: path is not a directory: {}",
-            package_dir.display()
-        ));
+        return Err(ScanError::Discovery(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("path is not a directory: {}", package_dir.display()),
+        )));
     }
 
     let mut findings = Vec::new();
@@ -28,13 +29,14 @@ pub fn scan_extension(package_dir: &Path) -> Result<ScanReport, String> {
     let package_json = package_dir.join("package.json");
     findings.extend(scan_package_scripts(&package_json)?);
 
-    let files =
-        find_files_to_scan(package_dir).map_err(|e| format!("file discovery failed: {e}"))?;
+    let files = find_files_to_scan(package_dir).map_err(ScanError::Discovery)?;
     let scanned_files = files.len();
 
     for path in &files {
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("failed to read '{}': {e}", path.display()))?;
+        let source = std::fs::read_to_string(path).map_err(|source| ScanError::Read {
+            path: path.display().to_string(),
+            source,
+        })?;
         let path_str = path.display().to_string();
         findings.extend(scan_source_file(&path_str, &source)?);
     }
@@ -370,7 +372,7 @@ function wrap() {
         std::fs::write(&file, "export {};\n").expect("write");
         let err = scan_extension(&file).expect_err("should fail");
         assert!(
-            err.contains("file discovery failed"),
+            err.to_string().contains("file discovery failed"),
             "unexpected err: {err}"
         );
     }
@@ -380,7 +382,10 @@ function wrap() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("bad.ts"), "export const x = {\n").expect("write");
         let err = scan_extension(dir.path()).expect_err("should fail closed on parse error");
-        assert!(err.contains("failed to parse"), "unexpected err: {err}");
+        assert!(
+            matches!(err, ScanError::Parse { .. }),
+            "unexpected err: {err}"
+        );
     }
 
     #[test]
@@ -391,7 +396,7 @@ function wrap() {
         let err =
             scan_extension(dir.path()).expect_err("should fail closed on invalid package.json");
         assert!(
-            err.contains("invalid package.json"),
+            matches!(err, ScanError::InvalidPackageJson { .. }),
             "unexpected err: {err}"
         );
     }
@@ -411,6 +416,9 @@ function wrap() {
 
         let _ = std::fs::set_permissions(&pkg, std::fs::Permissions::from_mode(0o644));
         let err = result.expect_err("should fail closed on unreadable package.json");
-        assert!(err.contains("failed to read"), "unexpected err: {err}");
+        assert!(
+            matches!(err, ScanError::Read { .. }),
+            "unexpected err: {err}"
+        );
     }
 }

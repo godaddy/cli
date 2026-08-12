@@ -24,6 +24,7 @@ mod tests_sec101_108;
 mod tests_sec109_115;
 
 pub use source::scan_extension;
+pub use types::ScanError;
 // Returned by `scan_extension` but no caller currently names the type via
 // `crate::extension::security::ScanReport`.
 #[allow(unused_imports)]

@@ -7,6 +7,8 @@ use regex::Regex;
 
 use crate::extension::{Finding, Severity};
 
+use super::types::ScanError;
+
 const LIFECYCLE_SCRIPTS: &[&str] = &["install", "postinstall", "preinstall"];
 
 struct SuspiciousPattern {
@@ -72,19 +74,22 @@ static PATTERNS: LazyLock<Vec<SuspiciousPattern>> = LazyLock::new(|| {
 ///
 /// Missing `package.json` is ignored. Other read/parse failures bubble up so the
 /// pre-bundle scan can fail closed.
-pub fn scan_package_scripts(package_json: &Path) -> Result<Vec<Finding>, String> {
+pub fn scan_package_scripts(package_json: &Path) -> Result<Vec<Finding>, ScanError> {
     let content = match std::fs::read_to_string(package_json) {
         Ok(content) => content,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => {
-            return Err(format!(
-                "failed to read '{}': {err}",
-                package_json.display()
-            ));
+        Err(source) => {
+            return Err(ScanError::Read {
+                path: package_json.display().to_string(),
+                source,
+            });
         }
     };
-    let value: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|err| format!("invalid package.json '{}': {err}", package_json.display()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&content).map_err(|source| ScanError::InvalidPackageJson {
+            path: package_json.display().to_string(),
+            source,
+        })?;
     let Some(scripts) = value.get("scripts").and_then(|s| s.as_object()) else {
         return Ok(Vec::new());
     };

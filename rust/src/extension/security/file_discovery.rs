@@ -37,6 +37,12 @@ fn traverse(dir: &Path, excludes: &GlobSet, out: &mut Vec<PathBuf>) -> std::io::
             continue;
         }
         let ft = entry.file_type()?;
+        if ft.is_symlink() {
+            return Err(std::io::Error::other(format!(
+                "symlink encountered during security scan: {}",
+                path.display()
+            )));
+        }
         if ft.is_dir() {
             traverse(&path, excludes, out)?;
         } else if ft.is_file() {
@@ -76,5 +82,17 @@ mod tests {
             result.is_err(),
             "expected discovery to fail closed on unreadable dir, got {result:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlink_fails_closed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("target.ts");
+        std::fs::write(&target, "eval('x');\n").expect("write");
+        std::os::unix::fs::symlink(&target, dir.path().join("link.ts")).expect("symlink");
+
+        let err = find_files_to_scan(dir.path()).expect_err("symlink should fail closed");
+        assert!(err.to_string().contains("symlink"), "unexpected err: {err}");
     }
 }

@@ -58,6 +58,29 @@ pub struct ScanReport {
     pub scanned_files: usize,
 }
 
+/// Failures that prevent a trustworthy pre-bundle scan (not rule findings).
+#[derive(Debug, thiserror::Error)]
+pub enum ScanError {
+    #[error("file discovery failed: {0}")]
+    Discovery(#[source] std::io::Error),
+
+    #[error("failed to read '{path}': {source}")]
+    Read {
+        path: String,
+        source: std::io::Error,
+    },
+
+    #[error("failed to parse '{path}': {detail}")]
+    Parse { path: String, detail: String },
+
+    #[error("invalid package.json '{path}': {source}")]
+    InvalidPackageJson {
+        path: String,
+        #[source]
+        source: serde_json::Error,
+    },
+}
+
 pub(crate) fn build_summary(findings: &[Finding]) -> ScanSummary {
     let mut summary = ScanSummary {
         total: findings.len(),
