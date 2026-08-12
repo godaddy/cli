@@ -135,7 +135,13 @@ pub fn scan_bundle(content: &str, file_path: &str) -> Vec<Finding> {
         }
     }
 
-    findings.sort_by_key(|f| f.line);
+    findings.sort_by(|a, b| {
+        a.line
+            .cmp(&b.line)
+            .then(a.col.cmp(&b.col))
+            .then(a.rule_id.cmp(b.rule_id))
+            .then(a.file.cmp(&b.file))
+    });
     findings
 }
 

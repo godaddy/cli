@@ -39,7 +39,13 @@ pub fn scan_extension(package_dir: &Path) -> Result<ScanReport, String> {
         findings.extend(scan_source_file(&path_str, &source)?);
     }
 
-    findings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+    findings.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then(a.line.cmp(&b.line))
+            .then(a.col.cmp(&b.col))
+            .then(a.rule_id.cmp(b.rule_id))
+    });
     let summary = build_summary(&findings);
     let blocked = is_blocked(&findings);
     Ok(ScanReport {
