@@ -100,7 +100,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             })?;
 
             // Locate the (Domain, Endpoint) match, if any — a literal path
-            // via the exact/template `locate_by_path`, or a bare operation id 
+            // via the exact/template `locate_by_path`, or a bare operation id
             // via `resolve_operation`.
             let (matched, mut path) = if endpoint.starts_with('/') {
                 (
