@@ -116,11 +116,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "Read godaddy.toml from the current directory, bundle all declared \
-            extensions with esbuild, run the pre-bundle AST security scanner \
-            (SEC001–SEC012) and the post-bundle regex scanner (SEC101–SEC115) \
-            on each extension, then upload the artifacts to the latest release \
-            of the named application. Progress is streamed as JSON events. A \
-            release must exist before deploying; create one with \
+            extensions with esbuild, run the pre-bundle security scanner \
+            (SEC001–SEC010/SEC012 AST + SEC011 package scripts) and the \
+            post-bundle regex scanner (SEC101–SEC115) on each extension, then \
+            upload the artifacts to the latest release of the named \
+            application. Progress is streamed as JSON events. A release must \
+            exist before deploying; create one with \
             `gddy platform app release`.",
         )
         .with_system("applications")

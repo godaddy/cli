@@ -28,20 +28,15 @@ fn traverse(dir: &Path, excludes: &GlobSet, out: &mut Vec<PathBuf>) -> std::io::
     if should_exclude(&dir_str, excludes) {
         return Ok(());
     }
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
-    };
-    for entry in entries.flatten() {
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
         let path = entry.path();
         let path_str = path.to_string_lossy();
         if should_exclude(&path_str, excludes) {
             continue;
         }
-        let ft = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
+        let ft = entry.file_type()?;
         if ft.is_dir() {
             traverse(&path, excludes, out)?;
         } else if ft.is_file() {
@@ -56,4 +51,30 @@ fn traverse(dir: &Path, excludes: &GlobSet, out: &mut Vec<PathBuf>) -> std::io::
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn unreadable_subdirectory_fails_closed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).expect("mkdir");
+        std::fs::write(dir.path().join("ok.ts"), "export {};\n").expect("write");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+
+        let result = find_files_to_scan(dir.path());
+
+        // Restore so tempfile cleanup succeeds.
+        let _ = std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755));
+        assert!(
+            result.is_err(),
+            "expected discovery to fail closed on unreadable dir, got {result:?}"
+        );
+    }
 }
