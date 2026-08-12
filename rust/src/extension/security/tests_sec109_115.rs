@@ -17,7 +17,7 @@ fn sec109_large_base64_buffer_from() {
         findings.iter().any(|f| f.rule_id == "SEC109"),
         "findings: {findings:?}"
     );
-    // SEC113 (block) also fires on base64 content — just verify SEC109 itself is warn.
+    // SEC113 (warn) also fires on base64 content — just verify SEC109 itself is warn.
     assert!(
         findings
             .iter()
@@ -301,21 +301,21 @@ fn sec112_godaddy_lookalike_blocked() {
 }
 
 // -----------------------------------------------------------------------
-// SEC113 — any encoded payload (no signal, block)
+// SEC113 — any encoded payload (no signal, warn)
 // -----------------------------------------------------------------------
 
 #[test]
-fn sec113_atob_blocked() {
+fn sec113_atob_warns() {
     let findings = scan_bundle(r#"const x = atob("aGVsbG8=");"#, "test.mjs");
     assert!(
         findings.iter().any(|f| f.rule_id == "SEC113"),
         "findings: {findings:?}"
     );
-    assert!(is_blocked(&findings));
+    assert!(!is_blocked(&findings), "SEC113 should be warn");
 }
 
 #[test]
-fn sec113_buffer_from_base64_blocked() {
+fn sec113_buffer_from_base64_warns() {
     let findings = scan_bundle(
         r#"const x = Buffer.from("shortval", "base64");"#,
         "test.mjs",
@@ -327,7 +327,7 @@ fn sec113_buffer_from_base64_blocked() {
 }
 
 #[test]
-fn sec113_buffer_from_hex_blocked() {
+fn sec113_buffer_from_hex_warns() {
     let findings = scan_bundle(r#"const x = Buffer.from("deadbeef", "hex");"#, "test.mjs");
     assert!(
         findings.iter().any(|f| f.rule_id == "SEC113"),
@@ -348,17 +348,17 @@ fn sec113_buffer_from_utf8_allowed() {
 }
 
 // -----------------------------------------------------------------------
-// SEC114 — debugger statement (no signal, block)
+// SEC114 — debugger statement (no signal, warn)
 // -----------------------------------------------------------------------
 
 #[test]
-fn sec114_debugger_blocked() {
+fn sec114_debugger_warns() {
     let findings = scan_bundle("function x() { debugger; return 1; }", "test.mjs");
     assert!(
         findings.iter().any(|f| f.rule_id == "SEC114"),
         "findings: {findings:?}"
     );
-    assert!(is_blocked(&findings));
+    assert!(!is_blocked(&findings), "SEC114 should be warn");
 }
 
 #[test]
@@ -417,5 +417,101 @@ fn sec115_import_meta_not_matched() {
     assert!(
         findings.iter().all(|f| f.rule_id != "SEC115"),
         "import.meta.url should not match SEC115: {findings:?}"
+    );
+}
+
+#[test]
+fn sec112_third_party_api_call_still_blocks() {
+    // A call to a legitimate third-party API (e.g. Stripe) is still
+    // flagged by SEC112's godaddy.com-only allowlist. This is expected,
+    // unchanged behavior.
+    let findings = scan_bundle(
+        r#"const res = await fetch("https://api.stripe.com/v1/charges");"#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().any(|f| f.rule_id == "SEC112"),
+        "findings: {findings:?}"
+    );
+    assert!(is_blocked(&findings));
+}
+
+#[test]
+fn sec113_jwt_decode_warns_not_blocks() {
+    // jwt-decode-style JWT payload decoding via atob() is a common,
+    // benign pattern. SEC113 still fires (informational) but no longer
+    // blocks, per DEVEX-711.
+    let findings = scan_bundle(
+        r#"const payload = JSON.parse(atob(token.split(".")[1]));"#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().any(|f| f.rule_id == "SEC113"),
+        "findings: {findings:?}"
+    );
+    assert!(!is_blocked(&findings), "SEC113 should be warn");
+}
+
+#[test]
+fn sec113_data_uri_decode_warns_not_blocks() {
+    // Decoding an inline SVG/image data URI is a common, benign use of
+    // base64 decoding.
+    let findings = scan_bundle(
+        r#"const svg = Buffer.from("PHN2ZyB4bWxucz0i...", "base64").toString("utf8");"#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().any(|f| f.rule_id == "SEC113"),
+        "findings: {findings:?}"
+    );
+    assert!(!is_blocked(&findings), "SEC113 should be warn");
+}
+
+#[test]
+fn sec114_debugger_in_realistic_function_warns_not_blocks() {
+    let findings = scan_bundle(
+        r#"
+        function handleClick(event) {
+            if (process.env.NODE_ENV === "development") {
+                debugger;
+            }
+            return event.target.value;
+        }
+        "#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().any(|f| f.rule_id == "SEC114"),
+        "findings: {findings:?}"
+    );
+    assert!(!is_blocked(&findings), "SEC114 should be warn");
+}
+
+#[test]
+fn sec115_plugin_loader_by_computed_path_still_blocks() {
+    // Resolving the module path via a function call
+    // rather than a literal. SEC115 stays
+    let findings = scan_bundle(
+        r#"const plugin = await import(resolvePluginPath(pluginName));"#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().any(|f| f.rule_id == "SEC115"),
+        "findings: {findings:?}"
+    );
+    assert!(is_blocked(&findings));
+}
+
+#[test]
+fn sec115_template_literal_require_not_matched() {
+    // SEC115's regex treats any leading backtick as a "literal" argument,
+    // so this does not fire today
+    let findings = scan_bundle(
+        r#"const plugin = require(`./plugins/${pluginName}`);"#,
+        "test.mjs",
+    );
+    assert!(
+        findings.iter().all(|f| f.rule_id != "SEC115"),
+        "findings: {findings:?}"
     );
 }
