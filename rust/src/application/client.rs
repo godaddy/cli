@@ -9,13 +9,8 @@ const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 ///
 /// The `applications` query defaults to ACTIVE-only when `status` is omitted, so
 /// callers that want every app must pass an explicit `status.in` containing these.
-pub const APPLICATION_STATUSES: &[&str] = &[
-    "ACTIVE",
-    "ARCHIVED",
-    "BLOCKED",
-    "INACTIVE",
-    "VERIFYING",
-];
+pub const APPLICATION_STATUSES: &[&str] =
+    &["ACTIVE", "ARCHIVED", "BLOCKED", "INACTIVE", "VERIFYING"];
 
 /// Builds a reqwest Client with the standard GoDaddy CLI User-Agent.
 pub fn make_http_client() -> Client {
