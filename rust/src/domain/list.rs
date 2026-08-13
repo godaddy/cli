@@ -106,7 +106,8 @@ async fn fetch_domains(
     statuses: &[String],
     visible_only: bool,
     stop_at: Option<usize>,
-) -> std::result::Result<Vec<types::Domain>, domains_client::Error<()>> {
+    debug: bool,
+) -> Result<Vec<types::Domain>> {
     let page_size = std::num::NonZeroU64::new(MAX_PAGE_SIZE).expect("nonzero constant");
     let mut items = Vec::new();
     let mut page_token = None;
@@ -138,17 +139,29 @@ async fn fetch_domains(
                 req = req.page_token_direction(direction);
             }
         }
-        let collection = req.send().await?.into_inner();
+        let collection = match req.send().await {
+            Ok(r) => r.into_inner(),
+            Err(e) => return Err(api_error("listing domains", debug, e).await),
+        };
         items.extend(collection.items.unwrap_or_default());
         if stop_at.is_some_and(|n| items.len() >= n) {
-            break;
+            return Ok(items);
         }
         page_token = collection.links.and_then(|links| next_page_token(&links));
         if page_token.is_none() {
-            break;
+            return Ok(items);
         }
     }
-    Ok(items)
+    // Every earlier iteration returned as soon as `page_token` came back
+    // `None`, so reaching here means MAX_PAGES was exhausted with a next
+    // page still pending — a malformed or looping `next` link, not a real
+    // account size. Error instead of returning a partial list that would
+    // look complete to the caller.
+    Err(CliCoreError::message(format!(
+        "domain list: exceeded {MAX_PAGES} pages ({} domains fetched) without reaching the end \
+         of the list; this looks like a pagination bug rather than a real account size",
+        items.len()
+    )))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -188,10 +201,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let stop_at = (limit > 0).then(|| {
                 usize::try_from(ctx.middleware.offset.max(0) + limit).unwrap_or(usize::MAX)
             });
-            let items = match fetch_domains(&client, &statuses, visible_only, stop_at).await {
-                Ok(items) => items,
-                Err(e) => return Err(api_error("listing domains", debug, e).await),
-            };
+            let items = fetch_domains(&client, &statuses, visible_only, stop_at, debug).await?;
             let domains: Vec<serde_json::Value> = items
                 .iter()
                 .map(serde_json::to_value)
@@ -387,7 +397,7 @@ mod tests {
             domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
                 .expect("build client");
 
-        let items = fetch_domains(&client, &[], false, None)
+        let items = fetch_domains(&client, &[], false, None, false)
             .await
             .expect("fetch succeeds");
 
@@ -425,7 +435,7 @@ mod tests {
             domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
                 .expect("build client");
 
-        let items = fetch_domains(&client, &[], false, Some(2))
+        let items = fetch_domains(&client, &[], false, Some(2), false)
             .await
             .expect("fetch succeeds");
 
@@ -435,5 +445,34 @@ mod tests {
             1,
             "must not fetch beyond the satisfied stop_at window"
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_domains_errors_instead_of_silently_truncating_a_looping_next_link() {
+        // A malformed or looping `next` link must fail loudly rather than
+        // return a partial list that looks complete to the caller.
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/domain-names");
+                then.status(200).json_body(serde_json::json!({
+                    "items": [{"domain": "a.com"}],
+                    "links": [{
+                        "rel": "next",
+                        "href": "https://ignored.example.com/v3/domains/domain-names?pageToken=always-more",
+                    }],
+                }));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let err = fetch_domains(&client, &[], false, None, false)
+            .await
+            .expect_err("must not silently return a partial list");
+        assert!(err.to_string().contains("pages"), "{err}");
+        assert_eq!(mock.calls_async().await, super::MAX_PAGES);
     }
 }
