@@ -65,7 +65,7 @@ pub struct CachedQuote {
     #[serde(default)]
     pub idempotency_key: Option<String>,
     /// The quote's `fees` array (e.g. a premium domain's one-time acquisition
-    /// charge), serialized verbatim. `register` must echo these back into
+    /// charge), serialized verbatim. `purchase` must echo these back into
     /// `consent.acknowledgedFees` exactly (same types/amounts/currencies) or the
     /// server rejects the execute with `422 quote_mismatch`. `None` when the
     /// quote carried no fees (the common, non-premium case) or for quotes cached
