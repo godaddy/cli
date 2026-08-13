@@ -65,11 +65,16 @@ struct ListArgs {
 }
 
 /// Extract `pageToken`/`pageTokenDirection` from a `DomainCollection`'s
-/// `rel=next` link, if present. `None` (whether there's genuinely no next
-/// page, or a `next` link is present but missing an `href`/`pageToken` this
-/// CLI can parse) means "stop" — a domain list that ends one page short of
-/// complete is far less harmful than one that loops or errors on a link
-/// shape it doesn't recognize.
+/// `rel=next` link, if present. Parses only the query string (everything
+/// after the first `?`) rather than the whole `href` as a URL — the spec's
+/// own link examples use relative paths (e.g. `/v3/domains/domain-names?...`),
+/// which `url::Url::parse` rejects outright since a relative reference isn't
+/// a valid standalone URL; splitting on `?` works for both relative and
+/// absolute `href`s. `None` (whether there's genuinely no next page, or a
+/// `next` link is present but missing an `href`/`pageToken` this CLI can
+/// parse) means "stop" — a domain list that ends one page short of complete
+/// is far less harmful than one that loops or errors on a link shape it
+/// doesn't recognize.
 fn next_page_token(
     links: &[types::LinkDescription],
 ) -> Option<(String, Option<types::ListDomainsPageTokenDirection>)> {
@@ -78,10 +83,10 @@ fn next_page_token(
         .find(|l| l.rel.as_deref() == Some("next"))?
         .href
         .as_deref()?;
-    let url = url::Url::parse(href).ok()?;
+    let query = href.split_once('?').map_or("", |(_, query)| query);
     let mut token = None;
     let mut direction = None;
-    for (key, value) in url.query_pairs() {
+    for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         match key.as_ref() {
             "pageToken" => token = Some(value.into_owned()),
             "pageTokenDirection" => {
@@ -349,6 +354,19 @@ mod tests {
     }
 
     #[test]
+    fn next_page_token_parses_a_relative_href() {
+        // Regression: the v3 spec's own link examples use relative paths
+        // (e.g. `/v3/domains/domain-names?...`), which `url::Url::parse`
+        // rejects outright since a relative reference isn't a standalone
+        // URL — that would have silently stopped pagination after page one
+        // against a real API response shaped this way.
+        let links = next_link("/v3/domains/domain-names?pageToken=abc123");
+        let (token, direction) = next_page_token(&links).expect("next link present");
+        assert_eq!(token, "abc123");
+        assert_eq!(direction, None);
+    }
+
+    #[test]
     fn next_page_token_is_none_without_a_next_rel() {
         let mut links = next_link("https://api.example.com/v3/domains/domain-names?pageToken=abc");
         links[0].rel = Some("self".to_string());
@@ -378,7 +396,7 @@ mod tests {
                     "items": [{"domain": "a.com"}],
                     "links": [{
                         "rel": "next",
-                        "href": "https://ignored.example.com/v3/domains/domain-names?pageToken=page-2",
+                        "href": "/v3/domains/domain-names?pageToken=page-2",
                     }],
                 }));
             })
@@ -426,7 +444,7 @@ mod tests {
                     "items": [{"domain": "a.com"}, {"domain": "b.com"}],
                     "links": [{
                         "rel": "next",
-                        "href": "https://ignored.example.com/v3/domains/domain-names?pageToken=page-2",
+                        "href": "/v3/domains/domain-names?pageToken=page-2",
                     }],
                 }));
             })
@@ -460,7 +478,7 @@ mod tests {
                     "items": [{"domain": "a.com"}],
                     "links": [{
                         "rel": "next",
-                        "href": "https://ignored.example.com/v3/domains/domain-names?pageToken=always-more",
+                        "href": "/v3/domains/domain-names?pageToken=always-more",
                     }],
                 }));
             })
