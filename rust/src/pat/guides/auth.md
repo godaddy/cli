@@ -1,23 +1,37 @@
+---
+summary: How authentication and authorization works with gddy
+---
+
 # GoDaddy CLI authentication
 
 The GoDaddy CLI supports two ways to authenticate:
 
-- **OAuth via `gddy auth login`** — interactive, browser-based login. Best for local development.
+- **OAuth via `gddy auth login`** — interactive, browser-based login.
 - **Personal Access Token (PAT) via `gddy pat add`** — non-interactive, long-lived token. Best for CI/CD, scripts, and headless environments.
 
-Both can be configured at the same time. Per environment, the CLI uses a PAT when one is available; otherwise it falls back to OAuth and opens a browser.
+Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (see [How the CLI chooses a credential](#how-the-cli-chooses-a-credential) for the full precedence order).
+
+Each command that requires authentication also has a required set of permissions, called scopes.
 
 ## Interactive OAuth
 
-Run:
+If a command requires authentication or permissions that have not yet been granted, `gddy` will open the browser to a GoDaddy login screen and will ask you for confirmation that you want to grant `gddy` permissions. If you do not yet have a GoDaddy account, you can register within the login screen.
+
+Once you have logged in, an access token is stored in your OS keychain (or a protected file fallback), and it is reused until it expires. If a command needs wider scopes, the CLI may re-prompt through the browser to grant those additional permissions.
+
+If you want to authenticate in advance, you can explicitly run:
 
 ```sh
-gddy auth login --env prod
+gddy auth login
 ```
 
-Your browser opens to the GoDaddy login screen. After you approve the CLI, an access token is stored in your OS keychain (or a protected file fallback) and reused until it expires. If a command needs wider scopes, the CLI may re-prompt through the browser.
+...and you can ask for specific scopes with repeatable `--scope x` arguments. To view a list of all available scopes, run `gddy auth scopes`.
+
+If you want to check your current authentication status, run `gddy auth status`.
 
 ## Personal Access Tokens
+
+Personal Access Tokens, or PATs, allow you to assign permissions to the CLI in cases where an interactive browser experience is not possible.
 
 ### Creating a PAT
 
@@ -94,7 +108,7 @@ Authorization: Bearer gd_pat_...
 
 The GoDaddy API gateway exchanges the PAT for a short-lived access token and enforces the PAT's scopes. If a command needs scopes the PAT does not grant, the API returns `403` and the CLI surfaces that error.
 
-## Security notes
+### Security notes
 
 - Treat PATs like passwords. Do not commit them to source control.
 - Prefer `GDDY_PAT_<ENV>` environment variables in CI over storing PATs in the registry file.
