@@ -33,7 +33,38 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
+    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
+    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    "inventory": "string", optional;
+    "fees": "[]object", optional;
 });
+
+/// Render a quote's `fees` array (e.g. a premium domain's one-time acquisition
+/// surcharge) as `{type, amount, currency}` objects for display — mirrors how
+/// `quote_to_json` renders prices via [`format_money`]. `None` (rather than an
+/// empty array) when the quote carried no fees, so the field is omitted from
+/// output entirely instead of showing an empty list.
+fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
+    if fees.is_empty() {
+        return None;
+    }
+    Some(json!(
+        fees.iter()
+            .map(|f| {
+                let mut out = json!({
+                    "type": f.type_.as_ref().map(|t| t.to_string()),
+                });
+                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
+                    out["amount"] = json!(amount);
+                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
+                        out["currency"] = json!(code.to_string());
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
+    ))
+}
 
 /// Build the inline registration profile (contacts + preferences) sent with a
 /// quote. Always returns a profile: `auto_renew` and `privacy` are always set
@@ -136,6 +167,12 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     if let Some(irreversible) = quote.irreversible {
         out["irreversible"] = json!(irreversible);
     }
+    if let Some(inventory) = quote.inventory.as_ref() {
+        out["inventory"] = json!(inventory.to_string());
+    }
+    if let Some(fees) = quote.fees.as_ref().and_then(|f| fees_to_json(f)) {
+        out["fees"] = fees;
+    }
     // The effective settings the registration would apply (contacts source,
     // privacy, auto-renew, nameservers) — so the user reviews what they're buying.
     if let Some(resolved) = quote.resolved.as_ref()
@@ -219,6 +256,12 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
         TableColumn::new("expiresAt", "Expires At"),
         TableColumn::new("irreversible", "Irreversible"),
+        TableColumn::new("inventory", "Inventory"),
+        TableColumn::new("fees", "Fees").nested(vec![
+            TableColumn::new("type", "Type"),
+            TableColumn::new("amount", "Amount"),
+            TableColumn::new("currency", "Currency"),
+        ]),
         TableColumn::new("agreements", "Agreements"),
         TableColumn::new("requiredAgreements", "Required Agreements").nested(vec![
             TableColumn::new("agreementType", "Type"),
@@ -331,6 +374,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // attempt for this token reuses it (a retry after a lost
                     // response can't double-charge).
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
+                    // Cache verbatim so `purchase` can echo it into
+                    // `consent.acknowledgedFees` (required for premium domains;
+                    // the server rejects a mismatch with `quote_mismatch`).
+                    fees: quote
+                        .fees
+                        .as_ref()
+                        .filter(|f| !f.is_empty())
+                        .and_then(|f| serde_json::to_value(f).ok()),
                 };
                 if let Err(e) = quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't

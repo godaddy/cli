@@ -13,7 +13,7 @@
   },
   "servers": [
     {
-      "url": "https://api.godaddy.com",
+      "url": "https://api.ote-godaddy.com",
       "description": "Domains API host"
     }
   ],
@@ -708,6 +708,123 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Registration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/domains/domain-names": {
+      "get": {
+        "operationId": "listDomains",
+        "tags": [
+          "Domains"
+        ],
+        "summary": "List registered domains",
+        "description": "Returns a paginated collection of domain names owned by the authenticated account. Supports filtering by statuses and cursor-based pagination. The statuses and lifecycleGroups parameters are mutually exclusive; supplying both returns 400 Bad Request. An unrecognized value for statuses or lifecycleGroups returns 400 Bad Request.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/xRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/pageToken"
+          },
+          {
+            "$ref": "#/components/parameters/pageTokenDirection"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of domains in the response. Defaults to 100 when omitted. Offset-based \"page\" parameter is not supported, only cursor-based \"pageToken\".\n",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to domains with one or more lifecycle statuses. Supply multiple values as a single comma-separated list, e.g. `?statuses=ACTIVE,EXPIRED`. Multiple values are combined with logical OR \u2014 returns domains matching ANY of the specified statuses. See DomainStatus for accepted values (ACTIVE, EXPIRED, PENDING_REGISTRATION, etc.). Cannot be combined with the lifecycleGroups parameter. Use this for precise filtering on specific known status values; for coarse lifecycle phases, consider lifecycleGroups.\n",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "string"
+              }
+            },
+            "example": [
+              "ACTIVE",
+              "EXPIRED"
+            ]
+          },
+          {
+            "name": "lifecycleGroups",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to domains belonging to one or more status groups. Supply multiple values as a single comma-separated list, e.g. `?lifecycleGroups=REGISTERED,PENDING`. Multiple values are combined with logical OR. Cannot be combined with the statuses parameter. Use this for coarse lifecycle phases that remain stable as new statuses are added; for precise filtering, use statuses.\n",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/DomainLifecycleGroup"
+              }
+            },
+            "example": [
+              "REGISTERED",
+              "PENDING"
+            ]
+          },
+          {
+            "name": "updatedAfter",
+            "in": "query",
+            "required": false,
+            "description": "Return only domains last updated after this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2026-01-01T00:00:00Z"
+          },
+          {
+            "name": "expiresBefore",
+            "in": "query",
+            "required": false,
+            "description": "Return only domains whose registration expires before this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2027-01-01T00:00:00Z"
+          }
+        ],
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of domains owned by the account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/xRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainCollection"
                 }
               }
             }
@@ -1709,6 +1826,29 @@
         },
         "example": true
       },
+      "pageToken": {
+        "name": "pageToken",
+        "in": "query",
+        "description": "Opaque cursor from the links[rel=next or rel=prev] href of the previous page. When present, the response begins immediately after the item that produced the token. Omit to start from the beginning of the collection.\n",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "example": "eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9"
+      },
+      "pageTokenDirection": {
+        "name": "pageTokenDirection",
+        "in": "query",
+        "description": "Optional token direction when `pageToken` is set; ignored otherwise.\n",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "backward",
+            "forward"
+          ]
+        }
+      },
       "fields": {
         "name": "fields",
         "in": "query",
@@ -1947,7 +2087,7 @@
       },
       "AvailabilityCheckCriteria": {
         "title": "Availability Check Criteria",
-        "description": "Criteria for an availability check. Specifies 1\u201350 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
+        "description": "Criteria for an availability check. Specifies 1\u201325 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
         "type": "object",
         "required": [
           "domains"
@@ -1956,11 +2096,11 @@
           "domains": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 50,
+            "maxItems": 25,
             "items": {
               "type": "string"
             },
-            "description": "List of 1\u201350 domain names to check, in punycode A-label form for IDNs.\n",
+            "description": "List of 1\u201325 domain names to check, in punycode A-label form for IDNs.\n",
             "example": [
               "example.com",
               "example.net"
@@ -2017,6 +2157,23 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ConsentActor"
+              }
+            ]
+          },
+          "acknowledgedFees": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees the customer explicitly acknowledged before executing the purchase. When the preceding quote's fees array is non-empty, this field must be present and contain the same entries verbatim (same types, amounts, and currencies). The server validates this against the locked quote token; a mismatch is rejected with 422 quote_mismatch. Omit when the quote carries no purchase fees (standard REGISTRY registration).\n",
+            "example": [
+              {
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "fee": {
+                  "value": 390000,
+                  "currencyCode": "USD"
+                }
               }
             ]
           }
@@ -2293,6 +2450,35 @@
           }
         }
       },
+      "DomainLifecycleGroup": {
+        "title": "Domain Lifecycle Group",
+        "description": "A logical grouping of domain lifecycle statuses for filtering purposes. PENDING \u2014 domain setup is in progress (e.g. PENDING_REGISTRATION). REGISTERED \u2014 domain is actively registered and operational (e.g. ACTIVE, PARKED). PENDING_TERMINAL \u2014 domain is approaching a terminal state (e.g. PENDING_TRANSFER, EXPIRED). TERMINAL \u2014 domain has reached a terminal state and is no longer manageable (e.g. CANCELLED, DELETED_REDEEMABLE, TRANSFERRED, REPOSSESSED).\n",
+        "type": "string"
+      },
+      "DomainCollection": {
+        "title": "DomainCollection",
+        "description": "A paginated collection of registered domains owned by the authenticated account. Supports filtering by status and cursor-based pagination.\n",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "Domains for the current page.",
+            "items": {
+              "$ref": "#/components/schemas/Domain"
+            },
+            "nullable": true
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "description": "HATEOAS pagination links. May include rel=self (current page),  rel=prev is present when more items are available before the current page. and rel=next is present when more items are available beyond the current page.\n",
+            "readOnly": true,
+            "nullable": true
+          }
+        }
+      },
       "DomainOperation": {
         "title": "Domain Operation",
         "description": "The abstract operation envelope for all domain mutations, returned by the universal GET /operations/{operationId} endpoint. Concrete specializations \u2014 Registration, Renewal, and Transfer \u2014 are returned directly by their respective POST endpoints and carry the same operationId. Developers who do not need the abstract view can poll the concrete resource (GET /registrations/{id}, etc.) and ignore this type entirely.\nOperation IDs are unique across all concrete types, so either poll path works for any given operation.\nAsync state machine:\n  status tracks where the operation is in its lifecycle. Non-terminal values\n  (CONFIRMED, EXECUTING) are transient \u2014 poll until a terminal value is reached.\n  result and error are mutually exclusive terminal payloads:\n    COMPLETED \u2014 operation succeeded; result contains the final outcome data.\n    FAILED \u2014 operation terminated; error contains failure detail.\n  Neither result nor error is present while status is non-terminal.\n",
@@ -2403,6 +2589,30 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/date-time"
+              }
+            ]
+          }
+        }
+      },
+      "Fee": {
+        "title": "Fee",
+        "description": "Fees charged at the time of purchase, separate from the registration price. The type identifies the nature of the charge.\n",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Identifies the nature of this charge. Determines how the fee is categorized in pricing breakdowns and receipts.\n",
+            "example": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeeType"
+              }
+            ]
+          },
+          "fee": {
+            "description": "The monetary amount of this fee.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
               }
             ]
           }
@@ -2540,6 +2750,14 @@
             },
             "description": "HATEOAS link relations for this registration. rel=self \u2014 the canonical URL for this registration record. rel=domain \u2014 the registered domain-name resource once the registration is complete.\n",
             "readOnly": true
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase, in addition to the registration price. Present when purchase fees were incurred. Same fees as RegistrationQuote.fees (the selected term's TermPrice.fees) from the preceding quote.\n",
+            "readOnly": true
           }
         }
       },
@@ -2652,6 +2870,23 @@
             "type": "boolean",
             "description": "Whether executing this quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
             "example": false
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase, in addition to the registration price. Present when the domain incurs purchase fees beyond the base registration cost. These are the same fees as TermPrice.fees for the selected term (this quote's period) \u2014 not a separate term-independent fee list and not additional to term-level fees. Execute cost is price plus this array. Mirrored on Registration.fees after execute.\n",
+            "nullable": true
+          },
+          "inventory": {
+            "description": "The inventory type of the quoted domain. Present when available is true.\n",
+            "readOnly": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InventoryType"
+              }
+            ]
           }
         }
       },
@@ -2772,6 +3007,31 @@
                 "$ref": "#/components/schemas/simple-money"
               }
             ]
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase for this term, in addition to price. Present when the domain incurs purchase fees beyond the base registration cost. The full cost of choosing this term is price plus these fees.\n",
+            "nullable": true
+          },
+          "firstTermPrice": {
+            "description": "Discounted price of only the first term unit within this multi-unit period. Typically omitted when period is 1 (where it equals price). Present when a first-term-only promotion applies to a multi-unit period.\n",
+            "example": {
+              "currencyCode": "USD",
+              "value": 1199
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              }
+            ]
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "When true, this term is the best-value option based on active discounts or promotions. At most one entry in the prices array carries this flag. Absent (not false) when no recommendation applies.\n",
+            "example": true
           }
         }
       },
@@ -2827,6 +3087,14 @@
           "REGISTRY",
           "REGISTRY_PREMIUM",
           "PREMIUM"
+        ]
+      },
+      "FeeType": {
+        "title": "Fee Type",
+        "description": "The type of a fee charged at the time of purchase. ONE_TIME_PREMIUM_DOMAIN_PURCHASE \u2014 one-time acquisition cost charged by the aftermarket marketplace when purchasing a premium domain.\n",
+        "type": "string",
+        "enum": [
+          "ONE_TIME_PREMIUM_DOMAIN_PURCHASE"
         ]
       },
       "error-details": {

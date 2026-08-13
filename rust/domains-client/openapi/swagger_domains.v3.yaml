@@ -766,6 +766,124 @@ paths:
           $ref: '#/components/responses/404'
         '429':
           $ref: '#/components/responses/429'
+  /domain-names:
+    get:
+      operationId: listDomains
+      tags:
+      - Domains
+      summary: List registered domains
+      description: 'Returns a paginated collection of domain names owned by the authenticated account. Supports filtering
+        by statuses and cursor-based pagination. The statuses and lifecycleGroups parameters are mutually exclusive; supplying
+        both returns 400 Bad Request. An unrecognized value for statuses or lifecycleGroups returns 400 Bad Request.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/xRequestId'
+      - $ref: '#/components/parameters/xShopperId'
+      - $ref: '#/components/parameters/pageToken'
+      - $ref: '#/components/parameters/pageTokenDirection'
+      - name: pageSize
+        in: query
+        required: false
+        description: 'Maximum number of domains in the response. Defaults to 100 when omitted. Offset-based "page" parameter
+          is not supported, only cursor-based "pageToken".
+
+          '
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      - name: statuses
+        in: query
+        required: false
+        description: 'Filter results to domains with one or more lifecycle statuses. Supply multiple values as a single
+          comma-separated list, e.g. `?statuses=ACTIVE,EXPIRED`. Multiple values are combined with logical OR — returns
+          domains matching ANY of the specified statuses. See DomainStatus for accepted values (ACTIVE, EXPIRED,
+          PENDING_REGISTRATION, etc.). Cannot be combined with the lifecycleGroups parameter. Use this for precise filtering
+          on specific known status values; for coarse lifecycle phases, consider lifecycleGroups.
+
+          '
+        # `items` is a plain string, not `$ref: DomainStatus` — progenitor
+        # always seq-serializes an array-of-enum setter argument as repeated
+        # `statuses=` pairs regardless of this `explode: false`, and unlike
+        # `DomainLifecycleGroup` (a bare string schema), `DomainStatus` is a
+        # strict enum that can't hold a pre-joined "A,B" value. A plain string
+        # array lets the CLI comma-join client-side (see `comma_joined`,
+        # DEVEX-882) while still validating against `DomainStatus` before
+        # sending. Mirrors `tlds`/`sources` above.
+        style: form
+        explode: false
+        schema:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        example:
+        - ACTIVE
+        - EXPIRED
+      - name: lifecycleGroups
+        in: query
+        required: false
+        description: 'Filter results to domains belonging to one or more status groups. Supply multiple values as a single
+          comma-separated list, e.g. `?lifecycleGroups=REGISTERED,PENDING`. Multiple values are combined with logical OR.
+          Cannot be combined with the statuses parameter. Use this for coarse lifecycle phases that remain stable as new
+          statuses are added; for precise filtering, use statuses.
+
+          '
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainLifecycleGroup'
+        example:
+        - REGISTERED
+        - PENDING
+      - name: updatedAfter
+        in: query
+        required: false
+        description: 'Return only domains last updated after this timestamp (exclusive). Must be a valid RFC 3339 date-time.
+
+          '
+        schema:
+          type: string
+          format: date-time
+        example: '2026-01-01T00:00:00Z'
+      - name: expiresBefore
+        in: query
+        required: false
+        description: 'Return only domains whose registration expires before this timestamp (exclusive). Must be a valid RFC
+          3339 date-time.
+
+          '
+        schema:
+          type: string
+          format: date-time
+        example: '2027-01-01T00:00:00Z'
+      security:
+      - oauth2:
+        - domains.domain:read
+      responses:
+        '200':
+          description: Paginated list of domains owned by the account.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/xRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCollection'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
   /domain-names/{domain-name}:
     get:
       operationId: getDomain
@@ -1035,14 +1153,6 @@ paths:
           $ref: '#/components/responses/422'
         '429':
           $ref: '#/components/responses/429'
-  # NOTE: this path previously also had a `put` (operationId replaceDNSRecord).
-  # It's removed: despite returning 200, it does not perform a single-record
-  # replace — it silently replaces the entire dns-records collection with
-  # [system records] + [the one record in the body], discarding every other
-  # record in the zone. Reproduced live against a test zone; see
-  # https://github.com/godaddy/cli/issues/136. Do not reintroduce without a
-  # confirmed server-side fix and a fresh live check against a real zone with
-  # unrelated records.
   /zones/{zone}/dns-records/{recordId}:
     delete:
       operationId: deleteDNSRecord
@@ -1308,6 +1418,29 @@ components:
         type: boolean
         default: false
       example: true
+    pageToken:
+      name: pageToken
+      in: query
+      description: 'Opaque cursor from the links[rel=next or rel=prev] href of the previous page. When present, the response
+        begins immediately after the item that produced the token. Omit to start from the beginning of the collection.
+
+        '
+      required: false
+      schema:
+        type: string
+      example: eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9
+    pageTokenDirection:
+      name: pageTokenDirection
+      in: query
+      description: 'Optional token direction when `pageToken` is set; ignored otherwise.
+
+        '
+      required: false
+      schema:
+        type: string
+        enum:
+        - backward
+        - forward
     fields:
       name: fields
       in: query
@@ -1517,7 +1650,7 @@ components:
           - $ref: '#/components/schemas/error'
     AvailabilityCheckCriteria:
       title: Availability Check Criteria
-      description: 'Criteria for an availability check. Specifies 1–50 domain names and optional parameters that influence
+      description: 'Criteria for an availability check. Specifies 1–25 domain names and optional parameters that influence
         how the check is performed. This controller does not persist the check; there is no check identity or poll URL.
 
         '
@@ -1528,10 +1661,10 @@ components:
         domains:
           type: array
           minItems: 1
-          maxItems: 50
+          maxItems: 25
           items:
             type: string
-          description: 'List of 1–50 domain names to check, in punycode A-label form for IDNs.
+          description: 'List of 1–25 domain names to check, in punycode A-label form for IDNs.
 
             '
           example:
@@ -1590,6 +1723,22 @@ components:
           readOnly: true
           allOf:
           - $ref: '#/components/schemas/ConsentActor'
+        acknowledgedFees:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Fee'
+          description: 'Fees the customer explicitly acknowledged before executing the purchase. When the preceding quote''s
+            fees array is non-empty, this field must be present and contain the same entries verbatim (same types, amounts,
+            and currencies). The server validates this against the locked quote token; a mismatch is rejected with 422 quote_mismatch.
+            Omit when the quote carries no purchase fees (standard REGISTRY registration).
+
+            '
+          example:
+          - type: ONE_TIME_PREMIUM_DOMAIN_PURCHASE
+            fee:
+              value: 390000
+              currencyCode: USD
     ConsentActor:
       title: Consent Actor
       description: 'Identifies who gave consent and how it was transmitted. One uniform schema for all actor types. Populated
@@ -1911,6 +2060,41 @@ components:
 
             '
           readOnly: true
+    DomainLifecycleGroup:
+      title: Domain Lifecycle Group
+      description: 'A logical grouping of domain lifecycle statuses for filtering purposes. PENDING — domain setup is in progress
+        (e.g. PENDING_REGISTRATION). REGISTERED — domain is actively registered and operational (e.g. ACTIVE, PARKED). PENDING_TERMINAL
+        — domain is approaching a terminal state (e.g. PENDING_TRANSFER, EXPIRED). TERMINAL — domain has reached a terminal
+        state and is no longer manageable (e.g. CANCELLED, DELETED_REDEEMABLE, TRANSFERRED, REPOSSESSED).
+
+        '
+      type: string
+    DomainCollection:
+      title: DomainCollection
+      description: 'A paginated collection of registered domains owned by the authenticated account. Supports filtering by
+        status and cursor-based pagination.
+
+        '
+      type: object
+      required:
+      - items
+      - links
+      properties:
+        items:
+          type: array
+          description: Domains for the current page.
+          items:
+            $ref: '#/components/schemas/Domain'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/link-description'
+          description: 'HATEOAS pagination links. May include rel=self (current page),  rel=prev is present when more items
+            are available before the current page. and rel=next is present when more items are available beyond the current
+            page.
+
+            '
+          readOnly: true
     DomainOperation:
       title: Domain Operation
       description: "The abstract operation envelope for all domain mutations, returned by the universal GET /operations/{operationId}\
@@ -2027,6 +2211,29 @@ components:
           - $ref: '#/components/schemas/date-time'
     Error:
       $ref: '#/components/schemas/error'
+    Fee:
+      title: Fee
+      description: 'Fees charged at the time of purchase, separate from the registration price. The type identifies the nature
+        of the charge.
+
+        '
+      type: object
+      required:
+      - type
+      - fee
+      properties:
+        type:
+          description: 'Identifies the nature of this charge. Determines how the fee is categorized in pricing breakdowns
+            and receipts.
+
+            '
+          example: ONE_TIME_PREMIUM_DOMAIN_PURCHASE
+          allOf:
+          - $ref: '#/components/schemas/FeeType'
+        fee:
+          description: The monetary amount of this fee.
+          allOf:
+          - $ref: '#/components/schemas/simple-money'
     Registration:
       title: Registration
       description: 'A domain registration entity created when a POST /registrations request is accepted. Registrations are
@@ -2147,6 +2354,16 @@ components:
             $ref: '#/components/schemas/link-description'
           description: 'HATEOAS link relations for this registration. rel=self — the canonical URL for this registration record.
             rel=domain — the registered domain-name resource once the registration is complete.
+
+            '
+          readOnly: true
+        fees:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fee'
+          description: 'Fees charged at the time of purchase, in addition to the registration price. Present when purchase
+            fees were incurred. Same fees as RegistrationQuote.fees (the selected term''s TermPrice.fees) from the preceding
+            quote.
 
             '
           readOnly: true
@@ -2280,6 +2497,23 @@ components:
 
             '
           example: false
+        fees:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fee'
+          description: 'Fees charged at the time of purchase, in addition to the registration price. Present when the domain
+            incurs purchase fees beyond the base registration cost. These are the same fees as TermPrice.fees for the selected
+            term (this quote''s period) — not a separate term-independent fee list and not additional to term-level fees.
+            Execute cost is price plus this array. Mirrored on Registration.fees after execute.
+
+            '
+        inventory:
+          description: 'The inventory type of the quoted domain. Present when available is true.
+
+            '
+          readOnly: true
+          allOf:
+          - $ref: '#/components/schemas/InventoryType'
     ResolvedSettings:
       title: Resolved Settings
       description: 'A preview of the effective settings that will be applied if the associated quote is executed. Returned
@@ -2407,6 +2641,32 @@ components:
             '
           allOf:
           - $ref: '#/components/schemas/simple-money'
+        fees:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fee'
+          description: 'Fees charged at the time of purchase for this term, in addition to price. Present when the domain
+            incurs purchase fees beyond the base registration cost. The full cost of choosing this term is price plus these
+            fees.
+
+            '
+        firstTermPrice:
+          description: 'Discounted price of only the first term unit within this multi-unit period. Typically omitted when
+            period is 1 (where it equals price). Present when a first-term-only promotion applies to a multi-unit period.
+
+            '
+          example:
+            currencyCode: USD
+            value: 1199
+          allOf:
+          - $ref: '#/components/schemas/simple-money'
+        recommended:
+          type: boolean
+          description: 'When true, this term is the best-value option based on active discounts or promotions. At most one
+            entry in the prices array carries this flag. Absent (not false) when no recommendation applies.
+
+            '
+          example: true
     uuid:
       description: A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).
       type: string
@@ -2466,6 +2726,15 @@ components:
       - REGISTRY
       - REGISTRY_PREMIUM
       - PREMIUM
+    FeeType:
+      title: Fee Type
+      description: 'The type of a fee charged at the time of purchase. ONE_TIME_PREMIUM_DOMAIN_PURCHASE — one-time acquisition
+        cost charged by the aftermarket marketplace when purchasing a premium domain.
+
+        '
+      type: string
+      enum:
+      - ONE_TIME_PREMIUM_DOMAIN_PURCHASE
     error-details:
       title: Error Details
       type: object

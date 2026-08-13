@@ -64,6 +64,14 @@ pub struct CachedQuote {
     /// written by an older CLI, where `purchase` falls back to generating one.
     #[serde(default)]
     pub idempotency_key: Option<String>,
+    /// The quote's `fees` array (e.g. a premium domain's one-time acquisition
+    /// charge), serialized verbatim. `register` must echo these back into
+    /// `consent.acknowledgedFees` exactly (same types/amounts/currencies) or the
+    /// server rejects the execute with `422 quote_mismatch`. `None` when the
+    /// quote carried no fees (the common, non-premium case) or for quotes cached
+    /// by an older CLI that predates premium-domain support.
+    #[serde(default)]
+    pub fees: Option<serde_json::Value>,
 }
 
 /// The result of looking a token up in the cache.
@@ -222,6 +230,7 @@ mod tests {
             expires_at: expires.map(str::to_owned),
             profile: None,
             idempotency_key: Some("idem-test".to_owned()),
+            fees: None,
         }
     }
 

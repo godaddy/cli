@@ -263,18 +263,38 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 None => None,
             };
 
+            // Echo the quote's fees (e.g. a premium domain's one-time
+            // acquisition surcharge) back verbatim into `consent.acknowledgedFees`
+            // — the server cross-checks this against the locked quote token and
+            // rejects a mismatch with `422 quote_mismatch`. `None`/absent here
+            // means the quote carried no fees (the common, non-premium case),
+            // which correctly serializes as no fees to acknowledge.
+            let acknowledged_fees = match cached.fees.as_ref() {
+                Some(v) => serde_json::from_value::<Vec<types::Fee>>(v.clone()).map_err(|e| {
+                    CliCoreError::message(format!(
+                        "the cached quote for {domain} is corrupt or from an older CLI \
+                         version (could not read its fees: {e}); re-run \
+                         `gddy domain quote {domain}` for a fresh quote."
+                    ))
+                })?,
+                None => vec![],
+            };
+
             let consent = types::Consent {
                 agreed_at: types::DateTime(iso_datetime(chrono::Utc::now())),
                 // Server-derived from the execute request's auth context; the
                 // caller no longer supplies this.
                 agreed_by: None,
                 agreement_types,
+                acknowledged_fees,
             };
             let registration = types::Registration {
                 consent,
                 created_at: None,
                 domain: domain.clone(),
                 expires_at: None,
+                // Server-populated on the response; not sent in the request.
+                fees: vec![],
                 links: vec![],
                 operation_id: None,
                 order_id: None,
