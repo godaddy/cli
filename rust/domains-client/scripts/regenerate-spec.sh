@@ -34,9 +34,22 @@ trimmed_v1="$openapi_dir/.swagger_domains.trimmed.v1.json"
 v1_oas3="$openapi_dir/.domains.v1.oas3.json"
 oas3="$openapi_dir/domains.oas3.json"
 
-# The document host. base_url is overridden at runtime by the CLI per environment
-# (environments::resolve_domains), so this is cosmetic — keep it prod-canonical,
-# consistent with every other embedded catalog domain's baseUrl.
+# The document host. `gddy domain`/`dns` commands never read this — their base
+# URL is resolved at runtime via `environments::resolve_domains` — but
+# `generate-api-catalog` does: `resolve_catalog_base_url` treats this value as
+# the prod URL and derives every other environment from it by host
+# substitution (see its `prod_base_url` parameter and
+# `resolve_catalog_base_url_returns_prod_unchanged`/`_applies_convention_for_non_prod`
+# in `environments/mod.rs`). Keep it prod-canonical, consistent with every
+# other embedded catalog domain's baseUrl, so that derivation stays correct.
+#
+# TEMPORARY: the currently-checked-in `../openapi/domains.oas3.json` on the
+# cli-v3-domain-list branch has this set to the OTE host instead, because that
+# branch's spec syncs were done by hand against the v3 API's test environment
+# (v3 isn't in prod yet) rather than by running this script. That branch is
+# preview-only and not meant to merge until v3 ships to prod and the spec is
+# re-synced properly — re-running this script at that point will restore the
+# prod-canonical value below.
 host="https://api.godaddy.com"
 
 echo "==> Downloading upstream Swagger 2.0 spec"
