@@ -7,7 +7,9 @@ use super::super::catalog::{
     GraphqlOpRef, catalog, graphql_base_type_name, graphql_operation_id,
     graphql_operation_not_found_error, graphql_valid_arg_names, resolve_graphql_operation,
 };
-use super::super::http::{merge_required_scopes, parsed_extra_headers, send_and_report};
+use super::super::http::{
+    encode_path_segment, merge_required_scopes, parsed_extra_headers, send_and_report,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 struct GraphqlCallArgs {
@@ -208,7 +210,7 @@ fn build_graphql_call(
             .and_then(|p| p.get("in").and_then(Value::as_str))
             .unwrap_or("query");
         match location {
-            "path" => path = path.replace(&format!("{{{name}}}"), value),
+            "path" => path = path.replace(&format!("{{{name}}}"), &encode_path_segment(value)),
             "header" => extra_headers.push((name.clone(), value.clone())),
             _ => {}
         }
@@ -548,6 +550,44 @@ mod tests {
         assert!(
             !built.path.contains('{'),
             "path params substituted: {}",
+            built.path
+        );
+    }
+
+    /// A wrapper path-parameter value containing `/` must be
+    /// percent-encoded (via the shared `encode_path_segment`), not spliced
+    /// in raw — a raw splice would let the value inject an extra path
+    /// segment into the URL.
+    #[test]
+    fn build_graphql_call_percent_encodes_a_slash_in_a_path_param_value() {
+        let id = a_query_id();
+        let g = resolve_graphql_operation(catalog(), &id).expect("id resolves");
+        let path_param_name = g
+            .parent
+            .parameters
+            .iter()
+            .find(|p| p.get("in").and_then(serde_json::Value::as_str) == Some("path"))
+            .and_then(|p| p.get("name").and_then(serde_json::Value::as_str))
+            .expect("postTaxGraphql has a path parameter (storeId)")
+            .to_owned();
+        let mut args = graphql_call_args_with(&id, vec![], Some("__typename"));
+        for p in &g.parent.parameters {
+            if let Some(name) = p.get("name").and_then(serde_json::Value::as_str) {
+                let value = if name == path_param_name {
+                    "a/b"
+                } else {
+                    "placeholder"
+                };
+                args.arg.push(format!("{name}={value}"));
+            }
+        }
+        for a in &g.op.args {
+            args.arg.push(format!("{}=placeholder", a.name));
+        }
+        let built = build_graphql_call(&g, &args).expect("builds without error");
+        assert!(
+            built.path.contains("a%2Fb"),
+            "path param value must be percent-encoded: {}",
             built.path
         );
     }

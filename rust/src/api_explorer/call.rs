@@ -10,7 +10,8 @@ use super::catalog::{
     resolve_operation,
 };
 use super::http::{
-    is_mutating_method, merge_required_scopes, parsed_extra_headers, send_and_report, split_kv,
+    encode_path_segment, is_mutating_method, merge_required_scopes, parsed_extra_headers,
+    send_and_report, split_kv,
 };
 
 #[derive(Debug, Clone, clap::Args)]
@@ -368,21 +369,6 @@ fn validate_required_params(
     .into_cli_error())
 }
 
-/// Percent-encodes `value` for safe use as a single, literal path segment —
-/// unlike a bare path percent-encode, `/` and `%` are escaped too (via
-/// `Url::path_segments_mut().push`, which treats its argument as one opaque
-/// segment, never a sub-path), so a `--param` value can't inject an extra
-/// path segment or otherwise corrupt the URL's structure. Uses `url`
-/// (already a dependency) rather than adding `percent-encoding` directly,
-/// since `url` doesn't re-export it publicly.
-fn encode_path_segment(value: &str) -> String {
-    let mut url = url::Url::parse("http://x").expect("valid base URL");
-    url.path_segments_mut()
-        .expect("http URL always has path segments")
-        .push(value);
-    url.path()[1..].to_owned()
-}
-
 /// Appends `query` to `url` as URL-encoded query-string pairs. A no-op (and
 /// no parse attempt) when `query` is empty, so an unmatched/query-param-free
 /// call never risks failing on an otherwise-valid `url`.
@@ -407,8 +393,7 @@ mod tests {
     use cli_engine::{Cli, CliConfig};
 
     use super::{
-        Endpoint, PartitionedParams, append_query, encode_path_segment, partition_call_params,
-        validate_required_params,
+        Endpoint, PartitionedParams, append_query, partition_call_params, validate_required_params,
     };
 
     /// `call` opted into handler-driven `--dry-run` so a GET/HEAD can execute
@@ -912,30 +897,6 @@ mod tests {
         let headers = vec![("idempotency-key".to_owned(), "abc".to_owned())];
         validate_required_params(&ep, "/things", &PartitionedParams::default(), &headers)
             .expect("differently-cased header name still satisfies the requirement");
-    }
-
-    #[test]
-    fn encode_path_segment_passes_through_a_plain_value() {
-        assert_eq!(encode_path_segment("abc123"), "abc123");
-    }
-
-    /// `/` must be escaped (not treated as a segment separator) — otherwise
-    /// a `--param` value could inject an extra path segment into the URL.
-    #[test]
-    fn encode_path_segment_escapes_a_slash() {
-        assert_eq!(encode_path_segment("a/b"), "a%2Fb");
-    }
-
-    /// A literal `%` must itself be escaped, or a crafted value like
-    /// `%2e%2e` could smuggle a pre-encoded traversal sequence through.
-    #[test]
-    fn encode_path_segment_escapes_a_percent() {
-        assert_eq!(encode_path_segment("100%"), "100%25");
-    }
-
-    #[test]
-    fn encode_path_segment_escapes_a_space() {
-        assert_eq!(encode_path_segment("a b"), "a%20b");
     }
 
     #[test]

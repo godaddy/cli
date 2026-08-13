@@ -25,6 +25,24 @@ pub(super) fn split_kv(raw: &str) -> Option<(&str, &str)> {
     raw.split_once('=')
 }
 
+/// Percent-encodes `value` for safe use as a single, literal path segment —
+/// unlike a bare path percent-encode, `/` and `%` are escaped too (via
+/// `Url::path_segments_mut().push`, which treats its argument as one opaque
+/// segment, never a sub-path), so a substituted path-parameter value can't
+/// inject an extra path segment or otherwise corrupt the URL's structure.
+/// Shared by `call`'s `--param` path substitution and `graphql::call`'s
+/// wrapper path substitution — both splice a caller-supplied value into a
+/// `{name}` placeholder in a path template. Uses `url` (already a
+/// dependency) rather than adding `percent-encoding` directly, since `url`
+/// doesn't re-export it publicly.
+pub(super) fn encode_path_segment(value: &str) -> String {
+    let mut url = url::Url::parse("http://x").expect("valid base URL");
+    url.path_segments_mut()
+        .expect("http URL always has path segments")
+        .push(value);
+    url.path()[1..].to_owned()
+}
+
 /// Whether an HTTP method mutates server state, for `--dry-run` gating.
 /// `call`'s tier is fixed at spec-build time, but the method is a runtime
 /// arg — this decides per-invocation whether `--dry-run` should actually
@@ -232,8 +250,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        graphql_errors, is_mutating_method, merge_required_scopes, parse_response_body,
-        send_and_report, split_header,
+        encode_path_segment, graphql_errors, is_mutating_method, merge_required_scopes,
+        parse_response_body, send_and_report, split_header,
     };
     use crate::api_explorer::catalog::{catalog, find_endpoint};
 
@@ -302,6 +320,31 @@ mod tests {
     fn split_header_rejects_an_empty_key() {
         assert_eq!(split_header(":value"), None);
         assert_eq!(split_header("  :value"), None);
+    }
+
+    #[test]
+    fn encode_path_segment_passes_through_a_plain_value() {
+        assert_eq!(encode_path_segment("abc123"), "abc123");
+    }
+
+    /// `/` must be escaped (not treated as a segment separator) — otherwise
+    /// a substituted path-parameter value could inject an extra path
+    /// segment into the URL.
+    #[test]
+    fn encode_path_segment_escapes_a_slash() {
+        assert_eq!(encode_path_segment("a/b"), "a%2Fb");
+    }
+
+    /// A literal `%` must itself be escaped, or a crafted value like
+    /// `%2e%2e` could smuggle a pre-encoded traversal sequence through.
+    #[test]
+    fn encode_path_segment_escapes_a_percent() {
+        assert_eq!(encode_path_segment("100%"), "100%25");
+    }
+
+    #[test]
+    fn encode_path_segment_escapes_a_space() {
+        assert_eq!(encode_path_segment("a b"), "a%20b");
     }
 
     #[test]
