@@ -1153,6 +1153,14 @@ paths:
           $ref: '#/components/responses/422'
         '429':
           $ref: '#/components/responses/429'
+  # NOTE: this path previously also had a `put` (operationId replaceDNSRecord).
+  # It's removed: despite returning 200, it does not perform a single-record
+  # replace — it silently replaces the entire dns-records collection with
+  # [system records] + [the one record in the body], discarding every other
+  # record in the zone. Reproduced live against a test zone; see
+  # https://github.com/godaddy/cli/issues/136. Do not reintroduce without a
+  # confirmed server-side fix and a fresh live check against a real zone with
+  # unrelated records.
   /zones/{zone}/dns-records/{recordId}:
     delete:
       operationId: deleteDNSRecord

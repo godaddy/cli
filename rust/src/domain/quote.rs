@@ -355,6 +355,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 let token = token.to_string();
                 let agreements = quote.required_agreements.clone().unwrap_or_default();
                 let (agreement_types, agreement_titles) = agreement_types_and_titles(&agreements);
+                // Cache verbatim so `purchase` can echo it into
+                // `consent.acknowledgedFees` (required for premium domains; the
+                // server rejects a mismatch with `quote_mismatch`). Serializing
+                // this in-memory value effectively never fails, but if it did,
+                // silently caching `None` would surface as a confusing
+                // `quote_mismatch` at purchase time instead of here — fail fast,
+                // same as `profile_json` above.
+                let fees_json = match quote.fees.as_ref().filter(|f| !f.is_empty()) {
+                    Some(fees) => Some(serde_json::to_value(fees).map_err(|e| {
+                        CliCoreError::message(format!(
+                            "could not serialize the quote's fees for the quote cache: {e}"
+                        ))
+                    })?),
+                    None => None,
+                };
                 let cached = quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
                     period: quote.period.map_or(period, |p| p.get()),
@@ -374,14 +389,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // attempt for this token reuses it (a retry after a lost
                     // response can't double-charge).
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
-                    // Cache verbatim so `purchase` can echo it into
-                    // `consent.acknowledgedFees` (required for premium domains;
-                    // the server rejects a mismatch with `quote_mismatch`).
-                    fees: quote
-                        .fees
-                        .as_ref()
-                        .filter(|f| !f.is_empty())
-                        .and_then(|f| serde_json::to_value(f).ok()),
+                    fees: fees_json,
                 };
                 if let Err(e) = quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't
