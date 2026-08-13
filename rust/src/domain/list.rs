@@ -65,25 +65,38 @@ struct ListArgs {
     show_hidden: bool,
 }
 
-/// Extract `pageToken`/`pageTokenDirection` from a `DomainCollection`'s
-/// `rel=next` link, if present. Parses only the query string (everything
-/// after the first `?`) rather than the whole `href` as a URL — the spec's
-/// own link examples use relative paths (e.g. `/v3/domains/domain-names?...`),
-/// which `url::Url::parse` rejects outright since a relative reference isn't
-/// a valid standalone URL; splitting on `?` works for both relative and
-/// absolute `href`s. `None` (whether there's genuinely no next page, or a
-/// `next` link is present but missing an `href`/`pageToken` this CLI can
-/// parse) means "stop" — a domain list that ends one page short of complete
-/// is far less harmful than one that loops or errors on a link shape it
-/// doesn't recognize.
-fn next_page_token(
-    links: &[types::LinkDescription],
-) -> Option<(String, Option<types::ListDomainsPageTokenDirection>)> {
-    let href = links
-        .iter()
-        .find(|l| l.rel.as_deref() == Some("next"))?
-        .href
-        .as_deref()?;
+/// The result of looking for a `rel=next` link in a page's `links`. Per the
+/// spec, `rel=next` is present *only when more items are actually
+/// available* — so its presence is a guarantee, not a hint. That's why a
+/// present-but-unparseable link is kept distinct from "no next link at
+/// all": the former means the API says there's more data and this CLI
+/// failed to reach it (a bug worth erroring on), while the latter means
+/// pagination has genuinely finished.
+#[derive(Debug, PartialEq)]
+enum NextPage {
+    /// No `rel=next` link — every page has been fetched.
+    Done,
+    /// A `rel=next` link was present and its `pageToken` (+ optional
+    /// direction) was extracted.
+    Token(String, Option<types::ListDomainsPageTokenDirection>),
+    /// A `rel=next` link was present, but this CLI couldn't extract a
+    /// `pageToken` from it — a link shape this build doesn't recognize.
+    Unparseable,
+}
+
+/// Classify a `DomainCollection`'s `links` per [`NextPage`]. Parses only the
+/// query string (everything after the first `?`) rather than the whole
+/// `href` as a URL — the spec's own link examples use relative paths (e.g.
+/// `/v3/domains/domain-names?...`), which `url::Url::parse` rejects outright
+/// since a relative reference isn't a valid standalone URL; splitting on `?`
+/// works for both relative and absolute `href`s.
+fn next_page_token(links: &[types::LinkDescription]) -> NextPage {
+    let Some(next) = links.iter().find(|l| l.rel.as_deref() == Some("next")) else {
+        return NextPage::Done;
+    };
+    let Some(href) = next.href.as_deref() else {
+        return NextPage::Unparseable;
+    };
     let query = href.split_once('?').map_or("", |(_, query)| query);
     let mut token = None;
     let mut direction = None;
@@ -96,7 +109,10 @@ fn next_page_token(
             _ => {}
         }
     }
-    token.map(|token| (token, direction))
+    match token {
+        Some(token) => NextPage::Token(token, direction),
+        None => NextPage::Unparseable,
+    }
 }
 
 /// Fetch every domain matching `statuses`/`visible_only`, following v3's
@@ -153,16 +169,27 @@ async fn fetch_domains(
         if stop_at.is_some_and(|n| items.len() >= n) {
             return Ok(items);
         }
-        page_token = collection.links.and_then(|links| next_page_token(&links));
-        if page_token.is_none() {
-            return Ok(items);
-        }
+        let next = collection
+            .links
+            .map_or(NextPage::Done, |links| next_page_token(&links));
+        page_token = match next {
+            NextPage::Done => return Ok(items),
+            NextPage::Token(token, direction) => Some((token, direction)),
+            NextPage::Unparseable => {
+                return Err(CliCoreError::message(format!(
+                    "domain list: the API reported another page of results but this CLI \
+                     couldn't parse its pagination link ({} domains fetched before stopping); \
+                     this looks like an API or CLI bug, not a real account size",
+                    items.len()
+                )));
+            }
+        };
     }
-    // Every earlier iteration returned as soon as `page_token` came back
-    // `None`, so reaching here means MAX_PAGES was exhausted with a next
-    // page still pending — a malformed or looping `next` link, not a real
-    // account size. Error instead of returning a partial list that would
-    // look complete to the caller.
+    // Every earlier iteration returned as soon as a page had no `Token`
+    // (either genuinely `Done`, or an error on `Unparseable`), so reaching
+    // here means MAX_PAGES was exhausted with a next page still pending —
+    // a looping `next` link, not a real account size. Error instead of
+    // returning a partial list that would look complete to the caller.
     Err(CliCoreError::message(format!(
         "domain list: exceeded {MAX_PAGES} pages ({} domains fetched) without reaching the end \
          of the list; this looks like a pagination bug rather than a real account size",
@@ -225,7 +252,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{command, fetch_domains, next_page_token, parse_statuses, wants_visible_only};
+    use super::{
+        NextPage, command, fetch_domains, next_page_token, parse_statuses, wants_visible_only,
+    };
     use cli_engine::PaginationConfig;
     use domains_client::types;
 
@@ -346,11 +375,12 @@ mod tests {
         let links = next_link(
             "https://api.example.com/v3/domains/domain-names?pageToken=abc123&pageTokenDirection=forward",
         );
-        let (token, direction) = next_page_token(&links).expect("next link present");
-        assert_eq!(token, "abc123");
         assert_eq!(
-            direction,
-            Some(types::ListDomainsPageTokenDirection::Forward)
+            next_page_token(&links),
+            NextPage::Token(
+                "abc123".to_string(),
+                Some(types::ListDomainsPageTokenDirection::Forward)
+            )
         );
     }
 
@@ -362,22 +392,27 @@ mod tests {
         // URL — that would have silently stopped pagination after page one
         // against a real API response shaped this way.
         let links = next_link("/v3/domains/domain-names?pageToken=abc123");
-        let (token, direction) = next_page_token(&links).expect("next link present");
-        assert_eq!(token, "abc123");
-        assert_eq!(direction, None);
+        assert_eq!(
+            next_page_token(&links),
+            NextPage::Token("abc123".to_string(), None)
+        );
     }
 
     #[test]
-    fn next_page_token_is_none_without_a_next_rel() {
+    fn next_page_token_is_done_without_a_next_rel() {
         let mut links = next_link("https://api.example.com/v3/domains/domain-names?pageToken=abc");
         links[0].rel = Some("self".to_string());
-        assert!(next_page_token(&links).is_none());
+        assert_eq!(next_page_token(&links), NextPage::Done);
     }
 
     #[test]
-    fn next_page_token_is_none_when_the_next_link_has_no_page_token() {
+    fn next_page_token_is_unparseable_when_the_next_link_has_no_page_token() {
+        // Per the spec, `rel=next` only ever appears when more data exists —
+        // so a present-but-unparseable link must NOT be conflated with
+        // "genuinely done" (that would silently truncate a real account's
+        // domain list).
         let links = next_link("https://api.example.com/v3/domains/domain-names");
-        assert!(next_page_token(&links).is_none());
+        assert_eq!(next_page_token(&links), NextPage::Unparseable);
     }
 
     #[tokio::test]
@@ -493,5 +528,38 @@ mod tests {
             .expect_err("must not silently return a partial list");
         assert!(err.to_string().contains("pages"), "{err}");
         assert_eq!(mock.calls_async().await, super::MAX_PAGES);
+    }
+
+    #[tokio::test]
+    async fn fetch_domains_errors_immediately_on_an_unparseable_next_link() {
+        // Per the spec, `rel=next` only ever appears when more data exists,
+        // so a `next` link present but missing a `pageToken` must error on
+        // the spot — not be treated as "done" and silently return a partial
+        // list that looks complete. This must fire on page one, well before
+        // any MAX_PAGES cap.
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/domain-names");
+                then.status(200).json_body(serde_json::json!({
+                    "items": [{"domain": "a.com"}],
+                    "links": [{"rel": "next", "href": "/v3/domains/domain-names"}],
+                }));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let err = fetch_domains(&client, &[], false, None, false)
+            .await
+            .expect_err("must not silently return a partial list");
+        assert!(err.to_string().contains("couldn't parse"), "{err}");
+        assert_eq!(
+            mock.calls_async().await,
+            1,
+            "must error on page one, not loop to MAX_PAGES"
+        );
     }
 }
