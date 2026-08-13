@@ -66,21 +66,24 @@ fn term_to_json(term: &types::TermPrice) -> Option<serde_json::Value> {
     Some(obj)
 }
 
-/// The currency code shared by a domain's priced terms, sourced from whichever
-/// term has a price, renewal price, or first-term price first (all terms use
-/// the same currency in practice, so one top-level field covers every row in
-/// `terms`). Checks all three — not just price/renewal — so a term with only
-/// a first-term promotion still yields a currency.
+/// The currency code shared by a domain's priced terms (all terms use the
+/// same currency in practice, so one top-level field covers every row in
+/// `terms`) — the first `currencyCode` found across every term's price,
+/// renewal price, and first-term price. Keeps searching past a money value
+/// that has no `currencyCode` (itself optional) rather than stopping at the
+/// first price-like value regardless of whether it actually carries one.
 fn shared_currency(prices: &[types::TermPrice]) -> Option<String> {
     prices
         .iter()
-        .find_map(|t| {
-            t.price
-                .as_ref()
-                .or(t.renewal_price.as_ref())
-                .or(t.first_term_price.as_ref())
+        .flat_map(|t| {
+            [
+                t.price.as_ref(),
+                t.renewal_price.as_ref(),
+                t.first_term_price.as_ref(),
+            ]
         })
-        .and_then(|m| m.currency_code.as_ref())
+        .flatten()
+        .find_map(|m| m.currency_code.as_ref())
         .map(|c| c.to_string())
 }
 
@@ -197,6 +200,31 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(shared_currency(&[term]), Some("USD".to_string()));
+    }
+
+    #[test]
+    fn shared_currency_keeps_searching_past_a_price_with_no_currency_code() {
+        // currencyCode is itself optional per the API. The first term's
+        // price having none must not short-circuit the search — a later
+        // term (or a later field on the same term) may still carry one.
+        let no_currency = types::TermPrice {
+            price: Some(types::SimpleMoney {
+                value: Some(999),
+                currency_code: None,
+            }),
+            ..Default::default()
+        };
+        let has_currency = types::TermPrice {
+            price: Some(types::SimpleMoney {
+                value: Some(1999),
+                currency_code: Some(types::CurrencyCode("USD".to_string())),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            shared_currency(&[no_currency, has_currency]),
+            Some("USD".to_string())
+        );
     }
 
     /// Proves `view_columns()` renders `terms` shaped like what the handler
