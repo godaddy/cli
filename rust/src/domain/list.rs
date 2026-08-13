@@ -157,4 +157,76 @@ mod tests {
         assert!(!wants_visible_only(&[], true));
         assert!(!wants_visible_only(&["CANCELLED".to_string()], false));
     }
+
+    #[tokio::test]
+    async fn statuses_are_sent_as_a_single_comma_joined_query_param() {
+        // Regression for DEVEX-882 (mirrors `agreements.rs`'s equivalent
+        // test): v3's `statuses` query param is `style: form, explode:
+        // false` — one comma-joined value. progenitor's generated
+        // `statuses()` setter always seq-serializes a `Vec` as repeated
+        // `statuses=` pairs, which the live API rejects with
+        // `MISMATCH_FORMAT` (confirmed against a real test-environment
+        // server) — multiple `--status` values must be joined first.
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/domain-names")
+                    .query_param("statuses", "ACTIVE,EXPIRED");
+                then.status(200)
+                    .json_body(serde_json::json!({ "items": [] }));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let statuses =
+            super::super::common::comma_joined(vec!["ACTIVE".to_string(), "EXPIRED".to_string()]);
+        client
+            .list_domains()
+            .statuses(statuses)
+            .send()
+            .await
+            .expect("request succeeds");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn default_visible_only_lifecycle_groups_are_comma_joined() {
+        // Same DEVEX-882 class of bug applies to `lifecycleGroups` — the
+        // no-flags default view (hide non-visible/terminal domains).
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/domain-names")
+                    .query_param("lifecycleGroups", "PENDING,REGISTERED,PENDING_TERMINAL");
+                then.status(200)
+                    .json_body(serde_json::json!({ "items": [] }));
+            })
+            .await;
+        let client =
+            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
+                .expect("build client");
+
+        let groups = super::super::common::comma_joined(
+            super::DEFAULT_VISIBLE_GROUPS
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .into_iter()
+        .map(domains_client::types::DomainLifecycleGroup::from)
+        .collect::<Vec<_>>();
+        client
+            .list_domains()
+            .lifecycle_groups(groups)
+            .send()
+            .await
+            .expect("request succeeds");
+
+        mock.assert_async().await;
+    }
 }
