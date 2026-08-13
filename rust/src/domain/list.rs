@@ -99,19 +99,26 @@ fn next_page_token(links: &[types::LinkDescription]) -> NextPage {
     };
     let query = href.split_once('?').map_or("", |(_, query)| query);
     let mut token = None;
-    let mut direction = None;
+    // `Ok`/absent (no `pageTokenDirection` at all — it's documented optional)
+    // vs `Err` (present but not one of the enum's values): only the latter
+    // is unparseable. Conflating "absent" with "invalid" would make an
+    // ordinary next link with no direction fail alongside a genuinely
+    // malformed one.
+    let mut direction = Ok(None);
     for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         match key.as_ref() {
             "pageToken" => token = Some(value.into_owned()),
             "pageTokenDirection" => {
-                direction = types::ListDomainsPageTokenDirection::try_from(value.as_ref()).ok();
+                direction = types::ListDomainsPageTokenDirection::try_from(value.as_ref())
+                    .map(Some)
+                    .map_err(|_| ());
             }
             _ => {}
         }
     }
-    match token {
-        Some(token) => NextPage::Token(token, direction),
-        None => NextPage::Unparseable,
+    match (token, direction) {
+        (Some(token), Ok(direction)) => NextPage::Token(token, direction),
+        _ => NextPage::Unparseable,
     }
 }
 
@@ -413,6 +420,18 @@ mod tests {
         // "genuinely done" (that would silently truncate a real account's
         // domain list).
         let links = next_link("https://api.example.com/v3/domains/domain-names");
+        assert_eq!(next_page_token(&links), NextPage::Unparseable);
+    }
+
+    #[test]
+    fn next_page_token_is_unparseable_when_direction_is_present_but_invalid() {
+        // A `pageTokenDirection` outside the enum's two values is a
+        // malformed link, not "no direction given" — must not silently
+        // proceed with `direction: None` and risk the wrong next-page
+        // request.
+        let links = next_link(
+            "https://api.example.com/v3/domains/domain-names?pageToken=abc&pageTokenDirection=sideways",
+        );
         assert_eq!(next_page_token(&links), NextPage::Unparseable);
     }
 
