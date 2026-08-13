@@ -67,12 +67,19 @@ fn term_to_json(term: &types::TermPrice) -> Option<serde_json::Value> {
 }
 
 /// The currency code shared by a domain's priced terms, sourced from whichever
-/// term has a price or renewal price first (all terms use the same currency in
-/// practice, so one top-level field covers every row in `terms`).
+/// term has a price, renewal price, or first-term price first (all terms use
+/// the same currency in practice, so one top-level field covers every row in
+/// `terms`). Checks all three — not just price/renewal — so a term with only
+/// a first-term promotion still yields a currency.
 fn shared_currency(prices: &[types::TermPrice]) -> Option<String> {
     prices
         .iter()
-        .find_map(|t| t.price.as_ref().or(t.renewal_price.as_ref()))
+        .find_map(|t| {
+            t.price
+                .as_ref()
+                .or(t.renewal_price.as_ref())
+                .or(t.first_term_price.as_ref())
+        })
         .and_then(|m| m.currency_code.as_ref())
         .map(|c| c.to_string())
 }
@@ -161,13 +168,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{command, view_columns};
+    use super::{command, shared_currency, view_columns};
+    use domains_client::types;
     use serde_json::json;
 
     #[test]
     fn default_fields_includes_terms() {
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "terms"), "{fields}");
+    }
+
+    #[test]
+    fn shared_currency_falls_back_to_first_term_price_when_others_are_absent() {
+        // A term with only a first-term promotion (no price/renewalPrice) must
+        // still yield a currency — otherwise `firstTermPrice` values render
+        // with no top-level `currency` to interpret them against.
+        let term = types::TermPrice {
+            first_term_price: Some(types::SimpleMoney {
+                value: Some(250),
+                currency_code: Some(types::CurrencyCode("USD".to_string())),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(shared_currency(&[term]), Some("USD".to_string()));
     }
 
     /// Proves `view_columns()` renders `terms` shaped like what the handler
