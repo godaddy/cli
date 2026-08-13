@@ -232,7 +232,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // pre-v3 behavior.
             let limit = ctx.middleware.limit;
             let stop_at = (limit > 0).then(|| {
-                usize::try_from(ctx.middleware.offset.max(0) + limit).unwrap_or(usize::MAX)
+                usize::try_from(ctx.middleware.offset.max(0).saturating_add(limit))
+                    .unwrap_or(usize::MAX)
             });
             let items = fetch_domains(&client, &statuses, visible_only, stop_at, debug).await?;
             let domains: Vec<serde_json::Value> = items
