@@ -38,8 +38,9 @@ const MAX_PAGES: usize = 50;
 fn parse_statuses(raw: &[String]) -> Result<Vec<String>> {
     raw.iter()
         .map(|s| {
-            types::DomainStatus::try_from(s.to_uppercase().as_str())
-                .map(|_| s.to_uppercase())
+            let upper = s.to_uppercase();
+            types::DomainStatus::try_from(upper.as_str())
+                .map(|_| upper)
                 .map_err(|_| CliCoreError::message(format!("invalid --status {s:?}")))
         })
         .collect()

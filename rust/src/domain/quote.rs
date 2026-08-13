@@ -51,9 +51,10 @@ fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
     Some(json!(
         fees.iter()
             .map(|f| {
-                let mut out = json!({
-                    "type": f.type_.as_ref().map(|t| t.to_string()),
-                });
+                let mut out = json!({});
+                if let Some(t) = f.type_.as_ref() {
+                    out["type"] = json!(t.to_string());
+                }
                 if let Some(amount) = f.fee.as_ref().and_then(format_money) {
                     out["amount"] = json!(amount);
                     if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
