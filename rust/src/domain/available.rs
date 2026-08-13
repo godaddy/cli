@@ -141,16 +141,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
             });
             let prices = body.prices.unwrap_or_default();
             let terms: Vec<serde_json::Value> = prices.iter().filter_map(term_to_json).collect();
-            // Only emit `currency` alongside actual `terms` rows — a term
-            // missing its `period` (never happens in practice, but the field
-            // is optional) is dropped by `term_to_json`, and a top-level
-            // `currency` with no corresponding terms would be a confusing,
-            // self-inconsistent payload.
-            if !terms.is_empty()
-                && let Some(currency) = shared_currency(&prices)
-            {
-                result["currency"] = json!(currency);
+            // `terms` is emitted whenever any priced term exists, independent
+            // of whether a currency could be derived (`currencyCode` is
+            // itself optional per the API, so pricing with no currency is
+            // valid and must not suppress the terms themselves). `currency`
+            // is the one gated on `terms` being non-empty, so it never
+            // appears with no corresponding rows to interpret it against.
+            if !terms.is_empty() {
                 result["terms"] = json!(terms);
+                if let Some(currency) = shared_currency(&prices) {
+                    result["currency"] = json!(currency);
+                }
             }
 
             let cmd = CommandResult::new(result);
