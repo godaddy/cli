@@ -485,4 +485,46 @@ mod tests {
         assert!(rendered.contains("Jane Smith"), "{rendered}");
         assert!(rendered.contains("PROFILE"), "{rendered}");
     }
+
+    /// Proves `view_columns()` renders a premium domain's `inventory`/`fees`
+    /// shaped like what `quote_to_json` actually emits (`fees_to_json`
+    /// builds each entry from a `json!` literal with these exact keys) as a
+    /// nested table — a mismatch would silently drop them from `--fields
+    /// all` output.
+    #[test]
+    fn quote_result_renders_inventory_and_fees_as_a_nested_table() {
+        let quote = json!({
+            "domain": "premium-example.com",
+            "available": true,
+            "inventory": "PREMIUM",
+            "fees": [
+                {"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3900.00", "currency": "USD"},
+            ],
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Inventory:"), "{rendered}");
+        assert!(rendered.contains("PREMIUM"), "{rendered}");
+        assert!(rendered.contains("Fees:"), "{rendered}");
+        assert!(
+            rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("3900.00"), "{rendered}");
+    }
+
+    /// A non-premium quote (the common case) renders `Inventory:`/`Fees:` as
+    /// blank rows, same as every other optional field in this view — but
+    /// must never leak a literal `null` (the regression `fees_to_json`'s
+    /// `type` key fix targets).
+    #[test]
+    fn quote_result_never_leaks_a_literal_null_when_fees_are_absent() {
+        let quote = json!({
+            "domain": "example.com",
+            "available": true,
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(!rendered.contains("null"), "{rendered}");
+    }
 }
