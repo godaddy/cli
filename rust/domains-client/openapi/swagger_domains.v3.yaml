@@ -69,7 +69,7 @@ info:
 
     in the context of a specific domain-name instance. The `/check-availability`
 
-    controller accepts GET (single domain) or POST (1–50 domains) and carries no
+    controller accepts GET (single domain) or POST (1–25 domains) and carries no
 
     persistent identity.
 
@@ -114,7 +114,7 @@ security:
 tags:
 - name: Discovery
   description: 'Indicative, non-committing operations for finding and checking domains. Use suggestDomains for natural-language
-    queries. For a single known domain, use getDomainAvailability (GET /check-availability); for 1–50 domains in one call,
+    queries. For a single known domain, use getDomainAvailability (GET /check-availability); for 1–25 domains in one call,
     use checkAvailability (POST /check-availability). Both availability operations share the same check semantics and Availability
     result model; locked pricing is established only at quote time. Neither carries a persistent check identity.
 
@@ -392,7 +392,7 @@ paths:
       tags:
       - Discovery
       summary: Check availability of one or more specific domains
-      description: 'Batch controller for domain availability checking. Accepts 1–50 domain
+      description: 'Batch controller for domain availability checking. Accepts 1–25 domain
 
         names alongside optional check criteria (optimization mode, ISC pricing
 
