@@ -6,6 +6,7 @@ mod config;
 mod contacts;
 mod dns;
 mod domain;
+mod email;
 mod env;
 mod environments;
 mod error;
@@ -39,6 +40,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         api_explorer::module(),
         dns::module(),
         domain::module(),
+        email::module(),
         env::module(),
         hosting::module(),
         pat::module(),
@@ -124,6 +126,13 @@ mod tests {
             "hosting should stay hidden at the Ga default: {}",
             output.rendered
         );
+
+        let output = cli.run(["gddy", "email", "--help"]).await;
+        assert_ne!(
+            output.exit_code, 0,
+            "email should stay hidden at the Ga default: {}",
+            output.rendered
+        );
     }
 
     #[tokio::test]
@@ -164,6 +173,13 @@ mod tests {
         assert_eq!(
             output.exit_code, 0,
             "hosting should be revealed under an Experimental-min_stage environment: {}",
+            output.rendered
+        );
+
+        let output = cli.run(["gddy", "email", "--help"]).await;
+        assert_eq!(
+            output.exit_code, 0,
+            "email should be revealed under an Experimental-min_stage environment: {}",
             output.rendered
         );
     }
