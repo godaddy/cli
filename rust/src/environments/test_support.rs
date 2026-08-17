@@ -3,8 +3,8 @@
 
 use std::sync::Mutex;
 
-// Serializes every test that touches real process env vars, so parallel
-// test threads can't observe each other's GDDY_* overrides.
+/// Serializes every test that touches real process env vars, so parallel
+/// test threads can't observe each other's GDDY_* overrides.
 pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// RAII guard that sets an env var and restores it to its prior state on
