@@ -2,10 +2,11 @@ use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::truncation::protect_payload;
 
 output_schema!(ActionSummary {
     "name": "string";
@@ -38,7 +39,7 @@ const ACTIONS: &[(&str, &str)] = &[
 
 /// Raw action schema JSON files embedded at compile time.
 /// Key is the action name; value is the full JSON schema.
-fn load_action_schema(name: &str) -> Option<serde_json::Value> {
+fn load_action_schema(name: &str) -> Option<Value> {
     let json_str = match name {
         "location.address.verify" => {
             include_str!("../../schemas/actions/location-address-verify.json")
@@ -138,7 +139,77 @@ pub fn group() -> RuntimeGroupSpec {
                         "action {name:?} not found; run `gddy platform actions list` to see available actions"
                     ))
                 })?;
-                Ok(CommandResult::new(schema))
+                let result = protect_payload(schema, &format!("actions-describe-{name}"));
+                let mut payload = result.value;
+                if let Value::Object(ref mut map) = payload {
+                    let mut gddy = serde_json::Map::new();
+                    gddy.insert("truncated".to_string(), json!(result.metadata.is_some()));
+                    if let Some(metadata) = result.metadata {
+                        gddy.insert("total_bytes".to_string(), json!(metadata.total_bytes));
+                        gddy.insert("shown_bytes".to_string(), json!(metadata.shown_bytes));
+
+                        // Truncation should always produce a full_output file, but the write
+                        // is best-effort and can fail (e.g. disk full, permission denied), so
+                        // this stays an `if let` rather than an unconditional insert.
+                        if let Some(full_output) = metadata.full_output {
+                            gddy.insert("full_output".to_string(), json!(full_output));
+                        }
+                    }
+                    // Namespaced under a reserved key so truncation metadata can never
+                    // collide with a real property name in an action's JSON schema.
+                    map.insert("_gddy".to_string(), Value::Object(gddy));
+                }
+                Ok(CommandResult::new(payload))
             },
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::{Cli, CliConfig, Stage};
+
+    fn test_cli() -> Cli {
+        Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_modules(crate::all_modules()),
+        )
+    }
+
+    #[tokio::test]
+    async fn list_reports_pagination_metadata_via_cli_engine() {
+        let cli = test_cli();
+        let output = cli
+            .run(["gddy", "platform", "actions", "list", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("stdout should contain json");
+        let pagination = &rendered["pagination"];
+        assert_eq!(pagination["total"], pagination["count"]);
+        assert_eq!(pagination["has_more"], serde_json::json!(false));
+    }
+
+    #[tokio::test]
+    async fn describe_reports_protection_metadata() {
+        let cli = test_cli();
+        let output = cli
+            .run([
+                "gddy",
+                "platform",
+                "actions",
+                "describe",
+                "location.address.verify",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let rendered: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("stdout should contain json");
+        assert_eq!(
+            rendered["data"]["_gddy"]["truncated"],
+            serde_json::json!(false)
+        );
+    }
 }
