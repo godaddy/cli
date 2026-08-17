@@ -4,19 +4,21 @@
 //! command can't blow an agent's context window; the untruncated data is
 //! written to a side-channel file under `$TMPDIR/godaddy-cli/` instead.
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
 const MAX_STRING_LENGTH: usize = 1000;
+const TRUNCATION_SUFFIX: &str = "...(truncated)";
 const MAX_SERIALIZED_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TruncationMetadata {
     pub(crate) truncated: bool,
-    pub(crate) total: usize,
-    pub(crate) shown: usize,
+    pub(crate) total_bytes: usize,
+    pub(crate) shown_bytes: usize,
     pub(crate) full_output: Option<String>,
 }
 
@@ -38,8 +40,25 @@ fn slugify(command_id: &str) -> String {
         .collect()
 }
 
+/// Counts bytes written without buffering them, so measuring a large value's
+/// serialized size doesn't require allocating a same-sized `String` first.
+struct CountingWriter(usize);
+
+impl Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 fn estimate_bytes(value: &Value) -> usize {
-    serde_json::to_string(value).map(|s| s.len()).unwrap_or(0)
+    let mut writer = CountingWriter(0);
+    serde_json::to_writer(&mut writer, value).ok();
+    writer.0
 }
 
 /// Best-effort dump of the untruncated payload to a `0600` file under a
@@ -59,7 +78,11 @@ fn write_full_output(command_id: &str, payload: &Value) -> Option<PathBuf> {
         .duration_since(UNIX_EPOCH)
         .ok()?
         .as_millis();
-    let path = dir.join(format!("{millis}-{}.json", slugify(command_id)));
+    let path = dir.join(format!(
+        "{millis}-{}-{}.json",
+        slugify(command_id),
+        uuid::Uuid::new_v4()
+    ));
     let contents = serde_json::to_string_pretty(payload).ok()?;
     std::fs::write(&path, contents).ok()?;
     #[cfg(unix)]
@@ -75,8 +98,9 @@ fn write_full_output(command_id: &str, payload: &Value) -> Option<PathBuf> {
 fn truncate_strings(value: &Value) -> Value {
     match value {
         Value::String(s) if s.chars().count() > MAX_STRING_LENGTH => {
-            let truncated: String = s.chars().take(MAX_STRING_LENGTH).collect();
-            Value::String(format!("{truncated}...(truncated)"))
+            let take_len = MAX_STRING_LENGTH.saturating_sub(TRUNCATION_SUFFIX.chars().count());
+            let truncated: String = s.chars().take(take_len).collect();
+            Value::String(format!("{truncated}{TRUNCATION_SUFFIX}"))
         }
         Value::Array(items) => Value::Array(items.iter().map(truncate_strings).collect()),
         Value::Object(obj) => Value::Object(
@@ -119,8 +143,8 @@ pub(crate) fn protect_payload(value: Value, command_id: &str) -> PayloadTruncati
         value: candidate,
         metadata: Some(TruncationMetadata {
             truncated: true,
-            total: total_bytes,
-            shown: shown_bytes,
+            total_bytes,
+            shown_bytes,
             full_output,
         }),
     }
@@ -137,8 +161,8 @@ mod tests {
         let value = json!({ "nested": [long.clone()] });
         let truncated = truncate_strings(&value);
         let nested = truncated["nested"][0].as_str().expect("string");
-        assert!(nested.ends_with("...(truncated)"));
-        assert_eq!(nested.len(), MAX_STRING_LENGTH + "...(truncated)".len());
+        assert!(nested.ends_with(TRUNCATION_SUFFIX));
+        assert_eq!(nested.chars().count(), MAX_STRING_LENGTH);
     }
 
     #[test]
@@ -156,7 +180,8 @@ mod tests {
         let result = protect_payload(value, "test-strings");
         let metadata = result.metadata.expect("metadata present");
         assert!(metadata.truncated);
-        assert!(metadata.full_output.is_some());
+        let full_output = metadata.full_output.expect("full_output path");
+        std::fs::remove_file(full_output).ok();
     }
 
     #[test]

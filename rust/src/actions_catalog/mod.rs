@@ -142,18 +142,22 @@ pub fn group() -> RuntimeGroupSpec {
                 let result = protect_payload(schema, &format!("actions-describe-{name}"));
                 let mut payload = result.value;
                 if let Value::Object(ref mut map) = payload {
-                    map.insert("truncated".to_string(), json!(result.metadata.is_some()));
+                    let mut gddy = serde_json::Map::new();
+                    gddy.insert("truncated".to_string(), json!(result.metadata.is_some()));
                     if let Some(metadata) = result.metadata {
-                        map.insert("total".to_string(), json!(metadata.total));
-                        map.insert("shown".to_string(), json!(metadata.shown));
+                        gddy.insert("total_bytes".to_string(), json!(metadata.total_bytes));
+                        gddy.insert("shown_bytes".to_string(), json!(metadata.shown_bytes));
 
                         // Truncation should always produce a full_output file, but the write
                         // is best-effort and can fail (e.g. disk full, permission denied), so
                         // this stays an `if let` rather than an unconditional insert.
                         if let Some(full_output) = metadata.full_output {
-                            map.insert("full_output".to_string(), json!(full_output));
+                            gddy.insert("full_output".to_string(), json!(full_output));
                         }
                     }
+                    // Namespaced under a reserved key so truncation metadata can never
+                    // collide with a real property name in an action's JSON schema.
+                    map.insert("_gddy".to_string(), Value::Object(gddy));
                 }
                 Ok(CommandResult::new(payload))
             },
@@ -203,6 +207,9 @@ mod tests {
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("stdout should contain json");
-        assert_eq!(rendered["data"]["truncated"], serde_json::json!(false));
+        assert_eq!(
+            rendered["data"]["_gddy"]["truncated"],
+            serde_json::json!(false)
+        );
     }
 }
