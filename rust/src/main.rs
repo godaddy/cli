@@ -224,4 +224,98 @@ mod tests {
             );
         }
     }
+
+    /// Smoke test for the bare-invocation discovery envelope (DEVEX-721):
+    /// running `gddy` with no subcommand must exit 0 and print a JSON
+    /// envelope carrying at least a version and some root-level next actions.
+    #[tokio::test]
+    async fn root_invocation_returns_a_json_discovery_envelope_with_next_actions() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_root_next_actions(Arc::new(|| {
+                    vec![crate::next_action::next_action(
+                        "env get",
+                        "Get the current active environment",
+                    )]
+                }))
+                .with_modules(super::all_modules()),
+        );
+
+        let output = cli.run(["gddy"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+
+        let payload: serde_json::Value = serde_json::from_str(&output.rendered)
+            .unwrap_or_else(|e| panic!("root output should be JSON ({e}): {}", output.rendered));
+        assert!(
+            payload["data"]["version"].is_string(),
+            "root envelope should carry a version: {payload}"
+        );
+        assert!(
+            payload["next_actions"]
+                .as_array()
+                .is_some_and(|actions| !actions.is_empty()),
+            "root envelope should surface next actions: {payload}"
+        );
+    }
+
+    /// Registry-completeness smoke test (DEVEX-721): every top-level command
+    /// or group published by `tree` must carry a non-empty name/path/description,
+    /// so a bad `CommandSpec` (empty description, blank path) is caught in CI
+    /// rather than surfacing as a broken `gddy tree`/`--help` at runtime.
+    #[tokio::test]
+    async fn command_tree_publishes_every_top_level_node_with_name_path_and_description() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+
+        let output = cli.run(["gddy", "tree", "--output", "json"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+
+        let payload: serde_json::Value = serde_json::from_str(&output.rendered)
+            .unwrap_or_else(|e| panic!("tree output should be JSON ({e}): {}", output.rendered));
+        let children = payload["data"]["children"]
+            .as_array()
+            .unwrap_or_else(|| panic!("tree should publish children: {payload}"));
+        assert!(!children.is_empty(), "tree should publish top-level nodes");
+
+        let names: Vec<&str> = children
+            .iter()
+            .filter_map(|node| node["name"].as_str())
+            .collect();
+        for expected in [
+            "api",
+            "domain",
+            "dns",
+            "env",
+            "pat",
+            "payment-methods",
+            "tree",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "tree should publish {expected:?} among top-level nodes: {names:?}"
+            );
+        }
+
+        for node in children {
+            for field in ["name", "path", "description"] {
+                assert!(
+                    node[field].as_str().is_some_and(|s| !s.is_empty()),
+                    "every top-level node should have a non-empty {field:?}: {node}"
+                );
+            }
+        }
+    }
+
+    // `--env` actually re-routing command execution to the targeted
+    // environment (DEVEX-721's `cli-smoke` env-override parity item) is
+    // already covered end-to-end per-command — see
+    // `api_explorer::operation::tests::operation_get_full_path_is_hostless_in_a_non_prod_env`
+    // — since `env get`/`env info` intentionally read the *persisted*
+    // `.gdenv` environment rather than the per-invocation `--env` override
+    // (see the doc comment on `env set` above), so a generic root-level test
+    // here would exercise the wrong command.
 }
