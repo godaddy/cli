@@ -55,6 +55,45 @@ fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> 
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Fetches and parses the webhook event-types response. Extracted from the
+/// command closure so the HTTP/error-mapping behavior (non-2xx status,
+/// malformed body) can be exercised directly against a mock server.
+async fn fetch_webhook_events(
+    client: &reqwest::Client,
+    base_url: &str,
+    token: &str,
+) -> cli_engine::Result<WebhookEventsResponse> {
+    let url = format!("{base_url}/v1/apis/webhook-event-types");
+    let request = client
+        .get(&url)
+        .bearer_auth(token)
+        .header("x-request-id", uuid::Uuid::new_v4().to_string())
+        .build()
+        .map_err(|e| GddyError::validation(e.to_string()).into_cli_error())?;
+    cli_engine::transport::debug_log_reqwest_request(&request);
+    let resp = client
+        .execute(request)
+        .await
+        .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+    cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+    if !status.is_success() {
+        let body = String::from_utf8_lossy(&bytes).into_owned();
+        return Err(GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error());
+    }
+    serde_json::from_slice(&bytes).map_err(|e| {
+        GddyError::unexpected(format!("failed to parse webhook events response: {e}"))
+            .into_cli_error()
+    })
+}
+
 /// The webhook command group, composed below `gddy platform`.
 pub fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
@@ -78,38 +117,8 @@ pub fn group() -> RuntimeGroupSpec {
         |ctx| async move {
             let token = ctx.credential().await?.token;
             let base_url = api_url_for_env(&ctx.middleware.env)?;
-            let url = format!("{base_url}/v1/apis/webhook-event-types");
             let client = crate::application::client::make_http_client();
-            let request = client
-                .get(&url)
-                .bearer_auth(&token)
-                .header("x-request-id", uuid::Uuid::new_v4().to_string())
-                .build()
-                .map_err(|e| GddyError::validation(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_request(&request);
-            let resp = client
-                .execute(request)
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-
-            let status = resp.status();
-            let headers = resp.headers().clone();
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
-
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes).into_owned();
-                return Err(
-                    GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error()
-                );
-            }
-            let response: WebhookEventsResponse = serde_json::from_slice(&bytes).map_err(|e| {
-                GddyError::unexpected(format!("failed to parse webhook events response: {e}"))
-                    .into_cli_error()
-            })?;
+            let response = fetch_webhook_events(&client, &base_url, &token).await?;
             let events: Vec<WebhookEvent> = response.events;
             let total = events.len();
             let truncated = total > MAX_LIST_ITEMS;
