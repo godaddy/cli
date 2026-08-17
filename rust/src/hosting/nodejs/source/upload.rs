@@ -74,3 +74,45 @@ pub(super) fn command() -> RuntimeCommandSpec {
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::NextActionParam;
+
+    use super::{require_zip_file, upload_status_next_action};
+
+    #[test]
+    fn require_zip_file_rejects_missing_path() {
+        let err = require_zip_file("/no/such/file.zip").unwrap_err();
+        assert!(err.to_string().contains("zip file not found"));
+        assert!(err.to_string().contains("/no/such/file.zip"));
+    }
+
+    #[test]
+    fn require_zip_file_accepts_an_existing_file() {
+        let tmp = tempfile::NamedTempFile::new().expect("failed to create temp file");
+        let path = tmp.path().to_str().expect("temp path should be utf8");
+        assert!(require_zip_file(path).is_ok());
+    }
+
+    #[test]
+    fn require_zip_file_rejects_a_directory() {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let path = tmp.path().to_str().expect("temp path should be utf8");
+        let err = require_zip_file(path).unwrap_err();
+        assert!(err.to_string().contains("zip file not found"));
+    }
+
+    #[test]
+    fn upload_status_next_action_requires_job_id_when_absent() {
+        let action = upload_status_next_action("app-123".to_owned(), "");
+        assert_eq!(action.params["app-id"], NextActionParam::value("app-123"));
+        assert_eq!(action.params["job-id"], NextActionParam::required());
+    }
+
+    #[test]
+    fn upload_status_next_action_prefills_job_id_when_present() {
+        let action = upload_status_next_action("app-123".to_owned(), "job-456");
+        assert_eq!(action.params["job-id"], NextActionParam::value("job-456"));
+    }
+}
