@@ -156,7 +156,6 @@ mod tests {
 
     use super::*;
 
-
     /// `webhook events` calls the platform API, so it must stay fail-closed
     /// like every other authenticated command (parity with the deleted TS
     /// webhook-service test's "should throw authentication error"/"should
