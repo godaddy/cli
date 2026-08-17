@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.6](https://github.com/godaddy/cli/compare/v0.2.5...v0.2.6) (2026-08-17)
+
+
+### Features
+
+* **actions-catalog:** add context-safe truncation for list/describe output ([#182](https://github.com/godaddy/cli/issues/182)) ([91cc165](https://github.com/godaddy/cli/commit/91cc165e6729548eb5ef7adfb16ec67a55575d98))
+* **api-explorer:** support `api call` by operation id with parameter substitution ([#209](https://github.com/godaddy/cli/issues/209)) ([cd8890a](https://github.com/godaddy/cli/commit/cd8890a91b2a22e2f48c47d53568b20f684bc22d))
+* Improve guides ([#210](https://github.com/godaddy/cli/issues/210)) ([3832ff0](https://github.com/godaddy/cli/commit/3832ff0e93ce881a7979d8c4cc59322c329a1512))
+
 ## [0.2.5](https://github.com/godaddy/cli/compare/v0.2.4...v0.2.5) (2026-08-12)
 
 
