@@ -15,6 +15,32 @@ struct SourceUploadArgs {
     file: String,
 }
 
+/// Ensure the given zip path exists as a file before attempting upload.
+fn require_zip_file(file: &str) -> Result<(), crate::error::GddyError> {
+    if std::path::Path::new(file).is_file() {
+        return Ok(());
+    }
+    Err(crate::error::GddyError::validation(format!(
+        "zip file not found: {file}"
+    )))
+}
+
+/// Build the "poll status" next action, prefilling `--job-id` when the upload
+/// response returned one, otherwise leaving it required for the user to fill in.
+fn upload_status_next_action(app_id: String, upload_job_id: &str) -> cli_engine::NextAction {
+    let job_id_param = if upload_job_id.is_empty() {
+        NextActionParam::required()
+    } else {
+        NextActionParam::value(upload_job_id)
+    };
+    next_action(
+        "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
+        "Poll zip upload status",
+    )
+    .with_param("app-id", NextActionParam::value(app_id))
+    .with_param("job-id", job_id_param)
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SourceUploadArgs, _, _, _>(
         CommandSpec::from_args::<SourceUploadArgs>(
@@ -35,34 +61,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: SourceUploadArgs| async move {
             let app_id = args.app_id;
             let file = args.file;
+            require_zip_file(&file).map_err(crate::error::GddyError::into_cli_error)?;
             let path = std::path::Path::new(&file);
-            if !path.is_file() {
-                return Err(crate::error::GddyError::validation(format!(
-                    "zip file not found: {file}"
-                ))
-                .into_cli_error());
-            }
             let client = make_client(&ctx, &[CODE_WRITE]).await?;
             let data = client
                 .upload_source(&app_id, path)
                 .await
                 .map_err(client_err)?;
             let upload_job_id = data.get("jobId").and_then(|v| v.as_str()).unwrap_or("");
-            let action = if upload_job_id.is_empty() {
-                next_action(
-                    "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
-                    "Poll zip upload status",
-                )
-                .with_param("app-id", NextActionParam::value(app_id))
-                .with_param("job-id", NextActionParam::required())
-            } else {
-                next_action(
-                    "hosting nodejs source status --app-id <app-id> --job-id <job-id>",
-                    "Poll zip upload status",
-                )
-                .with_param("app-id", NextActionParam::value(app_id))
-                .with_param("job-id", NextActionParam::value(upload_job_id))
-            };
+            let action = upload_status_next_action(app_id, upload_job_id);
             Ok(CommandResult::new(data).with_next_actions(vec![action]))
         },
     )
