@@ -7,10 +7,8 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
 use serde_json::Value;
 
-const MAX_LIST_ITEMS: usize = 50;
 const MAX_STRING_LENGTH: usize = 1000;
 const MAX_SERIALIZED_BYTES: usize = 16 * 1024;
 
@@ -20,11 +18,6 @@ pub(crate) struct TruncationMetadata {
     pub(crate) total: usize,
     pub(crate) shown: usize,
     pub(crate) full_output: Option<String>,
-}
-
-pub(crate) struct ListTruncationResult<T> {
-    pub(crate) items: Vec<T>,
-    pub(crate) metadata: TruncationMetadata,
 }
 
 pub(crate) struct PayloadTruncationResult {
@@ -95,45 +88,6 @@ fn truncate_strings(value: &Value) -> Value {
     }
 }
 
-/// Caps a list at [`MAX_LIST_ITEMS`], dumping the full list to a side-channel
-/// file when it was truncated.
-pub(crate) fn truncate_list<T: Serialize>(
-    items: Vec<T>,
-    command_id: &str,
-) -> ListTruncationResult<T> {
-    let total = items.len();
-    let shown = total.min(MAX_LIST_ITEMS);
-    let truncated = total > MAX_LIST_ITEMS;
-
-    if !truncated {
-        return ListTruncationResult {
-            items,
-            metadata: TruncationMetadata {
-                truncated: false,
-                total,
-                shown,
-                full_output: None,
-            },
-        };
-    }
-
-    let full_output = serde_json::to_value(&items)
-        .ok()
-        .and_then(|value| write_full_output(command_id, &value))
-        .map(|path| path.display().to_string());
-    let mut items = items;
-    items.truncate(MAX_LIST_ITEMS);
-    ListTruncationResult {
-        items,
-        metadata: TruncationMetadata {
-            truncated: true,
-            total,
-            shown,
-            full_output,
-        },
-    }
-}
-
 /// Truncates long strings within `value`, then falls back to a `{ truncated,
 /// summary }` stub if the result still exceeds [`MAX_SERIALIZED_BYTES`].
 /// Dumps the original, untouched `value` to a side-channel file whenever
@@ -176,41 +130,6 @@ pub(crate) fn protect_payload(value: Value, command_id: &str) -> PayloadTruncati
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn truncate_list_under_limit_is_untouched() {
-        let items: Vec<u32> = (0..10).collect();
-        let result = truncate_list(items, "test-under");
-        assert_eq!(result.items.len(), 10);
-        assert!(!result.metadata.truncated);
-        assert_eq!(result.metadata.total, 10);
-        assert_eq!(result.metadata.shown, 10);
-        assert!(result.metadata.full_output.is_none());
-    }
-
-    #[test]
-    fn truncate_list_over_limit_caps_and_writes_full_output() {
-        let items: Vec<u32> = (0..75).collect();
-        let result = truncate_list(items, "test-over");
-        assert_eq!(result.items.len(), MAX_LIST_ITEMS);
-        assert!(result.metadata.truncated);
-        assert_eq!(result.metadata.total, 75);
-        assert_eq!(result.metadata.shown, MAX_LIST_ITEMS);
-        let full_output = result.metadata.full_output.expect("full_output path");
-        let contents = std::fs::read_to_string(&full_output).expect("full output file exists");
-        let parsed: Vec<u32> = serde_json::from_str(&contents).expect("valid json");
-        assert_eq!(parsed.len(), 75);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&full_output)
-                .expect("metadata")
-                .permissions()
-                .mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
-    }
 
     #[test]
     fn truncate_strings_truncates_long_values_recursively() {

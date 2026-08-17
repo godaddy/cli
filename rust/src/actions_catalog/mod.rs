@@ -173,7 +173,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_reports_truncation_metadata_and_no_full_output_under_the_cap() {
+    async fn list_reports_pagination_metadata_via_cli_engine() {
         let cli = test_cli();
         let output = cli
             .run(["gddy", "platform", "actions", "list", "--output", "json"])
@@ -181,10 +181,9 @@ mod tests {
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("stdout should contain json");
-        let data = &rendered["data"];
-        assert_eq!(data["truncated"], serde_json::json!(false));
-        assert_eq!(data["total"], data["shown"]);
-        assert!(data.get("full_output").is_none());
+        let pagination = &rendered["pagination"];
+        assert_eq!(pagination["total"], pagination["count"]);
+        assert_eq!(pagination["has_more"], serde_json::json!(false));
     }
 
     #[tokio::test]
