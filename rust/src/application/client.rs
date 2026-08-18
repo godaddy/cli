@@ -188,7 +188,7 @@ impl ApplicationClient {
 
     pub async fn create_release(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } } }",
+            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } settings { id groupSlug appSettingSlug entryPath capabilities order title } } }",
             "variables": { "input": input }
         }))
         .await
@@ -487,6 +487,62 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(data["activateRelease"]["status"], "ACTIVE");
+    }
+
+    #[tokio::test]
+    async fn create_release_sends_settings_input_and_returns_settings() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("CreateRelease")
+                            && body.contains("settings { id groupSlug appSettingSlug entryPath capabilities order title }")
+                            && body.contains(r#""entryPath":"/settings/godaddy-tax""#)
+                    });
+                then.status(200).json_body(json!({
+                    "data": {
+                        "createRelease": {
+                            "id": "rel-1",
+                            "version": "1.0.0",
+                            "settings": [{
+                                "id": "setting-1",
+                                "groupSlug": "tax-center",
+                                "appSettingSlug": "godaddy-tax",
+                                "entryPath": "/settings/godaddy-tax",
+                                "capabilities": ["read", "write"],
+                                "order": 10,
+                                "title": "GoDaddy Tax"
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+
+        let input = json!({
+            "applicationId": "app-123",
+            "version": "1.0.0",
+            "settings": [{
+                "groupSlug": "tax-center",
+                "appSettingSlug": "godaddy-tax",
+                "entryPath": "/settings/godaddy-tax",
+                "presentation": { "type": "form", "schemaVersion": "settings-form-v1", "sections": [] }
+            }]
+        });
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .create_release(input)
+            .await
+            .expect("create release");
+
+        mock.assert_async().await;
+        assert_eq!(
+            data["createRelease"]["settings"][0]["entryPath"],
+            "/settings/godaddy-tax"
+        );
     }
 
     #[tokio::test]
