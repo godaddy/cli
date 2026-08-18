@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+mod settings;
+pub(crate) mod settings_form;
+
+pub use settings::{SettingConfig, SettingIcon};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub name: String,
@@ -18,6 +23,8 @@ pub struct Config {
     pub dependencies: Vec<DependenciesConfig>,
     #[serde(default)]
     pub extensions: Option<ExtensionsConfig>,
+    #[serde(default)]
+    pub settings: Vec<SettingConfig>,
 }
 
 impl Config {
@@ -113,6 +120,8 @@ impl Config {
                 require_non_empty(&mut errors, "extensions.blocks.source", &blocks.source);
             }
         }
+
+        settings::validate_settings(&self.settings, &mut errors);
 
         if errors.is_empty() {
             Ok(())
@@ -436,6 +445,9 @@ pub fn write_env_file(
 
 #[cfg(test)]
 mod tests {
+    use super::settings_form::{
+        SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
+    };
     use super::*;
 
     fn valid_config() -> Config {
@@ -451,6 +463,7 @@ mod tests {
             subscriptions: None,
             dependencies: vec![],
             extensions: None,
+            settings: vec![],
         }
     }
 
@@ -688,6 +701,95 @@ mod tests {
             err.to_string().contains("extensions.blocks.source"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn validate_accepts_placement_only_setting() {
+        let mut config = valid_config();
+        config.settings.push(SettingConfig {
+            group: "tax-center".to_owned(),
+            slug: "godaddy-tax".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            order: None,
+            capabilities: vec![],
+            icon: None,
+            metadata: None,
+            presentation: None,
+        });
+        config
+            .validate()
+            .expect("placement-only setting should be valid");
+    }
+
+    #[test]
+    fn validate_rejects_invalid_setting_slug() {
+        let mut config = valid_config();
+        config.settings.push(SettingConfig {
+            group: "Tax_Center".to_owned(),
+            slug: "godaddy-tax".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            order: None,
+            capabilities: vec![],
+            icon: None,
+            metadata: None,
+            presentation: None,
+        });
+        let err = config.validate().expect_err("bad group slug");
+        assert!(err.to_string().contains("settings[0].group"), "{err}");
+    }
+
+    #[test]
+    fn setting_with_presentation_round_trips_through_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.settings.push(SettingConfig {
+            group: "tax-center".to_owned(),
+            slug: "godaddy-tax".to_owned(),
+            title: Some("GoDaddy Tax".to_owned()),
+            description: None,
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            order: Some(10),
+            capabilities: vec!["read".to_owned(), "write".to_owned()],
+            icon: Some(SettingIcon {
+                name: "percent".to_owned(),
+                library: "lucide".to_owned(),
+            }),
+            metadata: None,
+            presentation: Some(SettingsFormV1Presentation {
+                sections: vec![SettingsFormV1Section {
+                    key: "defaults".to_owned(),
+                    label: "Defaults".to_owned(),
+                    description: None,
+                    visible_when: None,
+                    fields: vec![SettingsFormV1Field::Boolean {
+                        key: "autoCalculate".to_owned(),
+                        label: "Auto-calculate".to_owned(),
+                        description: None,
+                        required: false,
+                        default_value: Some(true),
+                    }],
+                }],
+            }),
+        });
+        write_config(&path, &config).expect("write config with setting");
+        let read_back = read_config(&path).expect("read config with setting");
+        assert_eq!(read_back.settings.len(), 1);
+        assert_eq!(read_back.settings[0].entry_path, "/settings/godaddy-tax");
+        let SettingsFormV1Field::Boolean { default_value, .. } = &read_back.settings[0]
+            .presentation
+            .as_ref()
+            .expect("presentation")
+            .sections[0]
+            .fields[0]
+        else {
+            panic!("expected boolean field");
+        };
+        assert_eq!(default_value, &Some(true));
     }
 
     #[test]
