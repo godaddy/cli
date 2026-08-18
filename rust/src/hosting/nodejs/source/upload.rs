@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn require_zip_file_rejects_missing_path() {
-        let err = require_zip_file("/no/such/file.zip").unwrap_err();
+        let err = require_zip_file("/no/such/file.zip").expect_err("missing file should error");
         assert!(err.to_string().contains("zip file not found"));
         assert!(err.to_string().contains("/no/such/file.zip"));
     }
@@ -99,7 +99,7 @@ mod tests {
     fn require_zip_file_rejects_a_directory() {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let path = tmp.path().to_str().expect("temp path should be utf8");
-        let err = require_zip_file(path).unwrap_err();
+        let err = require_zip_file(path).expect_err("directory should error");
         assert!(err.to_string().contains("zip file not found"));
     }
 

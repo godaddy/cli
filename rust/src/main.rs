@@ -245,8 +245,9 @@ mod tests {
         let output = cli.run(["gddy"]).await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
 
-        let payload: serde_json::Value = serde_json::from_str(&output.rendered)
-            .unwrap_or_else(|e| panic!("root output should be JSON ({e}): {}", output.rendered));
+        let parse_err_msg = format!("root output should be JSON: {}", output.rendered);
+        let payload: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect(&parse_err_msg);
         assert!(
             payload["data"]["version"].is_string(),
             "root envelope should carry a version: {payload}"
@@ -274,11 +275,13 @@ mod tests {
         let output = cli.run(["gddy", "tree", "--output", "json"]).await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
 
-        let payload: serde_json::Value = serde_json::from_str(&output.rendered)
-            .unwrap_or_else(|e| panic!("tree output should be JSON ({e}): {}", output.rendered));
+        let parse_err_msg = format!("tree output should be JSON: {}", output.rendered);
+        let payload: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect(&parse_err_msg);
+        let children_err_msg = format!("tree should publish children: {payload}");
         let children = payload["data"]["children"]
             .as_array()
-            .unwrap_or_else(|| panic!("tree should publish children: {payload}"));
+            .expect(&children_err_msg);
         assert!(!children.is_empty(), "tree should publish top-level nodes");
 
         let names: Vec<&str> = children
