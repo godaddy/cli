@@ -83,7 +83,7 @@ fn deploy_result_event(
             "applicationId": application_id,
             "releaseId": release_id,
             "extensions": extensions,
-            "status": "ACTIVE",
+            "releaseStatus": "ACTIVE",
         },
         "next_actions": deploy_next_actions(name),
     })
@@ -254,8 +254,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Finalize a deploy: activate the release, then promote the application to
-/// `ACTIVE`. Deploy must activate the release before promoting the application.
+/// Finalize a deploy by activating the release. Do not follow activation with
+/// an `updateApplication` status mutation.
 async fn finalize_deploy_activation(
     client: &ApplicationClient,
     sender: &StreamSender,
@@ -272,17 +272,6 @@ async fn finalize_deploy_activation(
     sender
         .send(json!({ "type": "step", "name": "release.activate", "status": "completed" }))
         .await;
-    sender
-        .send(json!({ "type": "step", "name": "application.activate", "status": "started" }))
-        .await;
-    client
-        .update_application(application_id, json!({ "status": "ACTIVE" }))
-        .await
-        .map_err(super::client_err)?;
-    sender
-        .send(json!({ "type": "step", "name": "application.activate", "status": "completed" }))
-        .await;
-
     Ok(())
 }
 
@@ -375,7 +364,7 @@ mod tests {
         assert_eq!(event["result"]["applicationId"], "app-123");
         assert_eq!(event["result"]["releaseId"], "rel-456");
         assert_eq!(event["result"]["extensions"], 2);
-        assert_eq!(event["result"]["status"], "ACTIVE");
+        assert_eq!(event["result"]["releaseStatus"], "ACTIVE");
         assert_eq!(
             event["next_actions"].as_array().map(|a| a.len()),
             Some(3),

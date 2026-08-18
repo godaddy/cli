@@ -45,17 +45,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 )
                 .with_param("name", required_value(&name)),
                 next_action(
-                    "platform app update --id <id> [--label <label>] [--description <description>] [--status <status>]",
+                    "platform app update --id <id> [--label <label>] [--description <description>]",
                     "Update application configuration",
                 )
-                .with_param("id", required_value(&app_id))
-                .with_param(
-                    "status",
-                    NextActionParam {
-                        r#enum: vec!["ACTIVE".to_owned(), "INACTIVE".to_owned()],
-                        ..Default::default()
-                    },
-                ),
+                .with_param("id", required_value(&app_id)),
                 next_action(
                     "platform app release --application-id <application-id> --version <version>",
                     "Create a release",

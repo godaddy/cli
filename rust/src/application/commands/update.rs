@@ -1,4 +1,4 @@
-//! `gddy platform app update` — update label, description, or status.
+//! `gddy platform app update` — update label or description.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::json;
@@ -10,7 +10,7 @@ use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 /// "At least one of" fields for `update`, flattened into [`UpdateArgs`].
 ///
 /// Kept as its own derive struct (rather than inline fields on `UpdateArgs`)
-/// so the struct-level `#[group(...)]` only covers these three — `id` stays
+/// so the struct-level `#[group(...)]` only covers these two — `id` stays
 /// outside the group and independently required. See the flatten caveat on
 /// `CommandSpec::from_args`: a struct can't both flatten a field and declare
 /// its own enforced group.
@@ -24,10 +24,6 @@ struct UpdateFields {
     /// New description.
     #[arg(long, value_name = "TEXT")]
     description: Option<String>,
-
-    /// Application status (ACTIVE or INACTIVE).
-    #[arg(long, value_name = "STATUS", value_parser = ["ACTIVE", "INACTIVE"])]
-    status: Option<String>,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -44,9 +40,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<UpdateArgs, _, _, _>(
         CommandSpec::from_args::<UpdateArgs>("update", "Update an application")
             .with_long(
-                "Update the label, description, or status of a GoDaddy \
+                "Update the label or description of a GoDaddy \
                 developer-platform application by its ID. At least one of \
-                --label, --description, or --status must be provided. Use \
+                --label or --description must be provided. Use \
                 `gddy platform app info --name <name>` to retrieve the \
                 application ID.",
             )
@@ -61,9 +57,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
             if let Some(description) = args.fields.description {
                 input.insert("description".to_owned(), json!(description));
-            }
-            if let Some(status) = args.fields.status {
-                input.insert("status".to_owned(), json!(status));
             }
             let client = super::make_client(&context).await?;
             let data = client
@@ -99,26 +92,11 @@ mod tests {
     }
 
     #[test]
-    fn status_rejects_values_outside_active_inactive() {
-        for bad in ["active", "DISABLED", "PENDING"] {
-            let err = update_clap_command()
-                .try_get_matches_from(["update", "--id", "app-1", "--status", bad])
-                .expect_err("invalid --status should be rejected");
-            assert_eq!(
-                err.kind(),
-                clap::error::ErrorKind::InvalidValue,
-                "--status {bad:?} should fail possible-value validation, got: {err}"
-            );
-        }
-    }
-
-    #[test]
-    fn status_accepts_active_and_inactive() {
-        for good in ["ACTIVE", "INACTIVE"] {
-            update_clap_command()
-                .try_get_matches_from(["update", "--id", "app-1", "--status", good])
-                .expect("ACTIVE|INACTIVE --status should be accepted");
-        }
+    fn status_is_an_unsupported_argument() {
+        let err = update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--status", "ACTIVE"])
+            .expect_err("--status must not be accepted by app update");
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]
@@ -141,9 +119,6 @@ mod tests {
         update_clap_command()
             .try_get_matches_from(["update", "--id", "app-1", "--description", "Desc"])
             .expect("--description alone should be accepted");
-        update_clap_command()
-            .try_get_matches_from(["update", "--id", "app-1", "--status", "ACTIVE"])
-            .expect("--status alone should be accepted");
     }
 
     #[test]
@@ -157,8 +132,6 @@ mod tests {
                 "New",
                 "--description",
                 "Desc",
-                "--status",
-                "INACTIVE",
             ])
             .expect("multiple update fields should be allowed together");
     }
