@@ -84,3 +84,9 @@ output_schema!(ExtensionBlocks {
     "source": "string";
     "type": "string";
 });
+
+output_schema!(ConfigSetting {
+    "group": "string";
+    "slug": "string";
+    "entryPath": "string";
+});

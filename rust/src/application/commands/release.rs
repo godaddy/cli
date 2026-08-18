@@ -29,6 +29,55 @@ fn ui_extension_entry(
     Ok(entry)
 }
 
+/// Build one `settings` release entry from a placement-only `[[settings]]`
+/// block plus its (required, hand-authored) `[settings.presentation]`.
+fn setting_entry(setting: &crate::config::SettingConfig) -> cli_engine::Result<Value> {
+    let Some(presentation) = &setting.presentation else {
+        return Err(cli_engine::CliCoreError::message(format!(
+            "settings '{}' has no presentation — add a [settings.presentation] block before releasing",
+            setting.slug
+        )));
+    };
+    let mut presentation_json = serde_json::to_value(presentation)
+        .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+    if let Value::Object(map) = &mut presentation_json {
+        map.insert("type".to_owned(), json!("form"));
+        map.insert("schemaVersion".to_owned(), json!("settings-form-v1"));
+    }
+
+    let mut entry = json!({
+        "groupSlug": setting.group,
+        "appSettingSlug": setting.slug,
+        "entryPath": setting.entry_path,
+        "presentation": presentation_json,
+    });
+    if let Some(title) = &setting.title {
+        entry["title"] = json!(title);
+    }
+    if let Some(description) = &setting.description {
+        entry["description"] = json!(description);
+    }
+    if let Some(icon) = &setting.icon {
+        entry["iconName"] = json!(icon.name);
+        entry["iconLibrary"] = json!(icon.library);
+    }
+    if let Some(order) = setting.order {
+        entry["order"] = json!(order);
+    }
+    if !setting.capabilities.is_empty() {
+        entry["capabilities"] = json!(setting.capabilities);
+    }
+    if let Some(metadata) = &setting.metadata {
+        entry["metadata"] = metadata.clone();
+    }
+    Ok(entry)
+}
+
+/// Map godaddy.toml `[[settings]]` placements to the release `settings` input.
+fn build_settings(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
+    config.settings.iter().map(setting_entry).collect()
+}
+
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
 /// `uiExtensions` input. Mirrors the TS release mapping (single target each).
 fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
@@ -100,7 +149,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Without this, everything added via `platform app add` was silently
             // dropped. A missing or invalid config is non-fatal (empty arrays);
             // too many targets per extension is a hard error.
-            let (actions, subscriptions, ui_extensions) = match crate::config::read_config(
+            let (actions, subscriptions, ui_extensions, settings) = match crate::config::read_config(
                 &config_path,
             ) {
                 Ok(config) => {
@@ -122,20 +171,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         })
                         .unwrap_or_default();
                     let ui_extensions = build_ui_extensions(&config)?;
-                    (actions, subscriptions, ui_extensions)
+                    let settings = build_settings(&config)?;
+                    (actions, subscriptions, ui_extensions, settings)
                 }
                 Err(e) => {
                     tracing::warn!(
                         error = %e,
                         path = %config_path.display(),
-                        "failed to read config; releasing with empty actions, subscriptions, and uiExtensions"
+                        "failed to read config; releasing with empty actions, subscriptions, uiExtensions, and settings"
                     );
-                    (Vec::new(), Vec::new(), Vec::new())
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
                 }
             };
             input["actions"] = json!(actions);
             input["subscriptions"] = json!(subscriptions);
             input["uiExtensions"] = json!(ui_extensions);
+            input["settings"] = json!(settings);
 
             let client = super::make_client(&ctx).await?;
             let data = client
@@ -205,6 +256,94 @@ mod tests {
         )
         .expect("entry builds");
         assert_eq!(one["target"], "checkout.block");
+    }
+
+    fn placement_only_setting() -> crate::config::SettingConfig {
+        crate::config::SettingConfig {
+            group: "tax-center".to_owned(),
+            slug: "godaddy-tax".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            order: None,
+            capabilities: vec![],
+            icon: None,
+            metadata: None,
+            presentation: None,
+        }
+    }
+
+    fn boolean_presentation() -> crate::config::settings_form::SettingsFormV1Presentation {
+        use crate::config::settings_form::{SettingsFormV1Field, SettingsFormV1Section};
+        crate::config::settings_form::SettingsFormV1Presentation {
+            sections: vec![SettingsFormV1Section {
+                key: "defaults".to_owned(),
+                label: "Defaults".to_owned(),
+                description: None,
+                visible_when: None,
+                fields: vec![SettingsFormV1Field::Boolean {
+                    key: "autoCalculate".to_owned(),
+                    label: "Auto-calculate".to_owned(),
+                    description: None,
+                    required: false,
+                    default_value: Some(true),
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn setting_entry_rejects_missing_presentation() {
+        let err = super::setting_entry(&placement_only_setting())
+            .expect_err("missing presentation must be rejected");
+        assert!(err.to_string().contains("no presentation"), "{err}");
+    }
+
+    #[test]
+    fn setting_entry_maps_placement_and_presentation() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(boolean_presentation());
+        let entry = super::setting_entry(&setting).expect("entry builds");
+        assert_eq!(entry["groupSlug"], "tax-center");
+        assert_eq!(entry["appSettingSlug"], "godaddy-tax");
+        assert_eq!(entry["entryPath"], "/settings/godaddy-tax");
+        assert_eq!(entry["presentation"]["type"], "form");
+        assert_eq!(entry["presentation"]["schemaVersion"], "settings-form-v1");
+        assert_eq!(
+            entry["presentation"]["sections"][0]["fields"][0]["type"],
+            "boolean"
+        );
+        assert!(
+            entry.get("capabilities").is_none(),
+            "empty capabilities should be omitted"
+        );
+        assert!(
+            entry.get("iconName").is_none(),
+            "absent icon should be omitted"
+        );
+    }
+
+    #[test]
+    fn setting_entry_includes_optional_fields_when_present() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(boolean_presentation());
+        setting.title = Some("GoDaddy Tax".to_owned());
+        setting.description = Some("Tax settings".to_owned());
+        setting.order = Some(10);
+        setting.capabilities = vec!["read".to_owned(), "write".to_owned()];
+        setting.icon = Some(crate::config::SettingIcon {
+            name: "percent".to_owned(),
+            library: "lucide".to_owned(),
+        });
+        setting.metadata = Some(serde_json::json!({ "provider": "godaddy-tax" }));
+        let entry = super::setting_entry(&setting).expect("entry builds");
+        assert_eq!(entry["title"], "GoDaddy Tax");
+        assert_eq!(entry["description"], "Tax settings");
+        assert_eq!(entry["order"], 10);
+        assert_eq!(entry["capabilities"], serde_json::json!(["read", "write"]));
+        assert_eq!(entry["iconName"], "percent");
+        assert_eq!(entry["iconLibrary"], "lucide");
+        assert_eq!(entry["metadata"]["provider"], "godaddy-tax");
     }
 
     #[test]

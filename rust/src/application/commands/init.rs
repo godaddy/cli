@@ -203,6 +203,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 subscriptions: Some(crate::config::SubscriptionsConfig { webhook: vec![] }),
                 dependencies: vec![],
                 extensions: None,
+                settings: vec![],
             };
             let cwd = match std::env::current_dir() {
                 Ok(dir) => dir,
