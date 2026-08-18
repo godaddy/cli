@@ -18,6 +18,7 @@
 //! ```toml
 //! [dev]
 //! api_url = "https://api.dev-godaddy.com"
+//! devx_core_url = "https://api.developer.commerce.dev-godaddy.com"
 //! min_stage = "experimental"
 //!
 //! [staging.feature_overrides]
@@ -41,11 +42,12 @@ pub use devx_core::devx_core_url;
 
 pub const DEFAULT_ENV: &str = "prod";
 
-/// The two fields a compiled-in environment actually sets.
+/// The public, non-secret values a compiled-in environment sets.
 #[derive(Debug, Clone, EnvConfig)]
 struct BaseEnvConfig {
     api_url: String,
     client_id: String,
+    devx_core_url: String,
 }
 
 /// The compiled-in `ote`/`prod` environments.
@@ -56,6 +58,7 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
             BaseEnvConfig {
                 api_url: "https://api.ote-godaddy.com".to_owned(),
                 client_id: "91660d79-c909-426c-b5c8-e0f575e8fcd2".to_owned(),
+                devx_core_url: "https://api.developer.commerce.ote-godaddy.com".to_owned(),
             },
         ),
         (
@@ -63,6 +66,7 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
             BaseEnvConfig {
                 api_url: "https://api.godaddy.com".to_owned(),
                 client_id: "bc87f347-af82-4892-833f-818f54a0e79e".to_owned(),
+                devx_core_url: "https://api.developer.commerce.godaddy.com".to_owned(),
             },
         ),
     ]
@@ -167,6 +171,7 @@ mod tests {
 [dev]
 api_url = "https://api.dev-godaddy.com"
 client_id = "dev-client"
+devx_core_url = "https://api.developer.commerce.dev-godaddy.com"
 "#,
         )
         .expect("write file");
@@ -176,6 +181,10 @@ client_id = "dev-client"
 
         assert_eq!(resolved.domains_api_url, "https://api.dev-godaddy.com");
         assert_eq!(resolved.account_url, "https://account.dev-godaddy.com");
+        assert_eq!(
+            resolved.devx_core_url,
+            "https://api.developer.commerce.dev-godaddy.com"
+        );
     }
 
     #[test]
@@ -200,6 +209,89 @@ client_id = "dev-client"
             .resolve::<GddyEnvConfig>("dev")
             .expect_err("a malformed api_url must be a hard error, not silently dropped");
         assert!(err.to_string().contains("api_url"));
+    }
+
+    #[test]
+    fn register_rejects_a_malformed_file_layer_devx_core_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("environments.toml");
+        std::fs::write(
+            &file,
+            r#"
+[dev]
+api_url = "https://api.dev-godaddy.com"
+client_id = "dev-client"
+devx_core_url = "not-a-url"
+"#,
+        )
+        .expect("write file");
+
+        let envs = register(Environments::new("prod").with_config_file_path_override(file));
+        let err = envs
+            .resolve::<GddyEnvConfig>("dev")
+            .expect_err("a malformed devx_core_url must be a hard error");
+        assert!(err.to_string().contains("devx_core_url"));
+    }
+
+    #[test]
+    fn register_resolves_builtin_devx_core_urls() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing_file = dir.path().join("environments.toml");
+        let envs = register(Environments::new("prod").with_config_file_path_override(missing_file));
+
+        assert_eq!(
+            envs.resolve::<GddyEnvConfig>("ote")
+                .expect("ote resolves")
+                .devx_core_url,
+            "https://api.developer.commerce.ote-godaddy.com"
+        );
+        assert_eq!(
+            envs.resolve::<GddyEnvConfig>("prod")
+                .expect("prod resolves")
+                .devx_core_url,
+            "https://api.developer.commerce.godaddy.com"
+        );
+    }
+
+    #[test]
+    fn register_file_layer_overrides_builtin_devx_core_url() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("environments.toml");
+        std::fs::write(
+            &file,
+            r#"
+[ote]
+devx_core_url = "https://core.override.example.test"
+
+[prod]
+devx_core_url = "https://core.prod-override.example.test"
+"#,
+        )
+        .expect("write file");
+
+        let envs = register(Environments::new("prod").with_config_file_path_override(file));
+
+        assert_eq!(
+            envs.resolve::<GddyEnvConfig>("ote")
+                .expect("ote resolves")
+                .devx_core_url,
+            "https://core.override.example.test"
+        );
+        assert_eq!(
+            envs.resolve::<GddyEnvConfig>("prod")
+                .expect("prod resolves")
+                .devx_core_url,
+            "https://core.prod-override.example.test"
+        );
     }
 
     #[test]
