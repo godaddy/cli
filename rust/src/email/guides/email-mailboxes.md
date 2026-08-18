@@ -4,9 +4,7 @@ summary: How GoDaddy Email mailboxes, accounts, and consent fit together
 
 # GoDaddy Email mailboxes
 
-`gddy email` manages GoDaddy Email mailboxes over panel-v3, the newer
-OAuth-bearer-token API. It's a different system from domain or hosting
-"accounts" — this guide covers the vocabulary specific to email.
+This guide explains the GoDaddy email system and how to use the `gddy email` commands to manage it.
 
 ## What an "account" is here
 
