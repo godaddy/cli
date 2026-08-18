@@ -501,8 +501,6 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "cli-engine"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "713a9330b7c1a2529c5e7fb4aa8fda5eb5db6b4f39bec63085ec62e9f60d970d"
 dependencies = [
  "async-trait",
  "base64",
@@ -511,6 +509,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "cli-engine-macros",
+ "inquire",
  "jmespath",
  "keyring",
  "open",
@@ -534,8 +533,6 @@ dependencies = [
 [[package]]
 name = "cli-engine-macros"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2e642cc4e1aa5a6ba1ad3f52de13bf1895ee7807384a272e1bb2dcee77e6b8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1150,6 +1147,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzzy-matcher"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
+dependencies = [
+ "thread_local",
+]
+
+[[package]]
 name = "generate-api-catalog"
 version = "0.2.5"
 dependencies = [
@@ -1657,6 +1663,20 @@ checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "block-padding",
  "generic-array",
+]
+
+[[package]]
+name = "inquire"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6654738b8024300cf062d04a1c13c10c8e2cea598ec1c47dc9b6641159429756"
+dependencies = [
+ "bitflags",
+ "crossterm",
+ "dyn-clone",
+ "fuzzy-matcher",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
