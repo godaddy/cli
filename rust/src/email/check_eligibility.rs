@@ -35,7 +35,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// Always points at `email create` and prefills `--account-id` when the
-/// response names an eligible account.
+/// response names an eligible account, plus a pointer at the `email-mailboxes`
+/// guide for what an account ID actually is.
 fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
     let mut create = next_action("email create", "Create a mailbox for this address")
         .with_param("email", NextActionParam::value(email.to_owned()));
@@ -44,9 +45,16 @@ fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
         create = create.with_param("account-id", NextActionParam::value(account_id));
     }
 
-    vec![create]
+    vec![
+        create,
+        next_action("guide email-mailboxes", "Learn about email accounts"),
+    ]
 }
 
+// Every field here is read out of an untyped `serde_json::Value`, as is every
+// other `EmailClient` response in this module — panel-v3-api has no published
+// OpenAPI spec yet. Once it does, a generated typed client (mirroring
+// `domains_client`) would remove this class of bug; not actionable today.
 fn first_eligible_account_id(data: &Value) -> Option<String> {
     data.get("eligibleAccounts")?
         .as_array()?
@@ -76,13 +84,17 @@ mod tests {
             "eligibleAccounts": [{ "accountId": "acct-1", "requirements": [] }]
         });
         let actions = eligibility_next_actions("someone@example.com", &data);
-        assert_eq!(actions.len(), 1);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].command, "gddy email create");
+        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
     }
 
     #[test]
     fn next_actions_still_point_at_create_when_no_eligible_accounts() {
         let data = json!({ "isEligible": false, "ineligibleReasons": ["NO_ELIGIBLE_ACCOUNT"] });
         let actions = eligibility_next_actions("someone@example.com", &data);
-        assert_eq!(actions.len(), 1);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].command, "gddy email create");
+        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
     }
 }

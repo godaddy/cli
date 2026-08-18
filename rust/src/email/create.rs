@@ -7,12 +7,18 @@ use crate::scopes::EMAIL_CREATE;
 
 #[derive(Debug, Clone, clap::Args)]
 struct CreateArgs {
+    /// Email address for the new mailbox.
     #[arg(long, value_name = "EMAIL")]
     email: String,
+    /// ID of an existing eligible account to provision this mailbox under,
+    /// from `check-eligibility`'s `eligibleAccounts[].accountId` (see
+    /// `gddy guide email-mailboxes`). Not a shopper/customer ID.
     #[arg(long = "account-id", value_name = "ACCOUNT_ID")]
     account_id: Option<String>,
+    /// First name of the mailbox owner.
     #[arg(long = "first-name", value_name = "FIRST_NAME")]
     first_name: Option<String>,
+    /// Last name of the mailbox owner.
     #[arg(long = "last-name", value_name = "LAST_NAME")]
     last_name: Option<String>,
     /// Agreement types the caller has obtained consent for, e.g. `EMAIL_TOS`.

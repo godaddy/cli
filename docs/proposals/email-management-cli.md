@@ -54,6 +54,12 @@ Example output:
 }
 ```
 
+An `accountId` here identifies an existing GoDaddy Email/productivity account
+the customer already holds under panel-v3 — it is **not** a shopper/customer
+ID, and it has nothing to do with domain or hosting "accounts." See
+`gddy guide email-mailboxes` for how accounts, eligibility, and consent fit
+together.
+
 When the response is ineligible, or an eligible account carries outstanding
 `requirements`, attach a `next_actions` entry pointing at `email create` with
 the relevant `--account-id`/`--consent` pre-filled from the response.
@@ -62,7 +68,7 @@ the relevant `--account-id`/`--consent` pre-filled from the response.
 
 | | |
 |---|---|
-| Flags | `--email <email>` (required), `--account-id`, `--first-name`, `--last-name`, repeatable `--consent <agreementType>` |
+| Flags | `--email <email>` (required), `--account-id` (an existing eligible account's ID, from `check-eligibility`'s `eligibleAccounts[].accountId` — see `gddy guide email-mailboxes`), `--first-name`, `--last-name`, repeatable `--consent <agreementType>` |
 | Tier | `Mutate` (`.mutates(true)`) |
 | Scopes | `EMAIL_CREATE` (`email.mailbox:create`) |
 
@@ -99,7 +105,7 @@ Example output:
 
 | | |
 |---|---|
-| Flags | `--status`, `--page`, `--page-size`, `--fields` |
+| Flags | `--status`, `--fields`, `--limit`, `--offset` |
 | Tier | `Read` |
 | Scopes | `EMAIL_READ` |
 
@@ -139,19 +145,29 @@ test, or requiring a carve-out from it) and can't be meaningfully tested
 against a real API. Adding them once the routes exist is a small, low-risk
 follow-up PR.
 
-### 3. List pagination UX: native `--page`/`--page-size` vs generic `--limit`/`--offset`
+### 3. List pagination UX: generic `--limit`/`--offset` via `PaginationConfig` (decided)
 
-The server paginates natively (`page`/`pageSize`, capped at 100, with
-HATEOAS `links`), which doesn't fit cli-engine's `PaginationConfig` model —
-that model expects the handler to return the *complete* list and lets the
-engine slice it via generic `--limit`/`--offset`, the way `domain list` does.
+An earlier draft of this doc claimed cli-engine's `PaginationConfig` model
+requires a handler to return the *complete* list before the engine can slice
+it via `--limit`/`--offset` — that's stale. `PaginationConfig` supports
+`default_limit`/`max_limit`, and a handler can read
+`ctx.middleware.limit`/`.offset` *before* it makes its request, so it can
+drive its own server-side paging instead of always fetching everything.
 
-**Recommendation: native `--page`/`--page-size` flags, forwarded 1:1 to the
-API's query params**, rather than adopting `--limit`/`--offset` via
-`PaginationConfig`. Translating page-based server pagination into offset math
-would be lossy and would hide the server's own `links`. This is a deliberate
-deviation from the `domain list` precedent, called out explicitly here so
-it's a conscious choice rather than an inconsistency someone trips over later.
+**Decision: adopt `--limit`/`--offset` via `PaginationConfig`.** `list`'s
+handler translates `--limit`/`--offset` into the server's native
+`page`/`pageSize` query params, fetching only as many leading pages as needed
+to cover `[0, offset + limit)` — worst case, when `offset` isn't
+page-aligned, that's two requests instead of one. The engine's pagination
+pipeline then slices the accumulated result to the exact `--limit`/`--offset`
+window. This keeps `list` consistent with the `domain list`/`dns list`
+precedent instead of introducing a second, native pagination style;
+`--page`/`--page-size` are dropped in favor of the generic flags.
+
+Forcing `--offset` to be page-aligned (e.g. rejecting a non-aligned offset
+instead of silently paying for the extra request) was considered and
+deferred as a possible future enhancement — it isn't required for
+correctness today.
 
 ## Cross-team coordination needed before this ships
 
