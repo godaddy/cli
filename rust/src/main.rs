@@ -25,7 +25,7 @@ mod truncation;
 mod update;
 mod webhook;
 
-use std::{process::ExitCode, sync::Arc};
+use std::{io::Write as _, process::ExitCode, sync::Arc};
 
 use cli_engine::{BuildInfo, Cli, CliConfig, Module};
 
@@ -98,7 +98,30 @@ async fn main() -> ExitCode {
             .with_modules(all_modules()),
     );
 
-    cli.execute().await
+    execute_without_stdout_lock(&cli).await
+}
+
+/// Execute without holding stdout's global lock for the entire command.
+///
+/// Streaming commands write their progress directly through Tokio's stdout.
+/// `Cli::execute` keeps a `StdoutLock` alive until the command has returned,
+/// which prevents that writer from acquiring stdout and leaves the command
+/// waiting for its own stream to drain. Passing `Stdout`/`Stderr` directly
+/// keeps the final envelope writes synchronized without blocking streaming
+/// progress events.
+async fn execute_without_stdout_lock(cli: &Cli) -> ExitCode {
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
+    match cli
+        .execute_from(std::env::args_os(), &mut stdout, &mut stderr)
+        .await
+    {
+        Ok(code) => code,
+        Err(err) => {
+            drop(writeln!(stderr, "{err}"));
+            ExitCode::from(1)
+        }
+    }
 }
 
 #[cfg(test)]
