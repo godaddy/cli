@@ -7,11 +7,10 @@ Invoked by `regenerate-spec.sh` as:
     python3 trim-spec.py <upstream-swagger.json> <trimmed-output.json>
 
 v3 (the Domain Lifecycle Management API) now serves availability, suggestions,
-domain get, registration (quote → register), and the full DNS record lifecycle
-(create, list, replace, delete). The only operations v3 does NOT yet cover stay
-on v1 and are the only ones kept here:
+domain get, domain list (`listDomains`), registration (quote → register), and
+the full DNS record lifecycle (create, list, replace, delete). The only
+operation v3 does NOT yet cover stays on v1 and is the only one kept here:
 
-  * `GET /v1/domains`                       — list the shopper's domains
   * `GET /v1/domains/agreements`            — legal agreements for a TLD
 
 Everything kept here is a GET *read*; the transitive closure of definitions they
@@ -23,12 +22,13 @@ converts it to OpenAPI 3.0 and `merge-spec.py` folds it into the v3 spec
 import json
 import sys
 
-# GET-only operations kept as-is (operationId pinned). `list` retrieves the
-# domains owned by the authenticated shopper; `agreements` retrieves the legal
-# agreements a TLD requires (upstream operationId `getAgreement`, pinned here to
-# `agreements` so the generated builder reads `client.agreements()`).
+# GET-only operations kept as-is (operationId pinned). `agreements` retrieves
+# the legal agreements a TLD requires (upstream operationId `getAgreement`,
+# pinned here to `agreements` so the generated builder reads
+# `client.agreements()`). `GET /v1/domains` (list) was dropped once `domain
+# list` migrated to v3's `listDomains` — nothing in the CLI calls v1's `list()`
+# anymore.
 AVAIL_OPS = {
-    "/v1/domains": "list",
     "/v1/domains/agreements": "agreements",
 }
 
@@ -40,13 +40,12 @@ AVAIL_OPS = {
 EXTERNAL_FORMATS = {"date", "date-time", "uuid", "partial-date-time"}
 
 # Read-only response definitions the CLI only deserializes-and-reprints. The
-# published spec over-promises here: it marks fields `required` that the live API
-# routinely omits (e.g. DomainSummary.contactRegistrant / renewDeadline on
-# cancelled/pending domains) and types `nameServers` as a non-null array while
-# the API returns JSON `null`. Relax these to tolerant readers.
+# published spec over-promises here in places: it marks fields `required` that
+# the live API sometimes omits and types array fields as non-null while the
+# API can return JSON `null`. Relax these to tolerant readers.
 #
-# The retained v1 operations are now all GET reads (list + agreements), so there
-# are no request-body types to keep strict — everything is relaxed to a tolerant
+# The one retained v1 operation (agreements) is a GET read, so there are no
+# request-body types to keep strict — everything is relaxed to a tolerant
 # reader.
 STRICT_DEFS: set[str] = set()
 
@@ -126,7 +125,7 @@ def main(src, dst):
 
     paths = {}
 
-    # Reads kept verbatim (GET only): list + agreements.
+    # Reads kept verbatim (GET only): agreements.
     for p, op_id in AVAIL_OPS.items():
         get = d["paths"][p]["get"]
         get["operationId"] = op_id
@@ -146,7 +145,7 @@ def main(src, dst):
     out = {
         "swagger": "2.0",
         "info": {
-            "title": "GoDaddy Domains API (retained v1 subset: list + agreements)",
+            "title": "GoDaddy Domains API (retained v1 subset: agreements)",
             "version": d.get("info", {}).get("version", "1.0.0"),
         },
         "host": d.get("host", "api.ote-godaddy.com"),
