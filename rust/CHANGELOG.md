@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.7](https://github.com/godaddy/cli/compare/v0.2.6...v0.2.7) (2026-08-18)
+
+
+### Features
+
+* **domain:** support premium domains and full-term pricing in list/available ([8c2367a](https://github.com/godaddy/cli/commit/8c2367a8431df75e47532ca934cb9faae9028a2c))
+* **environments:** read DevX Core URL from config (DEVX-793) ([#190](https://github.com/godaddy/cli/issues/190)) ([d772045](https://github.com/godaddy/cli/commit/d7720453d67240df97fa1b945d390f7ad2a80d0b))
+
+
+### Bug Fixes
+
+* **platform:** complete deploy stream and sync manifest metadata ([#217](https://github.com/godaddy/cli/issues/217)) ([f3dfb2e](https://github.com/godaddy/cli/commit/f3dfb2ef867b6f80ec7899a7747608fd4edebb89))
+* **platform:** remove direct application status updates (DEVX-927) ([#218](https://github.com/godaddy/cli/issues/218)) ([ab07767](https://github.com/godaddy/cli/commit/ab07767c30115f13f724d7b404fb96b922e6f6ef))
+* **tests:** Close Rust test-coverage gaps ([#214](https://github.com/godaddy/cli/issues/214)) ([e26912b](https://github.com/godaddy/cli/commit/e26912bb027aa68de387815646689bdf8c60e80e))
+
+
+### Code Refactoring
+
+* **environments:** split mod.rs into config/devx_core/catalog submodules ([#213](https://github.com/godaddy/cli/issues/213)) ([4bf3a00](https://github.com/godaddy/cli/commit/4bf3a009bb8cfb9cc305586a45e2e6586c49cfbc))
+
 ## [0.2.6](https://github.com/godaddy/cli/compare/v0.2.5...v0.2.6) (2026-08-17)
 
 
