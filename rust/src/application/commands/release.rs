@@ -33,10 +33,11 @@ fn ui_extension_entry(
 /// block plus its (required, hand-authored) `[settings.presentation]`.
 fn setting_entry(setting: &crate::config::SettingConfig) -> cli_engine::Result<Value> {
     let Some(presentation) = &setting.presentation else {
-        return Err(cli_engine::CliCoreError::message(format!(
+        return Err(crate::error::GddyError::validation(format!(
             "settings '{}' has no presentation — add a [settings.presentation] block before releasing",
             setting.slug
-        )));
+        ))
+        .into_cli_error());
     };
     let mut presentation_json = serde_json::to_value(presentation)
         .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
