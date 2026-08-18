@@ -1,6 +1,8 @@
 //! `gddy domain suggest` — suggest available domains for a query (v3).
 
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    Alignment, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+};
 use serde_json::json;
 
 use domains_client::types;
@@ -30,6 +32,22 @@ output_schema!(DomainSuggestResult {
 /// anyway, since `0`/negative simply means "unset".
 fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
     u64::try_from(n).ok().and_then(std::num::NonZeroU64::new)
+}
+
+/// `price1Year`/`price2Year` and their renewal counterparts are formatted
+/// currency strings (see `format_money`), not JSON numbers, so cli-engine's
+/// auto-alignment for no-view columns doesn't apply to them — they're
+/// right-aligned explicitly here instead so decimal points line up across
+/// rows of differently-priced suggestions.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("price1Year", "1yr Price").align(Alignment::Right),
+        TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
+        TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
+        TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
+        TableColumn::new("currency", "Currency"),
+    ]
 }
 
 /// Build the JSON view of a single suggestion, flattening its 1- and 2-year
@@ -126,6 +144,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("domain,price1Year,renewalPrice1Year,currency")
             .with_output_schema::<DomainSuggestResult>()
+            .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: SuggestArgs| async move {
             let query = args.query;
