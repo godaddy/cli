@@ -195,7 +195,7 @@ fn is_field_name(key: &str) -> bool {
 /// `SettingsFormV1Presentation`'s own Zod `superRefine` runs (unique section
 /// keys, unique top-level field keys across sections). Bounds/default
 /// consistency and `list-group` depth are left to the API.
-pub(super) fn validate_presentation(
+pub(crate) fn validate_presentation(
     presentation: &SettingsFormV1Presentation,
     errors: &mut Vec<String>,
     path: &str,
@@ -229,6 +229,38 @@ pub(super) fn validate_presentation(
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PresentationFileDocument {
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    schema_version: Option<String>,
+    sections: Vec<SettingsFormV1Section>,
+}
+
+/// Parses a `presentationFile`'s JSON (full API object: `type`,
+/// `schemaVersion`, `sections`); `setting_entry` re-injects the discriminator
+/// fields, so both paths produce an identical payload.
+pub(crate) fn presentation_from_json(content: &str) -> Result<SettingsFormV1Presentation, String> {
+    let doc: PresentationFileDocument = serde_json::from_str(content).map_err(|e| e.to_string())?;
+    if let Some(t) = &doc.r#type
+        && t != "form"
+    {
+        return Err(format!("type must be \"form\" (got {t:?})"));
+    }
+    if let Some(v) = &doc.schema_version
+        && v != "settings-form-v1"
+    {
+        return Err(format!(
+            "schemaVersion must be \"settings-form-v1\" (got {v:?})"
+        ));
+    }
+    Ok(SettingsFormV1Presentation {
+        sections: doc.sections,
+    })
 }
 
 fn validate_field(field: &SettingsFormV1Field, errors: &mut Vec<String>, path: &str) {
