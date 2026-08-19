@@ -1,8 +1,8 @@
 //! `gddy domain quote` — price a registration, lock a quote, cache it (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec,
-    TableColumn, Tier,
+    Alignment, CliCoreError, CommandResult, CommandSpec, NextActionParam, Result,
+    RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::json;
 
@@ -250,8 +250,8 @@ fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("available", "Available"),
-        TableColumn::new("price", "Price"),
-        TableColumn::new("renewalPrice", "Renewal Price"),
+        TableColumn::new("price", "Price").align(Alignment::Right),
+        TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("periodLabel", "Period"),
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
@@ -260,7 +260,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("inventory", "Inventory"),
         TableColumn::new("fees", "Fees").nested(vec![
             TableColumn::new("type", "Type"),
-            TableColumn::new("amount", "Amount"),
+            TableColumn::new("amount", "Amount").align(Alignment::Right),
             TableColumn::new("currency", "Currency"),
         ]),
         TableColumn::new("agreements", "Agreements"),

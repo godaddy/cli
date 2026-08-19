@@ -1,6 +1,6 @@
 //! `dns add` — append new DNS records to a domain without touching existing ones.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
@@ -85,8 +85,8 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("domain", "Domain"),
         TableColumn::new("type", "Type"),
         TableColumn::new("name", "Name"),
-        TableColumn::new("created", "Created"),
-        TableColumn::new("failed", "Failed"),
+        TableColumn::new("created", "Created").align(Alignment::Right),
+        TableColumn::new("failed", "Failed").align(Alignment::Right),
         TableColumn::new("results", "Results").nested(vec![
             TableColumn::new("data", "Data"),
             TableColumn::new("status", "Status"),
