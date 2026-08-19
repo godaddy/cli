@@ -83,7 +83,7 @@ fn deploy_result_event(
             "applicationId": application_id,
             "releaseId": release_id,
             "extensions": extensions,
-            "status": "ACTIVE",
+            "releaseStatus": "ACTIVE",
         },
         "next_actions": deploy_next_actions(name),
     })
@@ -227,7 +227,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             tap_deploy_err(
                 &sender,
-                finalize_deploy_activation(&client, &sender, &application_id, &release_id).await,
+                activate_release(&client, &sender, &application_id, &release_id).await,
+            )
+            .await?;
+
+            tap_deploy_err(
+                &sender,
+                sync_manifest_metadata(&client, &sender, &application_id, &config).await,
             )
             .await?;
 
@@ -254,9 +260,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Finalize a deploy: activate the release, then promote the application to
-/// `ACTIVE`. Deploy must activate the release before promoting the application.
-async fn finalize_deploy_activation(
+/// Activate the release. The App Registry lifecycle owns the parent
+/// application's status transition; deploy must not directly mutate it.
+async fn activate_release(
     client: &ApplicationClient,
     sender: &StreamSender,
     application_id: &str,
@@ -272,18 +278,38 @@ async fn finalize_deploy_activation(
     sender
         .send(json!({ "type": "step", "name": "release.activate", "status": "completed" }))
         .await;
+
+    Ok(())
+}
+
+/// Synchronize application-level manifest fields without changing lifecycle
+/// status. Actions and subscriptions belong to the release and are handled by
+/// `platform app release`.
+async fn sync_manifest_metadata(
+    client: &ApplicationClient,
+    sender: &StreamSender,
+    application_id: &str,
+    config: &crate::config::Config,
+) -> cli_engine::Result<()> {
     sender
-        .send(json!({ "type": "step", "name": "application.activate", "status": "started" }))
+        .send(json!({ "type": "step", "name": "application.sync", "status": "started" }))
         .await;
     client
-        .update_application(application_id, json!({ "status": "ACTIVE" }))
+        .update_application(application_id, manifest_metadata_input(config))
         .await
         .map_err(super::client_err)?;
     sender
-        .send(json!({ "type": "step", "name": "application.activate", "status": "completed" }))
+        .send(json!({ "type": "step", "name": "application.sync", "status": "completed" }))
         .await;
-
     Ok(())
+}
+
+fn manifest_metadata_input(config: &crate::config::Config) -> Value {
+    json!({
+        "url": config.url,
+        "proxyUrl": config.proxy_url,
+        "authorizationScopes": config.authorization_scopes,
+    })
 }
 
 #[cfg(test)]
@@ -375,7 +401,7 @@ mod tests {
         assert_eq!(event["result"]["applicationId"], "app-123");
         assert_eq!(event["result"]["releaseId"], "rel-456");
         assert_eq!(event["result"]["extensions"], 2);
-        assert_eq!(event["result"]["status"], "ACTIVE");
+        assert_eq!(event["result"]["releaseStatus"], "ACTIVE");
         assert_eq!(
             event["next_actions"].as_array().map(|a| a.len()),
             Some(3),
@@ -393,5 +419,32 @@ mod tests {
                 .contains("platform app enable"),
             "first next action should enable on a store: {event}"
         );
+    }
+
+    #[test]
+    fn manifest_metadata_input_syncs_all_application_fields_without_status() {
+        let config = crate::config::Config {
+            name: "my-app".to_owned(),
+            client_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+            description: Some("test".to_owned()),
+            version: "1.2.3".to_owned(),
+            url: "https://app.example.com".to_owned(),
+            proxy_url: "https://api.example.com".to_owned(),
+            authorization_scopes: vec!["openid".to_owned(), "profile".to_owned()],
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions: None,
+        };
+
+        let input = super::manifest_metadata_input(&config);
+
+        assert_eq!(input["url"], "https://app.example.com");
+        assert_eq!(input["proxyUrl"], "https://api.example.com");
+        assert_eq!(
+            input["authorizationScopes"],
+            serde_json::json!(["openid", "profile"])
+        );
+        assert!(input.get("status").is_none());
     }
 }

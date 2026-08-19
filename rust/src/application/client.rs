@@ -570,8 +570,35 @@ mod tests {
         );
     }
 
+    /// Distinct from `activate_release_surfaces_graphql_errors`: GraphQL
+    /// reports failures as HTTP 200 with an `errors` array, but the
+    /// transport itself (auth rejected, gateway down, etc.) can also fail
+    /// at the HTTP layer with a non-2xx status. That path maps to
+    /// `ClientError::Http`, not `ClientError::GraphQL`.
     #[tokio::test]
-    async fn update_application_promotes_to_active() {
+    async fn query_maps_a_non_2xx_status_to_a_http_client_error() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/apps/app-registry-subgraph");
+                then.status(401).body("unauthorized");
+            })
+            .await;
+
+        let err = ApplicationClient::new(server.base_url(), "test-token")
+            .get_application("test-app")
+            .await
+            .expect_err("non-2xx status should surface as an HTTP error");
+
+        mock.assert_async().await;
+        assert!(
+            matches!(err, ClientError::Http { status: 401, ref body } if body.contains("unauthorized")),
+            "expected Http error variant, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_application_sends_non_lifecycle_fields() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -579,21 +606,22 @@ mod tests {
                     .path("/v1/apps/app-registry-subgraph")
                     .is_true(|req| {
                         let body = req.body_string();
-                        body.contains("updateApplication") && body.contains(r#""status":"ACTIVE""#)
+                        body.contains("updateApplication")
+                            && body.contains(r#""label":"Updated app""#)
                     });
                 then.status(200).json_body(json!({
-                    "data": { "updateApplication": { "id": "app-1", "status": "ACTIVE" } }
+                    "data": { "updateApplication": { "id": "app-1", "label": "Updated app" } }
                 }));
             })
             .await;
 
         let data = ApplicationClient::new(server.base_url(), "test-token")
-            .update_application("app-1", json!({ "status": "ACTIVE" }))
+            .update_application("app-1", json!({ "label": "Updated app" }))
             .await
             .expect("update application");
 
         mock.assert_async().await;
-        assert_eq!(data["updateApplication"]["status"], "ACTIVE");
+        assert_eq!(data["updateApplication"]["label"], "Updated app");
     }
 
     // httpmock can't sequence responses, so retries are verified by hit count

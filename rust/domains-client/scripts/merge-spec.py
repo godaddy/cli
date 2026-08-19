@@ -7,10 +7,10 @@ Invoked by `regenerate-spec.sh` as:
     python3 merge-spec.py <v1.oas3.json> <v3.yaml> <out.json> <host-base-url>
 
 The CLI's `domain`/`dns` commands talk to two API generations at once: v3 (the
-Domain Lifecycle Management API) for availability/suggest/get/quote/register and
-the full DNS record lifecycle, and v1 for the handful of operations v3 does not
-yet serve (list, agreements). We generate ONE progenitor client over ONE host
-base URL by merging both into a single OAS3 document:
+Domain Lifecycle Management API) for availability/suggest/get/list/quote/register
+and the full DNS record lifecycle, and v1 for the one operation v3 does not yet
+serve (agreements). We generate ONE progenitor client over ONE host base URL by
+merging both into a single OAS3 document:
 
   * **v3 is the base.** Its server is `https://api.{env}.com/v3/domains`, so we
     rewrite every v3 path to the absolute `/v3/domains/...` form and pin the

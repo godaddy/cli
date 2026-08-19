@@ -260,6 +260,9 @@ mod tests {
             price: Some(money(price, "USD")),
             renewal_price: Some(money(renewal, "USD")),
             term: Some(types::Term::Year),
+            fees: None,
+            first_term_price: None,
+            recommended: None,
         }
     }
 
@@ -289,6 +292,9 @@ mod tests {
             price: None,
             renewal_price: Some(money(3799, "USD")),
             term: Some(types::Term::Year),
+            fees: None,
+            first_term_price: None,
+            recommended: None,
         };
         let suggestion = types::Suggestion {
             domain: Some("example.com".to_string()),

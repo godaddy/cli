@@ -4,7 +4,7 @@
     "title": "Domain Lifecycle Management API",
     "version": "3.1.0",
     "x-visibility": "public",
-    "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1\u201350 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
+    "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1\u201325 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
     "contact": {
       "name": "GoDaddy Domains Platform",
       "x-slack-channel": "#domains_beplat_eng",
@@ -25,7 +25,7 @@
   "tags": [
     {
       "name": "Discovery",
-      "description": "Indicative, non-committing operations for finding and checking domains. Use suggestDomains for natural-language queries. For a single known domain, use getDomainAvailability (GET /check-availability); for 1\u201350 domains in one call, use checkAvailability (POST /check-availability). Both availability operations share the same check semantics and Availability result model; locked pricing is established only at quote time. Neither carries a persistent check identity.\n"
+      "description": "Indicative, non-committing operations for finding and checking domains. Use suggestDomains for natural-language queries. For a single known domain, use getDomainAvailability (GET /check-availability); for 1\u201325 domains in one call, use checkAvailability (POST /check-availability). Both availability operations share the same check semantics and Availability result model; locked pricing is established only at quote time. Neither carries a persistent check identity.\n"
     },
     {
       "name": "Registration Quotes",
@@ -323,7 +323,7 @@
           "Discovery"
         ],
         "summary": "Check availability of one or more specific domains",
-        "description": "Batch controller for domain availability checking. Accepts 1\u201350 domain\nnames alongside optional check criteria (optimization mode, ISC pricing\ncode). Returns one Availability result per requested domain in input\norder inside `{ items: [...] }`. Domains that cannot be checked carry\nan `error` object on that item.\n\nFor a single domain, GET /check-availability (getDomainAvailability)\noffers the same check semantics and Availability result without a\nrequest body; the response is the lone item unwrapped.\n\nAvailability is best-effort indicative; the authoritative check is\nalways performed at quote time. This controller does not persist the\ncheck \u2014 there is no check identity or poll URL.\n",
+        "description": "Batch controller for domain availability checking. Accepts 1\u201325 domain\nnames alongside optional check criteria (optimization mode, ISC pricing\ncode). Returns one Availability result per requested domain in input\norder inside `{ items: [...] }`. Domains that cannot be checked carry\nan `error` object on that item.\n\nFor a single domain, GET /check-availability (getDomainAvailability)\noffers the same check semantics and Availability result without a\nrequest body; the response is the lone item unwrapped.\n\nAvailability is best-effort indicative; the authoritative check is\nalways performed at quote time. This controller does not persist the\ncheck \u2014 there is no check identity or poll URL.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/xRequestId"
@@ -708,6 +708,123 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Registration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/domains/domain-names": {
+      "get": {
+        "operationId": "listDomains",
+        "tags": [
+          "Domains"
+        ],
+        "summary": "List registered domains",
+        "description": "Returns a paginated collection of domain names owned by the authenticated account. Supports filtering by statuses and cursor-based pagination. The statuses and lifecycleGroups parameters are mutually exclusive; supplying both returns 400 Bad Request. An unrecognized value for statuses or lifecycleGroups returns 400 Bad Request.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/xRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/xShopperId"
+          },
+          {
+            "$ref": "#/components/parameters/pageToken"
+          },
+          {
+            "$ref": "#/components/parameters/pageTokenDirection"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of domains in the response. Defaults to 100 when omitted. Offset-based \"page\" parameter is not supported, only cursor-based \"pageToken\".\n",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to domains with one or more lifecycle statuses. Supply multiple values as a single comma-separated list, e.g. `?statuses=ACTIVE,EXPIRED`. Multiple values are combined with logical OR \u2014 returns domains matching ANY of the specified statuses. See DomainStatus for accepted values (ACTIVE, EXPIRED, PENDING_REGISTRATION, etc.). Cannot be combined with the lifecycleGroups parameter. Use this for precise filtering on specific known status values; for coarse lifecycle phases, consider lifecycleGroups.\n",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "string"
+              }
+            },
+            "example": [
+              "ACTIVE",
+              "EXPIRED"
+            ]
+          },
+          {
+            "name": "lifecycleGroups",
+            "in": "query",
+            "required": false,
+            "description": "Filter results to domains belonging to one or more status groups. Supply multiple values as a single comma-separated list, e.g. `?lifecycleGroups=REGISTERED,PENDING`. Multiple values are combined with logical OR. Cannot be combined with the statuses parameter. Use this for coarse lifecycle phases that remain stable as new statuses are added; for precise filtering, use statuses.\n",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/DomainLifecycleGroup"
+              }
+            },
+            "example": [
+              "REGISTERED",
+              "PENDING"
+            ]
+          },
+          {
+            "name": "updatedAfter",
+            "in": "query",
+            "required": false,
+            "description": "Return only domains last updated after this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2026-01-01T00:00:00Z"
+          },
+          {
+            "name": "expiresBefore",
+            "in": "query",
+            "required": false,
+            "description": "Return only domains whose registration expires before this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2027-01-01T00:00:00Z"
+          }
+        ],
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of domains owned by the account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/xRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainCollection"
                 }
               }
             }
@@ -1166,353 +1283,6 @@
         }
       }
     },
-    "/v1/domains": {
-      "get": {
-        "tags": [
-          "v1"
-        ],
-        "parameters": [
-          {
-            "description": "Shopper ID whose domains are to be retrieved",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Only include results with `status` value in the specified set",
-            "in": "query",
-            "name": "statuses",
-            "required": false,
-            "style": "form",
-            "explode": false,
-            "schema": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "ACTIVE",
-                  "AWAITING_CLAIM_ACK",
-                  "AWAITING_DOCUMENT_AFTER_TRANSFER",
-                  "AWAITING_DOCUMENT_AFTER_UPDATE_ACCOUNT",
-                  "AWAITING_DOCUMENT_UPLOAD",
-                  "AWAITING_FAILED_TRANSFER_WHOIS_PRIVACY",
-                  "AWAITING_PAYMENT",
-                  "AWAITING_RENEWAL_TRANSFER_IN_COMPLETE",
-                  "AWAITING_TRANSFER_IN_ACK",
-                  "AWAITING_TRANSFER_IN_AUTH",
-                  "AWAITING_TRANSFER_IN_AUTO",
-                  "AWAITING_TRANSFER_IN_WHOIS",
-                  "AWAITING_TRANSFER_IN_WHOIS_FIX",
-                  "AWAITING_VERIFICATION_ICANN",
-                  "AWAITING_VERIFICATION_ICANN_MANUAL",
-                  "CANCELLED",
-                  "CANCELLED_HELD",
-                  "CANCELLED_REDEEMABLE",
-                  "CANCELLED_TRANSFER",
-                  "CONFISCATED",
-                  "DISABLED_SPECIAL",
-                  "EXCLUDED_INVALID_CLAIM_FIREHOSE",
-                  "EXPIRED_REASSIGNED",
-                  "FAILED_BACKORDER_CAPTURE",
-                  "FAILED_DROP_IMMEDIATE_THEN_ADD",
-                  "FAILED_PRE_REGISTRATION",
-                  "FAILED_REDEMPTION",
-                  "FAILED_REDEMPTION_REPORT",
-                  "FAILED_REGISTRATION",
-                  "FAILED_REGISTRATION_FIREHOSE",
-                  "FAILED_RESTORATION_REDEMPTION_MOCK",
-                  "FAILED_SETUP",
-                  "FAILED_TRANSFER_IN",
-                  "FAILED_TRANSFER_IN_BAD_STATUS",
-                  "FAILED_TRANSFER_IN_REGISTRY",
-                  "HELD_COURT_ORDERED",
-                  "HELD_DISPUTED",
-                  "HELD_EXPIRATION_PROTECTION",
-                  "HELD_EXPIRED_REDEMPTION_MOCK",
-                  "HELD_REGISTRAR_ADD",
-                  "HELD_REGISTRAR_REMOVE",
-                  "HELD_SHOPPER",
-                  "HELD_TEMPORARY",
-                  "LOCKED_ABUSE",
-                  "LOCKED_COPYRIGHT",
-                  "LOCKED_REGISTRY",
-                  "LOCKED_SUPER",
-                  "PARKED_AND_HELD",
-                  "PARKED_EXPIRED",
-                  "PARKED_VERIFICATION_ICANN",
-                  "PENDING_ABORT_CANCEL_SETUP",
-                  "PENDING_AGREEMENT_PRE_REGISTRATION",
-                  "PENDING_APPLY_RENEWAL_CREDITS",
-                  "PENDING_BACKORDER_CAPTURE",
-                  "PENDING_BLOCKED_REGISTRY",
-                  "PENDING_CANCEL_REGISTRANT_PROFILE",
-                  "PENDING_COMPLETE_REDEMPTION_WITHOUT_RECEIPT",
-                  "PENDING_COMPLETE_REGISTRANT_PROFILE",
-                  "PENDING_COO",
-                  "PENDING_COO_COMPLETE",
-                  "PENDING_DNS",
-                  "PENDING_DNS_ACTIVE",
-                  "PENDING_DNS_INACTIVE",
-                  "PENDING_DOCUMENT_VALIDATION",
-                  "PENDING_DOCUMENT_VERIFICATION",
-                  "PENDING_DROP_IMMEDIATE",
-                  "PENDING_DROP_IMMEDIATE_THEN_ADD",
-                  "PENDING_EPP_CREATE",
-                  "PENDING_EPP_DELETE",
-                  "PENDING_EPP_UPDATE",
-                  "PENDING_ESCALATION_REGISTRY",
-                  "PENDING_EXPIRATION",
-                  "PENDING_EXPIRATION_RESPONSE",
-                  "PENDING_EXPIRATION_SYNC",
-                  "PENDING_EXPIRED_REASSIGNMENT",
-                  "PENDING_EXPIRE_AUTO_ADD",
-                  "PENDING_EXTEND_REGISTRANT_PROFILE",
-                  "PENDING_FAILED_COO",
-                  "PENDING_FAILED_EPP_CREATE",
-                  "PENDING_FAILED_HELD",
-                  "PENDING_FAILED_PURCHASE_PREMIUM",
-                  "PENDING_FAILED_RECONCILE_FIREHOSE",
-                  "PENDING_FAILED_REDEMPTION_WITHOUT_RECEIPT",
-                  "PENDING_FAILED_RELEASE_PREMIUM",
-                  "PENDING_FAILED_RENEW_EXPIRATION_PROTECTION",
-                  "PENDING_FAILED_RESERVE_PREMIUM",
-                  "PENDING_FAILED_SUBMIT_FIREHOSE",
-                  "PENDING_FAILED_TRANSFER_ACK_PREMIUM",
-                  "PENDING_FAILED_TRANSFER_IN_ACK_PREMIUM",
-                  "PENDING_FAILED_TRANSFER_IN_PREMIUM",
-                  "PENDING_FAILED_TRANSFER_PREMIUM",
-                  "PENDING_FAILED_TRANSFER_SUBMIT_PREMIUM",
-                  "PENDING_FAILED_UNLOCK_PREMIUM",
-                  "PENDING_FAILED_UPDATE_API",
-                  "PENDING_FRAUD_VERIFICATION",
-                  "PENDING_FRAUD_VERIFIED",
-                  "PENDING_GET_CONTACTS",
-                  "PENDING_GET_HOSTS",
-                  "PENDING_GET_NAME_SERVERS",
-                  "PENDING_GET_STATUS",
-                  "PENDING_HOLD_ESCROW",
-                  "PENDING_HOLD_REDEMPTION",
-                  "PENDING_LOCK_CLIENT_REMOVE",
-                  "PENDING_LOCK_DATA_QUALITY",
-                  "PENDING_LOCK_THEN_HOLD_REDEMPTION",
-                  "PENDING_PARKING_DETERMINATION",
-                  "PENDING_PARK_INVALID_WHOIS",
-                  "PENDING_PARK_INVALID_WHOIS_REMOVAL",
-                  "PENDING_PURCHASE_PREMIUM",
-                  "PENDING_RECONCILE",
-                  "PENDING_RECONCILE_FIREHOSE",
-                  "PENDING_REDEMPTION",
-                  "PENDING_REDEMPTION_REPORT",
-                  "PENDING_REDEMPTION_REPORT_COMPLETE",
-                  "PENDING_REDEMPTION_REPORT_SUBMITTED",
-                  "PENDING_REDEMPTION_WITHOUT_RECEIPT",
-                  "PENDING_REDEMPTION_WITHOUT_RECEIPT_MOCK",
-                  "PENDING_RELEASE_PREMIUM",
-                  "PENDING_REMOVAL",
-                  "PENDING_REMOVAL_HELD",
-                  "PENDING_REMOVAL_PARKED",
-                  "PENDING_REMOVAL_UNPARK",
-                  "PENDING_RENEWAL",
-                  "PENDING_RENEW_EXPIRATION_PROTECTION",
-                  "PENDING_RENEW_INFINITE",
-                  "PENDING_RENEW_LOCKED",
-                  "PENDING_RENEW_WITHOUT_RECEIPT",
-                  "PENDING_REPORT_REDEMPTION_WITHOUT_RECEIPT",
-                  "PENDING_RESERVE_PREMIUM",
-                  "PENDING_RESET_VERIFICATION_ICANN",
-                  "PENDING_RESPONSE_FIREHOSE",
-                  "PENDING_RESTORATION",
-                  "PENDING_RESTORATION_INACTIVE",
-                  "PENDING_RESTORATION_REDEMPTION_MOCK",
-                  "PENDING_RETRY_EPP_CREATE",
-                  "PENDING_RETRY_HELD",
-                  "PENDING_SEND_AUTH_CODE",
-                  "PENDING_SETUP",
-                  "PENDING_SETUP_ABANDON",
-                  "PENDING_SETUP_AGREEMENT_LANDRUSH",
-                  "PENDING_SETUP_AGREEMENT_SUNRISE2_A",
-                  "PENDING_SETUP_AGREEMENT_SUNRISE2_B",
-                  "PENDING_SETUP_AGREEMENT_SUNRISE2_C",
-                  "PENDING_SETUP_AUTH",
-                  "PENDING_SETUP_DNS",
-                  "PENDING_SETUP_FAILED",
-                  "PENDING_SETUP_REVIEW",
-                  "PENDING_SETUP_SUNRISE",
-                  "PENDING_SETUP_SUNRISE_PRE",
-                  "PENDING_SETUP_SUNRISE_RESPONSE",
-                  "PENDING_SUBMIT_FAILURE",
-                  "PENDING_SUBMIT_FIREHOSE",
-                  "PENDING_SUBMIT_HOLD_FIREHOSE",
-                  "PENDING_SUBMIT_HOLD_LANDRUSH",
-                  "PENDING_SUBMIT_HOLD_SUNRISE",
-                  "PENDING_SUBMIT_LANDRUSH",
-                  "PENDING_SUBMIT_RESPONSE_FIREHOSE",
-                  "PENDING_SUBMIT_RESPONSE_LANDRUSH",
-                  "PENDING_SUBMIT_RESPONSE_SUNRISE",
-                  "PENDING_SUBMIT_SUCCESS_FIREHOSE",
-                  "PENDING_SUBMIT_SUCCESS_LANDRUSH",
-                  "PENDING_SUBMIT_SUCCESS_SUNRISE",
-                  "PENDING_SUBMIT_SUNRISE",
-                  "PENDING_SUBMIT_WAITING_LANDRUSH",
-                  "PENDING_SUCCESS_PRE_REGISTRATION",
-                  "PENDING_SUSPENDED_DATA_QUALITY",
-                  "PENDING_TRANSFER_ACK_PREMIUM",
-                  "PENDING_TRANSFER_IN",
-                  "PENDING_TRANSFER_IN_ACK",
-                  "PENDING_TRANSFER_IN_ACK_PREMIUM",
-                  "PENDING_TRANSFER_IN_BAD_REGISTRANT",
-                  "PENDING_TRANSFER_IN_CANCEL",
-                  "PENDING_TRANSFER_IN_CANCEL_REGISTRY",
-                  "PENDING_TRANSFER_IN_COMPLETE_ACK",
-                  "PENDING_TRANSFER_IN_DELETE",
-                  "PENDING_TRANSFER_IN_LOCK",
-                  "PENDING_TRANSFER_IN_NACK",
-                  "PENDING_TRANSFER_IN_NOTIFICATION",
-                  "PENDING_TRANSFER_IN_PREMIUM",
-                  "PENDING_TRANSFER_IN_RELEASE",
-                  "PENDING_TRANSFER_IN_RESPONSE",
-                  "PENDING_TRANSFER_IN_UNDERAGE",
-                  "PENDING_TRANSFER_OUT",
-                  "PENDING_TRANSFER_OUT_ACK",
-                  "PENDING_TRANSFER_OUT_NACK",
-                  "PENDING_TRANSFER_OUT_PREMIUM",
-                  "PENDING_TRANSFER_OUT_UNDERAGE",
-                  "PENDING_TRANSFER_OUT_VALIDATION",
-                  "PENDING_TRANSFER_PREMIUM",
-                  "PENDING_TRANSFER_PREMUIM",
-                  "PENDING_TRANSFER_SUBMIT_PREMIUM",
-                  "PENDING_UNLOCK_DATA_QUALITY",
-                  "PENDING_UNLOCK_PREMIUM",
-                  "PENDING_UPDATE",
-                  "PENDING_UPDATED_REGISTRANT_DATA_QUALITY",
-                  "PENDING_UPDATE_ACCOUNT",
-                  "PENDING_UPDATE_API",
-                  "PENDING_UPDATE_API_RESPONSE",
-                  "PENDING_UPDATE_AUTH",
-                  "PENDING_UPDATE_CONTACTS",
-                  "PENDING_UPDATE_CONTACTS_PRIVACY",
-                  "PENDING_UPDATE_DNS",
-                  "PENDING_UPDATE_DNS_SECURITY",
-                  "PENDING_UPDATE_ELIGIBILITY",
-                  "PENDING_UPDATE_EPP_CONTACTS",
-                  "PENDING_UPDATE_MEMBERSHIP",
-                  "PENDING_UPDATE_OWNERSHIP",
-                  "PENDING_UPDATE_OWNERSHIP_AUTH_AUCTION",
-                  "PENDING_UPDATE_OWNERSHIP_HELD",
-                  "PENDING_UPDATE_REGISTRANT",
-                  "PENDING_UPDATE_REPO",
-                  "PENDING_VALIDATION_DATA_QUALITY",
-                  "PENDING_VERIFICATION_FRAUD",
-                  "PENDING_VERIFICATION_STATUS",
-                  "PENDING_VERIFY_REGISTRANT_DATA_QUALITY",
-                  "RESERVED",
-                  "RESERVED_PREMIUM",
-                  "REVERTED",
-                  "SUSPENDED_VERIFICATION_ICANN",
-                  "TRANSFERRED_OUT",
-                  "UNLOCKED_ABUSE",
-                  "UNLOCKED_SUPER",
-                  "UNPARKED_AND_UNHELD",
-                  "UPDATED_OWNERSHIP",
-                  "UPDATED_OWNERSHIP_HELD"
-                ],
-                "type": "string"
-              }
-            }
-          },
-          {
-            "description": "Only include results with `status` value in any of the specified groups",
-            "in": "query",
-            "name": "statusGroups",
-            "required": false,
-            "style": "form",
-            "explode": false,
-            "schema": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "INACTIVE",
-                  "PRE_REGISTRATION",
-                  "REDEMPTION",
-                  "RENEWABLE",
-                  "VERIFICATION_ICANN",
-                  "VISIBLE"
-                ],
-                "type": "string"
-              }
-            }
-          },
-          {
-            "description": "Maximum number of domains to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000
-            }
-          },
-          {
-            "description": "Marker Domain to use as the offset in results",
-            "in": "query",
-            "name": "marker",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional details to be included in the response",
-            "in": "query",
-            "name": "includes",
-            "required": false,
-            "style": "form",
-            "explode": false,
-            "schema": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "authCode",
-                  "contacts",
-                  "nameServers"
-                ],
-                "type": "string"
-              }
-            }
-          },
-          {
-            "description": "Only include results that have been modified since the specified date",
-            "in": "query",
-            "name": "modifiedDate",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "iso-datetime"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Request was successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/V1DomainSummary"
-                  },
-                  "type": "array"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "list",
-        "summary": "Retrieve a list of Domains for the specified Shopper"
-      }
-    },
     "/v1/domains/agreements": {
       "get": {
         "tags": [
@@ -1708,6 +1478,29 @@
           "default": false
         },
         "example": true
+      },
+      "pageToken": {
+        "name": "pageToken",
+        "in": "query",
+        "description": "Opaque cursor from the links[rel=next or rel=prev] href of the previous page. When present, the response begins immediately after the item that produced the token. Omit to start from the beginning of the collection.\n",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "example": "eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9"
+      },
+      "pageTokenDirection": {
+        "name": "pageTokenDirection",
+        "in": "query",
+        "description": "Optional token direction when `pageToken` is set; ignored otherwise.\n",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "backward",
+            "forward"
+          ]
+        }
       },
       "fields": {
         "name": "fields",
@@ -1947,7 +1740,7 @@
       },
       "AvailabilityCheckCriteria": {
         "title": "Availability Check Criteria",
-        "description": "Criteria for an availability check. Specifies 1\u201350 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
+        "description": "Criteria for an availability check. Specifies 1\u201325 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
         "type": "object",
         "required": [
           "domains"
@@ -1956,11 +1749,11 @@
           "domains": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 50,
+            "maxItems": 25,
             "items": {
               "type": "string"
             },
-            "description": "List of 1\u201350 domain names to check, in punycode A-label form for IDNs.\n",
+            "description": "List of 1\u201325 domain names to check, in punycode A-label form for IDNs.\n",
             "example": [
               "example.com",
               "example.net"
@@ -2017,6 +1810,23 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ConsentActor"
+              }
+            ]
+          },
+          "acknowledgedFees": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees the customer explicitly acknowledged before executing the purchase. When the preceding quote's fees array is non-empty, this field must be present and contain the same entries verbatim (same types, amounts, and currencies). The server validates this against the locked quote token; a mismatch is rejected with 422 quote_mismatch. Omit when the quote carries no purchase fees (standard REGISTRY registration).\n",
+            "example": [
+              {
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "fee": {
+                  "value": 390000,
+                  "currencyCode": "USD"
+                }
               }
             ]
           }
@@ -2293,6 +2103,35 @@
           }
         }
       },
+      "DomainLifecycleGroup": {
+        "title": "Domain Lifecycle Group",
+        "description": "A logical grouping of domain lifecycle statuses for filtering purposes. PENDING \u2014 domain setup is in progress (e.g. PENDING_REGISTRATION). REGISTERED \u2014 domain is actively registered and operational (e.g. ACTIVE, PARKED). PENDING_TERMINAL \u2014 domain is approaching a terminal state (e.g. PENDING_TRANSFER, EXPIRED). TERMINAL \u2014 domain has reached a terminal state and is no longer manageable (e.g. CANCELLED, DELETED_REDEEMABLE, TRANSFERRED, REPOSSESSED).\n",
+        "type": "string"
+      },
+      "DomainCollection": {
+        "title": "DomainCollection",
+        "description": "A paginated collection of registered domains owned by the authenticated account. Supports filtering by status and cursor-based pagination.\n",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "Domains for the current page.",
+            "items": {
+              "$ref": "#/components/schemas/Domain"
+            },
+            "nullable": true
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "description": "HATEOAS pagination links. May include rel=self (current page),  rel=prev is present when more items are available before the current page. and rel=next is present when more items are available beyond the current page.\n",
+            "readOnly": true,
+            "nullable": true
+          }
+        }
+      },
       "DomainOperation": {
         "title": "Domain Operation",
         "description": "The abstract operation envelope for all domain mutations, returned by the universal GET /operations/{operationId} endpoint. Concrete specializations \u2014 Registration, Renewal, and Transfer \u2014 are returned directly by their respective POST endpoints and carry the same operationId. Developers who do not need the abstract view can poll the concrete resource (GET /registrations/{id}, etc.) and ignore this type entirely.\nOperation IDs are unique across all concrete types, so either poll path works for any given operation.\nAsync state machine:\n  status tracks where the operation is in its lifecycle. Non-terminal values\n  (CONFIRMED, EXECUTING) are transient \u2014 poll until a terminal value is reached.\n  result and error are mutually exclusive terminal payloads:\n    COMPLETED \u2014 operation succeeded; result contains the final outcome data.\n    FAILED \u2014 operation terminated; error contains failure detail.\n  Neither result nor error is present while status is non-terminal.\n",
@@ -2403,6 +2242,30 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/date-time"
+              }
+            ]
+          }
+        }
+      },
+      "Fee": {
+        "title": "Fee",
+        "description": "Fees charged at the time of purchase, separate from the registration price. The type identifies the nature of the charge.\n",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Identifies the nature of this charge. Determines how the fee is categorized in pricing breakdowns and receipts.\n",
+            "example": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeeType"
+              }
+            ]
+          },
+          "fee": {
+            "description": "The monetary amount of this fee.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
               }
             ]
           }
@@ -2540,6 +2403,14 @@
             },
             "description": "HATEOAS link relations for this registration. rel=self \u2014 the canonical URL for this registration record. rel=domain \u2014 the registered domain-name resource once the registration is complete.\n",
             "readOnly": true
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase, in addition to the registration price. Present when purchase fees were incurred. Same fees as RegistrationQuote.fees (the selected term's TermPrice.fees) from the preceding quote.\n",
+            "readOnly": true
           }
         }
       },
@@ -2652,6 +2523,23 @@
             "type": "boolean",
             "description": "Whether executing this quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
             "example": false
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase, in addition to the registration price. Present when the domain incurs purchase fees beyond the base registration cost. These are the same fees as TermPrice.fees for the selected term (this quote's period) \u2014 not a separate term-independent fee list and not additional to term-level fees. Execute cost is price plus this array. Mirrored on Registration.fees after execute.\n",
+            "nullable": true
+          },
+          "inventory": {
+            "description": "The inventory type of the quoted domain. Present when available is true.\n",
+            "readOnly": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InventoryType"
+              }
+            ]
           }
         }
       },
@@ -2772,6 +2660,31 @@
                 "$ref": "#/components/schemas/simple-money"
               }
             ]
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "description": "Fees charged at the time of purchase for this term, in addition to price. Present when the domain incurs purchase fees beyond the base registration cost. The full cost of choosing this term is price plus these fees.\n",
+            "nullable": true
+          },
+          "firstTermPrice": {
+            "description": "Discounted price of only the first term unit within this multi-unit period. Typically omitted when period is 1 (where it equals price). Present when a first-term-only promotion applies to a multi-unit period.\n",
+            "example": {
+              "currencyCode": "USD",
+              "value": 1199
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              }
+            ]
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "When true, this term is the best-value option based on active discounts or promotions. At most one entry in the prices array carries this flag. Absent (not false) when no recommendation applies.\n",
+            "example": true
           }
         }
       },
@@ -2827,6 +2740,14 @@
           "REGISTRY",
           "REGISTRY_PREMIUM",
           "PREMIUM"
+        ]
+      },
+      "FeeType": {
+        "title": "Fee Type",
+        "description": "The type of a fee charged at the time of purchase. ONE_TIME_PREMIUM_DOMAIN_PURCHASE \u2014 one-time acquisition cost charged by the aftermarket marketplace when purchasing a premium domain.\n",
+        "type": "string",
+        "enum": [
+          "ONE_TIME_PREMIUM_DOMAIN_PURCHASE"
         ]
       },
       "error-details": {
@@ -3195,420 +3116,6 @@
         "title": "DNS Record Type",
         "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A \u2014 IPv4 address record. AAAA \u2014 IPv6 address record. CAA \u2014 certification authority authorization record. CNAME \u2014 canonical name alias record. MX \u2014 mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS \u2014 nameserver delegation record; read-only. SOA \u2014 start of authority record; managed by the registry; read-only. SRV \u2014 service locator record. TXT \u2014 free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
         "type": "string"
-      },
-      "V1Address": {
-        "properties": {
-          "address1": {
-            "format": "street-address",
-            "type": "string"
-          },
-          "address2": {
-            "format": "street-address2",
-            "type": "string"
-          },
-          "city": {
-            "format": "city-name",
-            "type": "string"
-          },
-          "country": {
-            "default": "US",
-            "description": "Two-letter ISO country code to be used as a hint for target region<br/><br/>\nNOTE: These are sample values, there are many\n<a href='http://www.iso.org/iso/country_codes.htm'>more</a>",
-            "enum": [
-              "AC",
-              "AD",
-              "AE",
-              "AF",
-              "AG",
-              "AI",
-              "AL",
-              "AM",
-              "AO",
-              "AQ",
-              "AR",
-              "AS",
-              "AT",
-              "AU",
-              "AW",
-              "AX",
-              "AZ",
-              "BA",
-              "BB",
-              "BD",
-              "BE",
-              "BF",
-              "BG",
-              "BH",
-              "BI",
-              "BJ",
-              "BM",
-              "BN",
-              "BO",
-              "BQ",
-              "BR",
-              "BS",
-              "BT",
-              "BV",
-              "BW",
-              "BY",
-              "BZ",
-              "CA",
-              "CC",
-              "CD",
-              "CF",
-              "CG",
-              "CH",
-              "CI",
-              "CK",
-              "CL",
-              "CM",
-              "CN",
-              "CO",
-              "CR",
-              "CV",
-              "CW",
-              "CX",
-              "CY",
-              "CZ",
-              "DE",
-              "DJ",
-              "DK",
-              "DM",
-              "DO",
-              "DZ",
-              "EC",
-              "EE",
-              "EG",
-              "EH",
-              "ER",
-              "ES",
-              "ET",
-              "FI",
-              "FJ",
-              "FK",
-              "FM",
-              "FO",
-              "FR",
-              "GA",
-              "GB",
-              "GD",
-              "GE",
-              "GF",
-              "GG",
-              "GH",
-              "GI",
-              "GL",
-              "GM",
-              "GN",
-              "GP",
-              "GQ",
-              "GR",
-              "GS",
-              "GT",
-              "GU",
-              "GW",
-              "GY",
-              "HK",
-              "HM",
-              "HN",
-              "HR",
-              "HT",
-              "HU",
-              "ID",
-              "IE",
-              "IL",
-              "IM",
-              "IN",
-              "IO",
-              "IQ",
-              "IS",
-              "IT",
-              "JE",
-              "JM",
-              "JO",
-              "JP",
-              "KE",
-              "KG",
-              "KH",
-              "KI",
-              "KM",
-              "KN",
-              "KR",
-              "KV",
-              "KW",
-              "KY",
-              "KZ",
-              "LA",
-              "LB",
-              "LC",
-              "LI",
-              "LK",
-              "LR",
-              "LS",
-              "LT",
-              "LU",
-              "LV",
-              "LY",
-              "MA",
-              "MC",
-              "MD",
-              "ME",
-              "MG",
-              "MH",
-              "MK",
-              "ML",
-              "MM",
-              "MN",
-              "MO",
-              "MP",
-              "MQ",
-              "MR",
-              "MS",
-              "MT",
-              "MU",
-              "MV",
-              "MW",
-              "MX",
-              "MY",
-              "MZ",
-              "NA",
-              "NC",
-              "NE",
-              "NF",
-              "NG",
-              "NI",
-              "NL",
-              "NO",
-              "NP",
-              "NR",
-              "NU",
-              "NZ",
-              "OM",
-              "PA",
-              "PE",
-              "PF",
-              "PG",
-              "PH",
-              "PK",
-              "PL",
-              "PM",
-              "PN",
-              "PR",
-              "PS",
-              "PT",
-              "PW",
-              "PY",
-              "QA",
-              "RE",
-              "RO",
-              "RS",
-              "RU",
-              "RW",
-              "SA",
-              "SB",
-              "SC",
-              "SE",
-              "SG",
-              "SH",
-              "SI",
-              "SJ",
-              "SK",
-              "SL",
-              "SM",
-              "SN",
-              "SO",
-              "SR",
-              "ST",
-              "SV",
-              "SX",
-              "SZ",
-              "TC",
-              "TD",
-              "TF",
-              "TG",
-              "TH",
-              "TJ",
-              "TK",
-              "TL",
-              "TM",
-              "TN",
-              "TO",
-              "TP",
-              "TR",
-              "TT",
-              "TV",
-              "TW",
-              "TZ",
-              "UA",
-              "UG",
-              "UM",
-              "US",
-              "UY",
-              "UZ",
-              "VA",
-              "VC",
-              "VE",
-              "VG",
-              "VI",
-              "VN",
-              "VU",
-              "WF",
-              "WS",
-              "YE",
-              "YT",
-              "ZA",
-              "ZM",
-              "ZW"
-            ],
-            "format": "iso-country-code",
-            "type": "string"
-          },
-          "postalCode": {
-            "description": "Postal or zip code",
-            "format": "postal-code",
-            "type": "string"
-          },
-          "state": {
-            "description": "State or province or territory",
-            "format": "state-province-territory",
-            "type": "string"
-          }
-        }
-      },
-      "V1Contact": {
-        "properties": {
-          "addressMailing": {
-            "$ref": "#/components/schemas/V1Address"
-          },
-          "email": {
-            "format": "email",
-            "type": "string"
-          },
-          "fax": {
-            "format": "phone",
-            "type": "string"
-          },
-          "jobTitle": {
-            "type": "string"
-          },
-          "nameFirst": {
-            "format": "person-name",
-            "type": "string"
-          },
-          "nameLast": {
-            "format": "person-name",
-            "type": "string"
-          },
-          "nameMiddle": {
-            "type": "string"
-          },
-          "organization": {
-            "format": "organization-name",
-            "type": "string"
-          },
-          "phone": {
-            "format": "phone",
-            "type": "string"
-          }
-        }
-      },
-      "V1DomainSummary": {
-        "properties": {
-          "authCode": {
-            "description": "Authorization code for transferring the Domain",
-            "type": "string"
-          },
-          "contactAdmin": {
-            "$ref": "#/components/schemas/V1Contact"
-          },
-          "contactBilling": {
-            "$ref": "#/components/schemas/V1Contact"
-          },
-          "contactRegistrant": {
-            "$ref": "#/components/schemas/V1Contact"
-          },
-          "contactTech": {
-            "$ref": "#/components/schemas/V1Contact"
-          },
-          "createdAt": {
-            "description": "Date and time when this domain was created",
-            "type": "string"
-          },
-          "deletedAt": {
-            "description": "Date and time when this domain was deleted",
-            "type": "string"
-          },
-          "transferAwayEligibleAt": {
-            "description": "Date and time when this domain is eligible to transfer",
-            "type": "string"
-          },
-          "domain": {
-            "description": "Name of the domain",
-            "type": "string"
-          },
-          "domainId": {
-            "description": "Unique identifier for this Domain",
-            "format": "double",
-            "type": "number"
-          },
-          "expirationProtected": {
-            "description": "Whether or not the domain is protected from expiration",
-            "type": "boolean"
-          },
-          "expires": {
-            "description": "Date and time when this domain will expire",
-            "type": "string"
-          },
-          "exposeWhois": {
-            "description": "Whether or not the domain contact details should be shown in the WHOIS",
-            "type": "boolean"
-          },
-          "holdRegistrar": {
-            "description": "Whether or not the domain is on-hold by the registrar",
-            "type": "boolean"
-          },
-          "locked": {
-            "description": "Whether or not the domain is locked to prevent transfers",
-            "type": "boolean"
-          },
-          "nameServers": {
-            "description": "Fully-qualified domain names for DNS servers",
-            "items": {
-              "format": "host-name",
-              "type": "string"
-            },
-            "type": "array",
-            "nullable": true
-          },
-          "privacy": {
-            "description": "Whether or not the domain has privacy protection",
-            "type": "boolean"
-          },
-          "registrarCreatedAt": {
-            "type": "string",
-            "format": "iso-datetime",
-            "description": "Date and time when this domain was created by the registrar"
-          },
-          "renewAuto": {
-            "description": "Whether or not the domain is configured to automatically renew",
-            "type": "boolean"
-          },
-          "renewDeadline": {
-            "description": "Date the domain must renew on",
-            "type": "string"
-          },
-          "renewable": {
-            "description": "Whether or not the domain is eligble for renewal based on status",
-            "type": "boolean"
-          },
-          "status": {
-            "description": "Processing status of the domain<br/><ul>\n<li><strong style='margin-left: 12px;'>ACTIVE</strong> - All is well</li>\n<li><strong style='margin-left: 12px;'>AWAITING*</strong> - System is waiting for the end-user to complete an action</li>\n<li><strong style='margin-left: 12px;'>CANCELLED*</strong> - Domain has been cancelled, and may or may not be reclaimable</li>\n<li><strong style='margin-left: 12px;'>CONFISCATED</strong> - Domain has been confiscated, usually for abuse, chargeback, or fraud</li>\n<li><strong style='margin-left: 12px;'>DISABLED*</strong> - Domain has been disabled</li>\n<li><strong style='margin-left: 12px;'>EXCLUDED*</strong> - Domain has been excluded from Firehose registration</li>\n<li><strong style='margin-left: 12px;'>EXPIRED*</strong> - Domain has expired</li>\n<li><strong style='margin-left: 12px;'>FAILED*</strong> - Domain has failed a required action, and the system is no longer retrying</li>\n<li><strong style='margin-left: 12px;'>HELD*</strong> - Domain has been placed on hold, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>LOCKED*</strong> - Domain has been locked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>PARKED*</strong> - Domain has been parked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>PENDING*</strong> - Domain is working its way through an automated workflow</li>\n<li><strong style='margin-left: 12px;'>RESERVED*</strong> - Domain is reserved, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>REVERTED</strong> - Domain has been reverted, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>SUSPENDED*</strong> - Domain has been suspended, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>TRANSFERRED*</strong> - Domain has been transferred out</li>\n<li><strong style='margin-left: 12px;'>UNKNOWN</strong> - Domain is in an unknown state</li>\n<li><strong style='margin-left: 12px;'>UNLOCKED*</strong> - Domain has been unlocked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>UNPARKED*</strong> - Domain has been unparked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>UPDATED*</strong> - Domain ownership has been transferred to another account</li>\n</ul>",
-            "type": "string"
-          },
-          "transferProtected": {
-            "description": "Whether or not the domain is protected from transfer",
-            "type": "boolean"
-          }
-        }
       },
       "V1LegalAgreement": {
         "properties": {

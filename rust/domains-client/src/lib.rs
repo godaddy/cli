@@ -1,12 +1,12 @@
 //! GoDaddy Domains API client, spanning two API generations behind one host:
 //!
 //! * **v3** — the Domain Lifecycle Management API (`/v3/domains/…`): suggestions,
-//!   availability (single + batch), domain get, registration (quote → register),
-//!   async operation polling, the full DNS record lifecycle (create / list /
-//!   replace / delete), and nameserver replace.
-//! * **v1** — the operations v3 does not yet serve (`/v1/domains/…`): list the
-//!   shopper's domains and TLD legal agreements. Their generated types are
-//!   `V1`-prefixed to avoid clashing with the v3 ones.
+//!   availability (single + batch), domain get/list, registration (quote →
+//!   register), async operation polling, the full DNS record lifecycle
+//!   (create / list / replace / delete), and nameserver replace.
+//! * **v1** — the one operation v3 does not yet serve (`/v1/domains/…`): TLD
+//!   legal agreements. Its generated types are `V1`-prefixed to avoid
+//!   clashing with the v3 ones.
 //!
 //! The contents of this crate are **generated** by `progenitor` at build time
 //! from the vendored, merged OpenAPI 3.0 spec (`openapi/domains.oas3.json`).
@@ -364,10 +364,12 @@ mod tests {
                         type_: types::ConsentActorType::Direct,
                     }),
                     agreement_types: vec![types::AgreementType::ApiDpa],
+                    acknowledged_fees: vec![],
                 },
                 created_at: None,
                 domain: "example.com".to_string(),
                 expires_at: None,
+                fees: vec![],
                 links: vec![],
                 operation_id: None,
                 order_id: None,
@@ -528,32 +530,7 @@ mod tests {
         assert_eq!(op.operation_id.as_ref().map(|o| o.as_str()), Some("op-2"));
     }
 
-    // --- retained v1: list + agreements -------------------------------------
-
-    #[tokio::test]
-    async fn v1_list_tolerates_sparse_payloads() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET).path("/v1/domains");
-                then.status(200).json_body(json!([
-                    { "domain": "a.com", "status": "ACTIVE", "nameServers": null },
-                    { "domain": "b.me", "status": "PENDING_DNS_ACTIVE", "nameServers": null }
-                ]));
-            })
-            .await;
-
-        let body = client_for(&server)
-            .list()
-            .send()
-            .await
-            .expect("sparse list parses")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(body.len(), 2);
-        assert_eq!(body[0].domain.as_deref(), Some("a.com"));
-    }
+    // --- retained v1: agreements ---------------------------------------------
 
     #[tokio::test]
     async fn v1_agreements_sends_query_params_and_parses_list() {
@@ -735,6 +712,71 @@ mod tests {
         assert!(
             responses.contains(&200),
             "expected a response event, got: {responses:?}"
+        );
+    }
+
+    // --- spec regression guards ----------------------------------------------
+    // These assert on the vendored spec file itself (the exact JSON build.rs
+    // feeds to progenitor), not on generated/wire behavior — so a spec sync
+    // that silently undoes a deliberate deviation from the literal upstream
+    // bundle fails here immediately, before anyone has to notice a live 400 or
+    // a stale compiled type. See the WARNING block in
+    // `scripts/regenerate-spec.sh`.
+
+    fn vendored_spec() -> serde_json::Value {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/openapi/domains.oas3.json"
+        )))
+        .expect("vendored spec is valid JSON")
+    }
+
+    #[test]
+    fn statuses_param_items_stay_a_plain_string() {
+        // `domain list`'s `--status` relies on `listDomains`'s `statuses`
+        // parameter having `items: {type: string}`, NOT
+        // `$ref: '#/components/schemas/DomainStatus'` — DomainStatus is a
+        // strict enum that can't hold a comma-joined "A,B" value the way a
+        // bare-string schema can, and progenitor always seq-serializes an
+        // array-of-enum setter as repeated `statuses=` pairs regardless of
+        // the spec's `explode: false`. A spec sync that copies the upstream
+        // shape verbatim silently reintroduces a live `400 MISMATCH_FORMAT`
+        // on every multi-status filter — this was caught once already by
+        // live-testing, not by any automated check, before this test existed.
+        let spec = vendored_spec();
+        let params = spec["paths"]["/v3/domains/domain-names"]["get"]["parameters"]
+            .as_array()
+            .expect("listDomains has a parameters array");
+        let statuses = params
+            .iter()
+            .find(|p| p["name"] == "statuses")
+            .expect("listDomains has a `statuses` parameter");
+
+        assert_eq!(
+            statuses["schema"]["items"],
+            json!({ "type": "string" }),
+            "`statuses` items must stay a plain string, not $ref: DomainStatus \
+             (see the WARNING in scripts/regenerate-spec.sh) — got: {}",
+            statuses["schema"]["items"]
+        );
+    }
+
+    #[test]
+    fn replace_dns_record_stays_removed() {
+        // See https://github.com/godaddy/cli/issues/136 and the `NOTE:`
+        // comment above `/zones/{zone}/dns-records/{recordId}` in the
+        // vendored v3 yaml: this PUT returns 200 but silently replaces the
+        // entire dns-records collection instead of the one record. A spec
+        // sync that copies the upstream shape verbatim would reintroduce it.
+        let spec = vendored_spec();
+        let methods = spec["paths"]["/v3/domains/zones/{zone}/dns-records/{recordId}"]
+            .as_object()
+            .expect("dns-records/{recordId} path exists");
+        assert!(
+            !methods.contains_key("put"),
+            "replaceDNSRecord (PUT) must stay excluded until a confirmed \
+             server-side fix and a fresh live check against a real zone with \
+             unrelated records — see godaddy/cli#136"
         );
     }
 }

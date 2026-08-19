@@ -263,18 +263,38 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 None => None,
             };
 
+            // Echo the quote's fees (e.g. a premium domain's one-time
+            // acquisition surcharge) back verbatim into `consent.acknowledgedFees`
+            // — the server cross-checks this against the locked quote token and
+            // rejects a mismatch with `422 quote_mismatch`. `None`/absent here
+            // means the quote carried no fees (the common, non-premium case),
+            // which correctly serializes as no fees to acknowledge.
+            let acknowledged_fees = match cached.fees.as_ref() {
+                Some(v) => serde_json::from_value::<Vec<types::Fee>>(v.clone()).map_err(|e| {
+                    CliCoreError::message(format!(
+                        "the cached quote for {domain} is corrupt or from an older CLI \
+                         version (could not read its fees: {e}); re-run \
+                         `gddy domain quote {domain}` for a fresh quote."
+                    ))
+                })?,
+                None => vec![],
+            };
+
             let consent = types::Consent {
                 agreed_at: types::DateTime(iso_datetime(chrono::Utc::now())),
                 // Server-derived from the execute request's auth context; the
                 // caller no longer supplies this.
                 agreed_by: None,
                 agreement_types,
+                acknowledged_fees,
             };
             let registration = types::Registration {
                 consent,
                 created_at: None,
                 domain: domain.clone(),
                 expires_at: None,
+                // Server-populated on the response; not sent in the request.
+                fees: vec![],
                 links: vec![],
                 operation_id: None,
                 order_id: None,
@@ -414,6 +434,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use super::{consent_principal, iso_datetime, next_action_description, purchase_consent_types};
     use cli_engine::Credential;
+    use domains_client::types;
 
     #[test]
     fn purchase_consent_requires_agree_then_confirm() {
@@ -545,5 +566,54 @@ mod tests {
         let s = iso_datetime(dt);
         assert_eq!(s, "2026-06-30T22:34:43Z");
         assert!(!s.contains('+'), "must not use a numeric offset: {s}");
+    }
+
+    #[test]
+    fn empty_optional_vecs_are_omitted_not_sent_as_empty_arrays() {
+        // `Consent.acknowledgedFees` (minItems: 1 when present, "omit when
+        // the quote carries no purchase fees") and `Registration.fees`
+        // (readOnly) must never be serialized as `[]` for the common
+        // non-premium case — that would violate the schema and risk
+        // rejection. Pins the `skip_serializing_if` progenitor generates for
+        // these fields, since this code relies on it by constructing both
+        // with `vec![]` rather than omitting the field outright.
+        let consent = types::Consent {
+            agreed_at: types::DateTime("2026-06-30T00:00:00Z".to_string()),
+            agreed_by: None,
+            agreement_types: vec![types::AgreementType::ApiDpa],
+            acknowledged_fees: vec![],
+        };
+        let value = serde_json::to_value(&consent).expect("serializes");
+        assert!(
+            !value
+                .as_object()
+                .expect("object")
+                .contains_key("acknowledgedFees"),
+            "{value}"
+        );
+
+        let registration = types::Registration {
+            consent,
+            created_at: None,
+            domain: "example.com".to_string(),
+            expires_at: None,
+            fees: vec![],
+            links: vec![],
+            operation_id: None,
+            order_id: None,
+            period: std::num::NonZeroU64::new(1).expect("nonzero"),
+            price: None,
+            profile: None,
+            profile_id: None,
+            quote_token: Some(types::Uuid("tok-abc".to_string())),
+            registration_id: None,
+            status: None,
+            updated_at: None,
+        };
+        let value = serde_json::to_value(&registration).expect("serializes");
+        assert!(
+            !value.as_object().expect("object").contains_key("fees"),
+            "{value}"
+        );
     }
 }
