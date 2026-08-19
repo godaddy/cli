@@ -21,4 +21,14 @@ pub fn module() -> Module {
         .with_group(crate::actions_catalog::group())
         .with_group(crate::webhook::group())
     })
+    .with_guides_from_markdown([
+        (
+            "platform-overview.md",
+            include_bytes!("guides/platform-overview.md").as_slice(),
+        ),
+        (
+            "platform-settings.md",
+            include_bytes!("guides/platform-settings.md").as_slice(),
+        ),
+    ])
 }
