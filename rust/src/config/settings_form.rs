@@ -427,7 +427,7 @@ max = 100.0
             toml::from_str(toml_src).expect("valid presentation toml");
         let SettingsFormV1Field::Select { default_value, .. } = &presentation.sections[0].fields[0]
         else {
-            panic!("expected select field");
+            unreachable!("expected select field");
         };
         assert_eq!(
             default_value,
@@ -441,7 +441,7 @@ max = 100.0
             ..
         } = &reparsed.sections[0].fields[0]
         else {
-            panic!("expected select field");
+            unreachable!("expected select field");
         };
         assert_eq!(reparsed_default, default_value);
     }

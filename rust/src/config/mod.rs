@@ -787,7 +787,7 @@ mod tests {
             .sections[0]
             .fields[0]
         else {
-            panic!("expected boolean field");
+            unreachable!("expected boolean field");
         };
         assert_eq!(default_value, &Some(true));
     }

@@ -79,6 +79,26 @@ fn build_settings(config: &crate::config::Config) -> cli_engine::Result<Vec<Valu
     config.settings.iter().map(setting_entry).collect()
 }
 
+/// Missing manifest returns `Ok(None)`; a manifest that exists but fails to
+/// read, parse, or validate is an error rather than a silent empty fallback.
+fn load_manifest(path: &std::path::Path) -> cli_engine::Result<Option<crate::config::Config>> {
+    match crate::config::read_config(path) {
+        Ok(config) => Ok(Some(config)),
+        Err(crate::config::ConfigError::NotFound { path }) => {
+            tracing::warn!(
+                path = %path,
+                "no manifest found; releasing with empty actions, subscriptions, uiExtensions, and settings"
+            );
+            Ok(None)
+        }
+        Err(e) => Err(crate::error::GddyError::config(format!(
+            "failed to load {}: {e}",
+            path.display()
+        ))
+        .into_cli_error()),
+    }
+}
+
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
 /// `uiExtensions` input. Mirrors the TS release mapping (single target each).
 fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
@@ -145,45 +165,33 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             let config_path = crate::config::config_path(Some(&ctx.middleware.env));
-            // Include actions, webhook subscriptions, and UI extensions from
-            // godaddy.toml so configured behavior is captured in the release.
-            // Without this, everything added via `platform app add` was silently
-            // dropped. A missing or invalid config is non-fatal (empty arrays);
-            // too many targets per extension is a hard error.
-            let (actions, subscriptions, ui_extensions, settings) = match crate::config::read_config(
-                &config_path,
-            ) {
-                Ok(config) => {
-                    let actions: Vec<Value> = config
-                        .actions
-                        .iter()
-                        .map(|a| json!({ "name": a.name, "url": a.url }))
-                        .collect();
-                    let subscriptions: Vec<Value> = config
-                        .subscriptions
-                        .as_ref()
-                        .map(|s| {
-                            s.webhook
-                                .iter()
-                                .map(
-                                    |w| json!({ "name": w.name, "events": w.events, "url": w.url }),
-                                )
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let ui_extensions = build_ui_extensions(&config)?;
-                    let settings = build_settings(&config)?;
-                    (actions, subscriptions, ui_extensions, settings)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        path = %config_path.display(),
-                        "failed to read config; releasing with empty actions, subscriptions, uiExtensions, and settings"
-                    );
-                    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-                }
-            };
+            // Pulls actions/subscriptions/uiExtensions/settings from godaddy.toml; see load_manifest.
+            let (actions, subscriptions, ui_extensions, settings) =
+                match load_manifest(&config_path)? {
+                    Some(config) => {
+                        let actions: Vec<Value> = config
+                            .actions
+                            .iter()
+                            .map(|a| json!({ "name": a.name, "url": a.url }))
+                            .collect();
+                        let subscriptions: Vec<Value> = config
+                            .subscriptions
+                            .as_ref()
+                            .map(|s| {
+                                s.webhook
+                                    .iter()
+                                    .map(|w| {
+                                        json!({ "name": w.name, "events": w.events, "url": w.url })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let ui_extensions = build_ui_extensions(&config)?;
+                        let settings = build_settings(&config)?;
+                        (actions, subscriptions, ui_extensions, settings)
+                    }
+                    None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                };
             input["actions"] = json!(actions);
             input["subscriptions"] = json!(subscriptions);
             input["uiExtensions"] = json!(ui_extensions);
@@ -345,6 +353,50 @@ mod tests {
         assert_eq!(entry["iconName"], "percent");
         assert_eq!(entry["iconLibrary"], "lucide");
         assert_eq!(entry["metadata"]["provider"], "godaddy-tax");
+    }
+
+    #[test]
+    fn load_manifest_returns_none_for_missing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let result = super::load_manifest(&path).expect("missing manifest is not an error");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_manifest_fails_release_on_parse_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        std::fs::write(&path, "this = is not [valid toml").expect("write manifest");
+        let err = super::load_manifest(&path).expect_err("parse error must fail the release");
+        assert!(
+            err.to_string().contains("failed to load"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_fails_release_on_validation_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        // Parses cleanly; `name` fails Config::validate's pattern check.
+        std::fs::write(
+            &path,
+            r#"
+name = "Not Valid!"
+client_id = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+version = "1.0.0"
+url = "https://example.com"
+proxy_url = "https://example.com/proxy"
+authorization_scopes = []
+"#,
+        )
+        .expect("write manifest");
+        let err = super::load_manifest(&path).expect_err("validation error must fail the release");
+        assert!(
+            err.to_string().contains("failed to load"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
