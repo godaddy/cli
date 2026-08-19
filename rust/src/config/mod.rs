@@ -716,6 +716,7 @@ mod tests {
             capabilities: vec![],
             icon: None,
             metadata: None,
+            presentation_file: None,
             presentation: None,
         });
         config
@@ -736,6 +737,7 @@ mod tests {
             capabilities: vec![],
             icon: None,
             metadata: None,
+            presentation_file: None,
             presentation: None,
         });
         let err = config.validate().expect_err("bad group slug");
@@ -760,6 +762,7 @@ mod tests {
                 library: "lucide".to_owned(),
             }),
             metadata: None,
+            presentation_file: None,
             presentation: Some(SettingsFormV1Presentation {
                 sections: vec![SettingsFormV1Section {
                     key: "defaults".to_owned(),
@@ -790,6 +793,33 @@ mod tests {
             unreachable!("expected boolean field");
         };
         assert_eq!(default_value, &Some(true));
+    }
+
+    #[test]
+    fn setting_with_presentation_file_round_trips_without_expansion() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.settings.push(SettingConfig {
+            group: "tax-center".to_owned(),
+            slug: "manual-tax".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/manual-tax".to_owned(),
+            order: None,
+            capabilities: vec![],
+            icon: None,
+            metadata: None,
+            presentation_file: Some("fixtures/manual-tax-presentation.json".to_owned()),
+            presentation: None,
+        });
+        write_config(&path, &config).expect("write config with presentationFile");
+        let read_back = read_config(&path).expect("read config with presentationFile");
+        assert_eq!(
+            read_back.settings[0].presentation_file,
+            Some("fixtures/manual-tax-presentation.json".to_owned())
+        );
+        assert!(read_back.settings[0].presentation.is_none());
     }
 
     #[test]
