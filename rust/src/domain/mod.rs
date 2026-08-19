@@ -28,6 +28,7 @@ mod nameservers;
 mod operation;
 mod purchase;
 mod quote;
+mod register;
 mod suggest;
 
 // Shared with the `dns` module, which builds the same Domains API client and
@@ -63,6 +64,7 @@ pub fn module() -> Module {
         .with_command(agreements::command())
         .with_command(quote::command())
         .with_command(purchase::command())
+        .with_command(register::command())
         .with_group(nameservers::group())
         .with_group(contacts::group())
         .with_group(operation::group())
