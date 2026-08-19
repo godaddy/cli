@@ -292,6 +292,7 @@ mod tests {
             subscriptions: None,
             dependencies: vec![],
             extensions,
+            settings: vec![],
         }
     }
 
