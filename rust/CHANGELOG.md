@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/godaddy/cli/compare/v0.2.7...v0.2.8) (2026-08-19)
+
+
+### Features
+
+* **cli:** right-align numeric table columns on cli-engine 0.8.6 ([#219](https://github.com/godaddy/cli/issues/219)) ([2647579](https://github.com/godaddy/cli/commit/2647579ee113183099cf0cf243d0bcb37aa428d3))
+
 ## [0.2.7](https://github.com/godaddy/cli/compare/v0.2.6...v0.2.7) (2026-08-18)
 
 
