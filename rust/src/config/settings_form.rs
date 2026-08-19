@@ -242,8 +242,7 @@ struct PresentationFileDocument {
 }
 
 /// Parses a `presentationFile`'s JSON (full API object: `type`,
-/// `schemaVersion`, `sections`); `setting_entry` re-injects the discriminator
-/// fields, so both paths produce an identical payload.
+/// `schemaVersion`, `sections`).
 pub(crate) fn presentation_from_json(content: &str) -> Result<SettingsFormV1Presentation, String> {
     let doc: PresentationFileDocument = serde_json::from_str(content).map_err(|e| e.to_string())?;
     if let Some(t) = &doc.r#type
