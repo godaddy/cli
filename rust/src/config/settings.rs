@@ -26,6 +26,10 @@ pub struct SettingConfig {
     pub icon: Option<SettingIcon>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
+    /// Path to a JSON presentation file, resolved against the manifest's
+    /// directory at release time. Mutually exclusive with `presentation`.
+    #[serde(default)]
+    pub presentation_file: Option<String>,
     /// The `settings-form-v1` form shape. `None` until hand-added to
     /// `godaddy.toml` — `gddy platform app add settings` can only write the
     /// placement fields above; `release` rejects a settings entry with no
@@ -130,6 +134,11 @@ pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<Str
                 icon.library
             ));
         }
+        if setting.presentation.is_some() && setting.presentation_file.is_some() {
+            errors.push(format!(
+                "{path} has both presentation and presentationFile — provide only one"
+            ));
+        }
         if let Some(presentation) = &setting.presentation {
             validate_presentation(presentation, errors, &format!("{path}.presentation"));
         }
@@ -162,6 +171,7 @@ mod tests {
             capabilities: vec![],
             icon: None,
             metadata: None,
+            presentation_file: None,
             presentation: None,
         }
     }
@@ -229,6 +239,21 @@ mod tests {
         validate_settings(&[s], &mut errors);
         assert!(
             errors.iter().any(|e| e.contains("icon.library")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_settings_rejects_both_presentation_and_presentation_file() {
+        let mut s = setting("godaddy-tax", "/settings/godaddy-tax");
+        s.presentation_file = Some("presentation.json".to_owned());
+        s.presentation = Some(SettingsFormV1Presentation { sections: vec![] });
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("presentation") && e.contains("presentationFile")),
             "{errors:?}"
         );
     }
