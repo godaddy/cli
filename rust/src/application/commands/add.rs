@@ -57,6 +57,11 @@ struct SettingsArgs {
     /// Icon library for display; must be provided together with --icon-name.
     #[arg(long = "icon-library", value_name = "LIBRARY")]
     icon_library: Option<String>,
+
+    /// Path to a JSON presentation file; alternative to hand-authoring
+    /// [settings.presentation].
+    #[arg(long = "presentation-file", value_name = "PATH")]
+    presentation_file: Option<String>,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -212,6 +217,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 capabilities: args.capabilities,
                 icon,
                 metadata: None,
+                presentation_file: args.presentation_file,
                 presentation: None,
             });
             crate::config::write_config(&path, &config)
@@ -225,4 +231,26 @@ pub(super) fn group() -> RuntimeGroupSpec {
         },
     ))
     .with_group(super::add_extension::group())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn settings_subcommand_accepts_presentation_file_flag() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "settings",
+                "--group",
+                "tax-center",
+                "--slug",
+                "godaddy-tax",
+                "--entry-path",
+                "/settings/godaddy-tax",
+                "--presentation-file",
+                "fixtures/manual-tax-presentation.json",
+            ])
+            .expect("--presentation-file flag should be accepted");
+    }
 }
