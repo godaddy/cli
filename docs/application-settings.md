@@ -22,12 +22,12 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
 
    `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read`+`write` server-side if omitted. `--icon-name`/`--icon-library` must be given together or not at all.
 
-2. **Hand-add the form** — this command only writes placement metadata; the actual field/section definitions (`presentation`) aren't flag-driven — write a `[settings.presentation]` block directly into the entry `add settings` just wrote. See Presentation shape below.
+2. **Author the form** — this command only writes placement metadata; the actual field/section definitions (`presentation`) aren't flag-driven. Either hand-add a `[settings.presentation]` block directly into the entry `add settings` just wrote, or point it at a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). The two are mutually exclusive — see Presentation shape below.
 
-3. **Release** — `gddy platform app release --application-id <id> --version <version>` resends every setting in `godaddy.toml`, same as it does for actions/subscriptions/extensions. It rejects any settings entry with no `presentation`:
+3. **Release** — `gddy platform app release --application-id <id> --version <version>` resends every setting in `godaddy.toml`, same as it does for actions/subscriptions/extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`:
 
    ```json
-   { "error": { "code": "VALIDATION_ERROR", "message": "settings 'godaddy-tax' has no presentation — add a [settings.presentation] block before releasing" } }
+   { "error": { "code": "VALIDATION_ERROR", "message": "settings 'godaddy-tax' has no presentation — add a [settings.presentation] block or a presentationFile before releasing" } }
    ```
 
 4. **Enable/backfill** — `gddy platform app enable <name> --store-id <storeId>` makes the placement discoverable for a store. Settings (like actions/subscriptions/uiExtensions) are keyed per-release with no inheritance — a store already enabled against an older release doesn't pick up settings added in a newer one until `enable` is re-run for that store.
@@ -132,6 +132,20 @@ key = "displayName"
 label = "Display at checkout"
 ```
 
+### Referencing a JSON file instead of inline TOML
+
+For a GPA that already keeps its presentation as a JSON fixture (a common shape for existing registry examples), point `presentationFile` at it instead of re-authoring the same form as TOML:
+
+```toml
+[[settings]]
+group = "tax-center"
+slug = "manual-tax"
+entryPath = "/settings/manual-tax"
+presentationFile = "fixtures/manual-tax-registry-presentation.json"
+```
+
+The referenced file must be the complete API presentation object — `type` (`"form"`), `schemaVersion` (`"settings-form-v1"`), and `sections` — the same shape `createRelease.settings[].presentation` expects, so an existing fixture can be reused verbatim. The path is relative to the directory containing the `godaddy.toml` being released, not the shell's working directory. `presentation` and `presentationFile` are mutually exclusive; both forms run through the same field/section validation and produce an identical release payload. The file itself is only opened at `release` — like inline `presentation`, it's optional at `add settings`/`config validate` time — and a missing, unreadable, malformed, or wrong-`type`/`schemaVersion` file fails the release with a `VALIDATION_ERROR` naming the resolved path.
+
 ## What the CLI validates locally vs. server-side
 
 `gddy platform app add settings`/`release` catch cheap, structural problems before any network call:
@@ -141,6 +155,7 @@ label = "Display at checkout"
 - `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`.
 - `icon.library` is one of `ux`, `lucide`, `commerce`.
 - Every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key.
+- `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
 
 Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
 
@@ -148,4 +163,4 @@ Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ mi
 
 - **No release inheritance.** `release` resends every current setting from `godaddy.toml`; leaving one out doesn't archive it globally, but any store enabled against the *new* release loses it.
 - **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active — re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill.
-- **`presentation` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`) — it only fails at `release`, with the message shown above.
+- **`presentation`/`presentationFile` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`) — it only fails at `release`, with the message shown above.
