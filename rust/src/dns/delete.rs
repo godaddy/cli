@@ -1,6 +1,6 @@
 //! `dns delete` — remove all records matching a type+name from a domain.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client};
@@ -135,8 +135,8 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("domain", "Domain"),
         TableColumn::new("type", "Type"),
         TableColumn::new("name", "Name"),
-        TableColumn::new("deleted", "Deleted"),
-        TableColumn::new("failed", "Failed"),
+        TableColumn::new("deleted", "Deleted").align(Alignment::Right),
+        TableColumn::new("failed", "Failed").align(Alignment::Right),
         TableColumn::new("action", "Action"),
         TableColumn::new("records", "Records").nested(vec![
             TableColumn::new("recordId", "Record ID"),

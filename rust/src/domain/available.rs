@@ -1,7 +1,7 @@
 //! `gddy domain available` — check whether a domain can be registered (v3).
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+    Alignment, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::json;
 
@@ -33,9 +33,9 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("currency", "Currency"),
         TableColumn::new("terms", "Terms").nested(vec![
             TableColumn::new("periodLabel", "Period"),
-            TableColumn::new("price", "Price"),
-            TableColumn::new("firstTermPrice", "First-Term Price"),
-            TableColumn::new("renewalPrice", "Renewal Price"),
+            TableColumn::new("price", "Price").align(Alignment::Right),
+            TableColumn::new("firstTermPrice", "First-Term Price").align(Alignment::Right),
+            TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
         ]),
     ]
 }
