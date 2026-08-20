@@ -50,7 +50,7 @@ fn resolve_presentation(
             let path = manifest_dir.join(file);
             let content = std::fs::read_to_string(&path).map_err(|e| {
                 crate::error::GddyError::validation(format!(
-                    "settings '{}' presentationFile {} could not be read: {e}",
+                    "setting '{}' presentationFile {} could not be read: {e}",
                     setting.slug,
                     path.display()
                 ))
@@ -58,7 +58,7 @@ fn resolve_presentation(
             })?;
             presentation_from_json(&content).map_err(|e| {
                 crate::error::GddyError::validation(format!(
-                    "settings '{}' presentationFile {} is invalid: {e}",
+                    "setting '{}' presentationFile {} is invalid: {e}",
                     setting.slug,
                     path.display()
                 ))
@@ -66,7 +66,7 @@ fn resolve_presentation(
             })
         }
         (None, None) => Err(crate::error::GddyError::validation(format!(
-            "settings '{}' has no presentation — add a [settings.presentation] block or a presentationFile before releasing",
+            "setting '{}' has no presentation — add a [settings.presentation] block or a presentationFile before releasing",
             setting.slug
         ))
         .into_cli_error()),
@@ -84,7 +84,7 @@ fn setting_entry(
     validate_presentation(&presentation, &mut errors, "presentation");
     if !errors.is_empty() {
         return Err(crate::error::GddyError::validation(format!(
-            "settings '{}' presentation is invalid: {}",
+            "setting '{}' presentation is invalid: {}",
             setting.slug,
             errors.join("; ")
         ))
