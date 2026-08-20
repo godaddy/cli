@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 use crate::application::client::make_http_client;
 
-const BASE_PATH: &str = "/v3/email";
+const BASE_PATH: &str = "/v1/email";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -138,7 +138,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .header("authorization", "Bearer test-token")
                     .query_param("status", "ACTIVE")
                     .query_param("page", "1");
@@ -161,7 +161,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailbox/mbx-456")
+                    .path("/v1/email/mailbox/mbx-456")
                     .header("authorization", "Bearer test-token");
                 then.status(200)
                     .json_body(json!({ "mailboxId": "mbx-456", "status": "ACTIVE" }));
@@ -183,7 +183,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .header("authorization", "Bearer test-token")
                     .json_body(json!({ "email": "someone@example.com" }));
                 then.status(200)
@@ -206,7 +206,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/check-eligibility")
+                    .path("/v1/email/check-eligibility")
                     .header("authorization", "Bearer test-token")
                     .query_param("email", "someone@example.com");
                 then.status(200).json_body(json!({ "isEligible": true }));
@@ -227,7 +227,7 @@ mod tests {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
-                when.method(POST).path("/v3/email/mailboxes");
+                when.method(POST).path("/v1/email/mailboxes");
                 then.status(422).json_body(json!({
                     "name": "UnprocessableEntity",
                     "message": "missing required agreements",

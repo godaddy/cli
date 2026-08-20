@@ -8,7 +8,7 @@ use crate::email::{client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_READ;
 
-/// panel-v3-api's own page-size cap for `GET /v3/email/mailboxes`. See the
+/// panel-v3-api's own page-size cap for `GET /v1/email/mailboxes`. See the
 /// design doc's pagination decision.
 const SERVER_PAGE_SIZE_CAP: usize = 100;
 
@@ -153,7 +153,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
                     .json_body(json!({ "mailboxes": page_of(3, 0) }));
@@ -175,7 +175,7 @@ mod tests {
         let page1 = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
                     .json_body(json!({ "mailboxes": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
@@ -184,7 +184,7 @@ mod tests {
         let page2 = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("page", "2");
                 then.status(200)
                     .json_body(json!({ "mailboxes": page_of(10, SERVER_PAGE_SIZE_CAP) }));
@@ -207,7 +207,7 @@ mod tests {
         let page1 = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
                     .json_body(json!({ "mailboxes": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
@@ -216,7 +216,7 @@ mod tests {
         let page2 = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("page", "2");
                 then.status(200)
                     .json_body(json!({ "mailboxes": page_of(5, SERVER_PAGE_SIZE_CAP) }));
@@ -239,7 +239,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v3/email/mailboxes")
+                    .path("/v1/email/mailboxes")
                     .query_param("status", "ACTIVE")
                     .query_param("fields", "mailboxId,status");
                 then.status(200)
