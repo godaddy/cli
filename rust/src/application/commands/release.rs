@@ -41,7 +41,7 @@ fn resolve_presentation(
 ) -> cli_engine::Result<SettingsFormV1Presentation> {
     match (&setting.presentation, &setting.presentation_file) {
         (Some(_), Some(_)) => Err(crate::error::GddyError::validation(format!(
-            "settings '{}' has both presentation and presentationFile — provide only one",
+            "setting '{}' has both presentation and presentationFile — provide only one",
             setting.slug
         ))
         .into_cli_error()),
