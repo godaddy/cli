@@ -193,6 +193,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_guides_are_discoverable_even_when_the_namespace_is_hidden() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+
+        let list = cli.run(["gddy", "guide"]).await;
+        assert_eq!(list.exit_code, 0, "{}", list.rendered);
+        for topic in ["platform-overview", "platform-settings"] {
+            assert!(
+                list.rendered.contains(topic),
+                "guide list should include {topic:?}: {}",
+                list.rendered
+            );
+        }
+
+        let settings = cli.run(["gddy", "guide", "platform-settings"]).await;
+        assert_eq!(settings.exit_code, 0, "{}", settings.rendered);
+        assert!(
+            settings.rendered.contains("settings-form-v1"),
+            "{}",
+            settings.rendered
+        );
+    }
+
+    #[tokio::test]
     async fn platform_namespace_exposes_the_gpa_command_tree() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
