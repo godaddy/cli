@@ -17,12 +17,8 @@ pub(super) fn group() -> RuntimeGroupSpec {
     .with_command(RuntimeCommandSpec::new_with_context(
         CommandSpec::new("validate", "Validate the local godaddy.toml manifest")
             .with_long(
-                "Read the godaddy.toml (or godaddy.<env>.toml, per --env) \
-                manifest in the current directory and validate it against the \
-                same rules enforced when writing it via `platform app add`/ \
-                `init`/`release` — required fields, URL/UUID/semver shapes, \
-                and settings placement rules (slug/entry-path/capability \
-                enum). Reports every violation found, not just the first.",
+                "Validate the godaddy.toml (or godaddy.<env>.toml, per --env) \
+                manifest in the current directory.",
             )
             .with_system("applications")
             .with_tier(Tier::Read)
