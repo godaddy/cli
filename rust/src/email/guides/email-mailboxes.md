@@ -8,12 +8,13 @@ This guide explains the GoDaddy email system and how to use the `gddy email` com
 
 ## What an "account" is here
 
-An **account** (`accountId`) identifies an existing GoDaddy Email/productivity
-account the customer already holds under panel-v3. It's an opaque ID scoped to
-this API — it is **not** a shopper/customer ID, and it has nothing to do with
-domain or hosting "accounts" elsewhere in `gddy`. A customer may hold zero,
-one, or several eligible email accounts; `email create` needs to know which
-one to provision the new mailbox under.
+An **account** (`accountId`) identifies an existing GoDaddy Email account you
+already hold. It's separate from your GoDaddy login and has nothing to do
+with a domain name or with domain/hosting "accounts" elsewhere in `gddy` —
+think of it as a container that can hold multiple mailboxes. You may have
+zero, one, or several eligible email accounts (for example, if you've bought
+more than one email plan), so `email create` needs to know which one to
+provision the new mailbox under.
 
 ## The check-eligibility → create flow
 
