@@ -132,9 +132,9 @@ mod tests {
 
     /// Regression test for a real bug found while wiring feature-flagging up
     /// properly: with no `min_stage` override anywhere, cli-engine's own
-    /// default (`Stage::Ga`) hides `hosting` and the Developer Platform
-    /// namespace entirely. Guards that the *global* default stays `Ga` per
-    /// product decision — i.e. these stay hidden absent an environment override.
+    /// default (`Stage::Ga`) hides `hosting`. Guards that the *global* default
+    /// stays `Ga` per product decision — i.e. beta and experimental modules
+    /// stay hidden absent an environment override.
     #[tokio::test]
     async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
         let cli = Cli::new(
@@ -151,16 +151,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_namespace_is_hidden_at_the_default_min_stage() {
+    async fn platform_namespace_is_visible_at_the_default_min_stage() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
         let output = cli.run(["gddy", "platform", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "platform should stay hidden at the Ga default: {}",
+            "platform should be visible at the Ga default: {}",
             output.rendered
         );
     }
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_guides_are_discoverable_even_when_the_namespace_is_hidden() {
+    async fn platform_guides_are_discoverable() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
@@ -223,7 +223,7 @@ mod tests {
     async fn platform_namespace_exposes_the_gpa_command_tree() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
-                .with_min_stage(Stage::Experimental)
+                .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
 
