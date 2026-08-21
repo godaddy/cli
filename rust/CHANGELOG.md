@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.9](https://github.com/godaddy/cli/compare/v0.2.8...v0.2.9) (2026-08-21)
+
+
+### Features
+
+* **app:** add settings support for app registration ([#216](https://github.com/godaddy/cli/issues/216)) ([74934c2](https://github.com/godaddy/cli/commit/74934c266d580a247b146767fd3802e0bd240eb0))
+* **platform:** promote namespace to GA ([#223](https://github.com/godaddy/cli/issues/223)) ([8b9dd21](https://github.com/godaddy/cli/commit/8b9dd219b4f4dac286d865f239777f2ca1cb3983))
+
 ## [0.2.8](https://github.com/godaddy/cli/compare/v0.2.7...v0.2.8) (2026-08-19)
 
 
