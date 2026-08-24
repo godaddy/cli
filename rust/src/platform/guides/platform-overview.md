@@ -39,7 +39,7 @@ Resends every action, subscription, UI extension, and settings entry currently i
 gddy platform app deploy
 ```
 
-Bundles, security-scans, and uploads the extensions declared in `godaddy.toml`, streaming progress as JSON events.
+Bundles, security-scans, and uploads the extensions declared in `godaddy.toml`, then activates the latest release and its parent application. An application that is already active skips the application lifecycle mutation. Progress is streamed as JSON events.
 
 ## 5. Enable / disable per store
 

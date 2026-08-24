@@ -624,6 +624,32 @@ mod tests {
         assert_eq!(data["updateApplication"]["label"], "Updated app");
     }
 
+    #[tokio::test]
+    async fn update_application_can_activate_an_application() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("updateApplication") && body.contains(r#""status":"ACTIVE""#)
+                    });
+                then.status(200).json_body(json!({
+                    "data": { "updateApplication": { "id": "app-1", "status": "ACTIVE" } }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .update_application("app-1", json!({ "status": "ACTIVE" }))
+            .await
+            .expect("activate application");
+
+        mock.assert_async().await;
+        assert_eq!(data["updateApplication"]["status"], "ACTIVE");
+    }
+
     // httpmock can't sequence responses, so retries are verified by hit count
     // (exhaustion) rather than a fail-then-succeed sequence.
 

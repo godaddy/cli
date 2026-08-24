@@ -84,6 +84,7 @@ fn deploy_result_event(
             "releaseId": release_id,
             "extensions": extensions,
             "releaseStatus": "ACTIVE",
+            "applicationStatus": "ACTIVE",
         },
         "next_actions": deploy_next_actions(name),
     })
@@ -120,8 +121,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             (SEC001–SEC010/SEC012 AST + SEC011 package scripts) and the \
             post-bundle regex scanner (SEC101–SEC115) on each extension, then \
             upload the artifacts to the latest release of the named \
-            application. Progress is streamed as JSON events. A release must \
-            exist before deploying; create one with \
+            application and activate both the release and application. An \
+            already-active application skips the lifecycle mutation. Progress \
+            is streamed as JSON events. A release must exist before deploying; \
+            create one with \
             `gddy platform app release`.",
         )
         .with_system("applications")
@@ -175,6 +178,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 return Err(fail_deploy(&sender, err).await);
             }
             let application_id = app["id"].as_str().unwrap_or("").to_owned();
+            let application_status = app["status"].as_str().map(str::to_owned);
             sender
                 .send(json!({ "type": "step", "name": "application.lookup", "status": "completed", "id": application_id }))
                 .await;
@@ -235,6 +239,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             tap_deploy_err(
                 &sender,
+                activate_application(
+                    &client,
+                    &sender,
+                    &application_id,
+                    application_status.as_deref(),
+                )
+                .await,
+            )
+            .await?;
+
+            tap_deploy_err(
+                &sender,
                 sync_manifest_metadata(&client, &sender, &application_id, &config).await,
             )
             .await?;
@@ -262,8 +278,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Activate the release. The App Registry lifecycle owns the parent
-/// application's status transition; deploy must not directly mutate it.
+/// Activate the release before activating the parent application.
 async fn activate_release(
     client: &ApplicationClient,
     sender: &StreamSender,
@@ -282,6 +297,44 @@ async fn activate_release(
         .await;
 
     Ok(())
+}
+
+/// Promote the parent application to `ACTIVE` after its release is active.
+/// Avoid the lifecycle mutation when lookup already returned `ACTIVE`.
+async fn activate_application(
+    client: &ApplicationClient,
+    sender: &StreamSender,
+    application_id: &str,
+    current_status: Option<&str>,
+) -> cli_engine::Result<()> {
+    if !application_needs_activation(current_status) {
+        sender
+            .send(json!({
+                "type": "step",
+                "name": "application.activate",
+                "status": "skipped",
+                "reason": "already active",
+            }))
+            .await;
+        return Ok(());
+    }
+
+    sender
+        .send(json!({ "type": "step", "name": "application.activate", "status": "started" }))
+        .await;
+    client
+        .update_application(application_id, json!({ "status": "ACTIVE" }))
+        .await
+        .map_err(super::client_err)?;
+    sender
+        .send(json!({ "type": "step", "name": "application.activate", "status": "completed" }))
+        .await;
+
+    Ok(())
+}
+
+fn application_needs_activation(current_status: Option<&str>) -> bool {
+    current_status != Some("ACTIVE")
 }
 
 /// Synchronize application-level manifest fields without changing lifecycle
@@ -404,6 +457,7 @@ mod tests {
         assert_eq!(event["result"]["releaseId"], "rel-456");
         assert_eq!(event["result"]["extensions"], 2);
         assert_eq!(event["result"]["releaseStatus"], "ACTIVE");
+        assert_eq!(event["result"]["applicationStatus"], "ACTIVE");
         assert_eq!(
             event["next_actions"].as_array().map(|a| a.len()),
             Some(3),
@@ -421,6 +475,14 @@ mod tests {
                 .contains("platform app enable"),
             "first next action should enable on a store: {event}"
         );
+    }
+
+    #[test]
+    fn application_activation_is_skipped_only_when_already_active() {
+        assert!(!super::application_needs_activation(Some("ACTIVE")));
+        assert!(super::application_needs_activation(Some("INACTIVE")));
+        assert!(super::application_needs_activation(Some("VERIFYING")));
+        assert!(super::application_needs_activation(None));
     }
 
     #[test]
