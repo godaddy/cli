@@ -195,4 +195,40 @@ mod tests {
         assert_eq!(StepResult::Cancel, StepResult::Cancel);
         assert_ne!(StepResult::Continue, StepResult::Cancel);
     }
+
+    #[test]
+    fn steps_metadata_has_expected_count() {
+        assert_eq!(STEPS.len(), 4);
+        assert_eq!(STEPS[0].name, "Discovery");
+        assert_eq!(STEPS[1].name, "Options");
+        assert_eq!(STEPS[2].name, "Review & Confirm");
+        assert_eq!(STEPS[3].name, "Register");
+    }
+
+    #[test]
+    fn wizard_state_carries_all_fields_through_lifecycle() {
+        let mut state = WizardState::new()
+            .with_domain(Some("test.io".to_string()))
+            .with_period(3);
+
+        state.available = true;
+        state.quote_token = Some("qt-123".to_string());
+        state.price = Some("29.99".to_string());
+        state.currency = Some("USD".to_string());
+        state.agreement_titles = vec!["ICANN Registrant".to_string()];
+        state.agreement_types = vec!["DNRA".to_string()];
+        state.status = Some("COMPLETED".to_string());
+        state.operation_id = Some("op-456".to_string());
+
+        assert_eq!(state.domain.as_deref(), Some("test.io"));
+        assert_eq!(state.period, 3);
+        assert!(state.available);
+        assert_eq!(state.quote_token.as_deref(), Some("qt-123"));
+        assert_eq!(state.price.as_deref(), Some("29.99"));
+        assert_eq!(state.currency.as_deref(), Some("USD"));
+        assert_eq!(state.agreement_titles.len(), 1);
+        assert_eq!(state.agreement_types.len(), 1);
+        assert_eq!(state.status.as_deref(), Some("COMPLETED"));
+        assert_eq!(state.operation_id.as_deref(), Some("op-456"));
+    }
 }

@@ -84,6 +84,8 @@ async fn main() -> ExitCode {
             .with_auth_provider(auth_provider)
             .with_auth_extra_commands([scopes_cmd::auth_scopes_command()])
             .with_min_stage(cli_engine::Stage::Ga)
+            // TODO: enable once all commands have been tested under interactive prompting
+            // .with_auto_interactive(true)
             .with_environments(Arc::clone(environments::instance()))
             .with_root_next_actions(Arc::new(|| {
                 vec![

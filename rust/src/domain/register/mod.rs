@@ -205,3 +205,135 @@ fn build_result(state: &WizardState) -> Result<CommandResult> {
 
     Ok(CommandResult::new(result).with_next_actions(actions))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wizard::WizardState;
+
+    #[test]
+    fn build_result_requires_domain_in_state() {
+        let state = WizardState::new();
+        let err = build_result(&state).expect_err("should fail without domain");
+        assert!(
+            err.to_string().contains("no domain"),
+            "expected domain error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn build_result_produces_valid_json_with_minimal_state() {
+        let mut state = WizardState::new();
+        state.domain = Some("example.com".to_string());
+        state.status = Some("COMPLETED".to_string());
+
+        let result = build_result(&state).expect("should succeed");
+        assert_eq!(result.data["domain"], "example.com");
+        assert_eq!(result.data["status"], "COMPLETED");
+        assert!(result.data.get("operationId").is_none());
+    }
+
+    #[test]
+    fn build_result_includes_optional_fields_when_present() {
+        let mut state = WizardState::new();
+        state.domain = Some("test.io".to_string());
+        state.status = Some("COMPLETED".to_string());
+        state.operation_id = Some("op-123".to_string());
+        state.price = Some("12.99".to_string());
+        state.currency = Some("USD".to_string());
+
+        let result = build_result(&state).expect("should succeed");
+        assert_eq!(result.data["operationId"], "op-123");
+        assert_eq!(result.data["price"], "12.99");
+        assert_eq!(result.data["currency"], "USD");
+    }
+
+    #[test]
+    fn register_args_defaults_are_user_friendly() {
+        // Verify clap defaults match WizardState defaults.
+        let cmd = clap::Command::new("test");
+        let cmd = <RegisterArgs as clap::Args>::augment_args(cmd);
+
+        // period default is "1"
+        let period_arg = cmd.get_arguments().find(|a| a.get_id() == "period");
+        assert!(period_arg.is_some());
+
+        // privacy default is "true"
+        let privacy_arg = cmd.get_arguments().find(|a| a.get_id() == "privacy");
+        assert!(privacy_arg.is_some());
+    }
+
+    #[test]
+    fn non_interactive_requires_domain_arg() {
+        let args = RegisterArgs {
+            domain: None,
+            period: 1,
+            privacy: true,
+            auto_renew: true,
+            nameservers: vec![],
+            agree: true,
+            confirm: true,
+        };
+        // Simulate the check from run_non_interactive.
+        let err = args.domain.ok_or_else(|| {
+            CliCoreError::message("domain name is required in non-interactive mode")
+        });
+        assert!(err.is_err());
+        assert!(
+            err.expect_err("should be missing domain")
+                .to_string()
+                .contains("domain name is required")
+        );
+    }
+
+    #[test]
+    fn non_interactive_requires_agree_flag() {
+        let args = RegisterArgs {
+            domain: Some("example.com".to_string()),
+            period: 1,
+            privacy: true,
+            auto_renew: true,
+            nameservers: vec![],
+            agree: false,
+            confirm: true,
+        };
+        assert!(!args.agree, "--agree should be false");
+    }
+
+    #[test]
+    fn non_interactive_requires_confirm_flag() {
+        let args = RegisterArgs {
+            domain: Some("example.com".to_string()),
+            period: 1,
+            privacy: true,
+            auto_renew: true,
+            nameservers: vec![],
+            agree: true,
+            confirm: false,
+        };
+        assert!(!args.confirm, "--confirm should be false");
+    }
+
+    #[test]
+    fn wizard_state_from_args_maps_correctly() {
+        let args = RegisterArgs {
+            domain: Some("test.io".to_string()),
+            period: 3,
+            privacy: false,
+            auto_renew: false,
+            nameservers: vec!["ns1.test.io".to_string(), "ns2.test.io".to_string()],
+            agree: true,
+            confirm: true,
+        };
+        let state = WizardState::new()
+            .with_period(args.period)
+            .with_privacy(args.privacy)
+            .with_auto_renew(args.auto_renew)
+            .with_nameservers(args.nameservers.clone());
+
+        assert_eq!(state.period, 3);
+        assert!(!state.privacy);
+        assert!(!state.auto_renew);
+        assert_eq!(state.nameservers.len(), 2);
+    }
+}

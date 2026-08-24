@@ -111,33 +111,7 @@ async fn fetch_suggestions(
         Err(e) => return Err(api_error("domain suggestion", debug, e).await),
     };
 
-    let mut all: Vec<SuggestionEntry> = Vec::new();
-    for item in &resp.items {
-        if all.len() >= MAX_SUGGESTIONS {
-            break;
-        }
-        let Some(name) = item.domain.as_deref() else {
-            continue;
-        };
-        if all.iter().any(|s| s.domain == name) {
-            continue;
-        }
-        let prices = item.prices.as_deref().unwrap_or_default();
-        let price = term_for_period(prices, 1)
-            .and_then(|tp| tp.price.as_ref())
-            .and_then(crate::domain::common::format_money);
-        let currency = term_for_period(prices, 1)
-            .and_then(|tp| tp.price.as_ref())
-            .and_then(|p| p.currency_code.as_ref())
-            .map(|c| c.0.clone());
-        all.push(SuggestionEntry {
-            domain: name.to_owned(),
-            price,
-            currency,
-        });
-    }
-
-    Ok(all)
+    Ok(collect_suggestions(&resp.items, MAX_SUGGESTIONS))
 }
 
 fn select_from_suggestions(
@@ -206,4 +180,102 @@ struct SuggestionEntry {
     domain: String,
     price: Option<String>,
     currency: Option<String>,
+}
+
+/// Extract unique suggestions from raw API items, capped at `max`.
+/// Factored out for testability.
+fn collect_suggestions(
+    items: &[domains_client::types::Suggestion],
+    max: usize,
+) -> Vec<SuggestionEntry> {
+    let mut all: Vec<SuggestionEntry> = Vec::new();
+    for item in items {
+        if all.len() >= max {
+            break;
+        }
+        let Some(name) = item.domain.as_deref() else {
+            continue;
+        };
+        if all.iter().any(|s| s.domain == name) {
+            continue;
+        }
+        let prices = item.prices.as_deref().unwrap_or_default();
+        let price = term_for_period(prices, 1)
+            .and_then(|tp| tp.price.as_ref())
+            .and_then(crate::domain::common::format_money);
+        let currency = term_for_period(prices, 1)
+            .and_then(|tp| tp.price.as_ref())
+            .and_then(|p| p.currency_code.as_ref())
+            .map(|c| c.0.clone());
+        all.push(SuggestionEntry {
+            domain: name.to_owned(),
+            price,
+            currency,
+        });
+    }
+    all
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domains_client::types::Suggestion;
+
+    fn make_suggestion(domain: &str) -> Suggestion {
+        Suggestion {
+            domain: Some(domain.to_string()),
+            inventory: None,
+            prices: None,
+        }
+    }
+
+    #[test]
+    fn collect_suggestions_deduplicates() {
+        let items = vec![
+            make_suggestion("a.com"),
+            make_suggestion("b.com"),
+            make_suggestion("a.com"), // duplicate
+            make_suggestion("c.com"),
+        ];
+        let results = collect_suggestions(&items, 10);
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].domain, "a.com");
+        assert_eq!(results[1].domain, "b.com");
+        assert_eq!(results[2].domain, "c.com");
+    }
+
+    #[test]
+    fn collect_suggestions_caps_at_max() {
+        let items: Vec<Suggestion> = (0..20)
+            .map(|i| make_suggestion(&format!("domain{i}.com")))
+            .collect();
+        let results = collect_suggestions(&items, MAX_SUGGESTIONS);
+        assert_eq!(results.len(), MAX_SUGGESTIONS);
+    }
+
+    #[test]
+    fn collect_suggestions_skips_items_without_domain() {
+        let items = vec![
+            Suggestion {
+                domain: None,
+                inventory: None,
+                prices: None,
+            },
+            make_suggestion("valid.com"),
+            Suggestion {
+                domain: None,
+                inventory: None,
+                prices: None,
+            },
+        ];
+        let results = collect_suggestions(&items, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].domain, "valid.com");
+    }
+
+    #[test]
+    fn collect_suggestions_empty_input() {
+        let results = collect_suggestions(&[], 10);
+        assert!(results.is_empty());
+    }
 }

@@ -3,7 +3,7 @@
 
 use cli_engine::{CliCoreError, Result};
 use console::style;
-use dialoguer::Confirm;
+use dialoguer::Select;
 
 use domains_client::types;
 
@@ -98,26 +98,24 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         .collect();
 
     // Display order summary.
-    eprintln!("\n  ┌─────────────────────────────────────");
-    eprintln!("  │ {} Order Summary", style("📋").bold());
-    eprintln!("  ├─────────────────────────────────────");
-    eprintln!("  │ Domain:   {}", style(&domain).cyan().bold());
-    eprintln!("  │ Period:   {}", period_label(state.period));
+    let w = 40;
+    eprintln!("\n  ┌{}┐", "─".repeat(w));
+    eprintln!("  │ {:<width$}│", format!("{} Order Summary", style("📋").bold()), width = w - 1);
+    eprintln!("  ├{}┤", "─".repeat(w));
+    eprintln!("  │ {:<width$}│", format!("Domain:     {}", style(&domain).cyan().bold()), width = w - 1);
+    eprintln!("  │ {:<width$}│", format!("Period:     {}", period_label(state.period)), width = w - 1);
     if let Some(p) = &price_str {
-        eprintln!("  │ Price:    {} {}", style(p).green().bold(), currency);
+        eprintln!("  │ {:<width$}│", format!("Price:      {} {}", style(p).green().bold(), currency), width = w - 1);
     }
     if let Some(r) = &renewal_str {
-        eprintln!("  │ Renewal:  {} {}/yr", r, currency);
+        eprintln!("  │ {:<width$}│", format!("Renewal:    {} {}/yr", r, currency), width = w - 1);
     }
-    eprintln!("  │ Privacy:  {}", if state.privacy { "Yes" } else { "No" });
-    eprintln!(
-        "  │ Auto-renew: {}",
-        if state.auto_renew { "Yes" } else { "No" }
-    );
+    eprintln!("  │ {:<width$}│", format!("Privacy:    {}", if state.privacy { "Yes" } else { "No" }), width = w - 1);
+    eprintln!("  │ {:<width$}│", format!("Auto-renew: {}", if state.auto_renew { "Yes" } else { "No" }), width = w - 1);
     if !state.nameservers.is_empty() {
-        eprintln!("  │ Nameservers: {}", state.nameservers.join(", "));
+        eprintln!("  │ {:<width$}│", format!("Nameservers: {}", state.nameservers.join(", ")), width = w - 1);
     }
-    eprintln!("  └─────────────────────────────────────");
+    eprintln!("  └{}┘", "─".repeat(w));
 
     // Show agreements.
     if !agreement_titles.is_empty() {
@@ -128,18 +126,26 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     }
 
     // Confirm.
-    let confirmed = Confirm::new()
-        .with_prompt(format!(
-            "Proceed with registration? This will charge {} {} to your account",
+    let choices = vec![
+        format!(
+            "✓ I agree to the terms above and authorize a charge of {} {}",
             price_str.as_deref().unwrap_or("the quoted price"),
             currency
-        ))
-        .default(false)
+        ),
+        "↩ Go back and change options".to_string(),
+        "✗ Cancel — do not purchase".to_string(),
+    ];
+    let selection = Select::new()
+        .with_prompt("By proceeding you accept the legal agreements listed above")
+        .items(&choices)
+        .default(0)
         .interact()
         .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
-    if !confirmed {
-        return Ok(StepResult::Cancel);
+    match selection {
+        1 => return Ok(StepResult::Back),
+        2 => return Ok(StepResult::Cancel),
+        _ => {} // 0 = proceed
     }
 
     // Cache the quote for the execute step.
@@ -149,10 +155,14 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         .ok_or_else(|| CliCoreError::message("the quote returned no token (domain unavailable?)"))?
         .to_string();
     let idempotency_key = uuid::Uuid::new_v4().to_string();
-    let fees_json = quote
-        .fees
-        .as_ref()
-        .and_then(|f| serde_json::to_value(f).ok());
+    let fees_json = match quote.fees.as_ref().filter(|f| !f.is_empty()) {
+        Some(fees) => Some(serde_json::to_value(fees).map_err(|e| {
+            CliCoreError::message(format!(
+                "could not serialize the quote's fees for the quote cache: {e}"
+            ))
+        })?),
+        None => None,
+    };
     quote_cache::save(
         &quote_token,
         quote_cache::CachedQuote {
