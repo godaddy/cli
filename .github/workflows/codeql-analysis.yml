@@ -28,7 +28,7 @@ jobs:
           languages: rust
 
       - name: Build
-        run: cargo build
+        run: cargo build --workspace --all-targets
         working-directory: rust
 
       - name: Perform CodeQL Analysis
