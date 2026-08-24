@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.10](https://github.com/godaddy/cli/compare/v0.2.9...v0.2.10) (2026-08-24)
+
+
+### Features
+
+* **email:** Added CLI support for panel based email services ([#212](https://github.com/godaddy/cli/issues/212)) ([c99004a](https://github.com/godaddy/cli/commit/c99004a571517b045d67c05540c5936d6fcc666e))
+
+
+### Bug Fixes
+
+* **extensions:** restore pre-bundle AST security scan [DEVEX-710] ([#208](https://github.com/godaddy/cli/issues/208)) ([e3a2010](https://github.com/godaddy/cli/commit/e3a2010f6040bc9c6781f52a72d1dbab7a5a1e88))
+* omit null settings presentation fields ([#225](https://github.com/godaddy/cli/issues/225)) ([ef745d9](https://github.com/godaddy/cli/commit/ef745d98f5be9bb2dda423648a73b6e64048bc25))
+
 ## [0.2.9](https://github.com/godaddy/cli/compare/v0.2.8...v0.2.9) (2026-08-21)
 
 
