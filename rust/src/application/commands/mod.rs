@@ -8,6 +8,7 @@ use crate::next_action::{next_action, required_value};
 
 mod add;
 mod add_extension;
+mod config;
 mod deploy;
 mod info;
 mod init;
@@ -67,8 +68,9 @@ pub fn application_group() -> RuntimeGroupSpec {
                 "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
                 developer-platform app described by a godaddy.toml manifest in your working \
                 directory. Use `gddy platform app init` to create one, `gddy platform app \
-                validate <name>` to check remote application state, and `gddy platform app \
-                deploy` to publish it.",
+                config validate` to check the local manifest, `gddy platform app validate \
+                <name>` to check remote application state, and `gddy platform app deploy` to \
+                publish it.",
             )
             .with_alias("application"),
     )
@@ -83,6 +85,7 @@ pub fn application_group() -> RuntimeGroupSpec {
     .with_command(release::command())
     .with_command(deploy::command())
     .with_group(add::group())
+    .with_group(config::group())
 }
 
 #[cfg(test)]

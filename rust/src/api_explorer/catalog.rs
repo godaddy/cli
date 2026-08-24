@@ -230,6 +230,7 @@ fn path_matches_template(template: &str, concrete: &str) -> bool {
             })
 }
 
+#[cfg(test)]
 pub(super) fn find_endpoint<'a>(
     catalog: &'a [Domain],
     query: &str,
@@ -342,6 +343,28 @@ pub(super) fn resolve_operation<'a>(
             }
         }
         _ => Err(ambiguous_operation_error(query, &exact_hits)),
+    }
+}
+
+/// Locates a literal request path against the catalog — the literal-path
+/// counterpart to `resolve_operation`'s operation-id resolution, built on
+/// the same exact/template `find_endpoint_exact` (never `find_endpoint`'s
+/// looser substring `contains` fallback, which can match the wrong
+/// endpoint). Unlike `resolve_operation`, zero hits is not an error: a
+/// literal path may legitimately target an endpoint the embedded catalog
+/// doesn't know about, and `api call` falls back to the generic gateway
+/// host for that case. More than one hit (the same path+method template
+/// declared in two domain specs) is ambiguous, same as `resolve_operation`.
+pub(super) fn locate_by_path<'a>(
+    catalog: &'a [Domain],
+    path: &str,
+    method: &str,
+) -> Result<Option<(&'a Domain, &'a Endpoint)>, CliCoreError> {
+    let hits = find_endpoint_exact(catalog, path, Some(method));
+    match hits.len() {
+        0 => Ok(None),
+        1 => Ok(Some(hits[0])),
+        _ => Err(ambiguous_operation_error(path, &hits)),
     }
 }
 
@@ -573,7 +596,7 @@ pub(super) fn graphql_valid_arg_names(g: &GraphqlOpRef<'_>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{catalog, find_endpoint};
+    use super::{Domain, catalog, find_endpoint, locate_by_path};
 
     /// `catalog()` sorts once so every listing (`api domain list`, `api
     /// search`, `api operation get`) sees the same stable, alphabetical order.
@@ -633,5 +656,71 @@ mod tests {
                 .any(|(_, ep)| ep.operation_id == "postCatalogGraphql"),
             "expected a GraphQL operation name to surface its parent endpoint in search results"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // locate_by_path — the literal-path counterpart to resolve_operation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn locate_by_path_matches_a_concrete_path_against_its_template() {
+        let (domain, ep) = locate_by_path(catalog(), "/stores/abc123/fulfillments", "GET")
+            .expect("no ambiguity")
+            .expect("concrete path matches the templated catalog path");
+        assert_eq!(domain.name, "fulfillments");
+        assert_eq!(ep.operation_id, "listFulfillments");
+    }
+
+    #[test]
+    fn locate_by_path_filters_by_method() {
+        assert!(
+            locate_by_path(catalog(), "/stores/abc123/fulfillments", "DELETE")
+                .expect("no ambiguity")
+                .is_none(),
+            "listFulfillments is GET-only, so a DELETE must not match it"
+        );
+    }
+
+    #[test]
+    fn locate_by_path_returns_none_for_no_catalog_match() {
+        assert!(
+            locate_by_path(catalog(), "/totally/not/a/real/path", "GET")
+                .expect("no ambiguity")
+                .is_none()
+        );
+    }
+
+    fn two_domains_sharing_one_path(path: &str, method: &str) -> Vec<Domain> {
+        let json = format!(
+            r#"[
+                {{
+                    "name": "domain-a",
+                    "title": "",
+                    "description": "",
+                    "baseUrl": "https://a.example.com",
+                    "endpoints": [
+                        {{"operationId": "opA", "method": "{method}", "path": "{path}", "summary": ""}}
+                    ]
+                }},
+                {{
+                    "name": "domain-b",
+                    "title": "",
+                    "description": "",
+                    "baseUrl": "https://b.example.com",
+                    "endpoints": [
+                        {{"operationId": "opB", "method": "{method}", "path": "{path}", "summary": ""}}
+                    ]
+                }}
+            ]"#
+        );
+        serde_json::from_str(&json).expect("valid domain fixture")
+    }
+
+    #[test]
+    fn locate_by_path_errors_on_an_ambiguous_match() {
+        let domains = two_domains_sharing_one_path("/things/{thingId}", "GET");
+        let err = locate_by_path(&domains, "/things/abc", "GET")
+            .expect_err("the same path+method template in two domains is ambiguous");
+        assert!(err.to_string().contains("matches 2 operations"), "{err}");
     }
 }

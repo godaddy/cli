@@ -55,6 +55,43 @@ fn write_full_output(events: &[WebhookEvent]) -> Result<String, std::io::Error> 
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Fetches and parses the webhook event-types response.
+async fn fetch_webhook_events(
+    client: &reqwest::Client,
+    base_url: &str,
+    token: &str,
+) -> cli_engine::Result<WebhookEventsResponse> {
+    let url = format!("{base_url}/v1/apis/webhook-event-types");
+    let request = client
+        .get(&url)
+        .bearer_auth(token)
+        .header("x-request-id", uuid::Uuid::new_v4().to_string())
+        .build()
+        .map_err(|e| GddyError::validation(e.to_string()).into_cli_error())?;
+    cli_engine::transport::debug_log_reqwest_request(&request);
+    let resp = client
+        .execute(request)
+        .await
+        .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
+    cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+    if !status.is_success() {
+        let body = String::from_utf8_lossy(&bytes).into_owned();
+        return Err(GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error());
+    }
+    serde_json::from_slice(&bytes).map_err(|e| {
+        GddyError::unexpected(format!("failed to parse webhook events response: {e}"))
+            .into_cli_error()
+    })
+}
+
 /// The webhook command group, composed below `gddy platform`.
 pub fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
@@ -78,38 +115,8 @@ pub fn group() -> RuntimeGroupSpec {
         |ctx| async move {
             let token = ctx.credential().await?.token;
             let base_url = api_url_for_env(&ctx.middleware.env)?;
-            let url = format!("{base_url}/v1/apis/webhook-event-types");
             let client = crate::application::client::make_http_client();
-            let request = client
-                .get(&url)
-                .bearer_auth(&token)
-                .header("x-request-id", uuid::Uuid::new_v4().to_string())
-                .build()
-                .map_err(|e| GddyError::validation(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_request(&request);
-            let resp = client
-                .execute(request)
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-
-            let status = resp.status();
-            let headers = resp.headers().clone();
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| GddyError::network(e.to_string()).into_cli_error())?;
-            cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
-
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes).into_owned();
-                return Err(
-                    GddyError::from_http(status.as_u16(), body, "webhooks").into_cli_error()
-                );
-            }
-            let response: WebhookEventsResponse = serde_json::from_slice(&bytes).map_err(|e| {
-                GddyError::unexpected(format!("failed to parse webhook events response: {e}"))
-                    .into_cli_error()
-            })?;
+            let response = fetch_webhook_events(&client, &base_url, &token).await?;
             let events: Vec<WebhookEvent> = response.events;
             let total = events.len();
             let truncated = total > MAX_LIST_ITEMS;
@@ -145,7 +152,77 @@ pub fn group() -> RuntimeGroupSpec {
 
 #[cfg(test)]
 mod tests {
+    use httpmock::prelude::*;
+
     use super::*;
+
+    /// `webhook events` calls the platform API, so it must stay fail-closed
+    /// like every other authenticated command (parity with the deleted TS
+    /// webhook-service test's "should throw authentication error"/"should
+    /// throw error with null access token" cases — here the credential gate
+    /// rejects before the handler ever builds a request).
+    #[tokio::test]
+    async fn webhook_events_requires_auth() {
+        let cli = cli_engine::Cli::new(
+            cli_engine::CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(cli_engine::Stage::Experimental)
+                .with_module(crate::platform::module()),
+        );
+        let output = cli
+            .run(["gddy", "platform", "webhook", "events", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 2, "{}", output.rendered);
+    }
+
+    // --- fetch_webhook_events: HTTP wiring ---
+
+    #[tokio::test]
+    async fn fetch_webhook_events_sends_bearer_token_and_parses_response() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/apis/webhook-event-types")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).json_body(serde_json::json!({
+                    "events": [
+                        { "eventType": "application.created", "description": "created" },
+                    ]
+                }));
+            })
+            .await;
+
+        let client = crate::application::client::make_http_client();
+        let response = fetch_webhook_events(&client, &server.base_url(), "test-token")
+            .await
+            .expect("should fetch events");
+
+        mock.assert_async().await;
+        assert_eq!(response.events.len(), 1);
+        assert_eq!(response.events[0].event_type, "application.created");
+    }
+
+    #[tokio::test]
+    async fn fetch_webhook_events_maps_a_non_2xx_status_to_a_cli_error() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/apis/webhook-event-types");
+                then.status(401).body("invalid token");
+            })
+            .await;
+
+        let client = crate::application::client::make_http_client();
+        let err = fetch_webhook_events(&client, &server.base_url(), "bad-token")
+            .await
+            .expect_err("non-2xx status should surface as an error");
+
+        mock.assert_async().await;
+        assert!(
+            err.to_string().contains("invalid token"),
+            "expected the upstream body in the error: {err}"
+        );
+    }
 
     // --- Deserialization ---
 

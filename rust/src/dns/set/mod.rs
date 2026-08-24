@@ -1,6 +1,6 @@
 //! `dns set` — replace every record for a type+name pair (destructive).
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 
 use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
@@ -49,9 +49,9 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("domain", "Domain"),
         TableColumn::new("type", "Type"),
         TableColumn::new("name", "Name"),
-        TableColumn::new("replaced", "Replaced"),
-        TableColumn::new("created", "Created"),
-        TableColumn::new("deleted", "Deleted"),
+        TableColumn::new("replaced", "Replaced").align(Alignment::Right),
+        TableColumn::new("created", "Created").align(Alignment::Right),
+        TableColumn::new("deleted", "Deleted").align(Alignment::Right),
         TableColumn::new("action", "Action"),
         TableColumn::new("plan", "Plan").nested(vec![
             TableColumn::new("action", "Action"),

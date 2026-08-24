@@ -1,8 +1,8 @@
 //! `gddy domain quote` — price a registration, lock a quote, cache it (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec,
-    TableColumn, Tier,
+    Alignment, CliCoreError, CommandResult, CommandSpec, NextActionParam, Result,
+    RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::json;
 
@@ -33,7 +33,39 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
+    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
+    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    "inventory": "string", optional;
+    "fees": "[]object", optional;
 });
+
+/// Render a quote's `fees` array (e.g. a premium domain's one-time acquisition
+/// surcharge) as `{type, amount, currency}` objects for display — mirrors how
+/// `quote_to_json` renders prices via [`format_money`]. `None` (rather than an
+/// empty array) when the quote carried no fees, so the field is omitted from
+/// output entirely instead of showing an empty list.
+fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
+    if fees.is_empty() {
+        return None;
+    }
+    Some(json!(
+        fees.iter()
+            .map(|f| {
+                let mut out = json!({});
+                if let Some(t) = f.type_.as_ref() {
+                    out["type"] = json!(t.to_string());
+                }
+                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
+                    out["amount"] = json!(amount);
+                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
+                        out["currency"] = json!(code.to_string());
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
+    ))
+}
 
 /// Build the inline registration profile (contacts + preferences) sent with a
 /// quote. Always returns a profile: `auto_renew` and `privacy` are always set
@@ -136,6 +168,12 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     if let Some(irreversible) = quote.irreversible {
         out["irreversible"] = json!(irreversible);
     }
+    if let Some(inventory) = quote.inventory.as_ref() {
+        out["inventory"] = json!(inventory.to_string());
+    }
+    if let Some(fees) = quote.fees.as_ref().and_then(|f| fees_to_json(f)) {
+        out["fees"] = fees;
+    }
     // The effective settings the registration would apply (contacts source,
     // privacy, auto-renew, nameservers) — so the user reviews what they're buying.
     if let Some(resolved) = quote.resolved.as_ref()
@@ -212,13 +250,19 @@ fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("available", "Available"),
-        TableColumn::new("price", "Price"),
-        TableColumn::new("renewalPrice", "Renewal Price"),
+        TableColumn::new("price", "Price").align(Alignment::Right),
+        TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("periodLabel", "Period"),
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
         TableColumn::new("expiresAt", "Expires At"),
         TableColumn::new("irreversible", "Irreversible"),
+        TableColumn::new("inventory", "Inventory"),
+        TableColumn::new("fees", "Fees").nested(vec![
+            TableColumn::new("type", "Type"),
+            TableColumn::new("amount", "Amount").align(Alignment::Right),
+            TableColumn::new("currency", "Currency"),
+        ]),
         TableColumn::new("agreements", "Agreements"),
         TableColumn::new("requiredAgreements", "Required Agreements").nested(vec![
             TableColumn::new("agreementType", "Type"),
@@ -312,6 +356,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 let token = token.to_string();
                 let agreements = quote.required_agreements.clone().unwrap_or_default();
                 let (agreement_types, agreement_titles) = agreement_types_and_titles(&agreements);
+                // Cache verbatim so `purchase` can echo it into
+                // `consent.acknowledgedFees` (required for premium domains; the
+                // server rejects a mismatch with `quote_mismatch`). Serializing
+                // this in-memory value effectively never fails, but if it did,
+                // silently caching `None` would surface as a confusing
+                // `quote_mismatch` at purchase time instead of here — fail fast,
+                // same as `profile_json` above.
+                let fees_json = match quote.fees.as_ref().filter(|f| !f.is_empty()) {
+                    Some(fees) => Some(serde_json::to_value(fees).map_err(|e| {
+                        CliCoreError::message(format!(
+                            "could not serialize the quote's fees for the quote cache: {e}"
+                        ))
+                    })?),
+                    None => None,
+                };
                 let cached = quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
                     period: quote.period.map_or(period, |p| p.get()),
@@ -331,6 +390,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // attempt for this token reuses it (a retry after a lost
                     // response can't double-charge).
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
+                    fees: fees_json,
                 };
                 if let Err(e) = quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't
@@ -424,5 +484,47 @@ mod tests {
         assert!(rendered.contains("Resolved Settings:"), "{rendered}");
         assert!(rendered.contains("Jane Smith"), "{rendered}");
         assert!(rendered.contains("PROFILE"), "{rendered}");
+    }
+
+    /// Proves `view_columns()` renders a premium domain's `inventory`/`fees`
+    /// shaped like what `quote_to_json` actually emits (`fees_to_json`
+    /// builds each entry from a `json!` literal with these exact keys) as a
+    /// nested table — a mismatch would silently drop them from `--fields
+    /// all` output.
+    #[test]
+    fn quote_result_renders_inventory_and_fees_as_a_nested_table() {
+        let quote = json!({
+            "domain": "premium-example.com",
+            "available": true,
+            "inventory": "PREMIUM",
+            "fees": [
+                {"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3900.00", "currency": "USD"},
+            ],
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Inventory:"), "{rendered}");
+        assert!(rendered.contains("PREMIUM"), "{rendered}");
+        assert!(rendered.contains("Fees:"), "{rendered}");
+        assert!(
+            rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("3900.00"), "{rendered}");
+    }
+
+    /// A non-premium quote (the common case) renders `Inventory:`/`Fees:` as
+    /// blank rows, same as every other optional field in this view — but
+    /// must never leak a literal `null` (the regression `fees_to_json`'s
+    /// `type` key fix targets).
+    #[test]
+    fn quote_result_never_leaks_a_literal_null_when_fees_are_absent() {
+        let quote = json!({
+            "domain": "example.com",
+            "available": true,
+        });
+        let envelope = cli_engine::Envelope::success(quote, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(!rendered.contains("null"), "{rendered}");
     }
 }

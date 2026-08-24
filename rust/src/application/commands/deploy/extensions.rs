@@ -272,6 +272,146 @@ pub(super) async fn deploy_extension(
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{
+        BlocksExtensionConfig, CheckoutExtensionConfig, Config, EmbedExtensionConfig,
+        ExtensionTarget, ExtensionsConfig,
+    };
+
+    /// Minimal `Config` with placeholder values for every field
+    /// `collect_extensions` doesn't read — only `extensions` varies per test.
+    fn base_config(extensions: Option<ExtensionsConfig>) -> Config {
+        Config {
+            name: "test-app".to_owned(),
+            client_id: "00000000-0000-4000-8000-000000000000".to_owned(),
+            description: None,
+            version: "1.0.0".to_owned(),
+            url: "https://example.com".to_owned(),
+            proxy_url: "https://proxy.example.com".to_owned(),
+            authorization_scopes: vec![],
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions,
+            settings: vec![],
+        }
+    }
+
+    #[test]
+    fn collect_extensions_returns_empty_when_none_configured() {
+        assert!(super::collect_extensions(&base_config(None)).is_empty());
+    }
+
+    #[test]
+    fn collect_extensions_maps_embed_extensions() {
+        let config = base_config(Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "@test/embed-one".to_owned(),
+                handle: "embed-one".to_owned(),
+                source: "src/index.ts".to_owned(),
+                targets: vec![ExtensionTarget {
+                    target: "admin.product.detail".to_owned(),
+                }],
+            }],
+            checkout: vec![],
+            blocks: None,
+        }));
+
+        let deploys = super::collect_extensions(&config);
+        assert_eq!(deploys.len(), 1);
+        assert_eq!(deploys[0].name, "@test/embed-one");
+        assert_eq!(deploys[0].handle, "embed-one");
+        assert_eq!(deploys[0].source, "src/index.ts");
+        assert_eq!(deploys[0].ext_type, crate::extension::ExtensionType::Embed);
+        assert_eq!(deploys[0].targets, vec!["admin.product.detail".to_owned()]);
+    }
+
+    #[test]
+    fn collect_extensions_maps_checkout_extensions() {
+        let config = base_config(Some(ExtensionsConfig {
+            embed: vec![],
+            checkout: vec![CheckoutExtensionConfig {
+                name: "@test/checkout-one".to_owned(),
+                handle: "checkout-one".to_owned(),
+                source: "src/checkout.ts".to_owned(),
+                targets: vec![],
+            }],
+            blocks: None,
+        }));
+
+        let deploys = super::collect_extensions(&config);
+        assert_eq!(deploys.len(), 1);
+        assert_eq!(deploys[0].name, "@test/checkout-one");
+        assert_eq!(
+            deploys[0].ext_type,
+            crate::extension::ExtensionType::Checkout
+        );
+        assert!(deploys[0].targets.is_empty());
+    }
+
+    #[test]
+    fn collect_extensions_maps_blocks_extension_with_fixed_name_and_handle() {
+        let config = base_config(Some(ExtensionsConfig {
+            embed: vec![],
+            checkout: vec![],
+            blocks: Some(BlocksExtensionConfig {
+                source: "src/blocks.ts".to_owned(),
+            }),
+        }));
+
+        let deploys = super::collect_extensions(&config);
+        assert_eq!(deploys.len(), 1);
+        // Blocks has no per-extension name/handle in godaddy.toml — these are
+        // fixed, matching the single implicit "blocks" upload target.
+        assert_eq!(deploys[0].name, "Blocks");
+        assert_eq!(deploys[0].handle, "blocks");
+        assert_eq!(deploys[0].source, "src/blocks.ts");
+        assert_eq!(deploys[0].ext_type, crate::extension::ExtensionType::Blocks);
+        assert!(deploys[0].targets.is_empty());
+    }
+
+    #[test]
+    fn collect_extensions_preserves_embed_then_checkout_then_blocks_order() {
+        let config = base_config(Some(ExtensionsConfig {
+            embed: vec![EmbedExtensionConfig {
+                name: "@test/embed".to_owned(),
+                handle: "embed".to_owned(),
+                source: "src/embed.ts".to_owned(),
+                targets: vec![],
+            }],
+            checkout: vec![CheckoutExtensionConfig {
+                name: "@test/checkout".to_owned(),
+                handle: "checkout".to_owned(),
+                source: "src/checkout.ts".to_owned(),
+                targets: vec![],
+            }],
+            blocks: Some(BlocksExtensionConfig {
+                source: "src/blocks.ts".to_owned(),
+            }),
+        }));
+
+        let deploys = super::collect_extensions(&config);
+        let names: Vec<&str> = deploys.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, vec!["@test/embed", "@test/checkout", "Blocks"]);
+    }
+
+    #[test]
+    fn upload_completed_event_omits_percent_when_not_final_target() {
+        let target = Some("admin.product.detail".to_owned());
+
+        let event = super::upload_completed_event("widget", &target, false, 1, 2);
+
+        assert_eq!(
+            event,
+            serde_json::json!({
+                "type": "progress",
+                "name": "extension.upload",
+                "status": "completed",
+                "extensionName": "widget",
+                "target": "admin.product.detail",
+            })
+        );
+    }
+
     #[test]
     fn resolve_upload_targets_by_type() {
         use crate::extension::ExtensionType;

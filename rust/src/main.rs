@@ -22,10 +22,11 @@ mod quote_cache;
 mod scopes;
 mod scopes_cmd;
 mod summary;
+mod truncation;
 mod update;
 mod webhook;
 
-use std::{process::ExitCode, sync::Arc};
+use std::{io::Write as _, process::ExitCode, sync::Arc};
 
 use cli_engine::{BuildInfo, Cli, CliConfig, Module};
 
@@ -99,7 +100,30 @@ async fn main() -> ExitCode {
             .with_modules(all_modules()),
     );
 
-    cli.execute().await
+    execute_without_stdout_lock(&cli).await
+}
+
+/// Execute without holding stdout's global lock for the entire command.
+///
+/// Streaming commands write their progress directly through Tokio's stdout.
+/// `Cli::execute` keeps a `StdoutLock` alive until the command has returned,
+/// which prevents that writer from acquiring stdout and leaves the command
+/// waiting for its own stream to drain. Passing `Stdout`/`Stderr` directly
+/// keeps the final envelope writes synchronized without blocking streaming
+/// progress events.
+async fn execute_without_stdout_lock(cli: &Cli) -> ExitCode {
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
+    match cli
+        .execute_from(std::env::args_os(), &mut stdout, &mut stderr)
+        .await
+    {
+        Ok(code) => code,
+        Err(err) => {
+            drop(writeln!(stderr, "{err}"));
+            ExitCode::from(1)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -110,9 +134,9 @@ mod tests {
 
     /// Regression test for a real bug found while wiring feature-flagging up
     /// properly: with no `min_stage` override anywhere, cli-engine's own
-    /// default (`Stage::Ga`) hides `hosting` and the Developer Platform
-    /// namespace entirely. Guards that the *global* default stays `Ga` per
-    /// product decision — i.e. these stay hidden absent an environment override.
+    /// default (`Stage::Ga`) hides `hosting`. Guards that the *global* default
+    /// stays `Ga` per product decision — i.e. beta and experimental modules
+    /// stay hidden absent an environment override.
     #[tokio::test]
     async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
         let cli = Cli::new(
@@ -136,16 +160,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_namespace_is_hidden_at_the_default_min_stage() {
+    async fn platform_namespace_is_visible_at_the_default_min_stage() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
         let output = cli.run(["gddy", "platform", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "platform should stay hidden at the Ga default: {}",
+            "platform should be visible at the Ga default: {}",
             output.rendered
         );
     }
@@ -185,10 +209,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn platform_guides_are_discoverable() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+
+        let list = cli.run(["gddy", "guide"]).await;
+        assert_eq!(list.exit_code, 0, "{}", list.rendered);
+        for topic in ["platform-overview", "platform-settings"] {
+            assert!(
+                list.rendered.contains(topic),
+                "guide list should include {topic:?}: {}",
+                list.rendered
+            );
+        }
+
+        let settings = cli.run(["gddy", "guide", "platform-settings"]).await;
+        assert_eq!(settings.exit_code, 0, "{}", settings.rendered);
+        assert!(
+            settings.rendered.contains("settings-form-v1"),
+            "{}",
+            settings.rendered
+        );
+    }
+
+    #[tokio::test]
     async fn platform_namespace_exposes_the_gpa_command_tree() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
-                .with_min_stage(Stage::Experimental)
+                .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
 
@@ -240,4 +291,101 @@ mod tests {
             );
         }
     }
+
+    /// Smoke test for the bare-invocation discovery envelope (DEVEX-721):
+    /// running `gddy` with no subcommand must exit 0 and print a JSON
+    /// envelope carrying at least a version and some root-level next actions.
+    #[tokio::test]
+    async fn root_invocation_returns_a_json_discovery_envelope_with_next_actions() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_root_next_actions(Arc::new(|| {
+                    vec![crate::next_action::next_action(
+                        "env get",
+                        "Get the current active environment",
+                    )]
+                }))
+                .with_modules(super::all_modules()),
+        );
+
+        let output = cli.run(["gddy"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+
+        let parse_err_msg = format!("root output should be JSON: {}", output.rendered);
+        let payload: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect(&parse_err_msg);
+        assert!(
+            payload["data"]["version"].is_string(),
+            "root envelope should carry a version: {payload}"
+        );
+        assert!(
+            payload["next_actions"]
+                .as_array()
+                .is_some_and(|actions| !actions.is_empty()),
+            "root envelope should surface next actions: {payload}"
+        );
+    }
+
+    /// Registry-completeness smoke test (DEVEX-721): every top-level command
+    /// or group published by `tree` must carry a non-empty name/path/description,
+    /// so a bad `CommandSpec` (empty description, blank path) is caught in CI
+    /// rather than surfacing as a broken `gddy tree`/`--help` at runtime.
+    #[tokio::test]
+    async fn command_tree_publishes_every_top_level_node_with_name_path_and_description() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+
+        let output = cli.run(["gddy", "tree", "--output", "json"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+
+        let parse_err_msg = format!("tree output should be JSON: {}", output.rendered);
+        let payload: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect(&parse_err_msg);
+        let children_err_msg = format!("tree should publish children: {payload}");
+        let children = payload["data"]["children"]
+            .as_array()
+            .expect(&children_err_msg);
+        assert!(!children.is_empty(), "tree should publish top-level nodes");
+
+        let names: Vec<&str> = children
+            .iter()
+            .filter_map(|node| node["name"].as_str())
+            .collect();
+        for expected in [
+            "api",
+            "domain",
+            "dns",
+            "env",
+            "pat",
+            "payment-methods",
+            "tree",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "tree should publish {expected:?} among top-level nodes: {names:?}"
+            );
+        }
+
+        for node in children {
+            for field in ["name", "path", "description"] {
+                assert!(
+                    node[field].as_str().is_some_and(|s| !s.is_empty()),
+                    "every top-level node should have a non-empty {field:?}: {node}"
+                );
+            }
+        }
+    }
+
+    // `--env` actually re-routing command execution to the targeted
+    // environment (DEVEX-721's `cli-smoke` env-override parity item) is
+    // already covered end-to-end per-command — see
+    // `api_explorer::operation::tests::operation_get_full_path_is_hostless_in_a_non_prod_env`
+    // — since `env get`/`env info` intentionally read the *persisted*
+    // `.gdenv` environment rather than the per-invocation `--env` override
+    // (see the doc comment on `env set` above), so a generic root-level test
+    // here would exercise the wrong command.
 }

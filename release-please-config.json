@@ -19,7 +19,8 @@
     "rust": {
       "release-type": "rust",
       "component": "gddy",
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "draft": true
     }
   }
 }

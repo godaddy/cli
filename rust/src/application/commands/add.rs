@@ -6,7 +6,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use super::schemas::{ConfigAction, ConfigSubscription};
+use super::schemas::{ConfigAction, ConfigSetting, ConfigSubscription};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ActionArgs {
@@ -17,6 +17,51 @@ struct ActionArgs {
     /// Public HTTPS URL the platform will invoke for this action.
     #[arg(long)]
     url: String,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct SettingsArgs {
+    /// Commerce-owned settings group slug written into godaddy.toml.
+    #[arg(long)]
+    group: String,
+
+    /// App-owned setting slug written into godaddy.toml.
+    #[arg(long)]
+    slug: String,
+
+    /// Display title for the settings entry.
+    #[arg(long)]
+    title: Option<String>,
+
+    /// Display description for the settings entry.
+    #[arg(long)]
+    description: Option<String>,
+
+    /// GPA settings namespace path lifecycle endpoints live beneath.
+    #[arg(long = "entry-path", value_name = "PATH")]
+    entry_path: String,
+
+    /// Sort order within the settings group.
+    #[arg(long)]
+    order: Option<i64>,
+
+    /// One or more lifecycle capabilities (read, write, validate, test,
+    /// delete). Defaults to read+write server-side when omitted.
+    #[arg(long = "capability", value_name = "CAPABILITY", num_args = 1..)]
+    capabilities: Vec<String>,
+
+    /// Icon name for display; must be provided together with --icon-library.
+    #[arg(long = "icon-name", value_name = "NAME")]
+    icon_name: Option<String>,
+
+    /// Icon library for display; must be provided together with --icon-name.
+    #[arg(long = "icon-library", value_name = "LIBRARY")]
+    icon_library: Option<String>,
+
+    /// Path to a JSON presentation file; alternative to hand-authoring
+    /// [settings.presentation].
+    #[arg(long = "presentation-file", value_name = "PATH")]
+    presentation_file: Option<String>,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -122,5 +167,90 @@ pub(super) fn group() -> RuntimeGroupSpec {
             )
         },
     ))
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        SettingsArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<SettingsArgs>(
+            "settings",
+            "Add an application settings placement to godaddy.toml",
+        )
+        .with_long(
+            "Register the placement metadata for an application-settings \
+            capability in the godaddy.toml manifest in the current directory. \
+            This command only writes group/slug/entryPath/order/capabilities/icon \
+            — it cannot author the settings-form-v1 form itself. After running \
+            it, hand-add a [settings.presentation] block (sections and fields) \
+            to the written entry; `gddy platform app release` rejects a \
+            settings entry with no presentation.",
+        )
+        .with_system("applications")
+        .with_tier(Tier::Mutate)
+        .with_output_schema::<ConfigSetting>()
+        .no_auth(true),
+        |ctx, args: SettingsArgs| async move {
+            let group = args.group;
+            let slug = args.slug;
+            let entry_path = args.entry_path;
+            if args.icon_name.is_some() != args.icon_library.is_some() {
+                return Err(crate::error::GddyError::validation(
+                    "--icon-name and --icon-library must be provided together",
+                )
+                .into_cli_error());
+            }
+            let icon = args
+                .icon_name
+                .zip(args.icon_library)
+                .map(|(name, library)| crate::config::SettingIcon { name, library });
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
+            config.settings.push(crate::config::SettingConfig {
+                group: group.clone(),
+                slug: slug.clone(),
+                title: args.title,
+                description: args.description,
+                entry_path: entry_path.clone(),
+                order: args.order,
+                capabilities: args.capabilities,
+                icon,
+                metadata: None,
+                presentation_file: args.presentation_file,
+                presentation: None,
+            });
+            crate::config::write_config(&path, &config)
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
+            Ok(
+                CommandResult::new(
+                    json!({ "group": group, "slug": slug, "entryPath": entry_path }),
+                )
+                .with_next_actions(super::add_config_next_actions(&config.name)),
+            )
+        },
+    ))
     .with_group(super::add_extension::group())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn settings_subcommand_accepts_presentation_file_flag() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "settings",
+                "--group",
+                "tax-center",
+                "--slug",
+                "godaddy-tax",
+                "--entry-path",
+                "/settings/godaddy-tax",
+                "--presentation-file",
+                "fixtures/manual-tax-presentation.json",
+            ])
+            .expect("--presentation-file flag should be accepted");
+    }
 }

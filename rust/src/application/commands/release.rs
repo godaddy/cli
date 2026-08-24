@@ -1,9 +1,14 @@
 //! `gddy platform app release` — tag a new versioned release.
 
+use std::path::Path;
+
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use super::schemas::ApplicationRelease;
+use crate::config::settings_form::{
+    SettingsFormV1Presentation, presentation_from_json, validate_presentation,
+};
 use crate::next_action::next_action;
 use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 
@@ -27,6 +32,129 @@ fn ui_extension_entry(
         entry["target"] = json!(t.target);
     }
     Ok(entry)
+}
+
+/// Resolves a setting's presentation from `presentation` or `presentationFile`.
+fn resolve_presentation(
+    setting: &crate::config::SettingConfig,
+    manifest_dir: &Path,
+) -> cli_engine::Result<SettingsFormV1Presentation> {
+    match (&setting.presentation, &setting.presentation_file) {
+        (Some(_), Some(_)) => Err(crate::error::GddyError::validation(format!(
+            "setting '{}' has both presentation and presentationFile — provide only one",
+            setting.slug
+        ))
+        .into_cli_error()),
+        (Some(p), None) => Ok(p.clone()),
+        (None, Some(file)) => {
+            let path = manifest_dir.join(file);
+            let content = std::fs::read_to_string(&path).map_err(|e| {
+                crate::error::GddyError::validation(format!(
+                    "setting '{}' presentationFile {} could not be read: {e}",
+                    setting.slug,
+                    path.display()
+                ))
+                .into_cli_error()
+            })?;
+            presentation_from_json(&content).map_err(|e| {
+                crate::error::GddyError::validation(format!(
+                    "setting '{}' presentationFile {} is invalid: {e}",
+                    setting.slug,
+                    path.display()
+                ))
+                .into_cli_error()
+            })
+        }
+        (None, None) => Err(crate::error::GddyError::validation(format!(
+            "setting '{}' has no presentation — add a [settings.presentation] block or a presentationFile before releasing",
+            setting.slug
+        ))
+        .into_cli_error()),
+    }
+}
+
+/// Build one `settings` release entry from a placement-only `[[settings]]`
+/// block plus its presentation (inline or file-sourced).
+fn setting_entry(
+    setting: &crate::config::SettingConfig,
+    manifest_dir: &Path,
+) -> cli_engine::Result<Value> {
+    let presentation = resolve_presentation(setting, manifest_dir)?;
+    let mut errors = Vec::new();
+    validate_presentation(&presentation, &mut errors, "presentation");
+    if !errors.is_empty() {
+        return Err(crate::error::GddyError::validation(format!(
+            "setting '{}' presentation is invalid: {}",
+            setting.slug,
+            errors.join("; ")
+        ))
+        .into_cli_error());
+    }
+    let mut presentation_json = serde_json::to_value(&presentation)
+        .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+    if let Value::Object(map) = &mut presentation_json {
+        map.insert("type".to_owned(), json!("form"));
+        map.insert("schemaVersion".to_owned(), json!("settings-form-v1"));
+    }
+
+    let mut entry = json!({
+        "groupSlug": setting.group,
+        "appSettingSlug": setting.slug,
+        "entryPath": setting.entry_path,
+        "presentation": presentation_json,
+    });
+    if let Some(title) = &setting.title {
+        entry["title"] = json!(title);
+    }
+    if let Some(description) = &setting.description {
+        entry["description"] = json!(description);
+    }
+    if let Some(icon) = &setting.icon {
+        entry["iconName"] = json!(icon.name);
+        entry["iconLibrary"] = json!(icon.library);
+    }
+    if let Some(order) = setting.order {
+        entry["order"] = json!(order);
+    }
+    if !setting.capabilities.is_empty() {
+        entry["capabilities"] = json!(setting.capabilities);
+    }
+    if let Some(metadata) = &setting.metadata {
+        entry["metadata"] = metadata.clone();
+    }
+    Ok(entry)
+}
+
+/// Map godaddy.toml `[[settings]]` placements to the release `settings` input.
+fn build_settings(
+    config: &crate::config::Config,
+    manifest_dir: &Path,
+) -> cli_engine::Result<Vec<Value>> {
+    config
+        .settings
+        .iter()
+        .map(|s| setting_entry(s, manifest_dir))
+        .collect()
+}
+
+/// Missing manifest returns `Ok(None)`; a manifest that exists but fails to
+/// read, parse, or validate is an error rather than a silent empty fallback.
+fn load_manifest(path: &Path) -> cli_engine::Result<Option<crate::config::Config>> {
+    match crate::config::read_config(path) {
+        Ok(config) => Ok(Some(config)),
+        Err(crate::config::ConfigError::NotFound { path }) => {
+            tracing::warn!(
+                path = %path,
+                "no manifest found; releasing with empty actions, subscriptions, uiExtensions, and settings"
+            );
+            Ok(None)
+        }
+        Err(e) => Err(crate::error::GddyError::config(format!(
+            "failed to load {}: {e}",
+            path.display()
+        ))
+        .into_cli_error()),
+    }
 }
 
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
@@ -95,47 +223,38 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             let config_path = crate::config::config_path(Some(&ctx.middleware.env));
-            // Include actions, webhook subscriptions, and UI extensions from
-            // godaddy.toml so configured behavior is captured in the release.
-            // Without this, everything added via `platform app add` was silently
-            // dropped. A missing or invalid config is non-fatal (empty arrays);
-            // too many targets per extension is a hard error.
-            let (actions, subscriptions, ui_extensions) = match crate::config::read_config(
-                &config_path,
-            ) {
-                Ok(config) => {
-                    let actions: Vec<Value> = config
-                        .actions
-                        .iter()
-                        .map(|a| json!({ "name": a.name, "url": a.url }))
-                        .collect();
-                    let subscriptions: Vec<Value> = config
-                        .subscriptions
-                        .as_ref()
-                        .map(|s| {
-                            s.webhook
-                                .iter()
-                                .map(
-                                    |w| json!({ "name": w.name, "events": w.events, "url": w.url }),
-                                )
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let ui_extensions = build_ui_extensions(&config)?;
-                    (actions, subscriptions, ui_extensions)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        path = %config_path.display(),
-                        "failed to read config; releasing with empty actions, subscriptions, and uiExtensions"
-                    );
-                    (Vec::new(), Vec::new(), Vec::new())
-                }
-            };
+            let manifest_dir = config_path.parent().unwrap_or_else(|| Path::new(""));
+            // Pulls actions/subscriptions/uiExtensions/settings from godaddy.toml; see load_manifest.
+            let (actions, subscriptions, ui_extensions, settings) =
+                match load_manifest(&config_path)? {
+                    Some(config) => {
+                        let actions: Vec<Value> = config
+                            .actions
+                            .iter()
+                            .map(|a| json!({ "name": a.name, "url": a.url }))
+                            .collect();
+                        let subscriptions: Vec<Value> = config
+                            .subscriptions
+                            .as_ref()
+                            .map(|s| {
+                                s.webhook
+                                    .iter()
+                                    .map(|w| {
+                                        json!({ "name": w.name, "events": w.events, "url": w.url })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let ui_extensions = build_ui_extensions(&config)?;
+                        let settings = build_settings(&config, manifest_dir)?;
+                        (actions, subscriptions, ui_extensions, settings)
+                    }
+                    None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                };
             input["actions"] = json!(actions);
             input["subscriptions"] = json!(subscriptions);
             input["uiExtensions"] = json!(ui_extensions);
+            input["settings"] = json!(settings);
 
             let client = super::make_client(&ctx).await?;
             let data = client
@@ -205,6 +324,225 @@ mod tests {
         )
         .expect("entry builds");
         assert_eq!(one["target"], "checkout.block");
+    }
+
+    fn placement_only_setting() -> crate::config::SettingConfig {
+        crate::config::SettingConfig {
+            group: "tax-center".to_owned(),
+            slug: "godaddy-tax".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            order: None,
+            capabilities: vec![],
+            icon: None,
+            metadata: None,
+            presentation_file: None,
+            presentation: None,
+        }
+    }
+
+    fn boolean_presentation() -> crate::config::settings_form::SettingsFormV1Presentation {
+        use crate::config::settings_form::{SettingsFormV1Field, SettingsFormV1Section};
+        crate::config::settings_form::SettingsFormV1Presentation {
+            sections: vec![SettingsFormV1Section {
+                key: "defaults".to_owned(),
+                label: "Defaults".to_owned(),
+                description: None,
+                visible_when: None,
+                fields: vec![SettingsFormV1Field::Boolean {
+                    key: "autoCalculate".to_owned(),
+                    label: "Auto-calculate".to_owned(),
+                    description: None,
+                    required: false,
+                    default_value: Some(true),
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn setting_entry_rejects_missing_presentation() {
+        let err = super::setting_entry(&placement_only_setting(), std::path::Path::new(""))
+            .expect_err("missing presentation must be rejected");
+        assert!(err.to_string().contains("no presentation"), "{err}");
+    }
+
+    #[test]
+    fn setting_entry_maps_placement_and_presentation() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(boolean_presentation());
+        let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
+        assert_eq!(entry["groupSlug"], "tax-center");
+        assert_eq!(entry["appSettingSlug"], "godaddy-tax");
+        assert_eq!(entry["entryPath"], "/settings/godaddy-tax");
+        assert_eq!(entry["presentation"]["type"], "form");
+        assert_eq!(entry["presentation"]["schemaVersion"], "settings-form-v1");
+        assert_eq!(
+            entry["presentation"]["sections"][0]["fields"][0]["type"],
+            "boolean"
+        );
+        assert!(
+            entry.get("capabilities").is_none(),
+            "empty capabilities should be omitted"
+        );
+        assert!(
+            entry.get("iconName").is_none(),
+            "absent icon should be omitted"
+        );
+    }
+
+    #[test]
+    fn setting_entry_includes_optional_fields_when_present() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(boolean_presentation());
+        setting.title = Some("GoDaddy Tax".to_owned());
+        setting.description = Some("Tax settings".to_owned());
+        setting.order = Some(10);
+        setting.capabilities = vec!["read".to_owned(), "write".to_owned()];
+        setting.icon = Some(crate::config::SettingIcon {
+            name: "percent".to_owned(),
+            library: "lucide".to_owned(),
+        });
+        setting.metadata = Some(serde_json::json!({ "provider": "godaddy-tax" }));
+        let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
+        assert_eq!(entry["title"], "GoDaddy Tax");
+        assert_eq!(entry["description"], "Tax settings");
+        assert_eq!(entry["order"], 10);
+        assert_eq!(entry["capabilities"], serde_json::json!(["read", "write"]));
+        assert_eq!(entry["iconName"], "percent");
+        assert_eq!(entry["iconLibrary"], "lucide");
+        assert_eq!(entry["metadata"]["provider"], "godaddy-tax");
+    }
+
+    #[test]
+    fn setting_entry_resolves_presentation_file_relative_to_manifest_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("presentation.json"),
+            serde_json::json!({
+                "type": "form",
+                "schemaVersion": "settings-form-v1",
+                "sections": [{
+                    "key": "defaults",
+                    "label": "Defaults",
+                    "fields": [{
+                        "type": "boolean",
+                        "key": "autoCalculate",
+                        "label": "Auto-calculate",
+                        "defaultValue": true,
+                    }],
+                }],
+            })
+            .to_string(),
+        )
+        .expect("write presentation fixture");
+
+        let mut setting = placement_only_setting();
+        setting.presentation_file = Some("presentation.json".to_owned());
+        let via_file = super::setting_entry(&setting, dir.path()).expect("entry builds from file");
+
+        let mut inline = placement_only_setting();
+        inline.presentation = Some(boolean_presentation());
+        let via_inline =
+            super::setting_entry(&inline, std::path::Path::new("")).expect("entry builds inline");
+
+        assert_eq!(via_file["presentation"], via_inline["presentation"]);
+    }
+
+    #[test]
+    fn setting_entry_rejects_missing_presentation_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut setting = placement_only_setting();
+        setting.presentation_file = Some("missing.json".to_owned());
+        let err = super::setting_entry(&setting, dir.path())
+            .expect_err("missing presentation file must be rejected");
+        assert!(err.to_string().contains("could not be read"), "{err}");
+    }
+
+    #[test]
+    fn setting_entry_rejects_malformed_presentation_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("presentation.json"), "not json").expect("write fixture");
+        let mut setting = placement_only_setting();
+        setting.presentation_file = Some("presentation.json".to_owned());
+        let err = super::setting_entry(&setting, dir.path())
+            .expect_err("malformed JSON must be rejected");
+        assert!(err.to_string().contains("is invalid"), "{err}");
+    }
+
+    #[test]
+    fn setting_entry_rejects_wrong_schema_version_in_presentation_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("presentation.json"),
+            serde_json::json!({
+                "type": "form",
+                "schemaVersion": "something-else",
+                "sections": [],
+            })
+            .to_string(),
+        )
+        .expect("write fixture");
+        let mut setting = placement_only_setting();
+        setting.presentation_file = Some("presentation.json".to_owned());
+        let err = super::setting_entry(&setting, dir.path())
+            .expect_err("wrong schemaVersion must be rejected");
+        assert!(err.to_string().contains("schemaVersion"), "{err}");
+    }
+
+    #[test]
+    fn setting_entry_rejects_both_presentation_and_presentation_file() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(boolean_presentation());
+        setting.presentation_file = Some("presentation.json".to_owned());
+        let err = super::setting_entry(&setting, std::path::Path::new(""))
+            .expect_err("both set must be rejected");
+        assert!(err.to_string().contains("presentationFile"), "{err}");
+    }
+
+    #[test]
+    fn load_manifest_returns_none_for_missing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let result = super::load_manifest(&path).expect("missing manifest is not an error");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_manifest_fails_release_on_parse_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        std::fs::write(&path, "this = is not [valid toml").expect("write manifest");
+        let err = super::load_manifest(&path).expect_err("parse error must fail the release");
+        assert!(
+            err.to_string().contains("failed to load"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_fails_release_on_validation_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        // Parses cleanly; `name` fails Config::validate's pattern check.
+        std::fs::write(
+            &path,
+            r#"
+name = "Not Valid!"
+client_id = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+version = "1.0.0"
+url = "https://example.com"
+proxy_url = "https://example.com/proxy"
+authorization_scopes = []
+"#,
+        )
+        .expect("write manifest");
+        let err = super::load_manifest(&path).expect_err("validation error must fail the release");
+        assert!(
+            err.to_string().contains("failed to load"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

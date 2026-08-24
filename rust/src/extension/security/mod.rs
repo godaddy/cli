@@ -286,4 +286,89 @@ mod tests {
         sorted.sort_unstable();
         assert_eq!(lines, sorted, "findings not sorted by line");
     }
+
+    // -----------------------------------------------------------------------
+    // Performance regression guard (DEVEX-721 parity with the deleted TS
+    // security-scan.perf.test.ts). Rust's scanner takes a pre-bundled string
+    // rather than a directory of source files, so this targets scan_bundle
+    // directly, with generous, CI-safe bounds — a canary for algorithmic
+    // regressions (e.g. a new rule pattern with catastrophic backtracking
+    // under fancy_regex's lookaround engine), not a speed benchmark.
+    // -----------------------------------------------------------------------
+
+    /// One safe, moderately complex "module" repeated to build synthetic
+    /// bundles of a chosen size — mirrors the shape of the TS fixture's
+    /// generated modules (a class with a constructor, a `fetch` call, and a
+    /// `Buffer` call) so the benign-but-pattern-adjacent code the scanner
+    /// has to walk past is representative, not just blank lines.
+    fn synthetic_module(i: usize) -> String {
+        format!(
+            r#"
+class Module{i} {{
+  constructor() {{
+    this.data = new Map();
+  }}
+  async fetchData(url) {{
+    return fetch(url);
+  }}
+  processBuffer(input) {{
+    return Buffer.from(input, "utf-8");
+  }}
+}}
+"#
+        )
+    }
+
+    fn synthetic_bundle(modules: usize) -> String {
+        (0..modules).map(synthetic_module).collect::<String>()
+    }
+
+    #[test]
+    fn scan_bundle_completes_within_a_generous_bound_on_a_realistic_bundle() {
+        let bundle = synthetic_bundle(200);
+        let start = std::time::Instant::now();
+        let findings = scan_bundle(&bundle, "bundle.mjs");
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed.as_secs() < 5,
+            "scanning a 200-module bundle took {elapsed:?} — investigate for a \
+             catastrophic-backtracking regex regression"
+        );
+        // The synthetic bundle uses fetch()/Buffer.from() only, which trip
+        // warn-level rules, not any of the SEC101-110 block rules.
+        assert!(!is_blocked(&findings), "findings: {findings:?}");
+    }
+
+    /// Scanning time should grow roughly linearly with input size, not
+    /// quadratically or worse — a much looser bound than the TS test's <2x
+    /// (which measured dev-laptop wall-clock) to stay stable on noisy CI
+    /// runners, while still catching a real algorithmic regression.
+    #[test]
+    fn scan_bundle_time_does_not_blow_up_superlinearly_with_input_size() {
+        let small = synthetic_bundle(50);
+        let large = synthetic_bundle(400); // 8x the module count
+
+        let start = std::time::Instant::now();
+        scan_bundle(&small, "bundle.mjs");
+        let small_elapsed = start.elapsed();
+
+        let start = std::time::Instant::now();
+        scan_bundle(&large, "bundle.mjs");
+        let large_elapsed = start.elapsed();
+
+        // If the small run was too fast to measure meaningfully, there's
+        // nothing informative to compare — skip rather than divide by
+        // near-zero and produce a flaky ratio.
+        if small_elapsed.as_micros() < 100 {
+            return;
+        }
+
+        let ratio = large_elapsed.as_secs_f64() / small_elapsed.as_secs_f64();
+        assert!(
+            ratio < 40.0,
+            "8x input size took {ratio:.1}x longer to scan ({small_elapsed:?} -> \
+             {large_elapsed:?}) — looks superlinear"
+        );
+    }
 }

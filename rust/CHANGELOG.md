@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.2.9](https://github.com/godaddy/cli/compare/v0.2.8...v0.2.9) (2026-08-21)
+
+
+### Features
+
+* **app:** add settings support for app registration ([#216](https://github.com/godaddy/cli/issues/216)) ([74934c2](https://github.com/godaddy/cli/commit/74934c266d580a247b146767fd3802e0bd240eb0))
+* **platform:** promote namespace to GA ([#223](https://github.com/godaddy/cli/issues/223)) ([8b9dd21](https://github.com/godaddy/cli/commit/8b9dd219b4f4dac286d865f239777f2ca1cb3983))
+
+## [0.2.8](https://github.com/godaddy/cli/compare/v0.2.7...v0.2.8) (2026-08-19)
+
+
+### Features
+
+* **cli:** right-align numeric table columns on cli-engine 0.8.6 ([#219](https://github.com/godaddy/cli/issues/219)) ([2647579](https://github.com/godaddy/cli/commit/2647579ee113183099cf0cf243d0bcb37aa428d3))
+
+## [0.2.7](https://github.com/godaddy/cli/compare/v0.2.6...v0.2.7) (2026-08-18)
+
+
+### Features
+
+* **domain:** support premium domains and full-term pricing in list/available ([8c2367a](https://github.com/godaddy/cli/commit/8c2367a8431df75e47532ca934cb9faae9028a2c))
+* **environments:** read DevX Core URL from config (DEVX-793) ([#190](https://github.com/godaddy/cli/issues/190)) ([d772045](https://github.com/godaddy/cli/commit/d7720453d67240df97fa1b945d390f7ad2a80d0b))
+
+
+### Bug Fixes
+
+* **platform:** complete deploy stream and sync manifest metadata ([#217](https://github.com/godaddy/cli/issues/217)) ([f3dfb2e](https://github.com/godaddy/cli/commit/f3dfb2ef867b6f80ec7899a7747608fd4edebb89))
+* **platform:** remove direct application status updates (DEVX-927) ([#218](https://github.com/godaddy/cli/issues/218)) ([ab07767](https://github.com/godaddy/cli/commit/ab07767c30115f13f724d7b404fb96b922e6f6ef))
+* **tests:** Close Rust test-coverage gaps ([#214](https://github.com/godaddy/cli/issues/214)) ([e26912b](https://github.com/godaddy/cli/commit/e26912bb027aa68de387815646689bdf8c60e80e))
+
+
+### Code Refactoring
+
+* **environments:** split mod.rs into config/devx_core/catalog submodules ([#213](https://github.com/godaddy/cli/issues/213)) ([4bf3a00](https://github.com/godaddy/cli/commit/4bf3a009bb8cfb9cc305586a45e2e6586c49cfbc))
+
+## [0.2.6](https://github.com/godaddy/cli/compare/v0.2.5...v0.2.6) (2026-08-17)
+
+
+### Features
+
+* **actions-catalog:** add context-safe truncation for list/describe output ([#182](https://github.com/godaddy/cli/issues/182)) ([91cc165](https://github.com/godaddy/cli/commit/91cc165e6729548eb5ef7adfb16ec67a55575d98))
+* **api-explorer:** support `api call` by operation id with parameter substitution ([#209](https://github.com/godaddy/cli/issues/209)) ([cd8890a](https://github.com/godaddy/cli/commit/cd8890a91b2a22e2f48c47d53568b20f684bc22d))
+* Improve guides ([#210](https://github.com/godaddy/cli/issues/210)) ([3832ff0](https://github.com/godaddy/cli/commit/3832ff0e93ce881a7979d8c4cc59322c329a1512))
+
+## [0.2.5](https://github.com/godaddy/cli/compare/v0.2.4...v0.2.5) (2026-08-12)
+
+
+### Features
+
+* **api-explorer:** add `api graphql` command group for GraphQL-backed domains ([#200](https://github.com/godaddy/cli/issues/200)) ([c35ecd8](https://github.com/godaddy/cli/commit/c35ecd8a6348b0b6dacb543ed4f8746e36757a82))
+
+
+### Bug Fixes
+
+* **api-catalog:** parse federated GraphQL schemas and stabilize manifest order ([#204](https://github.com/godaddy/cli/issues/204)) ([118f3f2](https://github.com/godaddy/cli/commit/118f3f2bc44cdc3022b5f85c93c747a81eef6131))
+* **platform:** list apps across all App Registry statuses ([#206](https://github.com/godaddy/cli/issues/206)) ([737e91b](https://github.com/godaddy/cli/commit/737e91b60a1375385d11cb772d521ba3e4175c8d))
+
+
+### Documentation
+
+* Improve new user experience ([#202](https://github.com/godaddy/cli/issues/202)) ([90fb564](https://github.com/godaddy/cli/commit/90fb564e4d04b307b78866b44605e0b7ea394f15))
+
+
+### Miscellaneous
+
+* **scanner:** Review Scan blocking rules ([acc3c9c](https://github.com/godaddy/cli/commit/acc3c9caeb4742eb518400c6cfff6291067cbe04))
+* **scanner:** Review Scan blocking rules ([#191](https://github.com/godaddy/cli/issues/191)) ([acc3c9c](https://github.com/godaddy/cli/commit/acc3c9caeb4742eb518400c6cfff6291067cbe04))
+
 ## [0.2.4](https://github.com/godaddy/cli/compare/v0.2.3...v0.2.4) (2026-08-11)
 
 

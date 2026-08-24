@@ -500,9 +500,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli-engine"
-version = "0.8.4"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "713a9330b7c1a2529c5e7fb4aa8fda5eb5db6b4f39bec63085ec62e9f60d970d"
+checksum = "ef786368f0cb17f02cbd81b751c05db1a81b430c675b6ca732d3e09c9c47011c"
 dependencies = [
  "async-trait",
  "base64",
@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "domains-client"
-version = "0.2.4"
+version = "0.2.9"
 dependencies = [
  "bytes",
  "futures",
@@ -1151,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "generate-api-catalog"
-version = "0.2.4"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "godaddy-cli"
-version = "0.2.4"
+version = "0.2.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1253,9 +1253,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
