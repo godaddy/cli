@@ -16,9 +16,9 @@ pub struct SettingsFormV1Presentation {
 pub struct SettingsFormV1Section {
     pub key: String,
     pub label: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible_when: Option<SettingsFormV1VisibilityCondition>,
     pub fields: Vec<SettingsFormV1Field>,
 }
@@ -36,105 +36,105 @@ pub enum SettingsFormV1Field {
     Text {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min_length: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_length: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<String>,
     },
     #[serde(rename = "textarea", rename_all = "camelCase")]
     Textarea {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min_length: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_length: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<String>,
     },
     #[serde(rename = "number", rename_all = "camelCase")]
     Number {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min: Option<f64>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max: Option<f64>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         step: Option<f64>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         suffix: Option<String>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<f64>,
     },
     #[serde(rename = "boolean", rename_all = "camelCase")]
     Boolean {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<bool>,
     },
     #[serde(rename = "select", rename_all = "camelCase")]
     Select {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
         options: Vec<ChoiceOption>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<SelectValue>,
     },
     #[serde(rename = "multi-select", rename_all = "camelCase")]
     MultiSelect {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
         options: Vec<ChoiceOption>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min_items: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_items: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<Vec<SelectValue>>,
     },
     #[serde(rename = "list-group", rename_all = "camelCase")]
     ListGroup {
         key: String,
         label: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min_items: Option<u32>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_items: Option<u32>,
         item: ListGroupItem,
     },
@@ -158,7 +158,7 @@ impl SettingsFormV1Field {
 #[serde(rename_all = "camelCase")]
 pub struct ListGroupItem {
     pub id_field: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_field: Option<String>,
     pub fields: Vec<SettingsFormV1Field>,
 }
@@ -167,7 +167,7 @@ pub struct ListGroupItem {
 pub struct ChoiceOption {
     pub value: SelectValue,
     pub label: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 

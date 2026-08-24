@@ -390,6 +390,18 @@ mod tests {
             entry.get("iconName").is_none(),
             "absent icon should be omitted"
         );
+        assert!(
+            entry["presentation"]["sections"][0]
+                .get("visibleWhen")
+                .is_none(),
+            "absent section visibility should be omitted instead of serialized as null"
+        );
+        assert!(
+            entry["presentation"]["sections"][0]["fields"][0]
+                .get("description")
+                .is_none(),
+            "absent field properties should be omitted instead of serialized as null"
+        );
     }
 
     #[test]
