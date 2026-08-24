@@ -1,12 +1,34 @@
+//! Extension security scanning.
+//!
+//! - Pre-bundle AST scan: [`scan_extension`] (SEC001–SEC012 + SEC011)
+//! - Post-bundle regex scan: [`scan_bundle`] (SEC101–SEC115)
+
 use std::sync::OnceLock;
 
 use super::types::{Finding, Severity};
 
+mod alias_builder;
+mod config;
+mod dom_escape;
+mod engine;
+mod file_discovery;
 mod rules;
+mod scripts_scanner;
+mod source;
+mod types;
+mod util;
+
 #[cfg(test)]
 mod tests_sec101_108;
 #[cfg(test)]
 mod tests_sec109_115;
+
+pub use source::scan_extension;
+pub use types::ScanError;
+// Returned by `scan_extension` but no caller currently names the type via
+// `crate::extension::security::ScanReport`.
+#[allow(unused_imports)]
+pub use types::ScanReport;
 
 use rules::RULE_DEFS;
 
@@ -89,9 +111,10 @@ pub fn scan_bundle(content: &str, file_path: &str) -> Vec<Finding> {
                     findings.push(Finding {
                         rule_id: rule.id,
                         severity: rule.severity,
-                        message: rule.description,
+                        message: rule.description.to_owned(),
                         file: file_path.to_owned(),
                         line: line_number(content, m.start()),
+                        col: 0,
                         snippet: extract_snippet(content, m.start()),
                     });
                 }
@@ -102,9 +125,10 @@ pub fn scan_bundle(content: &str, file_path: &str) -> Vec<Finding> {
                     findings.push(Finding {
                         rule_id: rule.id,
                         severity: rule.severity,
-                        message: rule.description,
+                        message: rule.description.to_owned(),
                         file: file_path.to_owned(),
                         line: line_number(content, m.start()),
+                        col: 0,
                         snippet: extract_snippet(content, m.start()),
                     });
                 }
@@ -112,7 +136,13 @@ pub fn scan_bundle(content: &str, file_path: &str) -> Vec<Finding> {
         }
     }
 
-    findings.sort_by_key(|f| f.line);
+    findings.sort_by(|a, b| {
+        a.line
+            .cmp(&b.line)
+            .then(a.col.cmp(&b.col))
+            .then(a.rule_id.cmp(b.rule_id))
+            .then(a.file.cmp(&b.file))
+    });
     findings
 }
 
@@ -223,9 +253,10 @@ mod tests {
         let findings = vec![Finding {
             rule_id: "SEC108",
             severity: Severity::Warn,
-            message: "test",
+            message: "test".to_owned(),
             file: "f.mjs".to_owned(),
             line: 1,
+            col: 0,
             snippet: String::new(),
         }];
         assert!(!is_blocked(&findings));
@@ -236,9 +267,10 @@ mod tests {
         let findings = vec![Finding {
             rule_id: "SEC101",
             severity: Severity::Block,
-            message: "test",
+            message: "test".to_owned(),
             file: "f.mjs".to_owned(),
             line: 1,
+            col: 0,
             snippet: String::new(),
         }];
         assert!(is_blocked(&findings));
@@ -250,17 +282,19 @@ mod tests {
             Finding {
                 rule_id: "SEC108",
                 severity: Severity::Warn,
-                message: "warn",
+                message: "warn".to_owned(),
                 file: "f.mjs".to_owned(),
                 line: 1,
+                col: 0,
                 snippet: String::new(),
             },
             Finding {
                 rule_id: "SEC101",
                 severity: Severity::Block,
-                message: "block",
+                message: "block".to_owned(),
                 file: "f.mjs".to_owned(),
                 line: 2,
+                col: 0,
                 snippet: String::new(),
             },
         ];
