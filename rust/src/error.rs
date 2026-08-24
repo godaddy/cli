@@ -46,12 +46,14 @@ mod fixes {
     /// Live `api call` 404: the requested URL/resource was not found (not a catalog miss).
     pub(super) const NOT_FOUND_API: &str =
         "Check the request path and parameters. Inspect the response body for details.";
+    pub(super) const NOT_FOUND_EMAIL: &str = "Use: gddy email list";
 }
 
 fn not_found_fix_for(system: &str) -> &'static str {
     match system {
         "hosting" => fixes::NOT_FOUND_HOSTING,
         "api" => fixes::NOT_FOUND_API,
+        "email" => fixes::NOT_FOUND_EMAIL,
         // applications / unknown → platform discovery (default NOT_FOUND fix)
         _ => fixes::NOT_FOUND,
     }
@@ -330,6 +332,15 @@ mod tests {
                 .is_some_and(|f| f.contains("request path")),
             "{:?}",
             api_missing.error_fix()
+        );
+
+        let email_missing = GddyError::from_http(404, "gone", "email");
+        assert!(
+            email_missing
+                .error_fix()
+                .is_some_and(|f| f.contains("email list")),
+            "{:?}",
+            email_missing.error_fix()
         );
 
         let client = GddyError::from_http(422, "bad", "applications");

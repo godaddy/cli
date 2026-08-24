@@ -121,6 +121,11 @@ declare_scopes! {
     HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
     /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
     HOSTING_LOGS_READ => "hosting.paas.logs:read",
+
+    /// Read mailboxes and check mailbox-creation eligibility (`email list`).
+    EMAIL_READ => "email.mailbox:read",
+    /// Create a mailbox (`email create`).
+    EMAIL_CREATE => "email.mailbox:write",
 }
 
 /// A requestable scope, its human description, and whether it is requested at
@@ -218,6 +223,16 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_GITHUB_EXECUTE,
         description: "Connect GitHub and import code for your Node.js Hosting apps",
+        default: false,
+    },
+    ScopeInfo {
+        scope: EMAIL_READ,
+        description: "Read mailboxes and check mailbox-creation eligibility",
+        default: false,
+    },
+    ScopeInfo {
+        scope: EMAIL_CREATE,
+        description: "Create a mailbox",
         default: false,
     },
     ScopeInfo {
