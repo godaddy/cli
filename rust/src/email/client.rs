@@ -243,12 +243,10 @@ mod tests {
             .expect_err("business-rule failure should surface as an error");
 
         mock.assert_async().await;
-        match err {
-            ClientError::Http { status, body } => {
-                assert_eq!(status, 422);
-                assert!(body.contains("MISSING_AGREEMENT"), "{body}");
-            }
-            other => panic!("unexpected: {other}"),
-        }
+        let ClientError::Http { status, body } = err else {
+            unreachable!("expected an HTTP error");
+        };
+        assert_eq!(status, 422);
+        assert!(body.contains("MISSING_AGREEMENT"), "{body}");
     }
 }

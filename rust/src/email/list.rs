@@ -160,7 +160,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(&server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token");
         let mailboxes = fetch_mailboxes(&client, None, None, 2, 0)
             .await
             .expect("fetch mailboxes");
@@ -191,7 +191,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(&server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token");
         let mailboxes = fetch_mailboxes(&client, None, None, 5, 99)
             .await
             .expect("fetch mailboxes");
@@ -223,7 +223,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(&server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token");
         let mailboxes = fetch_mailboxes(&client, None, None, 0, 0)
             .await
             .expect("fetch mailboxes");
@@ -247,7 +247,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(&server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token");
         fetch_mailboxes(&client, Some("ACTIVE"), Some("mailboxId,status"), 10, 0)
             .await
             .expect("fetch mailboxes");
