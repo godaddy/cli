@@ -61,15 +61,15 @@ mod tests {
 
     #[tokio::test]
     async fn succeeds_on_first_attempt() {
-        let result: std::result::Result<&str, String> =
+        let result: Result<&str, String> =
             with_retry("test", 3, || async { Ok("ok") }).await;
-        assert_eq!(result.unwrap(), "ok");
+        assert_eq!(result.expect("should succeed"), "ok");
     }
 
     #[tokio::test]
     async fn retries_on_transient_error() {
         let attempts = AtomicU32::new(0);
-        let result: std::result::Result<&str, String> = with_retry("test", 3, || {
+        let result: Result<&str, String> = with_retry("test", 3, || {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
             async move {
                 if n < 2 {
@@ -80,14 +80,14 @@ mod tests {
             }
         })
         .await;
-        assert_eq!(result.unwrap(), "recovered");
+        assert_eq!(result.expect("should recover"), "recovered");
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
     async fn does_not_retry_non_transient() {
         let attempts = AtomicU32::new(0);
-        let result: std::result::Result<&str, String> = with_retry("test", 3, || {
+        let result: Result<&str, String> = with_retry("test", 3, || {
             attempts.fetch_add(1, Ordering::SeqCst);
             async { Err("404 not found".to_owned()) }
         })
@@ -99,7 +99,7 @@ mod tests {
     #[tokio::test]
     async fn exhausts_retries() {
         let attempts = AtomicU32::new(0);
-        let result: std::result::Result<&str, String> = with_retry("test", 3, || {
+        let result: Result<&str, String> = with_retry("test", 3, || {
             attempts.fetch_add(1, Ordering::SeqCst);
             async { Err("503 service unavailable".to_owned()) }
         })
