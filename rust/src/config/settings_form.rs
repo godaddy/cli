@@ -444,24 +444,20 @@ mod tests {
 
     #[test]
     fn validate_presentation_accepts_well_formed() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![text_field("calculateUsing")])],
-        };
+        let presentation = form(vec![section("defaults", vec![text_field("calculateUsing")])]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
     fn validate_presentation_rejects_duplicate_section_keys() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![
-                section("defaults", vec![text_field("a")]),
-                section("defaults", vec![text_field("b")]),
-            ],
-        };
+        let presentation = form(vec![
+            section("defaults", vec![text_field("a")]),
+            section("defaults", vec![text_field("b")]),
+        ]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors
                 .iter()
@@ -472,14 +468,12 @@ mod tests {
 
     #[test]
     fn validate_presentation_rejects_duplicate_field_keys_across_sections() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![
-                section("a", vec![text_field("shared")]),
-                section("b", vec![text_field("shared")]),
-            ],
-        };
+        let presentation = form(vec![
+            section("a", vec![text_field("shared")]),
+            section("b", vec![text_field("shared")]),
+        ]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors
                 .iter()
@@ -490,11 +484,9 @@ mod tests {
 
     #[test]
     fn validate_presentation_rejects_bad_field_key() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![text_field("bad-key")])],
-        };
+        let presentation = form(vec![section("defaults", vec![text_field("bad-key")])]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors.iter().any(|e| e.contains("must match")),
             "{errors:?}"
@@ -511,15 +503,122 @@ mod tests {
             options: vec![],
             default_value: None,
         };
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![field])],
-        };
+        let presentation = form(vec![section("defaults", vec![field])]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors.iter().any(|e| e.contains("options must contain")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_open_capability_on_form() {
+        let presentation = form(vec![section("defaults", vec![text_field("a")])]);
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("only valid for a settings-link-v1")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_accepts_well_formed_link() {
+        let presentation = link("Configure PayPal", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_without_exact_read_open_capabilities() {
+        let presentation = link("Configure PayPal", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "write".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("requires exactly the read and open capabilities")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_with_empty_label() {
+        let presentation = link("", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("label must not be empty")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_with_wrong_open_mode() {
+        let presentation = link("Configure PayPal", "same-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("openMode must be")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn presentation_from_json_parses_link() {
+        let json = r#"{
+            "type": "link",
+            "schemaVersion": "settings-link-v1",
+            "label": "Configure PayPal",
+            "openMode": "new-window"
+        }"#;
+        let presentation = presentation_from_json(json).expect("valid link presentation json");
+        match presentation {
+            SettingPresentation::Link(link) => {
+                assert_eq!(link.label, "Configure PayPal");
+                assert_eq!(link.open_mode, "new-window");
+            }
+            SettingPresentation::Form(_) => panic!("expected link presentation"),
+        }
+    }
+
+    #[test]
+    fn presentation_from_json_rejects_wrong_link_schema_version() {
+        let json = r#"{
+            "type": "link",
+            "schemaVersion": "settings-link-v2",
+            "label": "Configure PayPal",
+            "openMode": "new-window"
+        }"#;
+        let err = presentation_from_json(json).expect_err("wrong schemaVersion must be rejected");
+        assert!(err.contains("schemaVersion"), "{err}");
     }
 
     #[test]
