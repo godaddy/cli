@@ -126,9 +126,27 @@ presentationFile = "fixtures/manual-tax-registry-presentation.json"
 
 The referenced file must be the complete API presentation object — `type` (`"form"`), `schemaVersion` (`"settings-form-v1"`), and `sections` — the same shape `createRelease.settings[].presentation` expects, so an existing fixture can be reused verbatim. The path is relative to the directory containing the `godaddy.toml` being released, not the shell's working directory. `presentation` and `presentationFile` are mutually exclusive; both forms run through the same field/section validation and produce an identical release payload. The file is only opened at `release` — like inline `presentation`, it's optional at `add settings`/`config validate` time — and a missing, unreadable, malformed, or wrong-`type`/`schemaVersion` file fails the release with a `VALIDATION_ERROR` naming the resolved path.
 
+### Link presentation (`settings-link-v1`)
+
+For a GPA that must own its own configuration page or provider authorization flow instead of a native form, `presentation` can instead be a link:
+
+```toml
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open"]
+
+[settings.presentation]
+label = "Configure PayPal"
+openMode = "new-window"
+```
+
+A link presentation requires exactly the `read` and `open` capabilities — no other combination is valid, and `open` is rejected on a form presentation. `label` must be non-empty; `openMode` currently only accepts `"new-window"`. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). See `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into (App Registry never stores a merchant-specific launch URL — it publishes the placement and lets Settings API request one via the GPA's `open` route at merchant-invoke time).
+
 ## What the CLI validates locally vs. server-side
 
-`gddy platform app add settings`/`release` catch cheap, structural problems before any network call: `group`/`slug` match the platform's slug pattern (`lowercase-with-dashes`); `entryPath` is a route-safe path (`/`-prefixed, no query string/fragment/`..`) and doesn't overlap another setting's `entryPath` in the same manifest; `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`; `icon.library` is one of `ux`, `lucide`, `commerce`; every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key; `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
+`gddy platform app add settings`/`release` catch cheap, structural problems before any network call: `group`/`slug` match the platform's slug pattern (`lowercase-with-dashes`); `entryPath` is a route-safe path (`/`-prefixed, no query string/fragment/`..`) and doesn't overlap another setting's `entryPath` in the same manifest; `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, with `open` only valid — and required — alongside `read` on a link presentation; `icon.library` is one of `ux`, `lucide`, `commerce`; every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key; a link presentation's `label` is non-empty and `openMode` is `"new-window"`; `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
 
 Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
 
