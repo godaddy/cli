@@ -605,13 +605,11 @@ mod tests {
             "openMode": "new-window"
         }"#;
         let presentation = presentation_from_json(json).expect("valid link presentation json");
-        match presentation {
-            SettingPresentation::Link(link) => {
-                assert_eq!(link.label, "Configure PayPal");
-                assert_eq!(link.open_mode, "new-window");
-            }
-            SettingPresentation::Form(_) => panic!("expected link presentation"),
-        }
+        let SettingPresentation::Link(link) = presentation else {
+            unreachable!("expected link presentation");
+        };
+        assert_eq!(link.label, "Configure PayPal");
+        assert_eq!(link.open_mode, "new-window");
     }
 
     #[test]
