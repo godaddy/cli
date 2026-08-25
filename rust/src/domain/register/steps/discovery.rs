@@ -9,7 +9,8 @@ use crate::domain::common::{
     api_error, make_client_with_cred, term_for_period, validate_domain_name,
 };
 
-use super::super::retry::with_retry;
+use crate::retry::with_retry;
+
 use super::super::wizard::{StepContext, StepResult, WizardState};
 
 /// Maximum suggestions to show when a domain is taken.

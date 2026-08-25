@@ -1,4 +1,4 @@
-//! Retry helper for transient network errors during wizard API calls.
+//! Retry helper for transient network errors during API calls.
 
 use std::future::Future;
 use std::time::Duration;
@@ -8,6 +8,7 @@ use console::style;
 /// Retry an async operation up to `max_attempts` times with exponential backoff.
 /// Only retries on errors that look transient (timeouts, 5xx, connection errors).
 /// Prints a retry notice to stderr on each retry.
+#[allow(clippy::print_stderr)]
 pub(crate) async fn with_retry<F, Fut, T, E>(
     label: &str,
     max_attempts: u32,

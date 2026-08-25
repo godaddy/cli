@@ -19,8 +19,6 @@ use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 #[allow(clippy::print_stderr)]
 pub(crate) mod bridge;
 #[allow(clippy::print_stderr)]
-pub(crate) mod retry;
-#[allow(clippy::print_stderr)]
 pub(crate) mod steps;
 #[allow(clippy::print_stderr)]
 pub(crate) mod wizard;

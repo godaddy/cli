@@ -19,6 +19,7 @@ mod pat;
 mod payment_methods;
 mod platform;
 mod quote_cache;
+mod retry;
 mod scopes;
 mod scopes_cmd;
 mod summary;
