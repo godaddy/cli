@@ -446,8 +446,7 @@ pub fn write_env_file(
 #[cfg(test)]
 mod tests {
     use super::settings_form::{
-        SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation,
-        SettingsFormV1Section,
+        SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
     };
     use super::*;
 
@@ -791,8 +790,7 @@ mod tests {
         else {
             unreachable!("expected form presentation");
         };
-        let SettingsFormV1Field::Boolean { default_value, .. } = &form.sections[0].fields[0]
-        else {
+        let SettingsFormV1Field::Boolean { default_value, .. } = &form.sections[0].fields[0] else {
             unreachable!("expected boolean field");
         };
         assert_eq!(default_value, &Some(true));

@@ -6,7 +6,9 @@ use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec
 use serde_json::{Value, json};
 
 use super::schemas::ApplicationRelease;
-use crate::config::settings_form::{SettingPresentation, presentation_from_json, validate_presentation};
+use crate::config::settings_form::{
+    SettingPresentation, presentation_from_json, validate_presentation,
+};
 use crate::next_action::next_action;
 use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 

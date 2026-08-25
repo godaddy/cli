@@ -444,7 +444,10 @@ mod tests {
 
     #[test]
     fn validate_presentation_accepts_well_formed() {
-        let presentation = form(vec![section("defaults", vec![text_field("calculateUsing")])]);
+        let presentation = form(vec![section(
+            "defaults",
+            vec![text_field("calculateUsing")],
+        )]);
         let mut errors = Vec::new();
         validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(errors.is_empty(), "{errors:?}");
@@ -523,7 +526,9 @@ mod tests {
             "settings[0].presentation",
         );
         assert!(
-            errors.iter().any(|e| e.contains("only valid for a settings-link-v1")),
+            errors
+                .iter()
+                .any(|e| e.contains("only valid for a settings-link-v1")),
             "{errors:?}"
         );
     }
