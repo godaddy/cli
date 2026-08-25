@@ -208,12 +208,59 @@ fn is_field_name(key: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Structural validation for a `presentation` block: field-name shape,
-/// non-empty choice options, and the two uniqueness checks
-/// `SettingsFormV1Presentation`'s own Zod `superRefine` runs (unique section
-/// keys, unique top-level field keys across sections). Bounds/default
-/// consistency and `list-group` depth are left to the API.
+/// Validates a presentation's own shape plus its capabilities, mirroring the
+/// API's `validatePresentationCapabilities` refinement in `application-setting.ts`.
 pub(crate) fn validate_presentation(
+    presentation: &SettingPresentation,
+    capabilities: &[String],
+    errors: &mut Vec<String>,
+    path: &str,
+) {
+    match presentation {
+        SettingPresentation::Form(form) => {
+            if capabilities.iter().any(|c| c == "open") {
+                errors.push(format!(
+                    "{path}: the \"open\" capability is only valid for a settings-link-v1 presentation"
+                ));
+            }
+            validate_form_presentation(form, errors, path);
+        }
+        SettingPresentation::Link(link) => {
+            let capability_set: HashSet<&str> = capabilities.iter().map(String::as_str).collect();
+            if capabilities.len() != 2
+                || !capability_set.contains("read")
+                || !capability_set.contains("open")
+            {
+                errors.push(format!(
+                    "{path}: a settings-link-v1 presentation requires exactly the read and open capabilities"
+                ));
+            }
+            validate_link_presentation(link, errors, path);
+        }
+    }
+}
+
+/// Structural validation for a link presentation: non-empty `label`, and
+/// `openMode` matching the only value the API accepts today.
+fn validate_link_presentation(
+    presentation: &SettingsLinkV1Presentation,
+    errors: &mut Vec<String>,
+    path: &str,
+) {
+    if presentation.label.trim().is_empty() {
+        errors.push(format!("{path}.label must not be empty"));
+    }
+    if presentation.open_mode != "new-window" {
+        errors.push(format!(
+            "{path}.openMode must be \"new-window\" (got {:?})",
+            presentation.open_mode
+        ));
+    }
+}
+
+/// Structural validation for a form block: field-name shape, non-empty
+/// choice options, and unique section/field keys.
+fn validate_form_presentation(
     presentation: &SettingsFormV1Presentation,
     errors: &mut Vec<String>,
     path: &str,
@@ -266,25 +313,48 @@ struct LinkPresentationFileDocument {
     open_mode: String,
 }
 
-/// Parses a `presentationFile`'s JSON (full API object: `type`,
-/// `schemaVersion`, `sections`).
-pub(crate) fn presentation_from_json(content: &str) -> Result<SettingsFormV1Presentation, String> {
-    let doc: PresentationFileDocument = serde_json::from_str(content).map_err(|e| e.to_string())?;
-    if let Some(t) = &doc.r#type
-        && t != "form"
-    {
-        return Err(format!("type must be \"form\" (got {t:?})"));
+/// Parses a `presentationFile`'s JSON, dispatching on `type` (defaults to
+/// `"form"` when absent, matching existing fixtures that never wrote it).
+pub(crate) fn presentation_from_json(content: &str) -> Result<SettingPresentation, String> {
+    let value: serde_json::Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
+    let kind = value
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("form")
+        .to_owned();
+
+    match kind.as_str() {
+        "form" => {
+            let doc: FormPresentationFileDocument =
+                serde_json::from_value(value).map_err(|e| e.to_string())?;
+            if let Some(v) = &doc.schema_version
+                && v != "settings-form-v1"
+            {
+                return Err(format!(
+                    "schemaVersion must be \"settings-form-v1\" (got {v:?})"
+                ));
+            }
+            Ok(SettingPresentation::Form(SettingsFormV1Presentation {
+                sections: doc.sections,
+            }))
+        }
+        "link" => {
+            let doc: LinkPresentationFileDocument =
+                serde_json::from_value(value).map_err(|e| e.to_string())?;
+            if let Some(v) = &doc.schema_version
+                && v != "settings-link-v1"
+            {
+                return Err(format!(
+                    "schemaVersion must be \"settings-link-v1\" (got {v:?})"
+                ));
+            }
+            Ok(SettingPresentation::Link(SettingsLinkV1Presentation {
+                label: doc.label,
+                open_mode: doc.open_mode,
+            }))
+        }
+        other => Err(format!("type must be \"form\" or \"link\" (got {other:?})")),
     }
-    if let Some(v) = &doc.schema_version
-        && v != "settings-form-v1"
-    {
-        return Err(format!(
-            "schemaVersion must be \"settings-form-v1\" (got {v:?})"
-        ));
-    }
-    Ok(SettingsFormV1Presentation {
-        sections: doc.sections,
-    })
 }
 
 fn validate_field(field: &SettingsFormV1Field, errors: &mut Vec<String>, path: &str) {
