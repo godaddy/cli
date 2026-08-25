@@ -9,6 +9,7 @@ use crate::domain::common::{
     api_error, make_client_with_cred, term_for_period, validate_domain_name,
 };
 
+use super::super::retry::with_retry;
 use super::super::wizard::{StepContext, StepResult, WizardState};
 
 /// Maximum suggestions to show when a domain is taken.
@@ -28,12 +29,13 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     let client = make_client_with_cred(&ctx.env, &ctx.credential)?;
     let debug = ctx.debug;
 
-    // Check availability.
-    let availability = match client
-        .get_domain_availability()
-        .domain(domain.as_str())
-        .send()
-        .await
+    // Check availability with retry for transient failures.
+    let availability = match with_retry("availability check", 3, || {
+        let c = &client;
+        let d = domain.as_str();
+        async move { c.get_domain_availability().domain(d).send().await }
+    })
+    .await
     {
         Ok(r) => r.into_inner(),
         Err(e) => return Err(api_error("domain availability check", debug, e).await),
@@ -100,12 +102,18 @@ async fn fetch_suggestions(
 ) -> Result<Vec<SuggestionEntry>> {
     let page_size =
         std::num::NonZeroI64::new(MAX_SUGGESTIONS as i64).expect("MAX_SUGGESTIONS is non-zero");
-    let resp = match client
-        .suggest_domains()
-        .query(domain)
-        .page_size(page_size)
-        .send()
-        .await
+    let resp = match with_retry("suggestions", 3, || {
+        let c = client;
+        let d = domain;
+        async move {
+            c.suggest_domains()
+                .query(d)
+                .page_size(page_size)
+                .send()
+                .await
+        }
+    })
+    .await
     {
         Ok(r) => r.into_inner(),
         Err(e) => return Err(api_error("domain suggestion", debug, e).await),

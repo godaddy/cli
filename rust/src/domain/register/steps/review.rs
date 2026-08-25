@@ -1,18 +1,22 @@
-//! Step 3: Review — fetch a quote, display agreements, show order summary, and
-//! request confirmation before executing.
+//! Step 4: Review — fetch a quote, display agreements, show order summary, and
+//! request confirmation before executing. Also handles 402 Payment Required
+//! by offering to open the browser for payment method setup.
 
 use cli_engine::{CliCoreError, Result};
 use console::style;
-use dialoguer::Select;
+use dialoguer::{Confirm, Select};
 
 use domains_client::types;
 
+use crate::contacts::Role;
 use crate::domain::common::{
     api_error, format_money, make_client_with_cred, period_label, validate_nameserver_hosts,
 };
+use crate::environments;
 use crate::quote_cache;
 
-use super::super::wizard::{StepContext, StepResult, WizardState};
+use super::super::retry::with_retry;
+use super::super::wizard::{ContactsChoice, StepContext, StepResult, WizardState};
 
 pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<StepResult> {
     let domain = state
@@ -46,9 +50,12 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         ))
     };
 
+    // Resolve contacts from the wizard state.
+    let contacts = build_contacts_for_profile(&state.contacts)?;
+
     let profile = types::InlineRegistrationProfile {
         auto_renew: Some(state.auto_renew),
-        contacts: None,
+        contacts,
         name_servers,
         privacy: Some(state.privacy),
     };
@@ -56,19 +63,27 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         CliCoreError::message(format!("could not serialize registration profile: {e}"))
     })?;
 
-    let quote = match client
-        .quote_domain_registration()
-        .body(types::QuoteDomainRegistrationBody {
-            domain: domain.clone(),
-            period: period_nz,
-            profile: Some(profile),
-            profile_id: None,
-        })
-        .send()
-        .await
+    let quote_body = types::QuoteDomainRegistrationBody {
+        domain: domain.clone(),
+        period: period_nz,
+        profile: Some(profile),
+        profile_id: None,
+    };
+    let quote = match with_retry("quote", 3, || {
+        let c = &client;
+        let b = quote_body.clone();
+        async move { c.quote_domain_registration().body(b).send().await }
+    })
+    .await
     {
         Ok(r) => r.into_inner(),
-        Err(e) => return Err(api_error("domain quote", debug, e).await),
+        Err(e) => {
+            let err = api_error("domain quote", debug, e).await;
+            if is_payment_error(&err) {
+                return handle_payment_required(ctx).await;
+            }
+            return Err(err);
+        }
     };
 
     // Extract pricing and agreement info.
@@ -100,20 +115,55 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     // Display order summary.
     let w = 40;
     eprintln!("\n  ┌{}┐", "─".repeat(w));
-    eprintln!("  │ {:<width$}│", format!("{} Order Summary", style("📋").bold()), width = w - 1);
+    eprintln!(
+        "  │ {:<width$}│",
+        format!("{} Order Summary", style("📋").bold()),
+        width = w - 1
+    );
     eprintln!("  ├{}┤", "─".repeat(w));
-    eprintln!("  │ {:<width$}│", format!("Domain:     {}", style(&domain).cyan().bold()), width = w - 1);
-    eprintln!("  │ {:<width$}│", format!("Period:     {}", period_label(state.period)), width = w - 1);
+    eprintln!(
+        "  │ {:<width$}│",
+        format!("Domain:     {}", style(&domain).cyan().bold()),
+        width = w - 1
+    );
+    eprintln!(
+        "  │ {:<width$}│",
+        format!("Period:     {}", period_label(state.period)),
+        width = w - 1
+    );
     if let Some(p) = &price_str {
-        eprintln!("  │ {:<width$}│", format!("Price:      {} {}", style(p).green().bold(), currency), width = w - 1);
+        eprintln!(
+            "  │ {:<width$}│",
+            format!("Price:      {} {}", style(p).green().bold(), currency),
+            width = w - 1
+        );
     }
     if let Some(r) = &renewal_str {
-        eprintln!("  │ {:<width$}│", format!("Renewal:    {} {}/yr", r, currency), width = w - 1);
+        eprintln!(
+            "  │ {:<width$}│",
+            format!("Renewal:    {} {}/yr", r, currency),
+            width = w - 1
+        );
     }
-    eprintln!("  │ {:<width$}│", format!("Privacy:    {}", if state.privacy { "Yes" } else { "No" }), width = w - 1);
-    eprintln!("  │ {:<width$}│", format!("Auto-renew: {}", if state.auto_renew { "Yes" } else { "No" }), width = w - 1);
+    eprintln!(
+        "  │ {:<width$}│",
+        format!("Privacy:    {}", if state.privacy { "Yes" } else { "No" }),
+        width = w - 1
+    );
+    eprintln!(
+        "  │ {:<width$}│",
+        format!(
+            "Auto-renew: {}",
+            if state.auto_renew { "Yes" } else { "No" }
+        ),
+        width = w - 1
+    );
     if !state.nameservers.is_empty() {
-        eprintln!("  │ {:<width$}│", format!("Nameservers: {}", state.nameservers.join(", ")), width = w - 1);
+        eprintln!(
+            "  │ {:<width$}│",
+            format!("Nameservers: {}", state.nameservers.join(", ")),
+            width = w - 1
+        );
     }
     eprintln!("  └{}┘", "─".repeat(w));
 
@@ -186,4 +236,82 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     state.agreement_types = agreement_types;
 
     Ok(StepResult::Continue)
+}
+
+/// Convert the wizard's contacts choice into the API's `Contacts` struct.
+fn build_contacts_for_profile(choice: &ContactsChoice) -> Result<Option<types::Contacts>> {
+    let file = match choice {
+        ContactsChoice::AccountDefault => return Ok(None),
+        ContactsChoice::FromFile(f) | ContactsChoice::Manual(f) => f,
+    };
+
+    let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
+    let registrant = to_api(Role::Registrant)?;
+    let admin = to_api(Role::Admin)?;
+    let billing = to_api(Role::Billing)?;
+    let tech = to_api(Role::Tech)?;
+
+    let any_non_registrant = admin.is_some() || billing.is_some() || tech.is_some();
+    match registrant {
+        Some(registrant) => Ok(Some(types::Contacts {
+            registrant,
+            admin,
+            billing,
+            tech,
+        })),
+        None if any_non_registrant => Err(CliCoreError::message(
+            "contacts define a non-registrant contact but no registrant; the API requires a \
+             registrant when any contact is supplied",
+        )),
+        None => Ok(None),
+    }
+}
+
+/// Check if a CLI error is a 402 Payment Required error.
+fn is_payment_error(err: &CliCoreError) -> bool {
+    let msg = err.to_string();
+    msg.contains("402") || msg.contains("INVALID_PAYMENT_INFO") || msg.contains("payment")
+}
+
+/// Handle 402: inform the user and offer to open the payment methods page.
+async fn handle_payment_required(ctx: &StepContext) -> Result<StepResult> {
+    eprintln!(
+        "\n  {} No usable payment method found on your account.",
+        style("⚠").yellow().bold()
+    );
+    eprintln!("  A credit card or Good-as-Gold balance is required for domain purchases.");
+
+    let open_browser = Confirm::new()
+        .with_prompt("Open the GoDaddy payment methods page in your browser?")
+        .default(true)
+        .interact()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+
+    if open_browser {
+        let env = environments::resolve(&ctx.env)?;
+        let url = format!("{}/payment-methods/add-payment?plid=1", env.account_url);
+        if open::that(&url).is_err() {
+            eprintln!(
+                "  Could not open browser. Visit: {}",
+                style(&url).underlined()
+            );
+        } else {
+            eprintln!("  {} Browser opened.", style("✓").green().bold());
+        }
+    }
+
+    eprintln!("\n  After adding a payment method, select '↩ Go back' to retry.");
+
+    let retry_choices = vec!["↩ Go back and retry the quote", "✗ Cancel registration"];
+    let selection = Select::new()
+        .with_prompt("What would you like to do?")
+        .items(&retry_choices)
+        .default(0)
+        .interact()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+
+    match selection {
+        0 => Ok(StepResult::Back),
+        _ => Ok(StepResult::Cancel),
+    }
 }

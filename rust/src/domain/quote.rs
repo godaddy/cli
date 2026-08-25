@@ -397,6 +397,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // find it. Warn so the user knows to re-quote on this host.
                     tracing::warn!(error = %e, "could not cache the quote for purchase");
                 }
+                // If interactive, offer to purchase directly.
+                let quote_price = view
+                    .get("price")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                let quote_currency = view
+                    .get("currency")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                if let Some(wizard_result) =
+                    super::register::bridge::offer_registration_from_quote(
+                        &ctx,
+                        &domain,
+                        &token,
+                        quote_price,
+                        quote_currency,
+                        period,
+                    )
+                    .await?
+                {
+                    return Ok(wizard_result);
+                }
+
                 next_actions.push(
                     next_action(
                         "domain purchase --quote-token <quote-token> --agree --confirm",

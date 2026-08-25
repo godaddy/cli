@@ -7,7 +7,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client, period_label, validate_domain_name};
+use super::common::{
+    api_error, format_money, make_client, period_label, term_for_period, validate_domain_name,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -159,14 +161,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
+                // If interactive, offer to continue directly into registration.
+                let price_1yr = term_for_period(&prices, 1)
+                    .and_then(|t| t.price.as_ref())
+                    .and_then(format_money);
+                let currency_str = shared_currency(&prices);
+                if let Some(wizard_result) =
+                    super::register::bridge::offer_registration_from_available(
+                        &ctx,
+                        &resolved_domain,
+                        price_1yr,
+                        currency_str,
+                    )
+                    .await?
+                {
+                    return Ok(wizard_result);
+                }
+
                 Ok(cmd.with_next_actions(vec![
                     next_action("domain quote <domain>", "Price a registration")
                         .with_param("domain", NextActionParam::value(resolved_domain)),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![
-                    // `domain suggest` accepts a seed domain, so the domain just
-                    // checked as taken is a valid query to copy/paste directly.
                     next_action("domain suggest <query>", "Find alternatives")
                         .with_param("query", NextActionParam::value(resolved_domain)),
                 ]))

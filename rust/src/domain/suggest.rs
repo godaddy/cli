@@ -174,6 +174,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
             };
             let suggestions: Vec<serde_json::Value> =
                 resp.items.iter().filter_map(suggestion_to_json).collect();
+
+            // If interactive, offer to register one of the suggestions.
+            let domain_names: Vec<String> = suggestions
+                .iter()
+                .filter_map(|s| s["domain"].as_str().map(str::to_owned))
+                .collect();
+            if let Some(wizard_result) =
+                super::register::bridge::offer_registration_from_suggest(&ctx, &domain_names)
+                    .await?
+            {
+                return Ok(wizard_result);
+            }
+
             Ok(
                 CommandResult::new(json!(suggestions)).with_next_actions(vec![
                     next_action("domain available <domain>", "Check a suggested domain")

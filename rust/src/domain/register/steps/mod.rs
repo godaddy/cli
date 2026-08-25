@@ -1,5 +1,6 @@
 //! Wizard step implementations for the domain registration flow.
 
+pub(super) mod contacts;
 pub(super) mod discovery;
 pub(super) mod execute;
 pub(super) mod options;

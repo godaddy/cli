@@ -17,6 +17,10 @@ use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 // Wizard steps write interactive UI to stderr via eprintln and dialoguer/console.
 // This is intentional user-facing output, not diagnostic logging.
 #[allow(clippy::print_stderr)]
+pub(crate) mod bridge;
+#[allow(clippy::print_stderr)]
+pub(crate) mod retry;
+#[allow(clippy::print_stderr)]
 pub(crate) mod steps;
 #[allow(clippy::print_stderr)]
 pub(crate) mod wizard;
@@ -174,6 +178,27 @@ async fn run_non_interactive(
     // all configuration.
     let final_state = wizard::run_wizard(state, step_ctx, 0).await?;
 
+    build_result(&final_state)
+}
+
+/// Launch the wizard from an external command (e.g. `domain available --interactive`).
+/// `start_at` determines which step to begin from (0=discovery, 1=options, etc.).
+pub(crate) async fn launch_wizard(
+    ctx: &cli_engine::CommandContext,
+    state: WizardState,
+    start_at: usize,
+) -> Result<CommandResult> {
+    let cred = ctx.credential().await?;
+    let env = ctx.middleware.env.clone();
+    let debug = !ctx.middleware.debug.is_empty();
+
+    let step_ctx = StepContext {
+        credential: cred,
+        env,
+        debug,
+    };
+
+    let final_state = wizard::run_wizard(state, step_ctx, start_at).await?;
     build_result(&final_state)
 }
 

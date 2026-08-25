@@ -47,13 +47,13 @@ pub fn module() -> Module {
              \n\
              • list / get        — your existing domains and their details\n\
              • available / suggest — find a name to register\n\
-             • quote             — price a registration and see required agreements\n\
-             • purchase          — register a new domain (charges your account)\n\
+             • register          — interactive wizard: discover, configure, and buy\n\
+             • quote / purchase  — scripted two-step registration (quote then buy)\n\
              • nameservers set   — point a domain at custom nameservers\n\
              • operation status  — check on an async operation (e.g. a pending purchase)\n\
              \n\
-             Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`, and `nameservers set` needs\n\
+             Reads need the `domains.domain:read` scope; purchase/register also\n\
+             need `domains.domain:create`, and `nameservers set` needs\n\
              `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )
@@ -69,10 +69,16 @@ pub fn module() -> Module {
         .with_group(contacts::group())
         .with_group(operation::group())
     })
-    .with_guides_from_markdown([(
-        "domain-purchase.md",
-        include_bytes!("guides/domain-purchase.md").as_slice(),
-    )])
+    .with_guides_from_markdown([
+        (
+            "domain-purchase.md",
+            include_bytes!("guides/domain-purchase.md").as_slice(),
+        ),
+        (
+            "domain-register.md",
+            include_bytes!("guides/domain-register.md").as_slice(),
+        ),
+    ])
 }
 
 #[cfg(test)]

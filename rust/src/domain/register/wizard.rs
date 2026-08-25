@@ -37,16 +37,31 @@ pub(crate) struct WizardState {
     pub auto_renew: bool,
     pub nameservers: Vec<String>,
 
-    // Step 3: Review (populated after quote)
+    // Step 3: Contacts
+    pub contacts: ContactsChoice,
+
+    // Step 4: Review (populated after quote)
     pub quote_token: Option<String>,
     pub price: Option<String>,
     pub currency: Option<String>,
     pub agreement_titles: Vec<String>,
     pub agreement_types: Vec<String>,
 
-    // Step 4: Execute (populated after registration)
+    // Step 5: Execute (populated after registration)
     pub status: Option<String>,
     pub operation_id: Option<String>,
+}
+
+/// How contacts are supplied for the registration.
+#[derive(Debug, Clone, Default)]
+pub(crate) enum ContactsChoice {
+    /// Use the account's default contacts (omit from request).
+    #[default]
+    AccountDefault,
+    /// Use contacts loaded from contacts.toml.
+    FromFile(crate::contacts::ContactsFile),
+    /// Contacts entered interactively during the wizard.
+    Manual(crate::contacts::ContactsFile),
 }
 
 impl WizardState {
@@ -94,6 +109,7 @@ struct StepInfo {
 const STEPS: &[StepInfo] = &[
     StepInfo { name: "Discovery" },
     StepInfo { name: "Options" },
+    StepInfo { name: "Contacts" },
     StepInfo {
         name: "Review & Confirm",
     },
@@ -126,12 +142,27 @@ pub(crate) async fn run_wizard(
             style(step.name).bold()
         );
 
-        let result = match current {
-            0 => steps::discovery::run(&mut state, &ctx).await?,
-            1 => steps::options::run(&mut state, &ctx).await?,
-            2 => steps::review::run(&mut state, &ctx).await?,
-            3 => steps::execute::run(&mut state, &ctx).await?,
+        let step_result = match current {
+            0 => steps::discovery::run(&mut state, &ctx).await,
+            1 => steps::options::run(&mut state, &ctx).await,
+            2 => steps::contacts::run(&mut state, &ctx).await,
+            3 => steps::review::run(&mut state, &ctx).await,
+            4 => steps::execute::run(&mut state, &ctx).await,
             _ => unreachable!(),
+        };
+
+        let result = match step_result {
+            Ok(r) => r,
+            Err(e) if is_prompt_cancelled(&e) => {
+                eprintln!(
+                    "\n  {} Interrupted. No charges were made.",
+                    style("✗").red().bold()
+                );
+                return Err(cli_engine::CliCoreError::message(
+                    "domain registration interrupted by user",
+                ));
+            }
+            Err(e) => return Err(e),
         };
 
         match result {
@@ -157,6 +188,12 @@ pub(crate) async fn run_wizard(
     }
 
     Ok(state)
+}
+
+/// Detect if an error came from a cancelled prompt (Ctrl+C or EOF in dialoguer).
+fn is_prompt_cancelled(err: &cli_engine::CliCoreError) -> bool {
+    let msg = err.to_string();
+    msg.contains("prompt cancelled") || msg.contains("interrupted")
 }
 
 #[cfg(test)]
@@ -198,11 +235,12 @@ mod tests {
 
     #[test]
     fn steps_metadata_has_expected_count() {
-        assert_eq!(STEPS.len(), 4);
+        assert_eq!(STEPS.len(), 5);
         assert_eq!(STEPS[0].name, "Discovery");
         assert_eq!(STEPS[1].name, "Options");
-        assert_eq!(STEPS[2].name, "Review & Confirm");
-        assert_eq!(STEPS[3].name, "Register");
+        assert_eq!(STEPS[2].name, "Contacts");
+        assert_eq!(STEPS[3].name, "Review & Confirm");
+        assert_eq!(STEPS[4].name, "Register");
     }
 
     #[test]

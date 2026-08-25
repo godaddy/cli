@@ -72,6 +72,17 @@ pub(crate) async fn run(state: &mut WizardState, _ctx: &StepContext) -> Result<S
         if state.auto_renew { "on" } else { "off" },
     );
 
+    let choices = vec!["Continue", "↩ Go back to domain selection"];
+    let selection = Select::new()
+        .items(&choices)
+        .default(0)
+        .interact()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+
+    if selection == 1 {
+        return Ok(StepResult::Back);
+    }
+
     Ok(StepResult::Continue)
 }
 

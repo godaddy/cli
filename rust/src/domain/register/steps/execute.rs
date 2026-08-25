@@ -12,6 +12,7 @@ use crate::domain::common::{
 };
 use crate::quote_cache;
 
+use super::super::retry::with_retry;
 use super::super::wizard::{StepContext, StepResult, WizardState};
 
 pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<StepResult> {
@@ -122,12 +123,19 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let idempotency_key = uuid::Uuid::new_v4().to_string();
-    let accepted = match client
-        .register_domain()
-        .idempotency_key(idempotency_key)
-        .body(registration)
-        .send()
-        .await
+    let accepted = match with_retry("registration", 3, || {
+        let c = &client;
+        let key = &idempotency_key;
+        let reg = registration.clone();
+        async move {
+            c.register_domain()
+                .idempotency_key(key)
+                .body(reg)
+                .send()
+                .await
+        }
+    })
+    .await
     {
         Ok(r) => r.into_inner(),
         Err(e) => {
@@ -150,6 +158,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
 
     if let Some(op_id) = operation_id.as_ref() {
         spinner.set_message(format!("Waiting for registry ({})", &domain));
+        let mut timed_out = false;
         for _ in 0..20 {
             if is_terminal_status(&status) {
                 break;
@@ -171,6 +180,22 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
                 Err(_) => break,
             }
         }
+        if !is_terminal_status(&status) {
+            timed_out = true;
+        }
+        if timed_out {
+            spinner.finish_and_clear();
+            eprintln!(
+                "\n  {} The registration was submitted successfully but the registry hasn't \
+                 confirmed yet.",
+                style("⏳").bold()
+            );
+            eprintln!("     Your domain will be registered — this is normal for some TLDs.");
+            eprintln!(
+                "     Check progress with: gddy domain operation status {}",
+                op_id
+            );
+        }
     }
 
     spinner.finish_and_clear();
@@ -190,6 +215,8 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
             style("🎉").bold(),
             style(&domain).green().bold()
         );
+    } else if !is_terminal_status(&status) {
+        // Already printed timeout message above; skip duplicate output.
     } else {
         eprintln!(
             "\n  {} Registration submitted for {} (status: {})",
@@ -209,6 +236,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         let currency = state.currency.as_deref().unwrap_or("");
         eprintln!("     Charged: {} {}", price, currency);
     }
+
     eprintln!("\n  Next steps:");
     eprintln!("    • gddy domain get {domain}");
     eprintln!("    • gddy dns set {domain} --type A --name @ --data <ip>");
