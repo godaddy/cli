@@ -179,6 +179,24 @@ pub enum SelectValue {
     Bool(bool),
 }
 
+/// The `settings-link-v1` shape — for a GPA that owns its own configuration
+/// page or provider authorization flow instead of a native form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsLinkV1Presentation {
+    pub label: String,
+    pub open_mode: String,
+}
+
+/// A setting's presentation — `sections` vs `label`+`openMode` are
+/// structurally disjoint, so untagged matching is unambiguous.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SettingPresentation {
+    Form(SettingsFormV1Presentation),
+    Link(SettingsLinkV1Presentation),
+}
+
 /// True when `key` matches the same `fieldNamePattern` the API uses:
 /// `^[A-Za-z][A-Za-z0-9_]*$`.
 fn is_field_name(key: &str) -> bool {
