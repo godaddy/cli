@@ -10,7 +10,7 @@ use crate::error::GddyError;
 pub(crate) async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<EmailClient> {
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
-    let base_url = crate::environments::resolve(&ctx.middleware.env)?.email_api_url;
+    let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
     Ok(EmailClient::new(base_url, token))
 }
 
