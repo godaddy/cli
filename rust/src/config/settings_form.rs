@@ -251,12 +251,19 @@ pub(crate) fn validate_presentation(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PresentationFileDocument {
-    #[serde(default)]
-    r#type: Option<String>,
+struct FormPresentationFileDocument {
     #[serde(default)]
     schema_version: Option<String>,
     sections: Vec<SettingsFormV1Section>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkPresentationFileDocument {
+    #[serde(default)]
+    schema_version: Option<String>,
+    label: String,
+    open_mode: String,
 }
 
 /// Parses a `presentationFile`'s JSON (full API object: `type`,
@@ -352,6 +359,17 @@ mod tests {
         assert!(!is_field_name(""));
         assert!(!is_field_name("1abc"));
         assert!(!is_field_name("has-dash"));
+    }
+
+    fn form(sections: Vec<SettingsFormV1Section>) -> SettingPresentation {
+        SettingPresentation::Form(SettingsFormV1Presentation { sections })
+    }
+
+    fn link(label: &str, open_mode: &str) -> SettingPresentation {
+        SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: label.to_owned(),
+            open_mode: open_mode.to_owned(),
+        })
     }
 
     #[test]
