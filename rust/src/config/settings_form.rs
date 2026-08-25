@@ -317,11 +317,11 @@ struct LinkPresentationFileDocument {
 /// `"form"` when absent, matching existing fixtures that never wrote it).
 pub(crate) fn presentation_from_json(content: &str) -> Result<SettingPresentation, String> {
     let value: serde_json::Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
-    let kind = value
-        .get("type")
-        .and_then(|t| t.as_str())
-        .unwrap_or("form")
-        .to_owned();
+    let kind = match value.get("type") {
+        None | Some(serde_json::Value::Null) => "form".to_owned(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(other) => return Err(format!("type must be a string (got {other:?})")),
+    };
 
     match kind.as_str() {
         "form" => {
@@ -622,6 +622,13 @@ mod tests {
         }"#;
         let err = presentation_from_json(json).expect_err("wrong schemaVersion must be rejected");
         assert!(err.contains("schemaVersion"), "{err}");
+    }
+
+    #[test]
+    fn presentation_from_json_rejects_non_string_type() {
+        let json = r#"{"type": 123, "sections": []}"#;
+        let err = presentation_from_json(json).expect_err("non-string type must be rejected");
+        assert!(err.contains("type must be a string"), "{err}");
     }
 
     #[test]
