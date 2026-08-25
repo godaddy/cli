@@ -3,9 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::settings_form::{SettingsFormV1Presentation, validate_presentation};
+use super::settings_form::{SettingPresentation, validate_presentation};
 
-const ALLOWED_CAPABILITIES: &[&str] = &["read", "write", "validate", "test", "delete"];
+const ALLOWED_CAPABILITIES: &[&str] = &["read", "write", "validate", "test", "delete", "open"];
 const ALLOWED_ICON_LIBRARIES: &[&str] = &["ux", "lucide", "commerce"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,13 +30,10 @@ pub struct SettingConfig {
     /// directory at release time. Mutually exclusive with `presentation`.
     #[serde(default)]
     pub presentation_file: Option<String>,
-    /// The `settings-form-v1` form shape. `None` until hand-added to
-    /// `godaddy.toml` — `gddy platform app add settings` can only write the
-    /// placement fields above; `release` rejects a settings entry with no
-    /// presentation instead of `Config::validate()`, so a placement-only
-    /// entry still parses/writes/validates fine for every other command.
+    /// The `settings-form-v1` or `settings-link-v1` shape; `None` until
+    /// hand-added — `release` rejects a settings entry with no presentation.
     #[serde(default)]
-    pub presentation: Option<SettingsFormV1Presentation>,
+    pub presentation: Option<SettingPresentation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,7 +137,12 @@ pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<Str
             ));
         }
         if let Some(presentation) = &setting.presentation {
-            validate_presentation(presentation, errors, &format!("{path}.presentation"));
+            validate_presentation(
+                presentation,
+                &setting.capabilities,
+                errors,
+                &format!("{path}.presentation"),
+            );
         }
     }
 
