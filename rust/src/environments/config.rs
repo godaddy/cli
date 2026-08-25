@@ -69,21 +69,6 @@ pub struct GddyEnvConfig {
         default_fn = default_devx_core_url
     )]
     pub devx_core_url: String,
-
-    /// Base URL for the email (panel-v3) API. Defaults to
-    /// `productivity.api.godaddy.com` for prod, `productivity.api.test-godaddy.com`
-    /// for test, and `productivity.api.stg-godaddy.com` for stage — not the
-    /// generic `{env}-godaddy.com` convention, since `stage`'s real host uses
-    /// `stg-` and there's no dedicated OTE deployment (`ote` aliases to
-    /// `test`). Any other environment falls back to `api_url`. Overridable at
-    /// runtime via `GDDY_EMAIL_API_URL` or local config.
-    #[env_config(
-        from_toml = parse_url_from_toml,
-        env = "EMAIL_API_URL",
-        from_env = parse_url,
-        default_fn = default_email_api_url
-    )]
-    pub email_api_url: String,
 }
 
 /// `name`'s `default_fn`: the field itself is never set by any real TOML/env
@@ -123,26 +108,6 @@ fn default_domains_api_url(sources: &SourceChain<'_>) -> String {
 
 fn default_account_url(sources: &SourceChain<'_>) -> String {
     derive_account_url(sources.env_name().unwrap_or_default())
-}
-
-/// Compiled-in per-environment hosts for the panel-v3 email API — see the
-/// doc comment on [`GddyEnvConfig::email_api_url`] for why this can't be
-/// derived from `api_url` via the generic host-substitution convention.
-const BUILTIN_EMAIL_API_URLS: &[(&str, &str)] = &[
-    ("prod", "https://productivity.api.godaddy.com"),
-    ("test", "https://productivity.api.test-godaddy.com"),
-    ("stage", "https://productivity.api.stg-godaddy.com"),
-    // No dedicated OTE deployment of this API; alias to `test`.
-    ("ote", "https://productivity.api.test-godaddy.com"),
-];
-
-fn default_email_api_url(sources: &SourceChain<'_>) -> String {
-    let env_name = sources.env_name().unwrap_or_default();
-    BUILTIN_EMAIL_API_URLS
-        .iter()
-        .find(|(name, _)| *name == env_name)
-        .map(|(_, url)| (*url).to_owned())
-        .unwrap_or_else(|| current_api_url(sources))
 }
 
 fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
@@ -400,52 +365,6 @@ mod tests {
         assert_eq!(resolved.account_url, "https://account.override.test");
     }
 
-    #[test]
-    fn email_api_url_resolves_known_environments() {
-        for (name, url) in [
-            ("prod", "https://productivity.api.godaddy.com"),
-            ("test", "https://productivity.api.test-godaddy.com"),
-            ("stage", "https://productivity.api.stg-godaddy.com"),
-        ] {
-            let resolved = test_environment(name, |t| {
-                t.with("client_id", "cid")
-                    .with("api_url", "https://api.example.test")
-            });
-            assert_eq!(resolved.email_api_url, url, "environment {name:?}");
-        }
-    }
-
-    #[test]
-    fn email_api_url_aliases_ote_to_test() {
-        let resolved = test_environment("ote", |t| {
-            t.with("client_id", "cid")
-                .with("api_url", "https://api.ote-godaddy.com")
-        });
-        assert_eq!(
-            resolved.email_api_url,
-            "https://productivity.api.test-godaddy.com"
-        );
-    }
-
-    #[test]
-    fn email_api_url_falls_back_to_api_url_for_an_unknown_environment() {
-        let resolved = test_environment("dev", |t| {
-            t.with("client_id", "cid")
-                .with("api_url", "https://api.example.test")
-        });
-        assert_eq!(resolved.email_api_url, "https://api.example.test");
-    }
-
-    #[test]
-    fn email_api_url_override_is_respected() {
-        let resolved = test_environment("prod", |t| {
-            t.with("client_id", "cid")
-                .with("api_url", "https://api.example.test")
-                .with("email_api_url", "https://email.override.test")
-        });
-        assert_eq!(resolved.email_api_url, "https://email.override.test");
-    }
-
     fn test_environment_with_app_id(
         name: &str,
         extend: impl FnOnce(EnvTable) -> EnvTable,
@@ -515,20 +434,6 @@ mod tests {
                 .with("api_url", "https://api.example.test")
         });
         assert_eq!(resolved.account_url, "https://account.override.test");
-    }
-
-    #[test]
-    fn env_var_overrides_email_api_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _guard = EnvGuard::set("GDDY_EMAIL_API_URL", "https://email.override.test");
-
-        let resolved = test_environment_with_app_id("dev", |t| {
-            t.with("client_id", "cid")
-                .with("api_url", "https://api.example.test")
-        });
-        assert_eq!(resolved.email_api_url, "https://email.override.test");
     }
 
     #[test]
