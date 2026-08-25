@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.11](https://github.com/godaddy/cli/compare/v0.2.10...v0.2.11) (2026-08-25)
+
+
+### Bug Fixes
+
+* **email:** pointing to EFD vs productivity panel api ([#232](https://github.com/godaddy/cli/issues/232)) ([4bc57a1](https://github.com/godaddy/cli/commit/4bc57a17c3c516bc1f7c59ca6968486ef5fbd963))
+
+
+### Build System
+
+* **deps:** upgrade cli-engine to 0.9 and progenitor to 0.14 for reqwest 0.13 ([#228](https://github.com/godaddy/cli/issues/228)) ([764adc1](https://github.com/godaddy/cli/commit/764adc18a549cde05367ce03a792e57df64b9cdc))
+
 ## [0.2.10](https://github.com/godaddy/cli/compare/v0.2.9...v0.2.10) (2026-08-24)
 
 
