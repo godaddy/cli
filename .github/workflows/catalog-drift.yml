@@ -1,17 +1,16 @@
 name: API catalog drift
 
-# Regenerates the embedded API catalog from the upstream gdcorp-platform
-# commerce.*-specification repos and fails if the committed catalog has drifted.
-# This is the source-drift guard (catches per-operation / per-endpoint changes).
-# The always-on structural guard (domains + endpoint counts vs the intentional
-# list) lives in `cargo test`
-# (committed_catalog_matches_expected_domains_and_manifest) and runs on every PR.
+# Regenerates the embedded API catalog from the published specs and fails if the
+# committed catalog is out of sync. Reads the gdcorp-platform spec repos via a
+# GitHub App. The app is installed on the gdcorp-platform org with read-only
+# Contents access; its Client ID and private key are in the GitHub secrets
+# `SPEC_SYNC_CLIENT_ID` and `SPEC_SYNC_PRIVATE_KEY` and are exchanged for a
+# short-lived installation token at job start.
 #
-# Reads the gdcorp-platform spec repos via a GitHub App (the default GITHUB_TOKEN
-# only reaches this repo). The app is installed on the gdcorp-platform org with
-# read-only Contents access; its Client ID and private key are provisioned here
-# as the `SPEC_SYNC_CLIENT_ID` / `SPEC_SYNC_PRIVATE_KEY` secrets and exchanged
-# for a short-lived installation token at job start.
+# The domains v1 `agreements` spec is the exception, pulled from a public
+# developer.godaddy.com endpoint (no app token needed) and is best-effort: a
+# fetch failure logs a warning and leaves `domains-client/openapi/domains.oas3.json`
+# untouched rather than failing this job — see `domains_merge::refresh`.
 
 on:
   schedule:

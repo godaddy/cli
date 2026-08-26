@@ -220,7 +220,7 @@
       "type": "string"
     },
     "currency-code": {
-      "$id": "https://godaddy.com/schema/common/currency-code.v1",
+      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A three-character ISO-4217 currency code.",
       "maxLength": 3,
@@ -229,7 +229,7 @@
       "type": "string"
     },
     "date-time": {
-      "$id": "https://godaddy.com/schema/common/date-time.v1",
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
       "maxLength": 64,
@@ -271,7 +271,7 @@
       "type": "object"
     },
     "percentage": {
-      "$id": "https://godaddy.com/schema/common/percentage.json",
+      "$id": "https://godaddy.com/schemas/common/percentage.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A percentage value as a signed decimal number. For example, it defines a 12.34% interest rate as `12.34`.",
       "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$",

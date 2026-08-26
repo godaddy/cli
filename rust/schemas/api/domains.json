@@ -1,16 +1,20 @@
 {
   "$defs": {
     "Agreement": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/agreement.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A legal agreement that must be accepted prior to executing a domain operation. Agreements are returned in the quote response and must be acknowledged in the execute request via the consent.agreementTypes array.\n",
       "properties": {
         "agreementType": {
           "allOf": [
             {
               "$ref": "#/$defs/AgreementType"
+            },
+            {
+              "description": "The type of legal agreement. Identifies which agreement text the customer must accept.\n",
+              "example": "API_DPA"
             }
-          ],
-          "description": "The type of legal agreement. Identifies which agreement text the customer must accept.\n",
-          "example": "API_DPA"
+          ]
         },
         "title": {
           "description": "Human-readable title of the agreement, suitable for display to the customer.\n",
@@ -24,23 +28,23 @@
           "type": "string"
         }
       },
+      "required": [
+        "agreementType",
+        "title"
+      ],
       "title": "Agreement",
       "type": "object"
     },
     "AgreementType": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/agreement-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The type of legal agreement that must be accepted prior to executing a domain operation. Additional agreement types may be returned for specific TLDs or product combinations. API_DPA - API Domain Purchase Agreement. DNTA — Domain Name Transfer Agreement. DNPA — Domain Name Privacy Agreement. HTTPS_NOTICE — HTTPS notice acknowledgment for eligible TLDs. AURA — AU Domain Agreement for .au TLD registrations and transfers. CIRA — Canadian Internet Registration Authority Agreement for .ca TLD registrations and transfers.\n",
-      "enum": [
-        "API_DPA",
-        "AURA",
-        "CIRA",
-        "DNPA",
-        "DNTA",
-        "HTTPS_NOTICE"
-      ],
       "title": "Agreement Type",
       "type": "string"
     },
     "Availability": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/availability.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The availability check result for a single requested domain. A checkable domain returns the available flag plus optional pricing. A domain that could not be checked carries an error object and no availability fields. Exactly one of available or error is present per item.\nAvailability is best-effort indicative; the authoritative availability check is performed at quote time. definitive: true means the result was confirmed directly with the registry rather than from a cached zone check.\n",
       "properties": {
         "available": {
@@ -60,25 +64,28 @@
           "allOf": [
             {
               "$ref": "#/$defs/error"
+            },
+            {
+              "description": "Present when this domain could not be checked. One of available or error is present, never both. correlationId is required and should echo the X-Request-Id header value for this request.\nCommon name values (aligned with v2 find API error codes): MISMATCH_FORMAT — the domain name does not conform to the expected format. UNSUPPORTED_TLD — the TLD is not supported for this account or check. INVALID_DOMAIN — the availcheck service reported a syntax error for this domain. ERROR_UNKNOWN — the check failed and could not be classified further.\n"
             }
-          ],
-          "description": "Present when this domain could not be checked. One of available or error is present, never both. correlationId is required and should echo the X-Request-Id header value for this request.\nCommon name values (aligned with v2 find API error codes): MISMATCH_FORMAT — the domain name does not conform to the expected format. UNSUPPORTED_TLD — the TLD is not supported for this account or check. INVALID_DOMAIN — the availcheck service reported a syntax error for this domain. ERROR_UNKNOWN — the check failed and could not be classified further.\n"
+          ]
         },
         "inventory": {
           "allOf": [
             {
               "$ref": "#/$defs/InventoryType"
+            },
+            {
+              "description": "The inventory source for this domain. Present when available is true and pricing fields are returned.\n",
+              "example": "REGISTRY"
             }
-          ],
-          "description": "The inventory source for this domain. Present when available is true and pricing fields are returned.\n",
-          "example": "REGISTRY"
+          ]
         },
         "prices": {
           "description": "Indicative pricing offered per registration term length, in ascending order of period. Present when available is true. Prices are best-effort indicative and are locked only at quote time.\n",
           "items": {
             "$ref": "#/$defs/TermPrice"
           },
-          "nullable": true,
           "type": "array"
         },
         "unicodeDomain": {
@@ -87,14 +94,19 @@
           "type": "string"
         }
       },
+      "required": [
+        "domain"
+      ],
       "title": "Availability",
       "type": "object"
     },
     "AvailabilityCheckCriteria": {
-      "description": "Criteria for an availability check. Specifies 1–50 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/availability-check-criteria.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Criteria for an availability check. Specifies 1–25 domain names and optional parameters that influence how the check is performed. This controller does not persist the check; there is no check identity or poll URL.\n",
       "properties": {
         "domains": {
-          "description": "List of 1–50 domain names to check, in punycode A-label form for IDNs.\n",
+          "description": "List of 1–25 domain names to check, in punycode A-label form for IDNs.\n",
           "example": [
             "example.com",
             "example.net"
@@ -102,7 +114,7 @@
           "items": {
             "type": "string"
           },
-          "maxItems": 50,
+          "maxItems": 25,
           "minItems": 1,
           "type": "array"
         },
@@ -115,11 +127,13 @@
           "allOf": [
             {
               "$ref": "#/$defs/OptimizationTarget"
+            },
+            {
+              "default": "SPEED",
+              "description": "Optional. When omitted, defaults to SPEED. Availability is always re-verified authoritatively at quote time regardless of this setting.\n",
+              "example": "SPEED"
             }
-          ],
-          "default": "SPEED",
-          "description": "Optional. When omitted, defaults to SPEED. Availability is always re-verified authoritatively at quote time regardless of this setting.\n",
-          "example": "SPEED"
+          ]
         }
       },
       "required": [
@@ -129,24 +143,47 @@
       "type": "object"
     },
     "Consent": {
-      "description": "Customer consent record for a domain operation, capturing which legal agreements were accepted, when, and by whom. On execute, the caller supplies agreementTypes and agreedAt. The server derives agreedBy from the authenticated request context (OAuth identity, X-Shopper-Id, client IP, and transmission channel).\n",
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/consent.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Customer consent record for a domain operation, capturing which legal agreements were accepted, which fees were acknowledged, when, and by whom. On execute, the caller supplies agreementTypes, agreedAt, and (when the quote carries fees) acknowledgedFees. The server derives agreedBy from the authenticated request context (OAuth identity, X-Shopper-Id, client IP, and transmission channel).\n",
       "properties": {
+        "acknowledgedFees": {
+          "description": "Fees the customer explicitly acknowledged before executing the purchase.\nWhen the preceding quote's `fees` array is non-empty, this field must be present and contain the same entries verbatim (same types, amounts, and currencies). The server validates this against the locked quote token; a mismatch is rejected with `422 quote_mismatch`. This field is not in `required` because the obligation is conditional on quote state and cannot be expressed as a schema constraint — its absence is enforced at the API layer, not by validation tooling.\nContrast with `Registration.fees` (read-only): that field records what the server charged; this field records what the customer acknowledged. Both share the Fee type.\nOmit when the quote carries no purchase fees (standard REGISTRY registration).\n",
+          "example": [
+            {
+              "fee": {
+                "currencyCode": "USD",
+                "value": 390000
+              },
+              "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/Fee"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "agreedAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The timestamp at which the principal expressed consent. Should reflect when the customer clicked accept or confirmed the operation, not when the API call was made.\n"
             }
-          ],
-          "description": "The timestamp at which the principal expressed consent. Should reflect when the customer clicked accept or confirmed the operation, not when the API call was made.\n"
+          ]
         },
         "agreedBy": {
           "allOf": [
             {
               "$ref": "#/$defs/ConsentActor"
+            },
+            {
+              "description": "Who gave consent and how it was transmitted. Server-derived from the execute request's auth context.\n",
+              "readOnly": true
             }
-          ],
-          "description": "Who gave consent and how it was transmitted. Server-derived from the execute request's auth context.\n",
-          "readOnly": true
+          ]
         },
         "agreementTypes": {
           "description": "The agreement types the customer accepted. Must match the agreementType values returned in the corresponding quote's requiredAgreements array.\n",
@@ -168,6 +205,8 @@
       "type": "object"
     },
     "ConsentActor": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/consent-actor.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Identifies who gave consent and how it was transmitted. One uniform schema for all actor types. Populated by the server from the execute request's authenticated context — not supplied by the caller.\n",
       "properties": {
         "actor": {
@@ -189,10 +228,12 @@
           "allOf": [
             {
               "$ref": "#/$defs/ConsentActorType"
+            },
+            {
+              "description": "How consent was transmitted relative to the principal. Server-assigned from the request's auth and channel context.\n",
+              "example": "DIRECT"
             }
-          ],
-          "description": "How consent was transmitted relative to the principal. Server-assigned from the request's auth and channel context.\n",
-          "example": "DIRECT"
+          ]
         }
       },
       "required": [
@@ -204,52 +245,62 @@
       "x-sensitivity": "confidential"
     },
     "ConsentActorType": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/consent-actor-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "How consent was transmitted relative to the principal. DIRECT — the principal transmitted consent directly; actor is omitted. AGENT — consent was transmitted by an AI or automation on the principal's behalf. RESELLER — consent was transmitted by a reseller on the principal's behalf.\n",
-      "enum": [
-        "AGENT",
-        "DIRECT",
-        "RESELLER"
-      ],
       "title": "Consent Actor Type",
       "type": "string"
     },
     "Contact": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/contact.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "An ICANN-required contact record for a domain registration. Covers registrant, administrative, technical, and billing roles. Identity fields are validated at registration-profile save time.\n",
       "properties": {
         "address": {
           "allOf": [
             {
               "$ref": "#/$defs/simple-address"
+            },
+            {
+              "description": "The contact's mailing address for WHOIS and ICANN records.\n",
+              "x-sensitivity": "confidential"
             }
-          ],
-          "description": "The contact's mailing address for WHOIS and ICANN records.\n",
-          "x-sensitivity": "confidential"
+          ]
         },
         "email": {
           "allOf": [
             {
               "$ref": "#/$defs/email-address"
+            },
+            {
+              "example": "foo@bar.com"
+            },
+            {
+              "description": "The contact's email address. Used for registry WHOIS and renewal notifications.\n",
+              "x-sensitivity": "confidential"
             }
-          ],
-          "description": "The contact's email address. Used for registry WHOIS and renewal notifications.\n",
-          "example": "foo@bar.com",
-          "x-sensitivity": "confidential"
+          ]
         },
         "firstName": {
           "description": "The contact's first (given) name.",
           "example": "Jane",
+          "maxLength": 60,
+          "minLength": 1,
           "type": "string",
           "x-sensitivity": "confidential"
         },
         "lastName": {
           "description": "The contact's last (family) name.",
           "example": "Smith",
+          "maxLength": 60,
+          "minLength": 1,
           "type": "string",
           "x-sensitivity": "confidential"
         },
         "organization": {
           "description": "Organization or company name. Required for contacts acting on behalf of a legal entity. Leave blank for individual registrants.\n",
           "example": "Example LLC",
+          "maxLength": 100,
           "type": "string",
           "x-sensitivity": "confidential"
         },
@@ -257,10 +308,12 @@
           "allOf": [
             {
               "$ref": "#/$defs/phone"
+            },
+            {
+              "description": "The contact's phone number in ITU E.164 format with GoDaddy extension notation: +{country-code}.{local-number}, e.g. +1.4805551234. Required by ICANN for all contact roles.\n",
+              "x-sensitivity": "confidential"
             }
-          ],
-          "description": "The contact's phone number in ITU E.164 format with GoDaddy extension notation: +{country-code}.{local-number}, e.g. +1.4805551234. Required by ICANN for all contact roles.\n",
-          "x-sensitivity": "confidential"
+          ]
         }
       },
       "required": [
@@ -275,6 +328,8 @@
       "x-sensitivity": "confidential"
     },
     "ContactSource": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/contact-source.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Where the resolved registrant contact came from. INLINE — contact was supplied via an inline registration profile on the request. PROFILE — contact was resolved from a named or default saved profile. ACCOUNT — contact was derived from the authenticated principal's account identity (no profile supplied or on file).\n",
       "enum": [
         "INLINE",
@@ -285,39 +340,49 @@
       "type": "string"
     },
     "Contacts": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/contacts.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The set of ICANN-required contact roles for a domain registration. Registrant is required; admin, tech, and billing cascade from the registrant when omitted. Merge rule across resolution layers (saved profile, inline registration profile): identity fields replace as a whole block per role.\n",
       "properties": {
         "admin": {
           "allOf": [
             {
               "$ref": "#/$defs/Contact"
+            },
+            {
+              "description": "The administrative contact, responsible for managing the domain on behalf of the registrant. Cascades from registrant when omitted.\n"
             }
-          ],
-          "description": "The administrative contact, responsible for managing the domain on behalf of the registrant. Cascades from registrant when omitted.\n"
+          ]
         },
         "billing": {
           "allOf": [
             {
               "$ref": "#/$defs/Contact"
+            },
+            {
+              "description": "The billing contact, receives invoices and renewal notices. Cascades from registrant when omitted.\n"
             }
-          ],
-          "description": "The billing contact, receives invoices and renewal notices. Cascades from registrant when omitted.\n"
+          ]
         },
         "registrant": {
           "allOf": [
             {
               "$ref": "#/$defs/Contact"
+            },
+            {
+              "description": "The legal owner of the domain. Required. The registrant's identity is the authoritative WHOIS record and is bound by ICANN registration agreements.\n"
             }
-          ],
-          "description": "The legal owner of the domain. Required. The registrant's identity is the authoritative WHOIS record and is bound by ICANN registration agreements.\n"
+          ]
         },
         "tech": {
           "allOf": [
             {
               "$ref": "#/$defs/Contact"
+            },
+            {
+              "description": "The technical contact, responsible for DNS and nameserver configuration. Cascades from registrant when omitted.\n"
             }
-          ],
-          "description": "The technical contact, responsible for DNS and nameserver configuration. Cascades from registrant when omitted.\n"
+          ]
         }
       },
       "required": [
@@ -328,11 +393,15 @@
       "x-sensitivity": "confidential"
     },
     "DNSRecord": {
-      "description": "A single DNS resource record in the zone for a domain managed by GoDaddy DNS. Supports standard IANA record types plus the GoDaddy ALIAS extension. SOA records are read-only and managed by GoDaddy's authoritative DNS infrastructure. The record is uniquely identified by the combination of name, type, and data.\n",
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/dns-record.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A single DNS resource record in the zone for a domain managed by GoDaddy DNS. Supports standard IANA record types plus the GoDaddy ALIAS extension. SOA records are read-only and managed by GoDaddy's authoritative DNS infrastructure. The record is uniquely identified by the combination of name, type, and data. HTTPS and SVCB records (RFC 9460) use the priority field for SvcPriority and the optional parameters field for SvcParams.\n",
       "properties": {
         "data": {
-          "description": "The record data, formatted per the record type. For MX: the mail exchange hostname (e.g. \"mail.example.com.\"). Supply priority as the sibling priority field. For SRV: the target hostname; supply priority, weight, port, service, and protocol as sibling fields. For TXT: the text value (quotes are handled by the DNS layer). For A/AAAA: the IP address. For CNAME/ALIAS: the target hostname with trailing dot.\n",
+          "description": "The record data, formatted per the record type. For MX: the mail exchange hostname (e.g. \"mail.example.com.\"). Supply priority as the sibling priority field. For SRV: the target hostname; supply priority, weight, port, service, and protocol as sibling fields. For TXT: the text value (quotes are handled by the DNS layer). For A/AAAA: the IP address. For CNAME/ALIAS: the target hostname with trailing dot. For HTTPS/SVCB: the target hostname (\".\" for the zone apex); supply priority as SvcPriority and optional SvcParams in the sibling parameters field.\n",
           "example": "192.0.2.1",
+          "maxLength": 512,
+          "minLength": 1,
           "type": "string"
         },
         "flag": {
@@ -345,6 +414,12 @@
         "name": {
           "description": "The DNS record name (label), relative to the zone apex. Use @ to represent the zone apex itself. Wildcards (*) are supported for A, AAAA, and CNAME records.\n",
           "example": "@",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parameters": {
+          "description": "SvcParams for HTTPS and SVCB records (RFC 9460). Space-delimited key=value pairs (e.g. \"alpn=h2,h3 port=8443\"). Supported keys include alpn, no-default-alpn, port, ipv4hint, ipv6hint, and ech. Unknown named keys are passed through per RFC 9460 §14.3.2. Omit for AliasMode records (priority 0) and for all other record types.\n",
           "type": "string"
         },
         "port": {
@@ -355,7 +430,7 @@
           "type": "integer"
         },
         "priority": {
-          "description": "Record priority. Required for MX and SRV records. Lower values indicate higher preference. Omit for all other record types.\n",
+          "description": "Record priority. Required for MX, SRV, HTTPS, and SVCB records. Lower values indicate higher preference. For HTTPS and SVCB, a priority of 0 indicates AliasMode (the target inherits the endpoint's parameters). Omit for all other record types.\n",
           "example": 10,
           "maximum": 65535,
           "minimum": 0,
@@ -392,10 +467,12 @@
           "allOf": [
             {
               "$ref": "#/$defs/DNSRecordType"
+            },
+            {
+              "description": "The DNS resource record type. Together with name and data, uniquely identifies this record in the zone. Determines the expected data format and which optional fields (priority, service, port, etc.) apply. SOA and NS records are read-only.\n",
+              "example": "A"
             }
-          ],
-          "description": "The DNS resource record type. Together with name and data, uniquely identifies this record in the zone. Determines the expected data format and which optional fields (priority, service, port, etc.) apply. SOA and NS records are read-only.\n",
-          "example": "A"
+          ]
         },
         "weight": {
           "description": "Relative weight for load distribution among SRV records with equal priority. Higher values increase the probability of selection. Use 0 when only one target exists at a given priority.\n",
@@ -415,11 +492,15 @@
       "type": "object"
     },
     "DNSRecordType": {
-      "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4 address record. AAAA — IPv6 address record. CAA — certification authority authorization record. CNAME — canonical name alias record. MX — mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS — nameserver delegation record; read-only. SOA — start of authority record; managed by the registry; read-only. SRV — service locator record. TXT — free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/dns-record-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4 address record. AAAA — IPv6 address record. CAA — certification authority authorization record. CNAME — canonical name alias record. HTTPS — HTTPS service binding record (RFC 9460); data is the target hostname, priority is the SvcPriority (0 = AliasMode), and optional SvcParams are supplied in the sibling parameters field. MX — mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS — nameserver delegation record; read-only. SOA — start of authority record; managed by the registry; read-only. SRV — service locator record. SVCB — service binding record (RFC 9460); same structure as HTTPS but for non-HTTP services. TXT — free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
       "title": "DNS Record Type",
       "type": "string"
     },
     "DNSRecords": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/dns-records.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A paginated collection of DNS resource records within a zone. Supports filtering by record type and name, field projection, and page-based pagination. When totalRequired=true, totalItems and totalPages are included for non-empty result sets; both are omitted when there are zero matching records.\n",
       "properties": {
         "items": {
@@ -427,7 +508,6 @@
           "items": {
             "$ref": "#/$defs/DNSRecord"
           },
-          "nullable": true,
           "type": "array"
         },
         "links": {
@@ -435,7 +515,6 @@
           "items": {
             "$ref": "#/$defs/link-description"
           },
-          "nullable": true,
           "readOnly": true,
           "type": "array"
         },
@@ -452,10 +531,16 @@
           "type": "integer"
         }
       },
+      "required": [
+        "items",
+        "links"
+      ],
       "title": "DNS Records",
       "type": "object"
     },
     "Domain": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A registered domain owned by the authenticated account. Represents the full management view of a domain: registration metadata, lifecycle status, nameservers, privacy and auto-renew preferences.\n",
       "properties": {
         "autoRenew": {
@@ -466,10 +551,12 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The date and time when this domain was first registered with GoDaddy.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The date and time when this domain was first registered with GoDaddy.\n",
-          "readOnly": true
+          ]
         },
         "domain": {
           "description": "The registered domain name in punycode A-label form. For IDNs, the Unicode (U-label) form is available in the idnDomain field.\n",
@@ -481,10 +568,12 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The date and time when this domain registration expires. After expiry the domain enters a grace period before deletion.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The date and time when this domain registration expires. After expiry the domain enters a grace period before deletion.\n",
-          "readOnly": true
+          ]
         },
         "idnDomain": {
           "description": "The Unicode (U-label) representation of the domain. Present only for internationalized domain names (IDNs).\n",
@@ -496,7 +585,6 @@
           "items": {
             "$ref": "#/$defs/link-description"
           },
-          "nullable": true,
           "readOnly": true,
           "type": "array"
         },
@@ -504,12 +592,14 @@
           "allOf": [
             {
               "$ref": "#/$defs/NameServers"
+            },
+            {
+              "description": "The current authoritative nameservers for this domain.\n",
+              "example": [
+                "ns01.domaincontrol.com",
+                "ns02.domaincontrol.com"
+              ]
             }
-          ],
-          "description": "The current authoritative nameservers for this domain.\n",
-          "example": [
-            "ns01.domaincontrol.com",
-            "ns02.domaincontrol.com"
           ]
         },
         "privacy": {
@@ -520,49 +610,107 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The date and time when this domain must renew on before entering expiry.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The date and time when this domain must renew on before entering expiry.\n",
-          "readOnly": true
+          ]
         },
         "status": {
           "allOf": [
             {
               "$ref": "#/$defs/DomainStatus"
+            },
+            {
+              "description": "The current lifecycle status of this domain.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The current lifecycle status of this domain.\n",
-          "readOnly": true
+          ]
         },
         "transferLock": {
-          "description": "Whether the transfer lock (registrar lock / EPP lock) is active. When true, outbound transfers to another registrar are blocked.\n",
-          "readOnly": true,
+          "description": "Whether the transfer lock (registrar lock / EPP lock) is active. When true, outbound transfers to another registrar are blocked. Managed via POST /domain-names/{domain-name}/transfer-lock; registry propagation is asynchronous.\n",
           "type": "boolean"
         },
         "updatedAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The date and time when this domain was last updated\n",
+              "readOnly": true
             }
-          ],
-          "description": "The date and time when this domain was last updated\n",
-          "readOnly": true
+          ]
         }
       },
+      "required": [
+        "domain",
+        "status",
+        "expiresAt",
+        "createdAt",
+        "autoRenew",
+        "privacy"
+      ],
       "title": "Domain",
       "type": "object"
     },
+    "DomainCollection": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domains.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A paginated collection of registered domains owned by the authenticated account. Supports filtering by status and cursor-based pagination.\n",
+      "properties": {
+        "items": {
+          "description": "Domains for the current page.",
+          "items": {
+            "$ref": "#/$defs/Domain"
+          },
+          "type": "array"
+        },
+        "links": {
+          "description": "HATEOAS pagination links. May include rel=self (current page),  rel=prev is present when more items are available before the current page. and rel=next is present when more items are available beyond the current page.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        }
+      },
+      "required": [
+        "items",
+        "links"
+      ],
+      "title": "DomainCollection",
+      "type": "object"
+    },
+    "DomainLifecycleGroup": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-lifecycle-group.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A logical grouping of domain lifecycle statuses for filtering purposes. PENDING — domain setup is in progress (e.g. PENDING_REGISTRATION). REGISTERED — domain is actively registered and operational (e.g. ACTIVE, PARKED). PENDING_TERMINAL — domain is approaching a terminal state (e.g. PENDING_TRANSFER, EXPIRED). TERMINAL — domain has reached a terminal state and is no longer manageable (e.g. CANCELLED, DELETED_REDEEMABLE, TRANSFERRED, REPOSSESSED).\n",
+      "examples": [
+        "PENDING",
+        "REGISTERED",
+        "PENDING_TERMINAL",
+        "TERMINAL"
+      ],
+      "title": "Domain Lifecycle Group",
+      "type": "string"
+    },
     "DomainOperation": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The abstract operation envelope for all domain mutations, returned by the universal GET /operations/{operationId} endpoint. Concrete specializations — Registration, Renewal, and Transfer — are returned directly by their respective POST endpoints and carry the same operationId. Developers who do not need the abstract view can poll the concrete resource (GET /registrations/{id}, etc.) and ignore this type entirely.\nOperation IDs are unique across all concrete types, so either poll path works for any given operation.\nAsync state machine:\n  status tracks where the operation is in its lifecycle. Non-terminal values\n  (CONFIRMED, EXECUTING) are transient — poll until a terminal value is reached.\n  result and error are mutually exclusive terminal payloads:\n    COMPLETED — operation succeeded; result contains the final outcome data.\n    FAILED — operation terminated; error contains failure detail.\n  Neither result nor error is present while status is non-terminal.\n",
       "properties": {
         "createdAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp when this operation was created.",
+              "readOnly": true
             }
-          ],
-          "description": "Timestamp when this operation was created.",
-          "readOnly": true
+          ]
         },
         "domain": {
           "description": "The domain name this operation applies to.",
@@ -574,9 +722,11 @@
           "allOf": [
             {
               "$ref": "#/$defs/error"
+            },
+            {
+              "description": "Present when status is FAILED. Absent while non-terminal and when status is COMPLETED.\n"
             }
           ],
-          "description": "Present when status is FAILED. Absent while non-terminal and when status is COMPLETED.\n",
           "readOnly": true
         },
         "links": {
@@ -584,7 +734,6 @@
           "items": {
             "$ref": "#/$defs/link-description"
           },
-          "nullable": true,
           "readOnly": true,
           "type": "array"
         },
@@ -592,62 +741,81 @@
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Stable, server-assigned identifier for this operation. Unique across all operation types. Use to poll GET /operations/{operationId}. Matches the operationId on the corresponding concrete resource (e.g. Registration).\n",
+              "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
+              "readOnly": true
             }
-          ],
-          "description": "Stable, server-assigned identifier for this operation. Unique across all operation types. Use to poll GET /operations/{operationId}. Matches the operationId on the corresponding concrete resource (e.g. Registration).\n",
-          "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
-          "readOnly": true
+          ]
         },
         "result": {
           "allOf": [
             {
               "$ref": "#/$defs/DomainOperationResult"
+            },
+            {
+              "description": "Present when status is COMPLETED. Absent while non-terminal and when status is FAILED.\n"
             }
           ],
-          "description": "Present when status is COMPLETED. Absent while non-terminal and when status is FAILED.\n",
           "readOnly": true
         },
         "status": {
           "allOf": [
             {
               "$ref": "#/$defs/DomainOperationStatus"
+            },
+            {
+              "description": "Current position in the operation lifecycle. Poll until COMPLETED or FAILED. Non-terminal while CONFIRMED or EXECUTING; terminal values are mutually exclusive with each other and do not revert.\n",
+              "readOnly": true
             }
-          ],
-          "description": "Current position in the operation lifecycle. Poll until COMPLETED or FAILED. Non-terminal while CONFIRMED or EXECUTING; terminal values are mutually exclusive with each other and do not revert.\n",
-          "readOnly": true
+          ]
         },
         "type": {
           "allOf": [
             {
               "$ref": "#/$defs/DomainOperationType"
+            },
+            {
+              "description": "The type of operation being tracked. Determines which fields appear in result on COMPLETED and the concrete resource collection. Commercial operations: REGISTER → /registrations, RENEW → /renewals, TRANSFER_IN → /transfers. Non-commercial mutations: UPDATE_AUTO_RENEW → /domain-names/{domain-name}/auto-renew, UPDATE_NAMESERVERS → /domain-names/{domain-name}/nameservers, UPDATE_TRANSFER_LOCK → /domain-names/{domain-name}/transfer-lock.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The type of operation being tracked. Determines which fields appear in result on COMPLETED and the concrete resource collection (REGISTER → /registrations, RENEW → /renewals, TRANSFER_IN → /transfers).\n",
-          "readOnly": true
+          ]
         },
         "updatedAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp of the most recent status update.",
+              "readOnly": true
             }
-          ],
-          "description": "Timestamp of the most recent status update.",
-          "readOnly": true
+          ]
         }
       },
+      "required": [
+        "operationId",
+        "type",
+        "status"
+      ],
       "title": "Domain Operation",
       "type": "object"
     },
     "DomainOperationResult": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation-result.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The terminal success payload for a completed domain operation. Returned on the parent DomainOperation when status is COMPLETED. Absent for non-terminal statuses (CONFIRMED, EXECUTING) and for FAILED operations.\nOnce status reaches COMPLETED it is terminal: result is populated, remains available on subsequent polls, and status does not revert. Interpret the fields present in result using the parent operation's type:\nREGISTER — expiresAt, orderId.\n",
       "properties": {
         "expiresAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "New domain expiry date. Present for REGISTER and RENEW operations.\n"
             }
-          ],
-          "description": "New domain expiry date. Present for REGISTER and RENEW operations.\n"
+          ]
         },
         "orderId": {
           "description": "The commerce order ID associated with the charge. Present for commercial operations (REGISTER, RENEW, TRANSFER_IN).\n",
@@ -658,9 +826,11 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp of the completed non-commercial mutation.\n"
             }
-          ],
-          "description": "Timestamp of the completed non-commercial mutation.\n"
+          ]
         }
       },
       "readOnly": true,
@@ -668,27 +838,30 @@
       "type": "object"
     },
     "DomainOperationStatus": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation-status.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The execution state of an asynchronous domain operation. CONFIRMED — operation has been accepted and is queued for execution. EXECUTING — operation is actively being processed by the registry or downstream systems. COMPLETED — operation finished successfully; result data is available. FAILED — operation terminated with an unrecoverable error; error detail is attached.\n",
-      "enum": [
-        "COMPLETED",
-        "CONFIRMED",
-        "EXECUTING",
-        "FAILED"
-      ],
       "title": "Domain Operation Status",
       "type": "string"
     },
     "DomainOperationType": {
-      "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER — new domain registration.\n",
-      "enum": [
-        "REGISTER"
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER — new domain registration. UPDATE_AUTO_RENEW — update auto-renewal settings for a domain. UPDATE_NAMESERVERS — update nameservers for a domain. UPDATE_TRANSFER_LOCK — update transfer-lock settings for a domain.\n",
+      "examples": [
+        "REGISTER",
+        "UPDATE_AUTO_RENEW",
+        "UPDATE_NAMESERVERS",
+        "UPDATE_TRANSFER_LOCK"
       ],
       "title": "Domain Operation Type",
       "type": "string"
     },
     "DomainStatus": {
-      "description": "The lifecycle status of a registered domain. Reflects the domain's current operational state within the registry and GoDaddy's management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been cancelled by the user or system, and is not be reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace period; recovery fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this is usually the result of a spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER — an outbound transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED — domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred to another registrar.\n",
-      "enum": [
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-status.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The lifecycle status of a registered domain. Reflects the domain's current operational state within the registry and GoDaddy's management layer. ACTIVE — domain is registered and is active. CANCELLED — domain has been cancelled by the user or system and is not reclaimable. DELETED_REDEEMABLE — domain is in ICANN redemption grace period; recovery fees apply. EXPIRED — registration period has ended; domain is pending deletion or redemption. FAILED - domain registration or transfer error. HELD_REGISTRAR - domain is held at the registrar and cannot be transferred or modified - this is usually the result of a dispute. LOCKED_REGISTRAR — domain is locked at the registrar - this is usually the result of spam, abuse, etc. OWNERSHIP_CHANGED - domain has been moved to another account. PARKED - domain has been parked. PENDING_REGISTRATION - domain is pending setup at the registry. PENDING_TRANSFER — an outbound transfer to another registrar is in progress. REPOSSESSED - domain has been confiscated - this is usually the result of a chargeback, fraud, abuse, etc. SUSPENDED — domain has been administratively suspended by the registry or registrar. TRANSFERRED - domain has been transferred to another registrar.\n",
+      "examples": [
         "ACTIVE",
         "CANCELLED",
         "DELETED_REDEEMABLE",
@@ -707,7 +880,50 @@
       "title": "Domain Status",
       "type": "string"
     },
+    "Fee": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/fee.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Fees charged at the time of purchase, separate from the registration price. The type identifies the nature of the charge.\n",
+      "properties": {
+        "fee": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The monetary amount of this fee."
+            }
+          ]
+        },
+        "type": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/FeeType"
+            },
+            {
+              "description": "Identifies the nature of this charge. Determines how the fee is categorized in pricing breakdowns and receipts.\n",
+              "example": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "fee"
+      ],
+      "title": "Fee",
+      "type": "object"
+    },
+    "FeeType": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/fee-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The type of a fee charged at the time of purchase. ONE_TIME_PREMIUM_DOMAIN_PURCHASE — one-time acquisition cost charged by the aftermarket marketplace when purchasing a premium domain.\n",
+      "title": "Fee Type",
+      "type": "string"
+    },
     "InlineRegistrationProfile": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/inline-registration-profile.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A one-time, non-persisted set of contacts and purchase preference defaults supplied inline on a quote or execute request. Use to provide registration data for this transaction without creating or updating a saved registration profile.\nShared by the registration quote and execute request bodies. Every field is optional. Omitted fields account identity or other default values. Provided fields override only what is supplied — contact roles replace as a whole block; preference fields replace individually.\nThis is not a saved registration profile and is not JSON Patch. Data here applies only to the current quote or registration request.\n",
       "properties": {
         "autoRenew": {
@@ -718,20 +934,24 @@
           "allOf": [
             {
               "$ref": "#/$defs/Contacts"
+            },
+            {
+              "description": "Contact records for this request. Each role provided replaces that role from the resolved saved profile or account identity. Omitted roles continue to resolve from the saved profile or cascade from registrant.\n"
             }
-          ],
-          "description": "Contact records for this request. Each role provided replaces that role from the resolved saved profile or account identity. Omitted roles continue to resolve from the saved profile or cascade from registrant.\n"
+          ]
         },
         "nameServers": {
           "allOf": [
             {
               "$ref": "#/$defs/NameServers"
+            },
+            {
+              "description": "Authoritative nameservers for this registration. Omit to inherit from the resolved saved profile or platform defaults.\n",
+              "example": [
+                "ns1.example.com",
+                "ns2.example.com"
+              ]
             }
-          ],
-          "description": "Authoritative nameservers for this registration. Omit to inherit from the resolved saved profile or platform defaults.\n",
-          "example": [
-            "ns1.example.com",
-            "ns2.example.com"
           ]
         },
         "privacy": {
@@ -743,6 +963,8 @@
       "type": "object"
     },
     "InventoryType": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/inventory-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The inventory source for a domain name. REGISTRY — standard registry price inventory. REGISTRY_PREMIUM — registry premium tier pricing. PREMIUM — third-party premium domain marketplace.\n",
       "enum": [
         "REGISTRY",
@@ -753,6 +975,8 @@
       "type": "string"
     },
     "NameServers": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/name-servers.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Authoritative nameserver hostnames for a domain. ICANN requires a minimum of two nameservers; registries accept up to thirteen.\n",
       "items": {
         "$ref": "#/$defs/NameserverHostname"
@@ -763,11 +987,17 @@
       "type": "array"
     },
     "NameserverHostname": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/nameserver-hostname.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A fully-qualified nameserver hostname in punycode A-label form. Labels are dot-separated; a trailing dot is not required.\n",
+      "maxLength": 253,
+      "minLength": 1,
       "title": "Nameserver Hostname",
       "type": "string"
     },
     "OptimizationTarget": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/optimization-target.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "How an availability check should prioritize speed vs. authoritative accuracy. SPEED — use cached zone data for a fast response (may be slightly stale). ACCURACY — perform a live registry check for authoritative availability (higher latency).\n",
       "enum": [
         "SPEED",
@@ -777,24 +1007,30 @@
       "type": "string"
     },
     "Registration": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A domain registration entity created when a POST /registrations request is accepted. Registrations are a top-level resource with their own stable registrationId; the domain relationship is captured in the representation.\nOn POST /registrations, supply the writable fields (domain, period, quoteToken, consent, and optionally profileId/profile). The server returns the full Registration with readOnly fields populated. Poll links[rel=self] until status reaches COMPLETED or FAILED. The same resource is also reachable via GET /operations/{operationId} for clients operating at the abstract level; operationId is included in the representation for that purpose.\n",
       "properties": {
         "consent": {
           "allOf": [
             {
               "$ref": "#/$defs/Consent"
+            },
+            {
+              "description": "The customer's consent for the legal agreements returned in the quote. On execute, supply agreementTypes and agreedAt; agreedBy is server-derived and returned on the persisted record.\n"
             }
-          ],
-          "description": "The customer's consent for the legal agreements returned in the quote. On execute, supply agreementTypes and agreedAt; agreedBy is server-derived and returned on the persisted record.\n"
+          ]
         },
         "createdAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp when this registration was initiated.",
+              "readOnly": true
             }
-          ],
-          "description": "Timestamp when this registration was initiated.",
-          "readOnly": true
+          ]
         },
         "domain": {
           "description": "The domain name to register, in punycode A-label form for IDNs. Must match the domain in the quoteToken.\n",
@@ -805,10 +1041,20 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The domain's expiry date once the registration completes. Present only when status is COMPLETED.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The domain's expiry date once the registration completes. Present only when status is COMPLETED.\n",
-          "readOnly": true
+          ]
+        },
+        "fees": {
+          "description": "Fees charged at the time of purchase, in addition to the registration price. Present when purchase fees were incurred. Same fees as RegistrationQuote.fees (the selected term's TermPrice.fees) from the preceding quote.\n",
+          "items": {
+            "$ref": "#/$defs/Fee"
+          },
+          "readOnly": true,
+          "type": "array"
         },
         "links": {
           "description": "HATEOAS link relations for this registration. rel=self — the canonical URL for this registration record. rel=domain — the registered domain-name resource once the registration is complete.\n",
@@ -822,11 +1068,13 @@
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Identifier of the DomainOperation tracking this registration. Same value returned by GET /operations/{operationId} for abstract operation tracking.\n",
+              "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
+              "readOnly": true
             }
-          ],
-          "description": "Identifier of the DomainOperation tracking this registration. Same value returned by GET /operations/{operationId} for abstract operation tracking.\n",
-          "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
-          "readOnly": true
+          ]
         },
         "orderId": {
           "description": "The orderId of the order that created this registration. Present only when the registration is completed. Not present for failed or pending registrations.\n",
@@ -845,73 +1093,90 @@
           "allOf": [
             {
               "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Total amount charged on execute is this price plus any fees on this registration.\n",
+              "readOnly": true
             }
-          ],
-          "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Represents the total amount that will be charged on execute.\n",
-          "readOnly": true
+          ]
         },
         "profile": {
           "allOf": [
             {
               "$ref": "#/$defs/InlineRegistrationProfile"
+            },
+            {
+              "description": "One-time inline contacts and purchase preference defaults for this registration. Not persisted. Must match the profile supplied on the quote when a profile was included at quote time.\n"
             }
-          ],
-          "description": "One-time inline contacts and purchase preference defaults for this registration. Not persisted. Must match the profile supplied on the quote when a profile was included at quote time.\n"
+          ]
         },
         "profileId": {
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "ID of a saved registration profile to use for contacts and preference defaults. Omit to fall back to the account-default profile for the domain's TLD, then to account identity.\n"
             }
-          ],
-          "description": "ID of a saved registration profile to use for contacts and preference defaults. Omit to fall back to the account-default profile for the domain's TLD, then to account identity.\n"
+          ]
         },
         "quoteToken": {
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "The single-use opaque token from the preceding quoteDomainRegistration call. Required. Consumed on first successful execution; idempotent retries with the same Idempotency-Key replay the original operation without re-consuming.\n",
+              "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
+              "writeOnly": true
             }
-          ],
-          "description": "The single-use opaque token from the preceding quoteDomainRegistration call. Required. Consumed on first successful execution; idempotent retries with the same Idempotency-Key replay the original operation without re-consuming.\n",
-          "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
-          "writeOnly": true
+          ]
         },
         "registrationId": {
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Server-assigned stable identifier for this registration record.\n",
+              "readOnly": true
             }
-          ],
-          "description": "Server-assigned stable identifier for this registration record.\n",
-          "readOnly": true
+          ]
         },
         "status": {
           "allOf": [
             {
               "$ref": "#/$defs/DomainOperationStatus"
+            },
+            {
+              "description": "Current execution status of this registration.",
+              "readOnly": true
             }
-          ],
-          "description": "Current execution status of this registration.",
-          "readOnly": true
+          ]
         },
         "updatedAt": {
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp of the most recent status update.",
+              "readOnly": true
             }
-          ],
-          "description": "Timestamp of the most recent status update.",
-          "readOnly": true
+          ]
         }
       },
       "required": [
         "domain",
+        "quoteToken",
         "consent"
       ],
       "title": "Registration",
       "type": "object"
     },
     "RegistrationQuote": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A price quote for registering a single domain. Contains a locked price, resolved contact and preference settings, required legal agreements, and a short-lived single-use quoteToken that must be presented on the subsequent registration execute call. Execution without a valid quoteToken is structurally impossible.\nWhen available is false, no quoteToken is returned — this is not an error; it means the domain cannot be registered as requested.\n",
       "properties": {
         "available": {
@@ -927,9 +1192,29 @@
           "allOf": [
             {
               "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The expiry timestamp of the quoteToken. After this time, presenting the token on execute returns quote_expired and a new quote must be obtained.\n"
             }
-          ],
-          "description": "The expiry timestamp of the quoteToken. After this time, presenting the token on execute returns quote_expired and a new quote must be obtained.\n"
+          ]
+        },
+        "fees": {
+          "description": "Fees charged at the time of purchase, in addition to the registration price. Present when the domain incurs purchase fees beyond the base registration cost.\nThese are the same fees as TermPrice.fees for the selected term (this quote's period) — not a separate term-independent fee list and not additional to term-level fees. Execute cost is price plus this array. Mirrored on Registration.fees after execute.\n",
+          "items": {
+            "$ref": "#/$defs/Fee"
+          },
+          "type": "array"
+        },
+        "inventory": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/InventoryType"
+            },
+            {
+              "description": "The inventory type of the quoted domain. Present when available is true.\n",
+              "readOnly": true
+            }
+          ]
         },
         "irreversible": {
           "description": "Whether executing this quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
@@ -947,48 +1232,61 @@
           "allOf": [
             {
               "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Total amount charged on execute is this price plus any fees on this quote.\n"
             }
-          ],
-          "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Represents the total amount that will be charged on execute.\n"
+          ]
         },
         "quoteToken": {
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Opaque, single-use token with a 10-minute TTL. References the locked price, a hash of this request body, and a hash of the resolved profile values. Absent when available is false. Treat as a capability; do not parse.\n",
+              "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6"
             }
-          ],
-          "description": "Opaque, single-use token with a 10-minute TTL. References the locked price, a hash of this request body, and a hash of the resolved profile values. Absent when available is false. Treat as a capability; do not parse.\n",
-          "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6"
+          ]
         },
         "renewalPrice": {
           "allOf": [
             {
               "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "Indicative renewal cost at current rates. Not a price guarantee; renewal pricing is locked at time of renewal quote.\n"
             }
-          ],
-          "description": "Indicative renewal cost at current rates. Not a price guarantee; renewal pricing is locked at time of renewal quote.\n"
+          ]
         },
         "requiredAgreements": {
           "description": "Legal agreements that must be accepted before executing this quote. The agreementType values from this list must be included in the execute request's consent object.\n",
           "items": {
             "$ref": "#/$defs/Agreement"
           },
-          "nullable": true,
           "type": "array"
         },
         "resolved": {
           "allOf": [
             {
               "$ref": "#/$defs/ResolvedSettings"
+            },
+            {
+              "description": "The effective contact and preference settings that will be applied on execute. Review before execute to verify registrant, contacts, and preferences match intent.\n"
             }
-          ],
-          "description": "The effective contact and preference settings that will be applied on execute. Review before execute to verify registrant, contacts, and preferences match intent.\n"
+          ]
         }
       },
+      "required": [
+        "domain",
+        "available"
+      ],
       "title": "Registration Quote",
       "type": "object"
     },
     "ResolvedSettings": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/resolved-settings.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A preview of the effective settings that will be applied if the associated quote is executed. Returned in the quote response to eliminate invisible side effects — the caller sees exactly whose contact info and which preferences will be used before making a commitment. contactSource names where the registrant contact came from so an agent can be explicit at the confirmation step.\n",
       "properties": {
         "autoRenew": {
@@ -999,21 +1297,25 @@
           "allOf": [
             {
               "$ref": "#/$defs/ContactSource"
+            },
+            {
+              "description": "Indicates where the resolved registrant contact came from. When ACCOUNT, the agent should surface this clearly to the customer before confirmation.\n",
+              "example": "PROFILE"
             }
-          ],
-          "description": "Indicates where the resolved registrant contact came from. When ACCOUNT, the agent should surface this clearly to the customer before confirmation.\n",
-          "example": "PROFILE"
+          ]
         },
         "nameServers": {
           "allOf": [
             {
               "$ref": "#/$defs/NameServers"
+            },
+            {
+              "description": "The effective nameservers that will be provisioned for the domain.\n",
+              "example": [
+                "ns01.domaincontrol.com",
+                "ns02.domaincontrol.com"
+              ]
             }
-          ],
-          "description": "The effective nameservers that will be provisioned for the domain.\n",
-          "example": [
-            "ns01.domaincontrol.com",
-            "ns02.domaincontrol.com"
           ]
         },
         "privacy": {
@@ -1024,11 +1326,13 @@
           "allOf": [
             {
               "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "The saved registration profile that was applied, if any. Absent when the registrant was derived from account identity.\n",
+              "example": "14514a29-5fce-4624-8d8a-d8abd56015e2",
+              "readOnly": true
             }
-          ],
-          "description": "The saved registration profile that was applied, if any. Absent when the registrant was derived from account identity.\n",
-          "example": "14514a29-5fce-4624-8d8a-d8abd56015e2",
-          "readOnly": true
+          ]
         },
         "registrantSummary": {
           "description": "A human-readable one-line summary of the resolved registrant, suitable for display in a confirmation prompt. When contactSource is ACCOUNT, the summary is suffixed with \"(account identity)\" to make the derivation explicit.\n",
@@ -1041,6 +1345,8 @@
       "type": "object"
     },
     "Suggestion": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/suggestion.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A single available domain suggestion returned by the suggest endpoint. Availability is implied by presence in the results (available-only contract) and is best-effort — the availability check at quote time is the authoritative re-check. Indicative pricing may be stale; the locked price is established at quote time only.\n",
       "properties": {
         "domain": {
@@ -1052,24 +1358,30 @@
           "allOf": [
             {
               "$ref": "#/$defs/InventoryType"
+            },
+            {
+              "description": "The inventory source for this domain. Present when pricing fields are present.\n",
+              "example": "REGISTRY"
             }
-          ],
-          "description": "The inventory source for this domain. Present when pricing fields are present.\n",
-          "example": "REGISTRY"
+          ]
         },
         "prices": {
           "description": "Indicative pricing offered per registration term length, in ascending order of period. Prices are best-effort indicative and are locked only at quote time.\n",
           "items": {
             "$ref": "#/$defs/TermPrice"
           },
-          "nullable": true,
           "type": "array"
         }
       },
+      "required": [
+        "domain"
+      ],
       "title": "Suggestion",
       "type": "object"
     },
     "SuggestionSource": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/suggestion-source.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A suggestion source strategy that generates domain name variations. EXTENSION — vary the TLD. KEYWORD_SPIN — rotate keywords. CC_TLD — vary using country-code TLDs. PREMIUM — include premium-priced variations.\n",
       "enum": [
         "CC_TLD",
@@ -1081,6 +1393,8 @@
       "type": "string"
     },
     "Term": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/term.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "default": "YEAR",
       "description": "The unit of measure for a registration period. YEAR — registration period expressed in whole years.\n",
       "enum": [
@@ -1090,8 +1404,31 @@
       "type": "string"
     },
     "TermPrice": {
-      "description": "Pricing for one registration term, including sale and list prices for the full term and optional renewal and first-term breakdowns.\n",
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/term-price.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Pricing for one registration term, including sale and list prices for the full term and optional renewal and first-term breakdowns.  A term is self-contained: the full cost of choosing it is price plus all fees listed here.\n",
       "properties": {
+        "fees": {
+          "description": "Fees charged at the time of purchase for this term, in addition to price. Present when the domain incurs purchase fees beyond the base registration cost. The full cost of choosing this term is price plus these fees.\n",
+          "items": {
+            "$ref": "#/$defs/Fee"
+          },
+          "type": "array"
+        },
+        "firstTermPrice": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "Discounted price of only the first term unit within this multi-unit period. Typically omitted when period is 1 (where it equals price). Present when a first-term-only promotion applies to a multi-unit period.\n",
+              "example": {
+                "currencyCode": "USD",
+                "value": 1199
+              }
+            }
+          ]
+        },
         "period": {
           "description": "The registration period length, in units of term.\n",
           "example": 2,
@@ -1103,484 +1440,94 @@
           "allOf": [
             {
               "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The price for the full term covered by this price block — the current registration price for `period` units of term. Discounts or promotions may be reflected in this price.\n"
             }
-          ],
-          "description": "The price for the full term covered by this price block — the current registration price for `period` units of term. Discounts or promotions may be reflected in this price.\n"
+          ]
+        },
+        "recommended": {
+          "description": "When true, this term is the best-value option based on active discounts or promotions. At most one entry in the prices array carries this flag. Absent (not false) when no recommendation applies.\n",
+          "example": true,
+          "type": "boolean"
         },
         "renewalPrice": {
           "allOf": [
             {
               "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "Sale price that will apply when the domain renews, for the same term and period. Not a guarantee.\n"
             }
-          ],
-          "description": "Sale price that will apply when the domain renews, for the same term and period. Not a guarantee.\n"
+          ]
         },
         "term": {
           "allOf": [
             {
               "$ref": "#/$defs/Term"
+            },
+            {
+              "description": "Unit in which period is expressed. Currently only YEAR is supported.\n",
+              "example": "YEAR"
             }
-          ],
-          "description": "Unit in which period is expressed. Currently only YEAR is supported.\n",
-          "example": "YEAR"
+          ]
         }
       },
+      "required": [
+        "term",
+        "period",
+        "price"
+      ],
       "title": "Term Price",
       "type": "object"
     },
-    "V1Address": {
-      "properties": {
-        "address1": {
-          "format": "street-address",
-          "type": "string"
-        },
-        "address2": {
-          "format": "street-address2",
-          "type": "string"
-        },
-        "city": {
-          "format": "city-name",
-          "type": "string"
-        },
-        "country": {
-          "default": "US",
-          "description": "Two-letter ISO country code to be used as a hint for target region<br/><br/>\nNOTE: These are sample values, there are many\n<a href='http://www.iso.org/iso/country_codes.htm'>more</a>",
-          "enum": [
-            "AC",
-            "AD",
-            "AE",
-            "AF",
-            "AG",
-            "AI",
-            "AL",
-            "AM",
-            "AO",
-            "AQ",
-            "AR",
-            "AS",
-            "AT",
-            "AU",
-            "AW",
-            "AX",
-            "AZ",
-            "BA",
-            "BB",
-            "BD",
-            "BE",
-            "BF",
-            "BG",
-            "BH",
-            "BI",
-            "BJ",
-            "BM",
-            "BN",
-            "BO",
-            "BQ",
-            "BR",
-            "BS",
-            "BT",
-            "BV",
-            "BW",
-            "BY",
-            "BZ",
-            "CA",
-            "CC",
-            "CD",
-            "CF",
-            "CG",
-            "CH",
-            "CI",
-            "CK",
-            "CL",
-            "CM",
-            "CN",
-            "CO",
-            "CR",
-            "CV",
-            "CW",
-            "CX",
-            "CY",
-            "CZ",
-            "DE",
-            "DJ",
-            "DK",
-            "DM",
-            "DO",
-            "DZ",
-            "EC",
-            "EE",
-            "EG",
-            "EH",
-            "ER",
-            "ES",
-            "ET",
-            "FI",
-            "FJ",
-            "FK",
-            "FM",
-            "FO",
-            "FR",
-            "GA",
-            "GB",
-            "GD",
-            "GE",
-            "GF",
-            "GG",
-            "GH",
-            "GI",
-            "GL",
-            "GM",
-            "GN",
-            "GP",
-            "GQ",
-            "GR",
-            "GS",
-            "GT",
-            "GU",
-            "GW",
-            "GY",
-            "HK",
-            "HM",
-            "HN",
-            "HR",
-            "HT",
-            "HU",
-            "ID",
-            "IE",
-            "IL",
-            "IM",
-            "IN",
-            "IO",
-            "IQ",
-            "IS",
-            "IT",
-            "JE",
-            "JM",
-            "JO",
-            "JP",
-            "KE",
-            "KG",
-            "KH",
-            "KI",
-            "KM",
-            "KN",
-            "KR",
-            "KV",
-            "KW",
-            "KY",
-            "KZ",
-            "LA",
-            "LB",
-            "LC",
-            "LI",
-            "LK",
-            "LR",
-            "LS",
-            "LT",
-            "LU",
-            "LV",
-            "LY",
-            "MA",
-            "MC",
-            "MD",
-            "ME",
-            "MG",
-            "MH",
-            "MK",
-            "ML",
-            "MM",
-            "MN",
-            "MO",
-            "MP",
-            "MQ",
-            "MR",
-            "MS",
-            "MT",
-            "MU",
-            "MV",
-            "MW",
-            "MX",
-            "MY",
-            "MZ",
-            "NA",
-            "NC",
-            "NE",
-            "NF",
-            "NG",
-            "NI",
-            "NL",
-            "NO",
-            "NP",
-            "NR",
-            "NU",
-            "NZ",
-            "OM",
-            "PA",
-            "PE",
-            "PF",
-            "PG",
-            "PH",
-            "PK",
-            "PL",
-            "PM",
-            "PN",
-            "PR",
-            "PS",
-            "PT",
-            "PW",
-            "PY",
-            "QA",
-            "RE",
-            "RO",
-            "RS",
-            "RU",
-            "RW",
-            "SA",
-            "SB",
-            "SC",
-            "SE",
-            "SG",
-            "SH",
-            "SI",
-            "SJ",
-            "SK",
-            "SL",
-            "SM",
-            "SN",
-            "SO",
-            "SR",
-            "ST",
-            "SV",
-            "SX",
-            "SZ",
-            "TC",
-            "TD",
-            "TF",
-            "TG",
-            "TH",
-            "TJ",
-            "TK",
-            "TL",
-            "TM",
-            "TN",
-            "TO",
-            "TP",
-            "TR",
-            "TT",
-            "TV",
-            "TW",
-            "TZ",
-            "UA",
-            "UG",
-            "UM",
-            "US",
-            "UY",
-            "UZ",
-            "VA",
-            "VC",
-            "VE",
-            "VG",
-            "VI",
-            "VN",
-            "VU",
-            "WF",
-            "WS",
-            "YE",
-            "YT",
-            "ZA",
-            "ZM",
-            "ZW"
-          ],
-          "format": "iso-country-code",
-          "type": "string"
-        },
-        "postalCode": {
-          "description": "Postal or zip code",
-          "format": "postal-code",
-          "type": "string"
-        },
-        "state": {
-          "description": "State or province or territory",
-          "format": "state-province-territory",
-          "type": "string"
-        }
-      }
-    },
-    "V1Contact": {
-      "properties": {
-        "addressMailing": {
-          "$ref": "#/$defs/V1Address"
-        },
-        "email": {
-          "format": "email",
-          "type": "string"
-        },
-        "fax": {
-          "format": "phone",
-          "type": "string"
-        },
-        "jobTitle": {
-          "type": "string"
-        },
-        "nameFirst": {
-          "format": "person-name",
-          "type": "string"
-        },
-        "nameLast": {
-          "format": "person-name",
-          "type": "string"
-        },
-        "nameMiddle": {
-          "type": "string"
-        },
-        "organization": {
-          "format": "organization-name",
-          "type": "string"
-        },
-        "phone": {
-          "format": "phone",
-          "type": "string"
-        }
-      }
-    },
-    "V1DomainSummary": {
-      "properties": {
-        "authCode": {
-          "description": "Authorization code for transferring the Domain",
-          "type": "string"
-        },
-        "contactAdmin": {
-          "$ref": "#/$defs/V1Contact"
-        },
-        "contactBilling": {
-          "$ref": "#/$defs/V1Contact"
-        },
-        "contactRegistrant": {
-          "$ref": "#/$defs/V1Contact"
-        },
-        "contactTech": {
-          "$ref": "#/$defs/V1Contact"
-        },
-        "createdAt": {
-          "description": "Date and time when this domain was created",
-          "type": "string"
-        },
-        "deletedAt": {
-          "description": "Date and time when this domain was deleted",
-          "type": "string"
-        },
-        "domain": {
-          "description": "Name of the domain",
-          "type": "string"
-        },
-        "domainId": {
-          "description": "Unique identifier for this Domain",
-          "format": "double",
-          "type": "number"
-        },
-        "expirationProtected": {
-          "description": "Whether or not the domain is protected from expiration",
-          "type": "boolean"
-        },
-        "expires": {
-          "description": "Date and time when this domain will expire",
-          "type": "string"
-        },
-        "exposeWhois": {
-          "description": "Whether or not the domain contact details should be shown in the WHOIS",
-          "type": "boolean"
-        },
-        "holdRegistrar": {
-          "description": "Whether or not the domain is on-hold by the registrar",
-          "type": "boolean"
-        },
-        "locked": {
-          "description": "Whether or not the domain is locked to prevent transfers",
-          "type": "boolean"
-        },
-        "nameServers": {
-          "description": "Fully-qualified domain names for DNS servers",
-          "items": {
-            "format": "host-name",
-            "type": "string"
-          },
-          "nullable": true,
-          "type": "array"
-        },
-        "privacy": {
-          "description": "Whether or not the domain has privacy protection",
-          "type": "boolean"
-        },
-        "registrarCreatedAt": {
-          "description": "Date and time when this domain was created by the registrar",
-          "format": "iso-datetime",
-          "type": "string"
-        },
-        "renewAuto": {
-          "description": "Whether or not the domain is configured to automatically renew",
-          "type": "boolean"
-        },
-        "renewDeadline": {
-          "description": "Date the domain must renew on",
-          "type": "string"
-        },
-        "renewable": {
-          "description": "Whether or not the domain is eligble for renewal based on status",
-          "type": "boolean"
-        },
-        "status": {
-          "description": "Processing status of the domain<br/><ul>\n<li><strong style='margin-left: 12px;'>ACTIVE</strong> - All is well</li>\n<li><strong style='margin-left: 12px;'>AWAITING*</strong> - System is waiting for the end-user to complete an action</li>\n<li><strong style='margin-left: 12px;'>CANCELLED*</strong> - Domain has been cancelled, and may or may not be reclaimable</li>\n<li><strong style='margin-left: 12px;'>CONFISCATED</strong> - Domain has been confiscated, usually for abuse, chargeback, or fraud</li>\n<li><strong style='margin-left: 12px;'>DISABLED*</strong> - Domain has been disabled</li>\n<li><strong style='margin-left: 12px;'>EXCLUDED*</strong> - Domain has been excluded from Firehose registration</li>\n<li><strong style='margin-left: 12px;'>EXPIRED*</strong> - Domain has expired</li>\n<li><strong style='margin-left: 12px;'>FAILED*</strong> - Domain has failed a required action, and the system is no longer retrying</li>\n<li><strong style='margin-left: 12px;'>HELD*</strong> - Domain has been placed on hold, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>LOCKED*</strong> - Domain has been locked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>PARKED*</strong> - Domain has been parked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>PENDING*</strong> - Domain is working its way through an automated workflow</li>\n<li><strong style='margin-left: 12px;'>RESERVED*</strong> - Domain is reserved, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>REVERTED</strong> - Domain has been reverted, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>SUSPENDED*</strong> - Domain has been suspended, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>TRANSFERRED*</strong> - Domain has been transferred out</li>\n<li><strong style='margin-left: 12px;'>UNKNOWN</strong> - Domain is in an unknown state</li>\n<li><strong style='margin-left: 12px;'>UNLOCKED*</strong> - Domain has been unlocked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>UNPARKED*</strong> - Domain has been unparked, and likely requires intervention from Support</li>\n<li><strong style='margin-left: 12px;'>UPDATED*</strong> - Domain ownership has been transferred to another account</li>\n</ul>",
-          "type": "string"
-        },
-        "transferAwayEligibleAt": {
-          "description": "Date and time when this domain is eligible to transfer",
-          "type": "string"
-        },
-        "transferProtected": {
-          "description": "Whether or not the domain is protected from transfer",
-          "type": "boolean"
-        }
-      }
-    },
-    "V1LegalAgreement": {
-      "properties": {
-        "agreementKey": {
-          "description": "Unique identifier for the legal agreement",
-          "type": "string"
-        },
-        "content": {
-          "description": "Contents of the legal agreement, suitable for embedding",
-          "type": "string"
-        },
-        "title": {
-          "description": "Title of the legal agreement",
-          "type": "string"
-        },
-        "url": {
-          "description": "URL to a page containing the legal agreement",
-          "format": "url",
-          "type": "string"
-        }
-      }
-    },
     "country-code": {
+      "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+      "$schema": "http://json-schema.org/draft/2020-12/schema",
       "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+      "maxLength": 2,
+      "minLength": 2,
+      "pattern": "^([A-Z]{2}|C2)$",
       "type": "string"
     },
     "currency-code": {
+      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A three-character ISO-4217 currency code.",
+      "maxLength": 3,
+      "minLength": 3,
       "title": "Currency Code",
       "type": "string"
     },
     "date-time": {
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+      "maxLength": 64,
+      "minLength": 20,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
       "type": "string"
     },
     "email-address": {
+      "$id": "https://godaddy.com/schemas/common/email-address.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A valid, internationalized email address. Note: Up to 64 characters are allowed before and 255 characters are allowed after the @ sign. However, the generally accepted maximum length for an email address is 254 characters. The pattern verifies that an unquoted @ sign exists.",
+      "maxLength": 254,
+      "minLength": 3,
+      "pattern": "^.+@[^\"\\-].+$",
       "type": "string"
     },
     "error": {
+      "$id": "https://godaddy.com/schemas/common/error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
       "description": "The error information.",
       "properties": {
         "correlationId": {
@@ -1593,7 +1540,6 @@
           "items": {
             "$ref": "#/$defs/error-details"
           },
-          "nullable": true,
           "type": "array"
         },
         "informationLink": {
@@ -1605,7 +1551,6 @@
           "items": {
             "$ref": "#/$defs/link-description"
           },
-          "nullable": true,
           "readOnly": true,
           "type": "array"
         },
@@ -1618,10 +1563,17 @@
           "type": "string"
         }
       },
+      "required": [
+        "name",
+        "correlationId",
+        "message"
+      ],
       "title": "Error",
       "type": "object"
     },
     "error-details": {
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The error details. Required for client-side `4XX` errors.",
       "properties": {
         "description": {
@@ -1629,7 +1581,7 @@
           "type": "string"
         },
         "field": {
-          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors. When the offending value was resolved on the caller's behalf and has no request location, this is a source-scoped reference instead of a JSON pointer: \"shopper:<field>\" (from the account identity) or \"profile:<field>\" (from a saved registration profile).",
+          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
           "type": "string"
         },
         "issue": {
@@ -1646,10 +1598,15 @@
           "type": "string"
         }
       },
+      "required": [
+        "issue"
+      ],
       "title": "Error Details",
       "type": "object"
     },
     "link-description": {
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
       "properties": {
         "href": {
@@ -1685,33 +1642,55 @@
           "type": "string"
         }
       },
+      "required": [
+        "rel",
+        "href"
+      ],
       "title": "Link Description",
       "type": "object"
     },
     "phone": {
+      "$id": "https://godaddy.com/schemas/common/phone.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
       "properties": {
         "countryCode": {
           "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+          "maxLength": 3,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,3}?$",
           "type": "string"
         },
         "extensionNumber": {
           "description": "The extension number.",
+          "maxLength": 15,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,15}?$",
           "type": "string"
         },
         "nationalNumber": {
           "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+          "maxLength": 14,
+          "minLength": 1,
+          "pattern": "^[0-9]{1,14}?$",
           "type": "string"
         }
       },
+      "required": [
+        "countryCode",
+        "nationalNumber"
+      ],
       "title": "Phone",
       "type": "object"
     },
     "simple-address": {
+      "$id": "https://godaddy.com/schemas/common/simple-address.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Simple postal address with coarse-grained fields. Do not use for international postal addresses. Use for backward compatibility only. Address does not contain a phone number.",
       "properties": {
         "city": {
           "description": "The city name.",
+          "maxLength": 300,
           "type": "string"
         },
         "countryCode": {
@@ -1719,18 +1698,22 @@
         },
         "line1": {
           "description": "The first line of the address. For example, number or street.",
+          "maxLength": 300,
           "type": "string"
         },
         "line2": {
           "description": "The second line of the address. For example, suite or apartment number.",
+          "maxLength": 300,
           "type": "string"
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal Code](https://en.wikipedia.org/wiki/Postal_code).",
+          "maxLength": 60,
           "type": "string"
         },
         "state": {
           "description": "The [code](https://about.usps.com/who/profile/history/state-abbreviations.htm) for a US state or the equivalent for other countries.",
+          "maxLength": 300,
           "type": "string"
         }
       },
@@ -1743,6 +1726,8 @@
       "type": "object"
     },
     "simple-money": {
+      "$id": "https://godaddy.com/schemas/common/simple-money.v1",
+      "$schema": "http://json-schema.org/draft/2020-12/schema",
       "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
       "properties": {
         "currencyCode": {
@@ -1754,413 +1739,24 @@
           "type": "integer"
         }
       },
+      "required": [
+        "currencyCode",
+        "value"
+      ],
       "title": "Simple Money",
       "type": "object"
     },
     "uuid": {
+      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+      "format": "uuid",
       "type": "string"
     }
   },
-  "baseUrl": "https://api.godaddy.com",
-  "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–50 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
+  "baseUrl": "https://api.godaddy.com/v3/domains",
+  "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–25 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
   "endpoints": [
-    {
-      "method": "GET",
-      "operationId": "list",
-      "parameters": [
-        {
-          "description": "Shopper ID whose domains are to be retrieved",
-          "in": "header",
-          "name": "X-Shopper-Id",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "description": "Only include results with `status` value in the specified set",
-          "in": "query",
-          "name": "statuses",
-          "required": false,
-          "schema": {
-            "items": {
-              "enum": [
-                "ACTIVE",
-                "AWAITING_CLAIM_ACK",
-                "AWAITING_DOCUMENT_AFTER_TRANSFER",
-                "AWAITING_DOCUMENT_AFTER_UPDATE_ACCOUNT",
-                "AWAITING_DOCUMENT_UPLOAD",
-                "AWAITING_FAILED_TRANSFER_WHOIS_PRIVACY",
-                "AWAITING_PAYMENT",
-                "AWAITING_RENEWAL_TRANSFER_IN_COMPLETE",
-                "AWAITING_TRANSFER_IN_ACK",
-                "AWAITING_TRANSFER_IN_AUTH",
-                "AWAITING_TRANSFER_IN_AUTO",
-                "AWAITING_TRANSFER_IN_WHOIS",
-                "AWAITING_TRANSFER_IN_WHOIS_FIX",
-                "AWAITING_VERIFICATION_ICANN",
-                "AWAITING_VERIFICATION_ICANN_MANUAL",
-                "CANCELLED",
-                "CANCELLED_HELD",
-                "CANCELLED_REDEEMABLE",
-                "CANCELLED_TRANSFER",
-                "CONFISCATED",
-                "DISABLED_SPECIAL",
-                "EXCLUDED_INVALID_CLAIM_FIREHOSE",
-                "EXPIRED_REASSIGNED",
-                "FAILED_BACKORDER_CAPTURE",
-                "FAILED_DROP_IMMEDIATE_THEN_ADD",
-                "FAILED_PRE_REGISTRATION",
-                "FAILED_REDEMPTION",
-                "FAILED_REDEMPTION_REPORT",
-                "FAILED_REGISTRATION",
-                "FAILED_REGISTRATION_FIREHOSE",
-                "FAILED_RESTORATION_REDEMPTION_MOCK",
-                "FAILED_SETUP",
-                "FAILED_TRANSFER_IN",
-                "FAILED_TRANSFER_IN_BAD_STATUS",
-                "FAILED_TRANSFER_IN_REGISTRY",
-                "HELD_COURT_ORDERED",
-                "HELD_DISPUTED",
-                "HELD_EXPIRATION_PROTECTION",
-                "HELD_EXPIRED_REDEMPTION_MOCK",
-                "HELD_REGISTRAR_ADD",
-                "HELD_REGISTRAR_REMOVE",
-                "HELD_SHOPPER",
-                "HELD_TEMPORARY",
-                "LOCKED_ABUSE",
-                "LOCKED_COPYRIGHT",
-                "LOCKED_REGISTRY",
-                "LOCKED_SUPER",
-                "PARKED_AND_HELD",
-                "PARKED_EXPIRED",
-                "PARKED_VERIFICATION_ICANN",
-                "PENDING_ABORT_CANCEL_SETUP",
-                "PENDING_AGREEMENT_PRE_REGISTRATION",
-                "PENDING_APPLY_RENEWAL_CREDITS",
-                "PENDING_BACKORDER_CAPTURE",
-                "PENDING_BLOCKED_REGISTRY",
-                "PENDING_CANCEL_REGISTRANT_PROFILE",
-                "PENDING_COMPLETE_REDEMPTION_WITHOUT_RECEIPT",
-                "PENDING_COMPLETE_REGISTRANT_PROFILE",
-                "PENDING_COO",
-                "PENDING_COO_COMPLETE",
-                "PENDING_DNS",
-                "PENDING_DNS_ACTIVE",
-                "PENDING_DNS_INACTIVE",
-                "PENDING_DOCUMENT_VALIDATION",
-                "PENDING_DOCUMENT_VERIFICATION",
-                "PENDING_DROP_IMMEDIATE",
-                "PENDING_DROP_IMMEDIATE_THEN_ADD",
-                "PENDING_EPP_CREATE",
-                "PENDING_EPP_DELETE",
-                "PENDING_EPP_UPDATE",
-                "PENDING_ESCALATION_REGISTRY",
-                "PENDING_EXPIRATION",
-                "PENDING_EXPIRATION_RESPONSE",
-                "PENDING_EXPIRATION_SYNC",
-                "PENDING_EXPIRED_REASSIGNMENT",
-                "PENDING_EXPIRE_AUTO_ADD",
-                "PENDING_EXTEND_REGISTRANT_PROFILE",
-                "PENDING_FAILED_COO",
-                "PENDING_FAILED_EPP_CREATE",
-                "PENDING_FAILED_HELD",
-                "PENDING_FAILED_PURCHASE_PREMIUM",
-                "PENDING_FAILED_RECONCILE_FIREHOSE",
-                "PENDING_FAILED_REDEMPTION_WITHOUT_RECEIPT",
-                "PENDING_FAILED_RELEASE_PREMIUM",
-                "PENDING_FAILED_RENEW_EXPIRATION_PROTECTION",
-                "PENDING_FAILED_RESERVE_PREMIUM",
-                "PENDING_FAILED_SUBMIT_FIREHOSE",
-                "PENDING_FAILED_TRANSFER_ACK_PREMIUM",
-                "PENDING_FAILED_TRANSFER_IN_ACK_PREMIUM",
-                "PENDING_FAILED_TRANSFER_IN_PREMIUM",
-                "PENDING_FAILED_TRANSFER_PREMIUM",
-                "PENDING_FAILED_TRANSFER_SUBMIT_PREMIUM",
-                "PENDING_FAILED_UNLOCK_PREMIUM",
-                "PENDING_FAILED_UPDATE_API",
-                "PENDING_FRAUD_VERIFICATION",
-                "PENDING_FRAUD_VERIFIED",
-                "PENDING_GET_CONTACTS",
-                "PENDING_GET_HOSTS",
-                "PENDING_GET_NAME_SERVERS",
-                "PENDING_GET_STATUS",
-                "PENDING_HOLD_ESCROW",
-                "PENDING_HOLD_REDEMPTION",
-                "PENDING_LOCK_CLIENT_REMOVE",
-                "PENDING_LOCK_DATA_QUALITY",
-                "PENDING_LOCK_THEN_HOLD_REDEMPTION",
-                "PENDING_PARKING_DETERMINATION",
-                "PENDING_PARK_INVALID_WHOIS",
-                "PENDING_PARK_INVALID_WHOIS_REMOVAL",
-                "PENDING_PURCHASE_PREMIUM",
-                "PENDING_RECONCILE",
-                "PENDING_RECONCILE_FIREHOSE",
-                "PENDING_REDEMPTION",
-                "PENDING_REDEMPTION_REPORT",
-                "PENDING_REDEMPTION_REPORT_COMPLETE",
-                "PENDING_REDEMPTION_REPORT_SUBMITTED",
-                "PENDING_REDEMPTION_WITHOUT_RECEIPT",
-                "PENDING_REDEMPTION_WITHOUT_RECEIPT_MOCK",
-                "PENDING_RELEASE_PREMIUM",
-                "PENDING_REMOVAL",
-                "PENDING_REMOVAL_HELD",
-                "PENDING_REMOVAL_PARKED",
-                "PENDING_REMOVAL_UNPARK",
-                "PENDING_RENEWAL",
-                "PENDING_RENEW_EXPIRATION_PROTECTION",
-                "PENDING_RENEW_INFINITE",
-                "PENDING_RENEW_LOCKED",
-                "PENDING_RENEW_WITHOUT_RECEIPT",
-                "PENDING_REPORT_REDEMPTION_WITHOUT_RECEIPT",
-                "PENDING_RESERVE_PREMIUM",
-                "PENDING_RESET_VERIFICATION_ICANN",
-                "PENDING_RESPONSE_FIREHOSE",
-                "PENDING_RESTORATION",
-                "PENDING_RESTORATION_INACTIVE",
-                "PENDING_RESTORATION_REDEMPTION_MOCK",
-                "PENDING_RETRY_EPP_CREATE",
-                "PENDING_RETRY_HELD",
-                "PENDING_SEND_AUTH_CODE",
-                "PENDING_SETUP",
-                "PENDING_SETUP_ABANDON",
-                "PENDING_SETUP_AGREEMENT_LANDRUSH",
-                "PENDING_SETUP_AGREEMENT_SUNRISE2_A",
-                "PENDING_SETUP_AGREEMENT_SUNRISE2_B",
-                "PENDING_SETUP_AGREEMENT_SUNRISE2_C",
-                "PENDING_SETUP_AUTH",
-                "PENDING_SETUP_DNS",
-                "PENDING_SETUP_FAILED",
-                "PENDING_SETUP_REVIEW",
-                "PENDING_SETUP_SUNRISE",
-                "PENDING_SETUP_SUNRISE_PRE",
-                "PENDING_SETUP_SUNRISE_RESPONSE",
-                "PENDING_SUBMIT_FAILURE",
-                "PENDING_SUBMIT_FIREHOSE",
-                "PENDING_SUBMIT_HOLD_FIREHOSE",
-                "PENDING_SUBMIT_HOLD_LANDRUSH",
-                "PENDING_SUBMIT_HOLD_SUNRISE",
-                "PENDING_SUBMIT_LANDRUSH",
-                "PENDING_SUBMIT_RESPONSE_FIREHOSE",
-                "PENDING_SUBMIT_RESPONSE_LANDRUSH",
-                "PENDING_SUBMIT_RESPONSE_SUNRISE",
-                "PENDING_SUBMIT_SUCCESS_FIREHOSE",
-                "PENDING_SUBMIT_SUCCESS_LANDRUSH",
-                "PENDING_SUBMIT_SUCCESS_SUNRISE",
-                "PENDING_SUBMIT_SUNRISE",
-                "PENDING_SUBMIT_WAITING_LANDRUSH",
-                "PENDING_SUCCESS_PRE_REGISTRATION",
-                "PENDING_SUSPENDED_DATA_QUALITY",
-                "PENDING_TRANSFER_ACK_PREMIUM",
-                "PENDING_TRANSFER_IN",
-                "PENDING_TRANSFER_IN_ACK",
-                "PENDING_TRANSFER_IN_ACK_PREMIUM",
-                "PENDING_TRANSFER_IN_BAD_REGISTRANT",
-                "PENDING_TRANSFER_IN_CANCEL",
-                "PENDING_TRANSFER_IN_CANCEL_REGISTRY",
-                "PENDING_TRANSFER_IN_COMPLETE_ACK",
-                "PENDING_TRANSFER_IN_DELETE",
-                "PENDING_TRANSFER_IN_LOCK",
-                "PENDING_TRANSFER_IN_NACK",
-                "PENDING_TRANSFER_IN_NOTIFICATION",
-                "PENDING_TRANSFER_IN_PREMIUM",
-                "PENDING_TRANSFER_IN_RELEASE",
-                "PENDING_TRANSFER_IN_RESPONSE",
-                "PENDING_TRANSFER_IN_UNDERAGE",
-                "PENDING_TRANSFER_OUT",
-                "PENDING_TRANSFER_OUT_ACK",
-                "PENDING_TRANSFER_OUT_NACK",
-                "PENDING_TRANSFER_OUT_PREMIUM",
-                "PENDING_TRANSFER_OUT_UNDERAGE",
-                "PENDING_TRANSFER_OUT_VALIDATION",
-                "PENDING_TRANSFER_PREMIUM",
-                "PENDING_TRANSFER_PREMUIM",
-                "PENDING_TRANSFER_SUBMIT_PREMIUM",
-                "PENDING_UNLOCK_DATA_QUALITY",
-                "PENDING_UNLOCK_PREMIUM",
-                "PENDING_UPDATE",
-                "PENDING_UPDATED_REGISTRANT_DATA_QUALITY",
-                "PENDING_UPDATE_ACCOUNT",
-                "PENDING_UPDATE_API",
-                "PENDING_UPDATE_API_RESPONSE",
-                "PENDING_UPDATE_AUTH",
-                "PENDING_UPDATE_CONTACTS",
-                "PENDING_UPDATE_CONTACTS_PRIVACY",
-                "PENDING_UPDATE_DNS",
-                "PENDING_UPDATE_DNS_SECURITY",
-                "PENDING_UPDATE_ELIGIBILITY",
-                "PENDING_UPDATE_EPP_CONTACTS",
-                "PENDING_UPDATE_MEMBERSHIP",
-                "PENDING_UPDATE_OWNERSHIP",
-                "PENDING_UPDATE_OWNERSHIP_AUTH_AUCTION",
-                "PENDING_UPDATE_OWNERSHIP_HELD",
-                "PENDING_UPDATE_REGISTRANT",
-                "PENDING_UPDATE_REPO",
-                "PENDING_VALIDATION_DATA_QUALITY",
-                "PENDING_VERIFICATION_FRAUD",
-                "PENDING_VERIFICATION_STATUS",
-                "PENDING_VERIFY_REGISTRANT_DATA_QUALITY",
-                "RESERVED",
-                "RESERVED_PREMIUM",
-                "REVERTED",
-                "SUSPENDED_VERIFICATION_ICANN",
-                "TRANSFERRED_OUT",
-                "UNLOCKED_ABUSE",
-                "UNLOCKED_SUPER",
-                "UNPARKED_AND_UNHELD",
-                "UPDATED_OWNERSHIP",
-                "UPDATED_OWNERSHIP_HELD"
-              ],
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        {
-          "description": "Only include results with `status` value in any of the specified groups",
-          "in": "query",
-          "name": "statusGroups",
-          "required": false,
-          "schema": {
-            "items": {
-              "enum": [
-                "INACTIVE",
-                "PRE_REGISTRATION",
-                "REDEMPTION",
-                "RENEWABLE",
-                "VERIFICATION_ICANN",
-                "VISIBLE"
-              ],
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        {
-          "description": "Maximum number of domains to return",
-          "in": "query",
-          "name": "limit",
-          "required": false,
-          "schema": {
-            "maximum": 1000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        {
-          "description": "Marker Domain to use as the offset in results",
-          "in": "query",
-          "name": "marker",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "description": "Optional details to be included in the response",
-          "in": "query",
-          "name": "includes",
-          "required": false,
-          "schema": {
-            "items": {
-              "enum": [
-                "authCode",
-                "contacts",
-                "nameServers"
-              ],
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        {
-          "description": "Only include results that have been modified since the specified date",
-          "in": "query",
-          "name": "modifiedDate",
-          "required": false,
-          "schema": {
-            "format": "iso-datetime",
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/v1/domains",
-      "responses": {
-        "200": {
-          "description": "Request was successful",
-          "schema": {
-            "items": {
-              "$ref": "#/$defs/V1DomainSummary"
-            },
-            "type": "array"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Retrieve a list of Domains for the specified Shopper"
-    },
-    {
-      "method": "GET",
-      "operationId": "agreements",
-      "parameters": [
-        {
-          "description": "Unique identifier of the Market used to retrieve/translate Legal Agreements",
-          "in": "header",
-          "name": "X-Market-Id",
-          "required": false,
-          "schema": {
-            "default": "en-US",
-            "format": "bcp-47",
-            "type": "string"
-          }
-        },
-        {
-          "description": "list of TLDs whose legal agreements are to be retrieved",
-          "in": "query",
-          "name": "tlds",
-          "required": true,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        {
-          "description": "Whether or not privacy has been requested",
-          "in": "query",
-          "name": "privacy",
-          "required": true,
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "description": "Whether or not domain tranfer has been requested",
-          "in": "query",
-          "name": "forTransfer",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
-        }
-      ],
-      "path": "/v1/domains/agreements",
-      "responses": {
-        "200": {
-          "description": "Request was successful",
-          "schema": {
-            "items": {
-              "$ref": "#/$defs/V1LegalAgreement"
-            },
-            "type": "array"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Retrieve the legal agreement(s) required to purchase the specified TLD and add-ons"
-    },
     {
       "description": "Returns an indicative availability result for one domain, including\nper-term pricing when available. Availability is best-effort; the\nauthoritative check is performed at quote time. This operation does\nnot persist the check — there is no check identity or poll URL.\n\nEquivalent to POST /check-availability with `domains: [domain]` and the\nsame optional criteria (`optimizeFor`, `iscCode`). The response is that\nsingle `Availability` item unwrapped for convenience — POST returns the\nsame result inside `{ items: [...] }`. Use POST when checking multiple\ndomains in one request.\n\nA domain that cannot be checked is still returned as a `200` with an\n`error` object on the body (the same per-item contract as POST); request-\nlevel failures use the `4xx` responses.\n",
       "method": "GET",
@@ -2172,7 +1768,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2217,12 +1813,42 @@
           }
         }
       ],
-      "path": "/v3/domains/check-availability",
+      "path": "/check-availability",
       "responses": {
         "200": {
           "description": "Availability result for the requested domain.",
           "schema": {
             "$ref": "#/$defs/Availability"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2232,7 +1858,7 @@
       "summary": "Check availability of a single domain"
     },
     {
-      "description": "Batch controller for domain availability checking. Accepts 1–50 domain\nnames alongside optional check criteria (optimization mode, ISC pricing\ncode). Returns one Availability result per requested domain in input\norder inside `{ items: [...] }`. Domains that cannot be checked carry\nan `error` object on that item.\n\nFor a single domain, GET /check-availability (getDomainAvailability)\noffers the same check semantics and Availability result without a\nrequest body; the response is the lone item unwrapped.\n\nAvailability is best-effort indicative; the authoritative check is\nalways performed at quote time. This controller does not persist the\ncheck — there is no check identity or poll URL.\n",
+      "description": "Batch controller for domain availability checking. Accepts 1–25 domain\nnames alongside optional check criteria (optimization mode, ISC pricing\ncode). Returns one Availability result per requested domain in input\norder inside `{ items: [...] }`. Domains that cannot be checked carry\nan `error` object on that item.\n\nFor a single domain, GET /check-availability (getDomainAvailability)\noffers the same check semantics and Availability result without a\nrequest body; the response is the lone item unwrapped.\n\nAvailability is best-effort indicative; the authoritative check is\nalways performed at quote time. This controller does not persist the\ncheck — there is no check identity or poll URL.\n",
       "method": "POST",
       "operationId": "checkAvailability",
       "parameters": [
@@ -2242,7 +1868,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2255,7 +1881,7 @@
           }
         }
       ],
-      "path": "/v3/domains/check-availability",
+      "path": "/check-availability",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
@@ -2281,12 +1907,189 @@
             ],
             "type": "object"
           }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
         "domains.domain:read"
       ],
       "summary": "Check availability of one or more specific domains"
+    },
+    {
+      "description": "Returns a paginated collection of domain names owned by the authenticated account. Supports filtering by statuses and cursor-based pagination. The statuses and lifecycleGroups parameters are mutually exclusive; supplying both returns 400 Bad Request. An unrecognized value for statuses or lifecycleGroups returns 400 Bad Request.\n",
+      "method": "GET",
+      "operationId": "listDomains",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Opaque cursor from the links[rel=next or rel=prev] href of the previous page. When present, the response begins immediately after the item that produced the token. Omit to start from the beginning of the collection.\n",
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Optional token direction when `pageToken` is set; ignored otherwise.\n",
+          "in": "query",
+          "name": "pageTokenDirection",
+          "required": false,
+          "schema": {
+            "enum": [
+              "backward",
+              "forward"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "description": "Maximum number of domains in the response. Defaults to 100 when omitted. Offset-based \"page\" parameter is not supported, only cursor-based \"pageToken\".\n",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 100,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Filter results to domains with one or more lifecycle statuses. Supply multiple values as a single comma-separated list, e.g. `?statuses=ACTIVE,EXPIRED`. Multiple values are combined with logical OR — returns domains matching ANY of the specified statuses. See DomainStatus for accepted values (ACTIVE, EXPIRED, PENDING_REGISTRATION, etc.). Cannot be combined with the lifecycleGroups parameter. Use this for precise filtering on specific known status values; for coarse lifecycle phases, consider lifecycleGroups.\n",
+          "in": "query",
+          "name": "statuses",
+          "required": false,
+          "schema": {
+            "items": {
+              "$ref": "#/$defs/DomainStatus"
+            },
+            "maxItems": 50,
+            "type": "array"
+          }
+        },
+        {
+          "description": "Filter results to domains belonging to one or more status groups. Supply multiple values as a single comma-separated list, e.g. `?lifecycleGroups=REGISTERED,PENDING`. Multiple values are combined with logical OR. Cannot be combined with the statuses parameter. Use this for coarse lifecycle phases that remain stable as new statuses are added; for precise filtering, use statuses.\n",
+          "in": "query",
+          "name": "lifecycleGroups",
+          "required": false,
+          "schema": {
+            "items": {
+              "$ref": "#/$defs/DomainLifecycleGroup"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "description": "Return only domains last updated after this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+          "in": "query",
+          "name": "updatedAfter",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Return only domains whose registration expires before this timestamp (exclusive). Must be a valid RFC 3339 date-time.\n",
+          "in": "query",
+          "name": "expiresBefore",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/domain-names",
+      "responses": {
+        "200": {
+          "description": "Paginated list of domains owned by the account.",
+          "schema": {
+            "$ref": "#/$defs/DomainCollection"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:read"
+      ],
+      "summary": "List registered domains"
     },
     {
       "description": "Returns the management view of a single registered domain owned by the authenticated account, including status, nameservers, privacy and auto-renew preferences, and expiry date.\n",
@@ -2299,7 +2102,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2321,12 +2124,36 @@
           }
         }
       ],
-      "path": "/v3/domains/domain-names/{domain-name}",
+      "path": "/domain-names/{domain-name}",
       "responses": {
         "200": {
           "description": "Domain found.",
           "schema": {
             "$ref": "#/$defs/Domain"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2334,6 +2161,114 @@
         "domains.domain:read"
       ],
       "summary": "Get a registered domain"
+    },
+    {
+      "description": "Sets the auto-renewal preference for the domain. When enabled, the domain will be automatically renewed before expiration using the payment method on file. Returns a DomainOperation; propagation to the registry is asynchronous.\n",
+      "method": "POST",
+      "operationId": "setAutoRenew",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
+          "in": "path",
+          "name": "domain-name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "maxLength": 64,
+            "minLength": 16,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/domain-names/{domain-name}/auto-renew",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "description": "Whether auto-renewal should be enabled for this domain. When true, the domain will be automatically renewed before expiration using the payment method on file.\n",
+          "type": "boolean"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Auto-renew update accepted; poll the operation for completion.",
+          "schema": {
+            "$ref": "#/$defs/DomainOperation"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:update"
+      ],
+      "summary": "Set auto-renew setting for a domain"
     },
     {
       "description": "Replaces the authoritative nameservers for the domain with the provided list. Minimum 2, maximum 13. Returns a DomainOperation; propagation to the registry is asynchronous.\n",
@@ -2346,7 +2281,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2368,16 +2303,18 @@
           }
         },
         {
-          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all execute endpoints.\n",
+          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": true,
           "schema": {
+            "maxLength": 64,
+            "minLength": 16,
             "type": "string"
           }
         }
       ],
-      "path": "/v3/domains/domain-names/{domain-name}/nameservers",
+      "path": "/domain-names/{domain-name}/nameservers",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
@@ -2391,12 +2328,156 @@
           "schema": {
             "$ref": "#/$defs/DomainOperation"
           }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
         "domains.nameserver:update"
       ],
       "summary": "Replace the nameservers for a domain"
+    },
+    {
+      "description": "Sets the transfer-lock (registrar lock / EPP lock) for the domain. When enabled, outbound transfers to another registrar are blocked. Returns a DomainOperation; propagation to the registry is asynchronous.\n",
+      "method": "POST",
+      "operationId": "setTransferLock",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
+          "in": "path",
+          "name": "domain-name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "maxLength": 64,
+            "minLength": 16,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/domain-names/{domain-name}/transfer-lock",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "description": "Whether transfer-lock should be enabled for this domain. When true, outbound transfers to another registrar are blocked. When false, transfers are allowed.\n",
+          "type": "boolean"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Transfer-lock update accepted; poll the operation for completion.",
+          "schema": {
+            "$ref": "#/$defs/DomainOperation"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:update"
+      ],
+      "summary": "Set transfer-lock setting for a domain"
     },
     {
       "description": "Universal poll endpoint for all asynchronous domain mutations. Returns\nthe current state of the operation. Non-terminal responses include a\n`Retry-After` header.\n\nTerminal statuses:\n- `COMPLETED` — operation succeeded; `result` contains the final outcome.\n- `FAILED` — operation terminated with an error; `error` contains detail.\n\nWhile status is non-terminal (`CONFIRMED`, `EXECUTING`), neither\n`result` nor `error` is present. Poll until a terminal status is reached.\n\nThe poll URL is provided in the `Location` header of the initiating 202\nresponse and in `links[rel=self]`. Clients must not construct this URL\nindependently.\n",
@@ -2409,7 +2490,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2431,12 +2512,36 @@
           }
         }
       ],
-      "path": "/v3/domains/operations/{operationId}",
+      "path": "/operations/{operationId}",
       "responses": {
         "200": {
           "description": "Current operation state.",
           "schema": {
             "$ref": "#/$defs/DomainOperation"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2446,7 +2551,7 @@
       "summary": "Poll an async domain operation"
     },
     {
-      "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken — this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n\nMay pass `iscCode` to lock pricing at applicable rates;\nthe same value must be supplied on /registrations if provided here.\n",
+      "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken — this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n\nMay pass `iscCode` to lock pricing at applicable rates;\nthe same value must be supplied on /registrations if provided here.\n\n**PREMIUM domains:** when the quoted domain has inventory `PREMIUM`,\nthe response includes a `fees` array containing a\n`ONE_TIME_PREMIUM_DOMAIN_PURCHASE` entry. The execute request must\necho this array verbatim in `consent.acknowledgedFees` to confirm\nthe customer accepted the specific charge before the irreversible\npurchase proceeds.\n",
       "method": "POST",
       "operationId": "quoteDomainRegistration",
       "parameters": [
@@ -2456,7 +2561,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2478,7 +2583,7 @@
           }
         }
       ],
-      "path": "/v3/domains/registration-quotes",
+      "path": "/registration-quotes",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
@@ -2500,17 +2605,21 @@
               "allOf": [
                 {
                   "$ref": "#/$defs/InlineRegistrationProfile"
+                },
+                {
+                  "description": "One-time inline contacts and purchase preference defaults for this quote. Not persisted.\n"
                 }
-              ],
-              "description": "One-time inline contacts and purchase preference defaults for this quote. Not persisted.\n"
+              ]
             },
             "profileId": {
               "allOf": [
                 {
                   "$ref": "#/$defs/uuid"
+                },
+                {
+                  "description": "ID of a saved registration profile. Omit to fall back to the account-default profile or account identity.\n"
                 }
-              ],
-              "description": "ID of a saved registration profile. Omit to fall back to the account-default profile or account identity.\n"
+              ]
             }
           },
           "required": [
@@ -2525,6 +2634,36 @@
           "schema": {
             "$ref": "#/$defs/RegistrationQuote"
           }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
@@ -2533,7 +2672,7 @@
       "summary": "Quote a single-domain registration (no commitment)"
     },
     {
-      "description": "Executes a previously quoted domain registration. **Irreversible once\naccepted; creates a charge.** Requires a valid unexpired quoteToken from\n`quoteDomainRegistration`, an `Idempotency-Key` header, and a consent\nrecord. The target domain and period are in the request body alongside\nthe quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Registration` entity. Poll `links[rel=self]`\n(`GET /registrations/{registrationId}`) until status is `COMPLETED` or\n`FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n\nWhen `iscCode` was supplied at quote time, the same value must be\nprovided here or the request fails with `quote_mismatch`.\n",
+      "description": "Executes a previously quoted domain registration. **Irreversible once\naccepted; creates a charge.** Requires a valid unexpired quoteToken from\n`quoteDomainRegistration`, an `Idempotency-Key` header, and a consent\nrecord. The target domain and period are in the request body alongside\nthe quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Registration` entity. Poll `links[rel=self]`\n(`GET /registrations/{registrationId}`) until status is `COMPLETED` or\n`FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n\nWhen `iscCode` was supplied at quote time, the same value must be\nprovided here or the request fails with `422 quote_mismatch`.\n\n**PREMIUM domains:** when the quote's `fees` array is non-empty\n(inventory `PREMIUM`), the execute request must include\n`consent.acknowledgedFees` containing the same fees verbatim —\nsame types, amounts, and currencies. This confirms the customer\nexplicitly saw and accepted the specific charge before the\nirreversible purchase is executed.\n\n- `acknowledgedFees` absent when fees exist → `422` with error\n  name `consent_fees_required` (conditionally required by the quote; the\n  constraint spans two requests and cannot be expressed in the\n  schema).\n- `acknowledgedFees` present but type or amount does not match\n  the locked quote → `422` with error name `quote_mismatch`.\n",
       "method": "POST",
       "operationId": "registerDomain",
       "parameters": [
@@ -2543,7 +2682,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2556,11 +2695,13 @@
           }
         },
         {
-          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all execute endpoints.\n",
+          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": true,
           "schema": {
+            "maxLength": 64,
+            "minLength": 16,
             "type": "string"
           }
         },
@@ -2574,7 +2715,7 @@
           }
         }
       ],
-      "path": "/v3/domains/registrations",
+      "path": "/registrations",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
@@ -2587,6 +2728,42 @@
           "description": "Registration accepted. Poll the self link for status.\n",
           "schema": {
             "$ref": "#/$defs/Registration"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2606,7 +2783,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2628,12 +2805,36 @@
           }
         }
       ],
-      "path": "/v3/domains/registrations/{registrationId}",
+      "path": "/registrations/{registrationId}",
       "responses": {
         "200": {
           "description": "Registration record returned.",
           "schema": {
             "$ref": "#/$defs/Registration"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2653,7 +2854,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2671,11 +2872,12 @@
           "name": "query",
           "required": false,
           "schema": {
+            "maxLength": 100,
             "type": "string"
           }
         },
         {
-          "description": "Top-level domains to be included in suggestions.",
+          "description": "Top-level domains to be included in suggestions. Supply multiple values as a single comma-separated list, e.g. `?tlds=com,net,shop`.\n",
           "in": "query",
           "name": "tlds",
           "required": false,
@@ -2719,7 +2921,7 @@
           }
         },
         {
-          "description": "Suggestion source strategies to activate.\n",
+          "description": "Suggestion source strategies to activate. Supply multiple values as a single comma-separated list, e.g. `?sources=EXTENSION,KEYWORD_SPIN`.\n",
           "in": "query",
           "name": "sources",
           "required": false,
@@ -2731,7 +2933,7 @@
           }
         }
       ],
-      "path": "/v3/domains/suggestions",
+      "path": "/suggestions",
       "responses": {
         "200": {
           "description": "Suggested available domains sorted by relevance.",
@@ -2749,6 +2951,30 @@
               "items"
             ],
             "type": "object"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2768,7 +2994,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2850,12 +3076,42 @@
           }
         }
       ],
-      "path": "/v3/domains/zones/{zone}/dns-records",
+      "path": "/zones/{zone}/dns-records",
       "responses": {
         "200": {
           "description": "Paginated DNS records for the zone.",
           "schema": {
             "$ref": "#/$defs/DNSRecords"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
           }
         }
       },
@@ -2875,7 +3131,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2897,7 +3153,7 @@
           }
         }
       ],
-      "path": "/v3/domains/zones/{zone}/dns-records",
+      "path": "/zones/{zone}/dns-records",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
@@ -2911,6 +3167,48 @@
           "schema": {
             "$ref": "#/$defs/DNSRecord"
           }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
@@ -2919,9 +3217,9 @@
       "summary": "Create a DNS record for a zone"
     },
     {
-      "description": "Permanently removes a DNS resource record from the zone. The\nrecordId must refer to an existing record within the specified\nzone. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be deleted.\n",
-      "method": "DELETE",
-      "operationId": "deleteDNSRecord",
+      "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields (name, type, data,\nttl) must be supplied; partial updates are not supported on this\nendpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be modified.\n",
+      "method": "PUT",
+      "operationId": "replaceDNSRecord",
       "parameters": [
         {
           "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
@@ -2929,7 +3227,7 @@
           "name": "X-Request-Id",
           "required": false,
           "schema": {
-            "type": "string"
+            "$ref": "#/$defs/uuid"
           }
         },
         {
@@ -2960,10 +3258,151 @@
           }
         }
       ],
-      "path": "/v3/domains/zones/{zone}/dns-records/{recordId}",
+      "path": "/zones/{zone}/dns-records/{recordId}",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/DNSRecord"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "DNS record replaced.",
+          "schema": {
+            "$ref": "#/$defs/DNSRecord"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.dns:update"
+      ],
+      "summary": "Replace a DNS record"
+    },
+    {
+      "description": "Permanently removes a DNS resource record from the zone. The\nrecordId must refer to an existing record within the specified\nzone. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be deleted.\n",
+      "method": "DELETE",
+      "operationId": "deleteDNSRecord",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
+          "in": "path",
+          "name": "zone",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Server-assigned DNS record identifier within the zone.",
+          "in": "path",
+          "name": "recordId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/zones/{zone}/dns-records/{recordId}",
       "responses": {
         "204": {
           "description": "DNS record deleted."
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
         }
       },
       "scopes": [
@@ -2974,5 +3413,5 @@
   ],
   "name": "domains",
   "title": "Domain Lifecycle Management API",
-  "version": "3.1.0"
+  "version": "3.2.0"
 }
