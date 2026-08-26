@@ -172,10 +172,8 @@ pub(crate) async fn run_wizard(
                 current += 1;
             }
             StepResult::Back => {
-                if current > start_at {
-                    current -= 1;
-                }
-                // If already at start, the step will re-run (loop continues).
+                current = current.saturating_sub(1);
+                // If already at step 0, the step will re-run (loop continues).
             }
             StepResult::Cancel => {
                 eprintln!(

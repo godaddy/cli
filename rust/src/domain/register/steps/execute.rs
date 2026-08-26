@@ -1,4 +1,4 @@
-//! Step 4: Execute — submit the registration using the cached quote, poll the
+//! Step 5: Execute — submit the registration using the cached quote, poll the
 //! async operation, and display the result.
 
 use cli_engine::{CliCoreError, Result};
@@ -123,7 +123,12 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     spinner.set_message(format!("Registering {}...", domain));
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    let idempotency_key = uuid::Uuid::new_v4().to_string();
+    let idempotency_key = match quote_cache::get(&quote_token) {
+        quote_cache::Lookup::Found(cached) => cached
+            .idempotency_key
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        _ => uuid::Uuid::new_v4().to_string(),
+    };
     let accepted = match with_retry("registration", 3, || {
         let c = &client;
         let key = &idempotency_key;

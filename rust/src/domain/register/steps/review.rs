@@ -239,6 +239,138 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     Ok(StepResult::Continue)
 }
 
+/// Non-interactive variant: fetches a quote and caches it without prompting
+/// for confirmation. Callers must have already validated `--agree` and
+/// `--confirm` flags before reaching this point.
+pub(crate) async fn run_non_interactive(
+    state: &mut WizardState,
+    ctx: &StepContext,
+) -> Result<StepResult> {
+    let domain = state
+        .domain
+        .as_ref()
+        .ok_or_else(|| CliCoreError::message("no domain selected"))?
+        .clone();
+
+    let client = make_client_with_cred(&ctx.env, &ctx.credential)?;
+    let debug = ctx.debug;
+
+    let period_nz = std::num::NonZeroU64::new(state.period)
+        .ok_or_else(|| CliCoreError::message("invalid registration period"))?;
+
+    let name_servers = if state.nameservers.is_empty() {
+        None
+    } else {
+        let validated = validate_nameserver_hosts(state.nameservers.clone())?;
+        Some(types::NameServers(
+            validated
+                .iter()
+                .map(|h| types::NameserverHostname(h.clone()))
+                .collect(),
+        ))
+    };
+
+    let contacts = build_contacts_for_profile(&state.contacts)?;
+
+    let profile = types::InlineRegistrationProfile {
+        auto_renew: Some(state.auto_renew),
+        contacts,
+        name_servers,
+        privacy: Some(state.privacy),
+    };
+    let profile_json = serde_json::to_value(&profile).map_err(|e| {
+        CliCoreError::message(format!("could not serialize registration profile: {e}"))
+    })?;
+
+    let quote_body = types::QuoteDomainRegistrationBody {
+        domain: domain.clone(),
+        period: period_nz,
+        profile: Some(profile),
+        profile_id: None,
+    };
+    let quote = match with_retry("quote", 3, || {
+        let c = &client;
+        let b = quote_body.clone();
+        async move { c.quote_domain_registration().body(b).send().await }
+    })
+    .await
+    {
+        Ok(r) => r.into_inner(),
+        Err(e) => {
+            let err = api_error("domain quote", debug, e).await;
+            if is_payment_error(&err) {
+                return Err(CliCoreError::message(
+                    "no usable payment method on file; add one at \
+                     https://account.godaddy.com/payment-methods before retrying",
+                ));
+            }
+            return Err(err);
+        }
+    };
+
+    let price_str = quote.price.as_ref().and_then(format_money);
+    let currency = quote
+        .price
+        .as_ref()
+        .and_then(|p| p.currency_code.as_ref())
+        .map(|c| c.0.clone())
+        .unwrap_or_default();
+
+    let agreements = quote.required_agreements.clone().unwrap_or_default();
+    let agreement_titles: Vec<String> = agreements
+        .iter()
+        .map(|a| {
+            let title = a.title.as_deref().unwrap_or("(untitled)");
+            match a.url.as_deref() {
+                Some(url) => format!("{title} ({url})"),
+                None => title.to_owned(),
+            }
+        })
+        .collect();
+    let agreement_types: Vec<String> = agreements
+        .iter()
+        .filter_map(|a| a.agreement_type.as_ref().map(|t| t.to_string()))
+        .collect();
+
+    let quote_token = quote
+        .quote_token
+        .as_ref()
+        .ok_or_else(|| CliCoreError::message("the quote returned no token (domain unavailable?)"))?
+        .to_string();
+    let idempotency_key = uuid::Uuid::new_v4().to_string();
+    let fees_json = match quote.fees.as_ref().filter(|f| !f.is_empty()) {
+        Some(fees) => Some(serde_json::to_value(fees).map_err(|e| {
+            CliCoreError::message(format!(
+                "could not serialize the quote's fees for the quote cache: {e}"
+            ))
+        })?),
+        None => None,
+    };
+    quote_cache::save(
+        &quote_token,
+        quote_cache::CachedQuote {
+            domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
+            period: quote.period.map_or(state.period, |p| p.get()),
+            price: price_str.clone(),
+            currency: Some(currency.clone()),
+            agreement_titles: agreement_titles.clone(),
+            agreement_types: agreement_types.clone(),
+            profile: Some(profile_json),
+            idempotency_key: Some(idempotency_key),
+            expires_at: quote.expires_at.as_ref().map(|e| e.to_string()),
+            fees: fees_json,
+        },
+    )?;
+
+    state.quote_token = Some(quote_token);
+    state.price = price_str;
+    state.currency = Some(currency);
+    state.agreement_titles = agreement_titles;
+    state.agreement_types = agreement_types;
+
+    Ok(StepResult::Continue)
+}
+
 /// Convert the wizard's contacts choice into the API's `Contacts` struct.
 fn build_contacts_for_profile(choice: &ContactsChoice) -> Result<Option<types::Contacts>> {
     let file = match choice {

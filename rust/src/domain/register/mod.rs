@@ -161,12 +161,13 @@ async fn run_non_interactive(
     let env = ctx.middleware.env.clone();
     let debug = !ctx.middleware.debug.is_empty();
 
-    let state = WizardState::new()
+    let mut state = WizardState::new()
         .with_domain(Some(domain))
         .with_period(args.period)
         .with_privacy(args.privacy)
         .with_auto_renew(args.auto_renew)
         .with_nameservers(args.nameservers);
+    state.available = true;
 
     let step_ctx = StepContext {
         credential: cred,
@@ -174,12 +175,12 @@ async fn run_non_interactive(
         debug,
     };
 
-    // In non-interactive mode, we skip the wizard UI and execute the steps
-    // directly (availability check → quote → register), relying on flags for
-    // all configuration.
-    let final_state = wizard::run_wizard(state, step_ctx, 0).await?;
+    // Non-interactive: skip all interactive prompts. --agree and --confirm
+    // were validated above, so we go straight to quoting and executing.
+    steps::review::run_non_interactive(&mut state, &step_ctx).await?;
+    steps::execute::run(&mut state, &step_ctx).await?;
 
-    build_result(&final_state)
+    build_result(&state)
 }
 
 /// Launch the wizard from an external command (e.g. `domain available --interactive`).
