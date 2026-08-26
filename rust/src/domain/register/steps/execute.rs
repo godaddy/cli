@@ -120,7 +120,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
             .template("  {spinner} {msg}")
             .expect("valid template"),
     );
-    spinner.set_message(format!("Registering {}...", &domain));
+    spinner.set_message(format!("Registering {}...", domain));
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let idempotency_key = uuid::Uuid::new_v4().to_string();
@@ -158,7 +158,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     let mut operation_error: Option<types::Error> = None;
 
     if let Some(op_id) = operation_id.as_ref() {
-        spinner.set_message(format!("Waiting for registry ({})", &domain));
+        spinner.set_message(format!("Waiting for registry ({})", domain));
         let mut timed_out = false;
         for _ in 0..20 {
             if is_terminal_status(&status) {
