@@ -59,19 +59,21 @@ jobs:
           # manifest.json carries a generated-at timestamp that changes every run;
           # stage the generated directory, then unstage that timestamp-only file.
           # The staged diff catches modifications, deletions, and new untracked
-          # domains. domains.oas3.json is generate-api-catalog's other output
-          # (progenitor's codegen input for domains-client) and drifts
-          # independently of the catalog, so it's checked alongside it — when
-          # the best-effort v1 agreements fetch fails, refresh leaves this file
-          # untouched, so "no diff" there correctly means "no update attempted",
-          # not "confirmed in sync".
-          spec_targets="rust/schemas/api rust/domains-client/openapi/domains.oas3.json"
+          # domains. generate-api-catalog also refreshes two other files that
+          # drift independently of the catalog JSON, so they're checked
+          # alongside it: domains.oas3.json (progenitor's codegen input for
+          # domains-client — when the best-effort v1 agreements fetch fails,
+          # refresh leaves this file untouched, so "no diff" there correctly
+          # means "no update attempted", not "confirmed in sync") and
+          # hosting-nodejs-public-v1.yaml (the source `gddy hosting nodejs
+          # --schema` metadata is derived from).
+          spec_targets="rust/schemas/api rust/domains-client/openapi/domains.oas3.json rust/schemas/openapi/hosting-nodejs-public-v1.yaml"
           git add -A -- $spec_targets
           git restore --staged -- rust/schemas/api/manifest.json
 
           if ! git diff --cached --quiet -- $spec_targets; then
-            echo "::error::Embedded API catalog or domains-client codegen spec is stale vs upstream specs. Regenerate with: (cd rust && GITHUB_TOKEN=<token> cargo run -p generate-api-catalog) and commit."
+            echo "::error::One or more of the embedded API catalog (rust/schemas/api), the domains-client codegen spec (rust/domains-client/openapi/domains.oas3.json), or the hosting-nodejs spec (rust/schemas/openapi/hosting-nodejs-public-v1.yaml) is stale vs upstream specs. Regenerate with: (cd rust && GITHUB_TOKEN=<token> cargo run -p generate-api-catalog) and commit."
             git diff --cached --stat -- $spec_targets
             exit 1
           fi
-          echo "API catalog and domains-client codegen spec are in sync with upstream specs."
+          echo "API catalog, domains-client codegen spec, and hosting-nodejs spec are in sync with upstream specs."
