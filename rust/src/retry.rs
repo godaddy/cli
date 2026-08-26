@@ -61,8 +61,7 @@ mod tests {
 
     #[tokio::test]
     async fn succeeds_on_first_attempt() {
-        let result: Result<&str, String> =
-            with_retry("test", 3, || async { Ok("ok") }).await;
+        let result: Result<&str, String> = with_retry("test", 3, || async { Ok("ok") }).await;
         assert_eq!(result.expect("should succeed"), "ok");
     }
 

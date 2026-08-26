@@ -47,9 +47,7 @@ pub(crate) async fn offer_registration_from_suggest(
     }
 
     // Show suggestions inline so the user sees what's available before choosing.
-    eprintln!(
-        "\n  Here are some available domains based on your input:\n"
-    );
+    eprintln!("\n  Here are some available domains based on your input:\n");
     for (i, name) in suggestions.iter().enumerate() {
         eprintln!("    {}. {}", i + 1, name);
     }
