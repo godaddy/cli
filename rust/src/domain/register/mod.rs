@@ -183,14 +183,26 @@ async fn run_non_interactive(
     build_result(&state)
 }
 
+/// Wizard exit disposition, distinguishing user-initiated back-navigation from
+/// explicit cancellation.
+pub(crate) enum WizardExit {
+    /// Wizard completed — here's the result.
+    Completed(CommandResult),
+    /// User navigated back past the entry step (caller should re-show its UI).
+    BackedOut,
+    /// User explicitly cancelled (Cancel option or Ctrl+C). The wizard already
+    /// printed a user-facing message; callers should exit without rendering
+    /// additional output.
+    Cancelled,
+}
+
 /// Launch the wizard from an external command (e.g. `domain available --interactive`).
 /// `start_at` determines which step to begin from (0=discovery, 1=options, etc.).
-/// Returns `None` if the user cancelled the wizard (no error, no output needed).
 pub(crate) async fn launch_wizard(
     ctx: &cli_engine::CommandContext,
     state: WizardState,
     start_at: usize,
-) -> Result<Option<CommandResult>> {
+) -> Result<WizardExit> {
     let cred = ctx.credential().await?;
     let env = ctx.middleware.env.clone();
     let debug = !ctx.middleware.debug.is_empty();
@@ -202,10 +214,13 @@ pub(crate) async fn launch_wizard(
     };
 
     let final_state = wizard::run_wizard(state, step_ctx, start_at).await?;
-    if final_state.cancelled {
-        return Ok(None);
+    if final_state.backed_out {
+        return Ok(WizardExit::BackedOut);
     }
-    build_result(&final_state).map(Some)
+    if final_state.cancelled {
+        return Ok(WizardExit::Cancelled);
+    }
+    build_result(&final_state).map(WizardExit::Completed)
 }
 
 fn build_result(state: &WizardState) -> Result<CommandResult> {

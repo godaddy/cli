@@ -53,6 +53,8 @@ pub(crate) struct WizardState {
 
     // Set when the wizard is cancelled by the user (not an error).
     pub cancelled: bool,
+    // Set when the user navigated back past the entry step (not a cancellation).
+    pub backed_out: bool,
 }
 
 /// How contacts are supplied for the registration.
@@ -172,8 +174,20 @@ pub(crate) async fn run_wizard(
                 current += 1;
             }
             StepResult::Back => {
-                current = current.saturating_sub(1);
-                // If already at step 0, the step will re-run (loop continues).
+                if current == start_at {
+                    // Already at the entry point — can't go further back.
+                    // Signal that we backed out so the caller (bridge) can
+                    // re-show its own selection UI.
+                    state.backed_out = true;
+                    return Ok(state);
+                }
+                current -= 1;
+                // If navigating back to Discovery, clear domain state so the
+                // step re-prompts for a domain name instead of short-circuiting.
+                if current == 0 {
+                    state.domain = None;
+                    state.available = false;
+                }
             }
             StepResult::Cancel => {
                 eprintln!(

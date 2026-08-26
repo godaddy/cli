@@ -1,13 +1,15 @@
 //! Bridge functions allowing other domain commands (suggest, available, quote)
 //! to hand off to the registration wizard when running interactively.
 
-use cli_engine::{CommandResult, Result};
+use cli_engine::{CliCoreError, CommandResult, Result};
 use dialoguer::Confirm;
 
 use super::wizard::WizardState;
+use super::WizardExit;
 
 /// After `domain available` finds a domain is available, offer to continue
-/// with registration. Returns `None` if the user declines.
+/// with registration. Returns `None` if the user declines or the wizard is
+/// cancelled. Re-asks if the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_available(
     ctx: &cli_engine::CommandContext,
     domain: &str,
@@ -18,26 +20,33 @@ pub(crate) async fn offer_registration_from_available(
         return Ok(None);
     }
 
-    let proceed = Confirm::new()
-        .with_prompt(format!("Would you like to register {domain}?"))
-        .default(false)
-        .interact()
-        .unwrap_or(false);
+    loop {
+        let proceed = Confirm::new()
+            .with_prompt(format!("Would you like to register {domain}?"))
+            .default(false)
+            .interact()
+            .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
-    if !proceed {
-        return Ok(None);
+        if !proceed {
+            return Ok(None);
+        }
+
+        let mut state = WizardState::new().with_domain(Some(domain.to_owned()));
+        state.available = true;
+        state.price = price.clone();
+        state.currency = currency.clone();
+
+        match super::launch_wizard(ctx, state, 1).await? {
+            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::BackedOut => continue,
+            WizardExit::Cancelled => return Ok(None),
+        }
     }
-
-    let mut state = WizardState::new().with_domain(Some(domain.to_owned()));
-    state.available = true;
-    state.price = price;
-    state.currency = currency;
-
-    super::launch_wizard(ctx, state, 1).await
 }
 
 /// After `domain suggest` displays results, offer to pick one and register.
-/// Returns `None` if the user declines.
+/// Returns `None` if the user declines or the wizard is cancelled. Re-shows
+/// the selection if the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_suggest(
     ctx: &cli_engine::CommandContext,
     suggestions: &[String],
@@ -57,36 +66,47 @@ pub(crate) async fn offer_registration_from_suggest(
     items.push("(enter a different domain)".to_owned());
     items.push("(skip — just show results)".to_owned());
 
-    let selection = dialoguer::Select::new()
-        .with_prompt("Would you like to register one of these domains? Select one to proceed")
-        .items(&items)
-        .default(items.len() - 1)
-        .interact()
-        .unwrap_or(items.len() - 1);
+    loop {
+        let selection = dialoguer::Select::new()
+            .with_prompt(
+                "Would you like to register one of these domains? Select one to proceed",
+            )
+            .items(&items)
+            .default(items.len() - 1)
+            .interact()
+            .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
-    // Last option = skip, return None to let normal output render.
-    if selection == items.len() - 1 {
-        return Ok(None);
-    }
+        // Last option = skip, return None to let normal output render.
+        if selection == items.len() - 1 {
+            return Ok(None);
+        }
 
-    // Second-to-last = enter a different domain.
-    let domain = if selection == items.len() - 2 {
-        None
-    } else {
-        Some(items[selection].clone())
-    };
+        // Second-to-last = enter a different domain.
+        let domain = if selection == items.len() - 2 {
+            None
+        } else {
+            Some(items[selection].clone())
+        };
 
-    let mut state = WizardState::new().with_domain(domain.clone());
-    if domain.is_some() {
-        state.available = true;
-        super::launch_wizard(ctx, state, 1).await
-    } else {
-        super::launch_wizard(ctx, state, 0).await
+        let mut state = WizardState::new().with_domain(domain.clone());
+        let exit = if domain.is_some() {
+            state.available = true;
+            super::launch_wizard(ctx, state, 1).await?
+        } else {
+            super::launch_wizard(ctx, state, 0).await?
+        };
+
+        match exit {
+            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::BackedOut => continue,
+            WizardExit::Cancelled => return Ok(None),
+        }
     }
 }
 
 /// After `domain quote` prices a domain, offer to purchase it directly.
-/// Returns `None` if the user declines.
+/// Returns `None` if the user declines or the wizard is cancelled. Re-asks if
+/// the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_quote(
     ctx: &cli_engine::CommandContext,
     domain: &str,
@@ -99,24 +119,30 @@ pub(crate) async fn offer_registration_from_quote(
         return Ok(None);
     }
 
-    let proceed = Confirm::new()
-        .with_prompt(format!("Would you like to purchase {domain} now?"))
-        .default(false)
-        .interact()
-        .unwrap_or(false);
+    loop {
+        let proceed = Confirm::new()
+            .with_prompt(format!("Would you like to purchase {domain} now?"))
+            .default(false)
+            .interact()
+            .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
-    if !proceed {
-        return Ok(None);
+        if !proceed {
+            return Ok(None);
+        }
+
+        let mut state = WizardState::new()
+            .with_domain(Some(domain.to_owned()))
+            .with_period(period);
+        state.available = true;
+        state.quote_token = Some(quote_token.to_owned());
+        state.price = price.clone();
+        state.currency = currency.clone();
+
+        // Start at step 3 (Review & Confirm) since quote is already done.
+        match super::launch_wizard(ctx, state, 3).await? {
+            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::BackedOut => continue,
+            WizardExit::Cancelled => return Ok(None),
+        }
     }
-
-    let mut state = WizardState::new()
-        .with_domain(Some(domain.to_owned()))
-        .with_period(period);
-    state.available = true;
-    state.quote_token = Some(quote_token.to_owned());
-    state.price = price;
-    state.currency = currency;
-
-    // Start at step 3 (Review & Confirm) since quote is already done.
-    super::launch_wizard(ctx, state, 3).await
 }
