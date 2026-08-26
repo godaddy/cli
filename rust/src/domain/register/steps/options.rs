@@ -91,7 +91,7 @@ fn prompt_nameservers() -> Result<Vec<String>> {
     eprintln!("  Enter nameservers (empty line to finish, min 2):");
     loop {
         let ns: String = Input::new()
-            .with_prompt(format!("  NS {}", nameservers.len() + 1))
+            .with_prompt(format!("  Enter NS {}", nameservers.len() + 1))
             .allow_empty(true)
             .interact_text()
             .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;

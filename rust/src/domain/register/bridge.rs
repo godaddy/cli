@@ -33,8 +33,7 @@ pub(crate) async fn offer_registration_from_available(
     state.price = price;
     state.currency = currency;
 
-    let result = super::launch_wizard(ctx, state, 1).await?;
-    Ok(Some(result))
+    super::launch_wizard(ctx, state, 1).await
 }
 
 /// After `domain suggest` displays results, offer to pick one and register.
@@ -47,27 +46,33 @@ pub(crate) async fn offer_registration_from_suggest(
         return Ok(None);
     }
 
-    let proceed = Confirm::new()
-        .with_prompt("Would you like to register one of these domains?")
-        .default(false)
-        .interact()
-        .unwrap_or(false);
-
-    if !proceed {
-        return Ok(None);
+    // Show suggestions inline so the user sees what's available before choosing.
+    eprintln!(
+        "\n  Here are some available domains based on your input:\n"
+    );
+    for (i, name) in suggestions.iter().enumerate() {
+        eprintln!("    {}. {}", i + 1, name);
     }
+    eprintln!();
 
     let mut items: Vec<String> = suggestions.to_vec();
     items.push("(enter a different domain)".to_owned());
+    items.push("(skip — just show results)".to_owned());
 
     let selection = dialoguer::Select::new()
-        .with_prompt("Select a domain")
+        .with_prompt("Would you like to register one of these domains? Select one to proceed")
         .items(&items)
-        .default(0)
+        .default(items.len() - 1)
         .interact()
         .unwrap_or(items.len() - 1);
 
-    let domain = if selection == items.len() - 1 {
+    // Last option = skip, return None to let normal output render.
+    if selection == items.len() - 1 {
+        return Ok(None);
+    }
+
+    // Second-to-last = enter a different domain.
+    let domain = if selection == items.len() - 2 {
         None
     } else {
         Some(items[selection].clone())
@@ -76,11 +81,9 @@ pub(crate) async fn offer_registration_from_suggest(
     let mut state = WizardState::new().with_domain(domain.clone());
     if domain.is_some() {
         state.available = true;
-        let result = super::launch_wizard(ctx, state, 1).await?;
-        Ok(Some(result))
+        super::launch_wizard(ctx, state, 1).await
     } else {
-        let result = super::launch_wizard(ctx, state, 0).await?;
-        Ok(Some(result))
+        super::launch_wizard(ctx, state, 0).await
     }
 }
 
@@ -117,6 +120,5 @@ pub(crate) async fn offer_registration_from_quote(
     state.currency = currency;
 
     // Start at step 3 (Review & Confirm) since quote is already done.
-    let result = super::launch_wizard(ctx, state, 3).await?;
-    Ok(Some(result))
+    super::launch_wizard(ctx, state, 3).await
 }

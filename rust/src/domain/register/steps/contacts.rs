@@ -171,7 +171,7 @@ fn collect_contacts_interactively() -> Result<ContactsChoice> {
 
 fn prompt_required(label: &str) -> Result<String> {
     let value: String = Input::new()
-        .with_prompt(format!("  {label}"))
+        .with_prompt(format!("  Enter {label}"))
         .interact_text()
         .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
     let trimmed = value.trim().to_owned();
@@ -183,7 +183,7 @@ fn prompt_required(label: &str) -> Result<String> {
 
 fn prompt_optional(label: &str) -> Result<Option<String>> {
     let value: String = Input::new()
-        .with_prompt(format!("  {label}"))
+        .with_prompt(format!("  Enter {label} (optional)"))
         .allow_empty(true)
         .interact_text()
         .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
@@ -201,7 +201,7 @@ fn prompt_validated(
 ) -> Result<String> {
     loop {
         let value: String = Input::new()
-            .with_prompt(format!("  {label}"))
+            .with_prompt(format!("  Enter {label}"))
             .interact_text()
             .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
         let trimmed = value.trim().to_owned();

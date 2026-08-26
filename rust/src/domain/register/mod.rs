@@ -128,6 +128,9 @@ async fn run_interactive(
 
     let final_state = wizard::run_wizard(state, step_ctx, 0).await?;
 
+    if final_state.cancelled {
+        return Ok(CommandResult::new(json!({"status": "cancelled"})));
+    }
     build_result(&final_state)
 }
 
@@ -181,11 +184,12 @@ async fn run_non_interactive(
 
 /// Launch the wizard from an external command (e.g. `domain available --interactive`).
 /// `start_at` determines which step to begin from (0=discovery, 1=options, etc.).
+/// Returns `None` if the user cancelled the wizard (no error, no output needed).
 pub(crate) async fn launch_wizard(
     ctx: &cli_engine::CommandContext,
     state: WizardState,
     start_at: usize,
-) -> Result<CommandResult> {
+) -> Result<Option<CommandResult>> {
     let cred = ctx.credential().await?;
     let env = ctx.middleware.env.clone();
     let debug = !ctx.middleware.debug.is_empty();
@@ -197,7 +201,10 @@ pub(crate) async fn launch_wizard(
     };
 
     let final_state = wizard::run_wizard(state, step_ctx, start_at).await?;
-    build_result(&final_state)
+    if final_state.cancelled {
+        return Ok(None);
+    }
+    build_result(&final_state).map(Some)
 }
 
 fn build_result(state: &WizardState) -> Result<CommandResult> {

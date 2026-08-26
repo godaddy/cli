@@ -15,6 +15,9 @@ path = "src/main.rs"
 [build-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
+[patch.crates-io]
+cli-engine = { path = "../../cli-engine/cli-engine" }
+
 [dependencies]
 async-trait = "0.1"
 bytes = "1"

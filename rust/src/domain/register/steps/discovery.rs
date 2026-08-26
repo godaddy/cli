@@ -85,7 +85,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
 
 fn prompt_domain_name() -> Result<String> {
     let input: String = Input::new()
-        .with_prompt("Domain name to register")
+        .with_prompt("Enter domain name to register")
         .validate_with(|input: &String| -> std::result::Result<(), String> {
             validate_domain_name(input)
                 .map(|_| ())

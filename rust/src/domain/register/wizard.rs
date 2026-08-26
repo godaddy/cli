@@ -50,6 +50,9 @@ pub(crate) struct WizardState {
     // Step 5: Execute (populated after registration)
     pub status: Option<String>,
     pub operation_id: Option<String>,
+
+    // Set when the wizard is cancelled by the user (not an error).
+    pub cancelled: bool,
 }
 
 /// How contacts are supplied for the registration.
@@ -158,9 +161,8 @@ pub(crate) async fn run_wizard(
                     "\n  {} Interrupted. No charges were made.",
                     style("✗").red().bold()
                 );
-                return Err(cli_engine::CliCoreError::message(
-                    "domain registration interrupted by user",
-                ));
+                state.cancelled = true;
+                return Ok(state);
             }
             Err(e) => return Err(e),
         };
@@ -180,9 +182,8 @@ pub(crate) async fn run_wizard(
                     "\n  {} Wizard cancelled. No charges were made.",
                     style("✗").red().bold()
                 );
-                return Err(cli_engine::CliCoreError::message(
-                    "domain registration cancelled by user",
-                ));
+                state.cancelled = true;
+                return Ok(state);
             }
         }
     }
