@@ -11,6 +11,9 @@ This is a command-line application. Source code is written in Rust and lives und
 - **Format**: `cargo fmt`
 - **Check**: `cargo check`
 - **Refresh API specs**: `cargo run -p generate-api-catalog`
+  — set `SKIP_DOMAINS_REFRESH`/`SKIP_HOSTING_REFRESH` to skip either pull for
+  local iteration without network access; `HOSTING_SPEC_URL`/`HOSTING_SPEC_PATH`
+  override where the hosting-nodejs spec comes from.
 
 ## Verification Checklist (required before finishing work)
 
