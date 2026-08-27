@@ -4,8 +4,8 @@
 use cli_engine::{CliCoreError, CommandResult, Result};
 use dialoguer::Confirm;
 
-use super::wizard::WizardState;
 use super::WizardExit;
+use super::wizard::WizardState;
 
 /// After `domain available` finds a domain is available, offer to continue
 /// with registration. Returns `None` if the user declines or the wizard is
@@ -68,9 +68,7 @@ pub(crate) async fn offer_registration_from_suggest(
 
     loop {
         let selection = dialoguer::Select::new()
-            .with_prompt(
-                "Would you like to register one of these domains? Select one to proceed",
-            )
+            .with_prompt("Would you like to register one of these domains? Select one to proceed")
             .items(&items)
             .default(items.len() - 1)
             .interact()
