@@ -243,9 +243,10 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         eprintln!("     Charged: {} {}", price, currency);
     }
 
-    eprintln!("\n  Next steps:");
-    eprintln!("    • gddy domain get {domain}");
-    eprintln!("    • gddy dns set {domain} --type A --name @ --data <ip>");
+    // Next-step commands are owned by the CommandResult envelope (see
+    // `build_result`) so human/JSON output has a single Next steps footer —
+    // printing them here again would duplicate that footer when the wizard
+    // returns through `domain suggest`/`available`/`quote`.
 
     state.status = Some(status);
     state.operation_id = operation_id.map(|o| o.to_string());

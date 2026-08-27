@@ -37,7 +37,9 @@ pub(crate) async fn offer_registration_from_available(
         state.currency = currency.clone();
 
         match super::launch_wizard(ctx, state, 1).await? {
-            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::Completed(result) => {
+                return Ok(Some(super::present_for_host_command(ctx, result)));
+            }
             WizardExit::BackedOut => continue,
             WizardExit::Cancelled => return Ok(None),
         }
@@ -95,7 +97,9 @@ pub(crate) async fn offer_registration_from_suggest(
         };
 
         match exit {
-            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::Completed(result) => {
+                return Ok(Some(super::present_for_host_command(ctx, result)));
+            }
             WizardExit::BackedOut => continue,
             WizardExit::Cancelled => return Ok(None),
         }
@@ -138,7 +142,9 @@ pub(crate) async fn offer_registration_from_quote(
 
         // Start at step 3 (Review & Confirm) since quote is already done.
         match super::launch_wizard(ctx, state, 3).await? {
-            WizardExit::Completed(result) => return Ok(Some(result)),
+            WizardExit::Completed(result) => {
+                return Ok(Some(super::present_for_host_command(ctx, result)));
+            }
             WizardExit::BackedOut => continue,
             WizardExit::Cancelled => return Ok(None),
         }

@@ -125,6 +125,10 @@ const STEPS: &[StepInfo] = &[
 ///
 /// Returns the final `WizardState` on success, or an error if the wizard is
 /// cancelled or a step fails.
+///
+/// When entered mid-flow (e.g. from `domain suggest` at Options), the header
+/// counts only remaining steps — `Step 1/4: Options` rather than `Step 2/5` —
+/// so the counter matches the work the user still has to do.
 pub(crate) async fn run_wizard(
     mut state: WizardState,
     ctx: StepContext,
@@ -132,6 +136,8 @@ pub(crate) async fn run_wizard(
 ) -> Result<WizardState> {
     let total_steps = STEPS.len();
     let mut current = start_at;
+    // Relative denominator: how many steps this entry point will show.
+    let display_total = total_steps.saturating_sub(start_at);
 
     loop {
         if current >= total_steps {
@@ -139,11 +145,12 @@ pub(crate) async fn run_wizard(
         }
 
         let step = &STEPS[current];
+        let display_num = current.saturating_sub(start_at) + 1;
         eprintln!(
             "\n  {} Step {}/{}: {}",
             style("─").dim(),
-            current + 1,
-            total_steps,
+            display_num,
+            display_total,
             style(step.name).bold()
         );
 
@@ -254,6 +261,25 @@ mod tests {
         assert_eq!(STEPS[2].name, "Contacts");
         assert_eq!(STEPS[3].name, "Review & Confirm");
         assert_eq!(STEPS[4].name, "Register");
+    }
+
+    #[test]
+    fn mid_flow_step_counter_is_relative_to_entry_point() {
+        // From suggest/available the wizard starts at Options (index 1):
+        // remaining steps are Options→Contacts→Review→Register → 4 total,
+        // and Options itself is display step 1.
+        let start_at = 1;
+        let display_total = STEPS.len().saturating_sub(start_at);
+        assert_eq!(display_total, 4);
+        assert_eq!(1usize.saturating_sub(start_at) + 1, 1); // Options → 1/4
+        assert_eq!(4usize.saturating_sub(start_at) + 1, 4); // Register → 4/4
+
+        // From quote the wizard starts at Review (index 3): 2 remaining.
+        let start_at = 3;
+        let display_total = STEPS.len().saturating_sub(start_at);
+        assert_eq!(display_total, 2);
+        assert_eq!(3usize.saturating_sub(start_at) + 1, 1); // Review → 1/2
+        assert_eq!(4usize.saturating_sub(start_at) + 1, 2); // Register → 2/2
     }
 
     #[test]

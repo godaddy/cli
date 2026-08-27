@@ -5,12 +5,13 @@
 //! the command validates them and executes directly without prompts.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandContext, CommandResult, CommandSpec, Envelope, NextActionParam, Result,
+    RuntimeCommandSpec, TableColumn, Tier, render_human_with_view,
 };
 use serde_json::json;
 
-use crate::domain::common::validate_domain_name;
-use crate::next_action::next_action;
+use crate::domain::common::{is_terminal_status, validate_domain_name};
+use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 
@@ -32,6 +33,16 @@ output_schema!(DomainRegisterResult {
     "price": "string", optional;
     "currency": "string", optional;
 });
+
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("domain", "Domain"),
+        TableColumn::new("status", "Status"),
+        TableColumn::new("operationId", "Operation ID").no_truncate(true),
+        TableColumn::new("price", "Price"),
+        TableColumn::new("currency", "Currency"),
+    ]
+}
 
 #[derive(Debug, Clone, clap::Args)]
 struct RegisterArgs {
@@ -89,6 +100,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_tier(Tier::Destructive)
         .with_default_fields("domain,status,operationId,price,currency")
         .with_output_schema::<DomainRegisterResult>()
+        .with_view(view_columns())
         .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE]),
         |ctx, args: RegisterArgs| async move {
             let is_interactive = ctx.is_interactive();
@@ -102,10 +114,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-async fn run_interactive(
-    ctx: cli_engine::CommandContext,
-    args: RegisterArgs,
-) -> Result<CommandResult> {
+async fn run_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<CommandResult> {
     let cred = ctx.credential().await?;
     let env = ctx.middleware.env.clone();
     let debug = !ctx.middleware.debug.is_empty();
@@ -134,10 +143,7 @@ async fn run_interactive(
     build_result(&final_state)
 }
 
-async fn run_non_interactive(
-    ctx: cli_engine::CommandContext,
-    args: RegisterArgs,
-) -> Result<CommandResult> {
+async fn run_non_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<CommandResult> {
     let domain = args.domain.ok_or_else(|| {
         CliCoreError::message(
             "domain name is required in non-interactive mode; pass it as a positional argument\n\
@@ -199,7 +205,7 @@ pub(crate) enum WizardExit {
 /// Launch the wizard from an external command (e.g. `domain available --interactive`).
 /// `start_at` determines which step to begin from (0=discovery, 1=options, etc.).
 pub(crate) async fn launch_wizard(
-    ctx: &cli_engine::CommandContext,
+    ctx: &CommandContext,
     state: WizardState,
     start_at: usize,
 ) -> Result<WizardExit> {
@@ -244,12 +250,67 @@ fn build_result(state: &WizardState) -> Result<CommandResult> {
         result["currency"] = json!(c);
     }
 
-    let actions = vec![
-        next_action("domain get <domain>", "See the registered domain's details")
-            .with_param("domain", NextActionParam::required()),
+    let mut actions = vec![
+        next_action("domain get <domain>", next_action_description(status))
+            .with_param("domain", required_value(domain.clone())),
+        next_action(
+            "dns set <domain> --type A --name @ --data <ip>",
+            "Point the apex at an IPv4 address",
+        )
+        .with_param("domain", required_value(domain.clone()))
+        .with_param("ip", NextActionParam::required()),
     ];
+    // Mirror `domain purchase`: when polling gave up before a terminal state,
+    // surface the operation-status follow-up with the concrete id prefilled.
+    if !is_terminal_status(status)
+        && let Some(op) = &state.operation_id
+    {
+        actions.push(
+            next_action(
+                "domain operation status <operation-id>",
+                "Check whether registration has finished since polling gave up",
+            )
+            .with_param("operation-id", required_value(op.clone())),
+        );
+    }
 
     Ok(CommandResult::new(result).with_next_actions(actions))
+}
+
+fn next_action_description(status: &str) -> &'static str {
+    if status == "COMPLETED" {
+        "See the registered domain's details"
+    } else {
+        "Check whether the domain has finished registering"
+    }
+}
+
+/// Adapt a wizard `CommandResult` for return through a different leaf command
+/// (`domain suggest` / `available` / `quote`).
+///
+/// Those hosts register their own human views (e.g. suggest's `1yr Price`
+/// columns). Rendering a register-shaped payload through them produces empty
+/// mismatched fields. For human output we render with the register view
+/// ourselves, then return an empty string so the host view path is bypassed
+/// (scalar data skips column rendering). JSON/TOON keep the structured result.
+pub(crate) fn present_for_host_command(
+    ctx: &CommandContext,
+    result: CommandResult,
+) -> CommandResult {
+    if ctx.middleware.output_format != "human" {
+        return result;
+    }
+
+    let envelope =
+        Envelope::success(result.data, "domain").with_next_actions(result.metadata.next_actions);
+    let rendered = render_human_with_view(&envelope, Some(&view_columns()), "");
+    // Write the correctly shaped register summary now; middleware will then
+    // render the empty-string placeholder below (a blank line), not the host
+    // command's mismatched table. Use Write rather than print! so the
+    // print_stdout lint (denied as warnings) does not fire on intentional
+    // human-output writes.
+    let _ = std::io::Write::write_all(&mut std::io::stdout(), rendered.as_bytes());
+    CommandResult::new(json!(""))
 }
 
 #[cfg(test)]
@@ -292,6 +353,76 @@ mod tests {
         assert_eq!(result.data["operationId"], "op-123");
         assert_eq!(result.data["price"], "12.99");
         assert_eq!(result.data["currency"], "USD");
+    }
+
+    #[test]
+    fn build_result_prefills_domain_in_next_actions() {
+        let mut state = WizardState::new();
+        state.domain = Some("example.com".to_string());
+        state.status = Some("COMPLETED".to_string());
+
+        let result = build_result(&state).expect("should succeed");
+        assert!(
+            !result.metadata.next_actions.is_empty(),
+            "expected next actions"
+        );
+        let get = &result.metadata.next_actions[0];
+        let domain = get
+            .params
+            .get("domain")
+            .and_then(|p| p.value.as_deref())
+            .expect("domain param");
+        assert_eq!(domain, "example.com");
+        // Substitution of `<domain>` → `example.com` happens at render time
+        // via the envelope's next_actions footer; the stored template keeps
+        // the placeholder, with the concrete value in params.
+        assert!(get.command.contains("<domain>"), "{}", get.command);
+        assert!(get.params.get("domain").is_some_and(|p| p.required));
+    }
+
+    #[test]
+    fn build_result_adds_operation_status_when_still_pending() {
+        let mut state = WizardState::new();
+        state.domain = Some("example.com".to_string());
+        state.status = Some("EXECUTING".to_string());
+        state.operation_id = Some("op-abc".to_string());
+
+        let result = build_result(&state).expect("should succeed");
+        let status_action = result
+            .metadata
+            .next_actions
+            .iter()
+            .find(|a| a.command.contains("operation status"))
+            .expect("pending registration should suggest operation status");
+        assert_eq!(
+            status_action
+                .params
+                .get("operation-id")
+                .and_then(|p| p.value.as_deref()),
+            Some("op-abc")
+        );
+    }
+
+    #[test]
+    fn register_view_renders_register_shaped_payload() {
+        let payload = json!({
+            "domain": "example.com",
+            "status": "COMPLETED",
+            "operationId": "op-1",
+            "price": "12.99",
+            "currency": "USD",
+        });
+        let envelope = Envelope::success(payload, "domain");
+        let rendered = render_human_with_view(&envelope, Some(&view_columns()), "");
+        assert!(rendered.contains("Domain:"), "{rendered}");
+        assert!(rendered.contains("example.com"), "{rendered}");
+        assert!(rendered.contains("Status:"), "{rendered}");
+        assert!(rendered.contains("COMPLETED"), "{rendered}");
+        assert!(rendered.contains("12.99"), "{rendered}");
+        assert!(
+            !rendered.contains("1yr Price"),
+            "must not use suggest's view labels: {rendered}"
+        );
     }
 
     #[test]

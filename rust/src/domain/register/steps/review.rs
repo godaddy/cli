@@ -3,7 +3,7 @@
 //! by offering to open the browser for payment method setup.
 
 use cli_engine::{CliCoreError, Result};
-use console::style;
+use console::{Alignment, pad_str, style};
 use dialoguer::{Confirm, Select};
 
 use domains_client::types;
@@ -18,6 +18,18 @@ use crate::quote_cache;
 use crate::retry::with_retry;
 
 use super::super::wizard::{ContactsChoice, StepContext, StepResult, WizardState};
+
+/// Inner content width for the order-summary box (between the `│ ` and ` │`).
+const SUMMARY_INNER_WIDTH: usize = 38;
+
+/// One padded line of the order-summary box. Uses `console::pad_str` so ANSI
+/// color codes and wide glyphs (emoji) don't shift the right border.
+fn summary_line(content: &str) -> String {
+    format!(
+        "  │ {}│",
+        pad_str(content, SUMMARY_INNER_WIDTH, Alignment::Left, None)
+    )
+}
 
 pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<StepResult> {
     let domain = state
@@ -113,57 +125,57 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         .filter_map(|a| a.agreement_type.as_ref().map(|t| t.to_string()))
         .collect();
 
-    // Display order summary.
-    let w = 40;
+    // Display order summary. Pad by visible width (not byte length) so
+    // styled/colored fields keep the right border aligned.
+    let w = SUMMARY_INNER_WIDTH + 1; // border fill between ┌ and ┐
     eprintln!("\n  ┌{}┐", "─".repeat(w));
     eprintln!(
-        "  │ {:<width$}│",
-        format!("{} Order Summary", style("📋").bold()),
-        width = w - 1
+        "{}",
+        summary_line(&format!("{}", style("Order Summary").bold()))
     );
     eprintln!("  ├{}┤", "─".repeat(w));
     eprintln!(
-        "  │ {:<width$}│",
-        format!("Domain:     {}", style(&domain).cyan().bold()),
-        width = w - 1
+        "{}",
+        summary_line(&format!("Domain:     {}", style(&domain).cyan().bold()))
     );
     eprintln!(
-        "  │ {:<width$}│",
-        format!("Period:     {}", period_label(state.period)),
-        width = w - 1
+        "{}",
+        summary_line(&format!("Period:     {}", period_label(state.period)))
     );
     if let Some(p) = &price_str {
         eprintln!(
-            "  │ {:<width$}│",
-            format!("Price:      {} {}", style(p).green().bold(), currency),
-            width = w - 1
+            "{}",
+            summary_line(&format!(
+                "Price:      {} {}",
+                style(p).green().bold(),
+                currency
+            ))
         );
     }
     if let Some(r) = &renewal_str {
         eprintln!(
-            "  │ {:<width$}│",
-            format!("Renewal:    {} {}/yr", r, currency),
-            width = w - 1
+            "{}",
+            summary_line(&format!("Renewal:    {r} {currency}/yr"))
         );
     }
     eprintln!(
-        "  │ {:<width$}│",
-        format!("Privacy:    {}", if state.privacy { "Yes" } else { "No" }),
-        width = w - 1
+        "{}",
+        summary_line(&format!(
+            "Privacy:    {}",
+            if state.privacy { "Yes" } else { "No" }
+        ))
     );
     eprintln!(
-        "  │ {:<width$}│",
-        format!(
+        "{}",
+        summary_line(&format!(
             "Auto-renew: {}",
             if state.auto_renew { "Yes" } else { "No" }
-        ),
-        width = w - 1
+        ))
     );
     if !state.nameservers.is_empty() {
         eprintln!(
-            "  │ {:<width$}│",
-            format!("Nameservers: {}", state.nameservers.join(", ")),
-            width = w - 1
+            "{}",
+            summary_line(&format!("Nameservers: {}", state.nameservers.join(", ")))
         );
     }
     eprintln!("  └{}┘", "─".repeat(w));
@@ -446,5 +458,41 @@ async fn handle_payment_required(ctx: &StepContext) -> Result<StepResult> {
     match selection {
         0 => Ok(StepResult::Back),
         _ => Ok(StepResult::Cancel),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SUMMARY_INNER_WIDTH, summary_line};
+    use console::{measure_text_width, style};
+
+    #[test]
+    fn summary_line_keeps_right_border_aligned_with_ansi_styles() {
+        let plain = summary_line("Period:     2 years");
+        let styled = summary_line(&format!(
+            "Domain:     {}",
+            style("iguanahats.shop").cyan().bold()
+        ));
+        let priced = summary_line(&format!(
+            "Price:      {} USD",
+            style("60.98").green().bold()
+        ));
+
+        // Visible width (ANSI stripped) must match across plain and styled
+        // rows so the box's right `│` lines up in a real terminal.
+        let widths = [
+            measure_text_width(&plain),
+            measure_text_width(&styled),
+            measure_text_width(&priced),
+        ];
+        assert!(
+            widths.iter().all(|&w| w == widths[0]),
+            "visible widths drifted: {widths:?}\nplain={plain:?}\nstyled={styled:?}\npriced={priced:?}"
+        );
+        // "  │ " (4) + inner + "│" (1)
+        assert_eq!(widths[0], 4 + SUMMARY_INNER_WIDTH + 1);
+        assert!(plain.ends_with('│'));
+        assert!(styled.ends_with('│'));
+        assert!(priced.ends_with('│'));
     }
 }
