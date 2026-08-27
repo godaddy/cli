@@ -29,19 +29,48 @@ const MAX_PAGE_SIZE: u64 = 200;
 /// silently returned as if it were the complete list.
 const MAX_PAGES: usize = 50;
 
-/// Validate each `--status` value case-insensitively against the generated
-/// `DomainStatus` enum (e.g. `ACTIVE`), returning the canonical uppercase
-/// wire form. The `statuses` query parameter is typed as plain strings (not
-/// `$ref: DomainStatus`) purely so it can be comma-joined client-side (see
+/// Known `DomainStatus` values, mirrored from the schema's `examples` (the
+/// spec deliberately dropped the closed `enum` it used to declare, so
+/// progenitor no longer generates one — GoDaddy Domains does this so adding
+/// a lifecycle status doesn't force every client to update first; `examples`
+/// is how the API still communicates the known set). This list is no longer
+/// schema-enforced, just client-maintained best knowledge: `parse_statuses`
+/// still rejects anything not in it (preserving today's instant, friendly
+/// error for a typo), but that means a status the live API adds *before*
+/// this list is refreshed gets wrongly rejected here rather than reaching
+/// the server. Update this list when regenerating if `examples` changes.
+const KNOWN_STATUSES: &[&str] = &[
+    "ACTIVE",
+    "CANCELLED",
+    "DELETED_REDEEMABLE",
+    "EXPIRED",
+    "FAILED",
+    "HELD_REGISTRAR",
+    "LOCKED_REGISTRAR",
+    "OWNERSHIP_CHANGED",
+    "PARKED",
+    "PENDING_REGISTRATION",
+    "PENDING_TRANSFER",
+    "REPOSSESSED",
+    "SUSPENDED",
+    "TRANSFERRED",
+];
+
+/// Validate each `--status` value case-insensitively against
+/// [`KNOWN_STATUSES`], returning the canonical uppercase wire form. The
+/// `statuses` query parameter is typed as plain strings (not `$ref:
+/// DomainStatus`) purely so it can be comma-joined client-side (see
 /// `comma_joined`) — this still rejects unknown values before the request
-/// goes out, same as if the array held real `DomainStatus`es.
+/// goes out, same intent as when `DomainStatus` was still a generated enum.
 fn parse_statuses(raw: &[String]) -> Result<Vec<String>> {
     raw.iter()
         .map(|s| {
             let upper = s.to_uppercase();
-            types::DomainStatus::try_from(upper.as_str())
-                .map(|_| upper)
-                .map_err(|_| CliCoreError::message(format!("invalid --status {s:?}")))
+            if KNOWN_STATUSES.contains(&upper.as_str()) {
+                Ok(upper)
+            } else {
+                Err(CliCoreError::message(format!("invalid --status {s:?}")))
+            }
         })
         .collect()
 }

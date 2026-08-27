@@ -615,7 +615,7 @@
       "type": "object"
     },
     "date-time": {
-      "$id": "https://godaddy.com/schema/common/date-time.v1",
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
       "maxLength": 64,
@@ -624,8 +624,16 @@
       "type": "string"
     },
     "error": {
-      "$id": "https://godaddy.com/schema/common/error.v1",
+      "$id": "https://godaddy.com/schemas/common/error.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
       "description": "The error information.",
       "properties": {
         "correlationId": {
@@ -670,7 +678,7 @@
       "type": "object"
     },
     "error-details": {
-      "$id": "https://godaddy.com/schema/common/error-details.v1",
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The error details. Required for client-side `4XX` errors.",
       "properties": {
@@ -703,7 +711,7 @@
       "type": "object"
     },
     "link-description": {
-      "$id": "https://godaddy.com/schema/common/link-description.v1",
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
       "properties": {
@@ -748,12 +756,10 @@
       "type": "object"
     },
     "uuid": {
-      "$id": "https://godaddy.com/schema/common/uuid.v1",
+      "$id": "https://godaddy.com/schemas/common/uuid.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
-      "maxLength": 36,
-      "minLength": 36,
-      "pattern": "^[0-9a-zA-Z]{8}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{12}$",
+      "format": "uuid",
       "type": "string"
     }
   },

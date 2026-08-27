@@ -1,17 +1,24 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Node.js Hosting Public API
   version: 1.0.0
-  description: "Gateway-integrated API for customer apps. Authenticate with a
-    forwarded customer session (Gasket auth), a developer portal API key
-    (`Authorization: sso-key` on the public gateway URL), or an OAuth Bearer
-    access token. When using Bearer auth, each operation requires the OAuth
-    scope listed on that operation. API keys do not use OAuth scopes. After
-    publish or domain changes, poll GET …/deployments and GET …/status. After
-    zip upload, poll GET …/source/status with the returned jobId."
+  description: "An API for managing Node.js hosting applications: create and
+    configure apps, deploy code from a zip upload or a connected GitHub
+    repository, manage environment secrets, and monitor deployment status and
+    application logs."
+  contact:
+    name: GoDaddy Node.js Hosting
+    x-slack-channel: "#host-paas"
+    x-visibility: private
+  x-visibility: private
+  x-lifecycle: GA
 servers:
   - url: https://api.godaddy.com/v1/hosting/nodejs
     description: Production
+  - url: https://api.test-godaddy.com/v1/hosting/nodejs
+    description: Test
+  - url: https://api.dev-godaddy.com/v1/hosting/nodejs
+    description: Development
   - url: /v1/hosting/nodejs
     description: Relative to the gateway origin the spec is served from
 tags:
@@ -52,6 +59,10 @@ paths:
         "401": &a1
           description: Unauthorized (missing session, invalid API key or Bearer token, or
             insufficient OAuth scope)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicApiError"
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -133,8 +144,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicAppCreationStatus"
         "401": *a1
-        "404":
+        "404": &a3
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicApiError"
         "429":
           description: "Too many requests. Limit: 120 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -155,7 +170,7 @@ paths:
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - &a3
+        - &a4
           name: appId
           in: path
           required: true
@@ -169,8 +184,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicAppResponse"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -190,7 +204,7 @@ paths:
         - oauth2:
             - hosting.paas.apps:update
       parameters:
-        - *a3
+        - *a4
       requestBody:
         required: true
         content:
@@ -205,8 +219,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicAppResponse"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -226,13 +239,12 @@ paths:
         - oauth2:
             - hosting.paas.apps:delete
       parameters:
-        - *a3
+        - *a4
       responses:
         "204":
           description: App deleted
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -253,7 +265,7 @@ paths:
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - *a3
+        - *a4
         - name: limit
           in: query
           required: false
@@ -270,8 +282,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicDeploymentsList"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -291,17 +302,16 @@ paths:
         - oauth2:
             - hosting.paas.deploy:execute
       parameters:
-        - *a3
+        - *a4
       responses:
         "200":
-          description: Publish started
+          description: Publish started; poll GET …/deployments or GET …/status for progress.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicPublishResponse"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -322,7 +332,7 @@ paths:
         - oauth2:
             - hosting.paas.apps:read
       parameters:
-        - *a3
+        - *a4
       responses:
         "200":
           description: App status
@@ -331,8 +341,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicAppStatus"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 120 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -353,7 +362,7 @@ paths:
         - oauth2:
             - hosting.paas.code:write
       parameters:
-        - *a3
+        - *a4
       requestBody:
         required: true
         content:
@@ -368,14 +377,14 @@ paths:
                   format: binary
       responses:
         "200":
-          description: Upload accepted
+          description: Upload accepted; poll GET …/source/status with the returned jobId
+            for progress.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicZipUploadResponse"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -396,7 +405,7 @@ paths:
         - oauth2:
             - hosting.paas.code:write
       parameters:
-        - *a3
+        - *a4
         - name: jobId
           in: query
           required: true
@@ -410,8 +419,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicZipUploadStatus"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 120 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -432,7 +440,7 @@ paths:
         - oauth2:
             - hosting.paas.code:write
       parameters:
-        - *a3
+        - *a4
       requestBody:
         required: true
         content:
@@ -447,8 +455,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicGitImportResponse"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -469,7 +476,7 @@ paths:
         - oauth2:
             - hosting.paas.code:read
       parameters:
-        - *a3
+        - *a4
         - name: jobId
           in: query
           required: true
@@ -483,8 +490,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicGitImportStatus"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 120 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -505,7 +511,7 @@ paths:
         - oauth2:
             - hosting.paas.github:execute
       parameters:
-        - *a3
+        - *a4
       responses:
         "200":
           description: GitHub connection status
@@ -514,8 +520,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicGitHubStatus"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -536,7 +541,7 @@ paths:
         - oauth2:
             - hosting.paas.github:execute
       parameters:
-        - *a3
+        - *a4
         - name: per_page
           in: query
           required: false
@@ -564,8 +569,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicGitHubRepos"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -586,7 +590,7 @@ paths:
         - oauth2:
             - hosting.paas.github:execute
       parameters:
-        - *a3
+        - *a4
         - name: owner
           in: query
           required: true
@@ -613,8 +617,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicGitHubBranches"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -635,7 +638,7 @@ paths:
         - oauth2:
             - hosting.paas.secrets:write
       parameters:
-        - *a3
+        - *a4
         - name: variant
           in: query
           required: false
@@ -652,8 +655,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicSecretsList"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -673,7 +675,7 @@ paths:
         - oauth2:
             - hosting.paas.secrets:write
       parameters:
-        - *a3
+        - *a4
       requestBody:
         required: true
         content:
@@ -688,8 +690,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicSecretsList"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -710,7 +711,7 @@ paths:
         - oauth2:
             - hosting.paas.logs:read
       parameters:
-        - *a3
+        - *a4
         - name: target
           in: query
           required: true
@@ -744,8 +745,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicCustomerLogs"
         "401": *a1
-        "404":
-          description: Not found
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 60 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -766,7 +766,7 @@ paths:
         - oauth2:
             - hosting.paas.deploy:execute
       parameters:
-        - *a3
+        - *a4
       requestBody:
         required: true
         content:
@@ -775,7 +775,8 @@ paths:
               $ref: "#/components/schemas/PublicRollbackBody"
       responses:
         "200":
-          description: Rollback started
+          description: Rollback started; poll GET …/deployments or GET …/status for
+            progress.
           content:
             application/json:
               schema:
@@ -783,8 +784,11 @@ paths:
         "401": *a1
         "403":
           description: Rollback not enabled
-        "404":
-          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicApiError"
+        "404": *a3
         "429":
           description: "Too many requests. Limit: 10 requests per minute per client IP.
             X-RateLimit-* headers are returned on successful responses as well."
@@ -804,10 +808,14 @@ components:
       type: http
       scheme: sso-key
       description: "Developer portal API key on the public gateway URL:
-        `Authorization: sso-key {key}:{secret}`"
+        `Authorization: sso-key {key}:{secret}`. Does not use OAuth scopes."
     oauth2:
       type: oauth2
-      description: GoDaddy OAuth access token (Bearer)
+      description: "GoDaddy OAuth access token (Bearer). Each operation requires the
+        OAuth scope listed on that operation. A Personal Access Token from the
+        Developer Portal is a valid way to obtain this token: the gateway
+        exchanges it for a short-lived access token before the request reaches
+        this API, so no PAT-specific handling is needed here."
       flows:
         clientCredentials:
           tokenUrl: https://oauth.api.godaddy.com/v2/oauth2/token
@@ -1182,8 +1190,9 @@ components:
             login:
               type: string
             name:
-              nullable: true
-              type: string
+              anyOf:
+                - type: string
+                - type: "null"
             avatarUrl:
               type: string
           required:
@@ -1226,8 +1235,9 @@ components:
               private:
                 type: boolean
               description:
-                nullable: true
-                type: string
+                anyOf:
+                  - type: string
+                  - type: "null"
               url:
                 type: string
               cloneUrl:
@@ -1328,6 +1338,8 @@ components:
           type: string
         detail:
           type: object
+          propertyNames:
+            type: string
           additionalProperties: {}
       required:
         - status
@@ -1537,6 +1549,20 @@ components:
         - commitHash
         - deploymentId
         - status
+      additionalProperties: false
+    PublicApiError:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+        - error
       additionalProperties: false
     PublicRateLimitError:
       type: object

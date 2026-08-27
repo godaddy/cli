@@ -729,13 +729,18 @@
       "type": "object"
     },
     "address": {
-      "$id": "https://godaddy.com/schema/common/address.v1",
+      "$id": "https://godaddy.com/schemas/common/address.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
       "properties": {
         "addressDetails": {
           "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
           "properties": {
+            "addressType": {
+              "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+              "maxLength": 1,
+              "type": "string"
+            },
             "buildingName": {
               "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
               "maxLength": 100,
@@ -745,6 +750,9 @@
               "description": "The delivery service. Post office box, bag number, or post office name.",
               "maxLength": 100,
               "type": "string"
+            },
+            "geoCoordinates": {
+              "$ref": "#/$defs/geo-coordinates"
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -830,7 +838,7 @@
       "type": "string"
     },
     "date-time": {
-      "$id": "https://godaddy.com/schema/common/date-time.v1",
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
       "maxLength": 64,
@@ -838,8 +846,29 @@
       "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
       "type": "string"
     },
+    "geo-coordinates": {
+      "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The geographic latitude and longitude coordinates.",
+      "properties": {
+        "latitude": {
+          "pattern": "^-?([1-8]?[1-9]|[1-9]0)\\.{1}\\d{1,6}",
+          "type": "string"
+        },
+        "longitude": {
+          "pattern": "^-?([1]?[1-7][1-9]|[1]?[1-8][0]|[1-9]?[0-9])\\.{1}\\d{1,6}",
+          "type": "string"
+        }
+      },
+      "required": [
+        "longitude",
+        "latitude"
+      ],
+      "title": "Geographic Coordinates",
+      "type": "object"
+    },
     "link-description": {
-      "$id": "https://godaddy.com/schema/common/link-description.v1",
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
       "properties": {
