@@ -182,6 +182,10 @@ pub(super) fn v3_record(
         data: data.to_owned(),
         flag: opts.flag.and_then(|n| u8::try_from(n).ok()),
         name: name.to_owned(),
+        // SvcParams for HTTPS/SVCB records (RFC 9460) — no CLI flag sets
+        // these yet, so every record is built without them, same as before
+        // this field existed.
+        parameters: None,
         port: to_u16(opts.port),
         priority: to_u16(opts.priority),
         protocol: opts.protocol.clone(),

@@ -6,21 +6,27 @@
 //! Ported from the former `domains-client/scripts/{trim,merge}-spec.py` so
 //! this and the embedded API catalog come from a single `cargo run -p
 //! generate-api-catalog` invocation instead of a separately-run pipeline.
-//! The transformations below are deliberately faithful to those scripts —
-//! see their historical git history for the reasoning behind each one.
+//! The v3-merge transformations below are deliberately faithful to
+//! `merge-spec.py` — see its historical git history for the reasoning behind
+//! each one. `trim_v1` diverges from `trim-spec.py`'s mechanics (no more
+//! Swagger 2.0 → OpenAPI 3.0 conversion — the upstream v1 source moved to a
+//! native OAS3 doc) while keeping the same intent: trim to the retained
+//! subset and relax it to a tolerant reader.
 
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
-    process::Command,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 
-const V1_SWAGGER_URL: &str = "https://developer.godaddy.com/swagger/swagger_domains.json";
+/// A native OpenAPI 3.1 document — no Swagger 2.0 conversion needed. This
+/// superseded the old `developer.godaddy.com/swagger/swagger_domains.json`
+/// Swagger 2.0 doc, which 404s as of 2026-08; the live `/v1/domains/agreements`
+/// API itself was never affected, only its old public spec-doc URL.
+const V1_OPENAPI_URL: &str = "https://developer.godaddy.com/openapi/domains-v1.json";
 const HOST: &str = "https://api.godaddy.com";
-const SWAGGER2OPENAPI_VERSION: &str = "swagger2openapi@7.0.8";
 const USER_AGENT: &str = "godaddy-cli-api-catalog-generator";
 
 const EXTERNAL_FORMATS: &[&str] = &["date", "date-time", "uuid", "partial-date-time"];
@@ -50,11 +56,16 @@ const STRICT_V3: &[&str] = &[
 const V1_RETAINED_OPS: &[(&str, &str)] = &[("/v1/domains/agreements", "agreements")];
 
 /// Regenerates `out_path` from `v3_spec_path` (the already-cloned
-/// `domains.domain-lifecycle-specification` v3 OpenAPI doc) merged with a
-/// freshly-pulled, trimmed copy of the v1 Swagger spec. Set
-/// `SKIP_DOMAINS_REFRESH` to leave `out_path` untouched (useful for local
-/// iteration without a Node/network dependency).
-pub(crate) fn refresh(v3_spec_path: &Path, out_path: &Path) -> Result<()> {
+/// `domains.domain-lifecycle-specification` v3 OpenAPI doc — dereferenced
+/// with `common_types` the same way the catalog processing dereferences it,
+/// since it spans multiple files) merged with a freshly-pulled, trimmed copy
+/// of the v1 spec. Set `SKIP_DOMAINS_REFRESH` to leave `out_path` untouched
+/// (useful for local iteration without a network dependency).
+pub(crate) fn refresh(
+    v3_spec_path: &Path,
+    common_types: Option<&Path>,
+    out_path: &Path,
+) -> Result<()> {
     if std::env::var("SKIP_DOMAINS_REFRESH").is_ok() {
         eprintln!(
             "SKIP_DOMAINS_REFRESH set — leaving {} untouched",
@@ -70,7 +81,7 @@ pub(crate) fn refresh(v3_spec_path: &Path, out_path: &Path) -> Result<()> {
     // not silently drop it from the generated client. Warn and leave
     // `out_path` untouched rather than failing the whole catalog run over an
     // upstream v1 doc outage — the rest of the catalog pull is unaffected.
-    let v1 = match fetch_and_convert_v1() {
+    let v1 = match fetch_v1() {
         Ok(v1) => v1,
         Err(err) => {
             eprintln!(
@@ -82,10 +93,7 @@ pub(crate) fn refresh(v3_spec_path: &Path, out_path: &Path) -> Result<()> {
         }
     };
 
-    let v3_text = std::fs::read_to_string(v3_spec_path)
-        .with_context(|| format!("failed to read v3 spec at {}", v3_spec_path.display()))?;
-    let mut v3: Value = serde_yaml::from_str(&v3_text)
-        .with_context(|| format!("failed to parse v3 spec {}", v3_spec_path.display()))?;
+    let mut v3 = load_v3(v3_spec_path, common_types)?;
 
     merge(&mut v3, v1)?;
 
@@ -101,60 +109,97 @@ pub(crate) fn refresh(v3_spec_path: &Path, out_path: &Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// v1: fetch, trim, Swagger2 -> OpenAPI3
+// v3: dereference (spans multiple files) and flatten into components.schemas
 // ---------------------------------------------------------------------------
 
-fn fetch_and_convert_v1() -> Result<Value> {
+/// Loads and fully dereferences the v3 spec via the catalog's own
+/// dereferencer (it spans multiple files — external `$ref`s into sibling
+/// `models`/`enums`/`common-types` directories, unlike the old vendored,
+/// pre-bundled `swagger_domains.v3.yaml` this replaced), then flattens the
+/// lifted `$defs` into a plain OAS3 `components.schemas` map — rewriting
+/// every `#/$defs/X` ref to `#/components/schemas/X` — since that's the
+/// shape `merge` and progenitor expect. Any other `components.*` sections
+/// the spec already declares (parameters, responses, ...) are left as-is;
+/// `should_lift_to_defs` only ever lifts `schemas`/`definitions` refs.
+fn load_v3(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
+    let (mut dereffed, defs) = crate::dereference::load_and_dereference(spec_path, common_types)
+        .with_context(|| format!("failed to dereference v3 spec {}", spec_path.display()))?;
+
+    let schemas = dereffed
+        .as_object_mut()
+        .context("v3 spec is not a JSON object")?
+        .entry("components")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("v3 components is not a JSON object")?
+        .entry("schemas")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("v3 components.schemas is not a JSON object")?;
+    for (key, def) in defs {
+        schemas.insert(key, def);
+    }
+
+    rewrite_defs_refs(&mut dereffed);
+    Ok(dereffed)
+}
+
+fn rewrite_defs_refs(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(r)) = map.get("$ref")
+                && let Some(rest) = r.strip_prefix("#/$defs/")
+            {
+                map.insert(
+                    "$ref".to_owned(),
+                    Value::String(format!("#/components/schemas/{rest}")),
+                );
+            }
+            for v in map.values_mut() {
+                rewrite_defs_refs(v);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                rewrite_defs_refs(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v1: fetch + trim (native OpenAPI 3, no Swagger 2.0 conversion needed)
+// ---------------------------------------------------------------------------
+
+fn fetch_v1() -> Result<Value> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
         .build()
         .context("failed to build http client")?;
-    let swagger_v2: Value = client
-        .get(V1_SWAGGER_URL)
+    let v1: Value = client
+        .get(V1_OPENAPI_URL)
         .send()
-        .context("failed to fetch v1 swagger spec")?
+        .context("failed to fetch v1 domains spec")?
         .error_for_status()
-        .context("v1 swagger spec fetch returned an error status")?
+        .context("v1 domains spec fetch returned an error status")?
         .json()
-        .context("failed to parse v1 swagger JSON")?;
-
-    let trimmed = trim_v1(&swagger_v2)?;
-
-    let in_file = tempfile::NamedTempFile::new().context("failed to create temp file")?;
-    std::fs::write(in_file.path(), serde_json::to_vec(&trimmed)?)
-        .context("failed to write trimmed v1 spec to temp file")?;
-    let out_file = tempfile::NamedTempFile::new().context("failed to create temp file")?;
-
-    let status = Command::new("npx")
-        .args(["-y", SWAGGER2OPENAPI_VERSION])
-        .arg(path_str(in_file.path())?)
-        .args(["-o", path_str(out_file.path())?])
-        .status()
-        .context("failed to run npx swagger2openapi — is Node/npx installed?")?;
-    if !status.success() {
-        bail!("swagger2openapi conversion failed with status {status}");
-    }
-
-    let oas3_text = std::fs::read_to_string(out_file.path())
-        .context("failed to read converted v1 OAS3 document")?;
-    serde_json::from_str(&oas3_text).context("failed to parse converted v1 OAS3 document")
+        .context("failed to parse v1 domains spec JSON")?;
+    trim_v1(&v1)
 }
 
-fn path_str(path: &Path) -> Result<&str> {
-    path.to_str()
-        .with_context(|| format!("non-UTF8 temp path {}", path.display()))
-}
-
-/// Trims the upstream Swagger 2.0 spec to the retained v1 subset
-/// (`GET /v1/domains/agreements`) plus the transitive closure of definitions
-/// it references, relaxing every retained definition to a tolerant reader.
-fn trim_v1(swagger: &Value) -> Result<Value> {
-    let paths_in = swagger
+/// Trims the upstream v1 OpenAPI spec to the retained subset
+/// (`GET /v1/domains/agreements`) plus the transitive closure of schemas it
+/// references, relaxing every retained schema to a tolerant reader, and
+/// keeping only the `application/json` response content type (the API also
+/// advertises xml/javascript variants nobody calling this client wants).
+fn trim_v1(spec: &Value) -> Result<Value> {
+    let paths_in = spec
         .get("paths")
         .and_then(Value::as_object)
-        .context("v1 swagger spec missing paths")?;
-    let definitions_in = swagger
-        .get("definitions")
+        .context("v1 spec missing paths")?;
+    let schemas_in = spec
+        .pointer("/components/schemas")
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
@@ -164,11 +209,11 @@ fn trim_v1(swagger: &Value) -> Result<Value> {
         let mut get = paths_in
             .get(*path)
             .and_then(|p| p.get("get"))
-            .with_context(|| format!("v1 swagger spec missing GET {path}"))?
+            .with_context(|| format!("v1 spec missing GET {path}"))?
             .clone();
         get["operationId"] = Value::String((*op_id).to_owned());
-        get["produces"] = Value::Array(vec![Value::String("application/json".to_owned())]);
         filter_2xx_responses(&mut get);
+        keep_only_json_content(&mut get);
         let mut path_obj = Map::new();
         path_obj.insert("get".to_owned(), get);
         paths_out.insert((*path).to_owned(), Value::Object(path_obj));
@@ -182,8 +227,8 @@ fn trim_v1(swagger: &Value) -> Result<Value> {
         if !needed.insert(name.clone()) {
             continue;
         }
-        if let Some(def) = definitions_in.get(&name) {
-            for r in collect_ref_names(def) {
+        if let Some(schema) = schemas_in.get(&name) {
+            for r in collect_ref_names(schema) {
                 if !needed.contains(&r) {
                     stack.push(r);
                 }
@@ -193,29 +238,45 @@ fn trim_v1(swagger: &Value) -> Result<Value> {
 
     let mut needed_sorted: Vec<&String> = needed.iter().collect();
     needed_sorted.sort();
-    let mut definitions_out = Map::new();
+    let mut schemas_out = Map::new();
     for name in needed_sorted {
-        if let Some(def) = definitions_in.get(name) {
-            let mut def = def.clone();
-            relax(&mut def, "x-nullable");
-            definitions_out.insert(name.clone(), def);
+        if let Some(schema) = schemas_in.get(name) {
+            let mut schema = schema.clone();
+            relax(&mut schema, "nullable");
+            schemas_out.insert(name.clone(), schema);
         }
     }
 
     let mut out = serde_json::json!({
-        "swagger": "2.0",
+        "openapi": "3.0.3",
         "info": {
             "title": "GoDaddy Domains API (retained v1 subset: agreements)",
-            "version": swagger.get("info").and_then(|i| i.get("version")).and_then(Value::as_str).unwrap_or("1.0.0"),
+            "version": spec.get("info").and_then(|i| i.get("version")).and_then(Value::as_str).unwrap_or("1.0.0"),
         },
-        "host": swagger.get("host").and_then(Value::as_str).unwrap_or("api.ote-godaddy.com"),
-        "basePath": swagger.get("basePath").and_then(Value::as_str).unwrap_or("/"),
-        "schemes": swagger.get("schemes").cloned().unwrap_or_else(|| serde_json::json!(["https"])),
         "paths": paths_value,
-        "definitions": definitions_out,
+        "components": { "schemas": schemas_out },
     });
     strip_external_formats(&mut out, false);
     Ok(out)
+}
+
+/// Reduces a response's `content` map to just `application/json`, when
+/// present — the API also advertises identical-schema xml/javascript
+/// variants that would otherwise multiply progenitor's generated surface for
+/// no benefit to a JSON-only client.
+fn keep_only_json_content(op: &mut Value) {
+    let Some(responses) = op.get_mut("responses").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for response in responses.values_mut() {
+        let Some(content) = response.get_mut("content").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if let Some(json_body) = content.remove("application/json") {
+            content.clear();
+            content.insert("application/json".to_owned(), json_body);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +316,14 @@ fn merge(v3: &mut Value, mut v1: Value) -> Result<()> {
         "servers".to_owned(),
         serde_json::json!([{ "url": HOST, "description": "Domains API host" }]),
     );
+    // Upstream has moved to `openapi: 3.1.0`, but progenitor (unlike the
+    // `openapiv3` crate's plain deserialization, which doesn't validate this
+    // field at all) rejects anything but 3.0.x with `UnexpectedFormat`. The
+    // document itself uses no 3.1-only constructs (checked against the live
+    // spec when this was added — no `type: [x, "null"]` arrays, numeric
+    // `exclusiveMinimum`/`exclusiveMaximum`, `const`, or `$defs`), so this is
+    // a pure version-label fix, not a structural downgrade.
+    v3_obj.insert("openapi".to_owned(), Value::String("3.0.3".to_owned()));
 
     only_2xx_paths(v3_obj.get_mut("paths").context("missing paths")?);
     strip_external_formats(v3, true);

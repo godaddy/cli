@@ -89,13 +89,20 @@ fn main() -> Result<()> {
     eprintln!("Discovering specification repositories...");
     let (mut sources, tmpdir) = discover_spec_sources(&source_manifest)?;
 
+    let ct_dir = tmpdir.join("__common-types");
+    let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
+
     // `domains` is a normal remote source (cloned like any commerce/location
     // repo), but its v3 OpenAPI doc is *also* progenitor's codegen input for
     // the domains-client crate once merged with the one v1 operation v3
     // doesn't yet serve. Reuse this same clone rather than fetching it twice.
+    // The spec spans multiple files (external `$ref`s into models/enums/
+    // common-types dirs), so it needs the same dereferencing pass the
+    // catalog processing below uses, not a bare YAML parse.
     if let Some(domains_source) = sources.iter().find(|s| s.domain == "domains") {
         domains_merge::refresh(
             &domains_source.spec_file,
+            common_types,
             &domains_merge::domains_client_oas3_path(),
         )
         .context("failed to refresh domains-client codegen spec")?;
@@ -106,9 +113,6 @@ fn main() -> Result<()> {
     if sources.is_empty() {
         bail!("no specification repositories discovered — refusing to overwrite catalog output");
     }
-
-    let ct_dir = tmpdir.join("__common-types");
-    let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
 
     let mut manifest = CatalogManifest {
         generated: chrono::Utc::now().to_rfc3339(),
