@@ -33,10 +33,12 @@ const MAX_PAGES: usize = 50;
 /// spec deliberately dropped the closed `enum` it used to declare, so
 /// progenitor no longer generates one — GoDaddy Domains does this so adding
 /// a lifecycle status doesn't force every client to update first; `examples`
-/// is how the API still communicates the known set). Validation against this
-/// list is advisory, not authoritative: it's a friendly, instant error for a
-/// typo, not an enforced contract — the live API is the source of truth, and
-/// a value missing here just falls through to whatever it decides.
+/// is how the API still communicates the known set). This list is no longer
+/// schema-enforced, just client-maintained best knowledge: `parse_statuses`
+/// still rejects anything not in it (preserving today's instant, friendly
+/// error for a typo), but that means a status the live API adds *before*
+/// this list is refreshed gets wrongly rejected here rather than reaching
+/// the server. Update this list when regenerating if `examples` changes.
 const KNOWN_STATUSES: &[&str] = &[
     "ACTIVE",
     "CANCELLED",

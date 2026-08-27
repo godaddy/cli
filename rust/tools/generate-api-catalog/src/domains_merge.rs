@@ -16,6 +16,7 @@
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -28,6 +29,7 @@ use serde_json::{Map, Value};
 const V1_OPENAPI_URL: &str = "https://developer.godaddy.com/openapi/domains-v1.json";
 const HOST: &str = "https://api.godaddy.com";
 const USER_AGENT: &str = "godaddy-cli-api-catalog-generator";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 const EXTERNAL_FORMATS: &[&str] = &["date", "date-time", "uuid", "partial-date-time"];
 
@@ -175,6 +177,7 @@ fn rewrite_defs_refs(value: &mut Value) {
 fn fetch_v1() -> Result<Value> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
+        .timeout(REQUEST_TIMEOUT)
         .build()
         .context("failed to build http client")?;
     let v1: Value = client

@@ -10,12 +10,13 @@
 //!   `HOSTING_SPEC_PATH` — copy from a local file (e.g. a hosting-web-apps
 //!                          checkout)
 
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result};
 
 const DEFAULT_URL: &str = "https://api.godaddy.com/v1/hosting/nodejs/openapi.yaml";
 const USER_AGENT: &str = "godaddy-cli-api-catalog-generator";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Refreshes `out_path` from the configured source. Set `SKIP_HOSTING_REFRESH`
 /// to leave `out_path` untouched (useful for local iteration without a
@@ -38,6 +39,7 @@ pub(crate) fn refresh(out_path: &Path) -> Result<()> {
         eprintln!("Downloading hosting-nodejs spec from {url}");
         let client = reqwest::blocking::Client::builder()
             .user_agent(USER_AGENT)
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .context("failed to build http client")?;
         client
