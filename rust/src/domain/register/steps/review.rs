@@ -146,7 +146,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         eprintln!(
             "{}",
             summary_line(&format!(
-                "Price:      {} {}",
+                "Total due:  {} {}",
                 style(p).green().bold(),
                 currency
             ))
@@ -155,7 +155,10 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     if let Some(r) = &renewal_str {
         eprintln!(
             "{}",
-            summary_line(&format!("Renewal:    {r} {currency}/yr"))
+            summary_line(&format!(
+                "Renewal price ({}): {r} {currency}",
+                period_label(state.period)
+            ))
         );
     }
     eprintln!(
@@ -474,9 +477,10 @@ mod tests {
             style("iguanahats.shop").cyan().bold()
         ));
         let priced = summary_line(&format!(
-            "Price:      {} USD",
+            "Total due:  {} USD",
             style("60.98").green().bold()
         ));
+        let renewal = summary_line("Renewal price (3 years): 179.97 USD");
 
         // Visible width (ANSI stripped) must match across plain and styled
         // rows so the box's right `│` lines up in a real terminal.
@@ -484,15 +488,17 @@ mod tests {
             measure_text_width(&plain),
             measure_text_width(&styled),
             measure_text_width(&priced),
+            measure_text_width(&renewal),
         ];
         assert!(
             widths.iter().all(|&w| w == widths[0]),
-            "visible widths drifted: {widths:?}\nplain={plain:?}\nstyled={styled:?}\npriced={priced:?}"
+            "visible widths drifted: {widths:?}\nplain={plain:?}\nstyled={styled:?}\npriced={priced:?}\nrenewal={renewal:?}"
         );
         // "  │ " (4) + inner + "│" (1)
         assert_eq!(widths[0], 4 + SUMMARY_INNER_WIDTH + 1);
         assert!(plain.ends_with('│'));
         assert!(styled.ends_with('│'));
         assert!(priced.ends_with('│'));
+        assert!(renewal.ends_with('│'));
     }
 }
