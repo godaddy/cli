@@ -6,7 +6,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use super::schemas::{ConfigAction, ConfigSetting, ConfigSubscription};
+use super::schemas::{ConfigAction, ConfigNativeExtension, ConfigSetting, ConfigSubscription};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ActionArgs {
@@ -80,12 +80,41 @@ struct SubscriptionArgs {
     events: Vec<String>,
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct NativeExtensionArgs {
+    /// Display name for the native extension. Falls back to the app `name`
+    /// in godaddy.toml at `gddy platform app release` time when omitted.
+    #[arg(long)]
+    name: Option<String>,
+
+    /// Support contact email written into godaddy.toml as support_contact.
+    #[arg(long = "support-contact", value_name = "EMAIL")]
+    support_contact: String,
+
+    /// Android package name written into godaddy.toml as android_package_name.
+    #[arg(long = "android-package-name", value_name = "PACKAGE")]
+    android_package_name: String,
+}
+
+fn apply_native_extension(
+    config: &mut crate::config::Config,
+    name: Option<String>,
+    support_contact: String,
+    android_package_name: String,
+) {
+    config.native_extension = Some(crate::config::NativeExtensionConfig {
+        name,
+        support_contact,
+        android_package_name,
+    });
+}
+
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("add", "Add components to an application").with_long(
-            "Append actions, webhook subscriptions, or UI extensions to the \
-            godaddy.toml manifest in the current directory. Run `gddy platform \
-            app deploy` to publish the updated manifest.",
+            "Append actions, webhook subscriptions, UI extensions, or a native \
+            extension to the godaddy.toml manifest in the current directory. Run \
+            `gddy platform app deploy` to publish the updated manifest.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<
@@ -230,11 +259,180 @@ pub(super) fn group() -> RuntimeGroupSpec {
             )
         },
     ))
+    .with_command(RuntimeCommandSpec::new_typed_with_context::<
+        NativeExtensionArgs,
+        _,
+        _,
+        _,
+    >(
+        CommandSpec::from_args::<NativeExtensionArgs>(
+            "native-extension",
+            "Add a native Android extension to godaddy.toml",
+        )
+        .with_long(
+            "Write a [native_extension] section to the godaddy.toml manifest in \
+            the current directory. support_contact and android_package_name are \
+            required; name is optional and falls back to the app name at \
+            `gddy platform app release` time. This command only edits the local \
+            manifest — the native-app draft is created when you run \
+            `gddy platform app release`. Re-running this command overwrites the \
+            existing [native_extension] section.",
+        )
+        .with_system("applications")
+        .with_tier(Tier::Mutate)
+        .with_output_schema::<ConfigNativeExtension>()
+        .no_auth(true),
+        |ctx, args: NativeExtensionArgs| async move {
+            let name = args.name;
+            let support_contact = args.support_contact;
+            let android_package_name = args.android_package_name;
+            let path = crate::config::config_path(Some(&ctx.middleware.env));
+            let mut config = crate::config::read_config(&path)
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
+            apply_native_extension(
+                &mut config,
+                name.clone(),
+                support_contact.clone(),
+                android_package_name.clone(),
+            );
+            crate::config::write_config(&path, &config)
+                .map_err(|e| crate::error::GddyError::config(e.to_string()).into_cli_error())?;
+            Ok(CommandResult::new(json!({
+                "name": name,
+                "supportContact": support_contact,
+                "androidPackageName": android_package_name,
+            }))
+            .with_next_actions(super::add_config_next_actions(&config.name)))
+        },
+    ))
     .with_group(super::add_extension::group())
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_extension_subcommand_accepts_required_and_optional_flags() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--name",
+                "My Display Name",
+                "--support-contact",
+                "support@example.com",
+                "--android-package-name",
+                "com.example.app",
+            ])
+            .expect("native-extension flags should be accepted");
+    }
+
+    #[test]
+    fn native_extension_subcommand_name_is_optional() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--support-contact",
+                "support@example.com",
+                "--android-package-name",
+                "com.example.app",
+            ])
+            .expect("--name is optional");
+    }
+
+    #[test]
+    fn native_extension_subcommand_requires_support_contact() {
+        let err = super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--android-package-name",
+                "com.example.app",
+            ])
+            .expect_err("--support-contact is required");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("support-contact"),
+            "unexpected clap error: {msg}"
+        );
+    }
+
+    #[test]
+    fn native_extension_subcommand_requires_android_package_name() {
+        let err = super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--support-contact",
+                "support@example.com",
+            ])
+            .expect_err("--android-package-name is required");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("android-package-name"),
+            "unexpected clap error: {msg}"
+        );
+    }
+
+    #[test]
+    fn apply_native_extension_overwrites_and_round_trips_through_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = {
+            // Mirror config::tests::valid_config field-for-field so this test
+            // does not depend on that helper (it is private to config/mod.rs).
+            crate::config::Config {
+                name: "my-app".to_owned(),
+                client_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+                description: Some("test".to_owned()),
+                version: "1.2.3".to_owned(),
+                url: "https://example.com".to_owned(),
+                proxy_url: "https://proxy.example.com".to_owned(),
+                authorization_scopes: vec!["openid".to_owned()],
+                actions: vec![],
+                subscriptions: None,
+                dependencies: vec![],
+                extensions: None,
+                settings: vec![],
+                native_extension: None,
+            }
+        };
+        crate::config::write_config(&path, &config).expect("write base");
+
+        super::apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+        crate::config::write_config(&path, &config).expect("write native_extension");
+
+        let read_back = crate::config::read_config(&path).expect("read back");
+        let native = read_back
+            .native_extension
+            .expect("native_extension section written");
+        assert_eq!(native.name.as_deref(), Some("My Display Name"));
+        assert_eq!(native.support_contact, "support@example.com");
+        assert_eq!(native.android_package_name, "com.example.app");
+
+        super::apply_native_extension(
+            &mut config,
+            None,
+            "other@example.com".to_owned(),
+            "com.example.other".to_owned(),
+        );
+        crate::config::write_config(&path, &config).expect("overwrite");
+        let overwritten = crate::config::read_config(&path).expect("read overwrite");
+        let native = overwritten.native_extension.expect("still present");
+        assert_eq!(native.name, None);
+        assert_eq!(native.support_contact, "other@example.com");
+        assert_eq!(native.android_package_name, "com.example.other");
+    }
+
     #[test]
     fn settings_subcommand_accepts_presentation_file_flag() {
         super::group()

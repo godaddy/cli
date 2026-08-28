@@ -25,6 +25,8 @@ pub struct Config {
     pub extensions: Option<ExtensionsConfig>,
     #[serde(default)]
     pub settings: Vec<SettingConfig>,
+    #[serde(default)]
+    pub native_extension: Option<NativeExtensionConfig>,
 }
 
 impl Config {
@@ -119,6 +121,15 @@ impl Config {
             if let Some(blocks) = &extensions.blocks {
                 require_non_empty(&mut errors, "extensions.blocks.source", &blocks.source);
             }
+        }
+
+        if let Some(native) = &self.native_extension {
+            validate_native_extension(
+                &mut errors,
+                "native_extension",
+                &native.support_contact,
+                &native.android_package_name,
+            );
         }
 
         settings::validate_settings(&self.settings, &mut errors);
@@ -245,6 +256,20 @@ fn validate_named_extension(
     }
 }
 
+fn validate_native_extension(
+    errors: &mut Vec<String>,
+    path: &str,
+    support_contact: &str,
+    android_package_name: &str,
+) {
+    require_non_empty(errors, &format!("{path}.support_contact"), support_contact);
+    require_non_empty(
+        errors,
+        &format!("{path}.android_package_name"),
+        android_package_name,
+    );
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionConfig {
     pub name: String,
@@ -313,6 +338,14 @@ pub struct BlocksExtensionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionTarget {
     pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeExtensionConfig {
+    #[serde(default)]
+    pub name: Option<String>,
+    pub support_contact: String,
+    pub android_package_name: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -464,6 +497,7 @@ mod tests {
             dependencies: vec![],
             extensions: None,
             settings: vec![],
+            native_extension: None,
         }
     }
 
@@ -505,6 +539,125 @@ mod tests {
     #[test]
     fn validate_accepts_a_well_formed_config() {
         valid_config().validate().expect("valid config should pass");
+    }
+
+    fn native_extension(
+        name: Option<&str>,
+        support_contact: &str,
+        android_package_name: &str,
+    ) -> NativeExtensionConfig {
+        NativeExtensionConfig {
+            name: name.map(str::to_owned),
+            support_contact: support_contact.to_owned(),
+            android_package_name: android_package_name.to_owned(),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_native_extension_with_optional_name_omitted() {
+        let mut config = valid_config();
+        config.native_extension = Some(native_extension(
+            None,
+            "support@example.com",
+            "com.example.app",
+        ));
+        config
+            .validate()
+            .expect("native_extension with no name should pass");
+    }
+
+    #[test]
+    fn validate_rejects_empty_native_extension_support_contact() {
+        let mut config = valid_config();
+        config.native_extension = Some(native_extension(None, "", "com.example.app"));
+        let err = config
+            .validate()
+            .expect_err("empty support_contact must fail");
+        assert!(
+            err.to_string().contains("native_extension.support_contact"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_empty_native_extension_android_package_name() {
+        let mut config = valid_config();
+        config.native_extension = Some(native_extension(None, "support@example.com", ""));
+        let err = config
+            .validate()
+            .expect_err("empty android_package_name must fail");
+        assert!(
+            err.to_string()
+                .contains("native_extension.android_package_name"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn native_extension_name_omitted_deserializes_as_none() {
+        let raw = r#"
+name = "my-app"
+client_id = "550e8400-e29b-41d4-a716-446655440000"
+version = "1.2.3"
+url = "https://example.com"
+proxy_url = "https://proxy.example.com"
+authorization_scopes = ["openid"]
+
+[native_extension]
+support_contact = "support@example.com"
+android_package_name = "com.example.app"
+"#;
+        let config: Config = toml::from_str(raw).expect("parse");
+        config.validate().expect("validate");
+        let native = config.native_extension.expect("section present");
+        assert_eq!(native.name, None);
+        assert_eq!(native.support_contact, "support@example.com");
+        assert_eq!(native.android_package_name, "com.example.app");
+    }
+
+    #[test]
+    fn native_extension_name_present_round_trips_through_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.native_extension = Some(native_extension(
+            Some("My Display Name"),
+            "support@example.com",
+            "com.example.app",
+        ));
+        write_config(&path, &config).expect("write");
+        let read_back = read_config(&path).expect("read");
+        let native = read_back.native_extension.expect("section present");
+        assert_eq!(native.name.as_deref(), Some("My Display Name"));
+        assert_eq!(native.support_contact, "support@example.com");
+        assert_eq!(native.android_package_name, "com.example.app");
+    }
+
+    #[test]
+    fn read_config_rejects_native_extension_missing_support_contact() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        std::fs::write(
+            &path,
+            r#"
+name = "my-app"
+client_id = "550e8400-e29b-41d4-a716-446655440000"
+version = "1.2.3"
+url = "https://example.com"
+proxy_url = "https://proxy.example.com"
+authorization_scopes = ["openid"]
+
+[native_extension]
+android_package_name = "com.example.app"
+"#,
+        )
+        .expect("write");
+        let err = read_config(&path)
+            .expect_err("missing support_contact must fail at parse, not the network");
+        assert!(
+            matches!(err, ConfigError::Parse(_)),
+            "expected parse error, got {err:?}"
+        );
     }
 
     #[test]

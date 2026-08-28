@@ -436,6 +436,7 @@ mod tests {
             dependencies: vec![],
             extensions: None,
             settings: vec![],
+            native_extension: None,
         };
 
         let input = super::manifest_metadata_input(&config);
