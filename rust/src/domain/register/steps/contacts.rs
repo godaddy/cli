@@ -93,6 +93,16 @@ pub(crate) async fn run(state: &mut WizardState, _ctx: &StepContext) -> Result<S
     Ok(StepResult::Continue)
 }
 
+/// Mask an email for TTY preview so contact confirmation does not log full PII.
+fn mask_email(email: &str) -> String {
+    let (local, domain) = email.split_once('@').unwrap_or((email, ""));
+    if local.is_empty() || domain.is_empty() {
+        return "***".to_string();
+    }
+    let visible = local.chars().next().map_or('*', |c| c);
+    format!("{visible}***@{domain}")
+}
+
 fn display_saved_contacts(file: &ContactsFile) {
     for role in [Role::Registrant, Role::Admin, Role::Billing, Role::Tech] {
         if let Some(c) = file.get(role) {
@@ -102,7 +112,7 @@ fn display_saved_contacts(file: &ContactsFile) {
                 style(role.label()).bold(),
                 c.name_first,
                 c.name_last,
-                c.email
+                mask_email(&c.email)
             );
         }
     }
@@ -318,6 +328,13 @@ fn escape_toml(s: &str) -> String {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn mask_email_hides_local_part() {
+        assert_eq!(mask_email("jane@example.com"), "j***@example.com");
+        assert_eq!(mask_email("a@b.c"), "a***@b.c");
+        assert_eq!(mask_email("invalid"), "***");
+    }
 
     #[test]
     fn validate_email_accepts_valid() {

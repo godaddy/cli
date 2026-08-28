@@ -133,6 +133,7 @@ async fn run_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<Comm
         credential: cred,
         env,
         debug,
+        wizard_start_at: 0,
     };
 
     let final_state = wizard::run_wizard(state, step_ctx, 0).await?;
@@ -179,6 +180,7 @@ async fn run_non_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<
         credential: cred,
         env,
         debug,
+        wizard_start_at: 0,
     };
 
     // Non-interactive: skip all interactive prompts. --agree and --confirm
@@ -217,6 +219,7 @@ pub(crate) async fn launch_wizard(
         credential: cred,
         env,
         debug,
+        wizard_start_at: start_at,
     };
 
     let final_state = wizard::run_wizard(state, step_ctx, start_at).await?;

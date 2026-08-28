@@ -22,6 +22,38 @@ pub(crate) struct StepContext {
     pub credential: Credential,
     pub env: String,
     pub debug: bool,
+    /// Wizard entry step (0 = full flow from `domain register`).
+    pub wizard_start_at: usize,
+}
+
+/// Result of handling a Back action in the wizard loop.
+enum BackTransition {
+    GoTo { step: usize, clear_domain: bool },
+    ExitToBridge,
+}
+
+/// Compute the next step (or bridge exit) when the user chooses Back.
+fn back_transition(current: usize, start_at: usize) -> BackTransition {
+    if current == 0 && start_at > 0 {
+        return BackTransition::ExitToBridge;
+    }
+    if current == start_at {
+        if start_at > 0 {
+            let step = start_at - 1;
+            BackTransition::GoTo {
+                step,
+                clear_domain: step == 0,
+            }
+        } else {
+            BackTransition::ExitToBridge
+        }
+    } else {
+        let step = current.saturating_sub(1);
+        BackTransition::GoTo {
+            step,
+            clear_domain: step == 0,
+        }
+    }
 }
 
 /// Accumulated state across all wizard steps.
@@ -131,9 +163,10 @@ const STEPS: &[StepInfo] = &[
 /// so the counter matches the work the user still has to do.
 pub(crate) async fn run_wizard(
     mut state: WizardState,
-    ctx: StepContext,
+    mut ctx: StepContext,
     start_at: usize,
 ) -> Result<WizardState> {
+    ctx.wizard_start_at = start_at;
     let total_steps = STEPS.len();
     let mut current = start_at;
     // Relative denominator: how many steps this entry point will show.
@@ -180,22 +213,19 @@ pub(crate) async fn run_wizard(
             StepResult::Continue => {
                 current += 1;
             }
-            StepResult::Back => {
-                if current == start_at {
-                    // Already at the entry point — can't go further back.
-                    // Signal that we backed out so the caller (bridge) can
-                    // re-show its own selection UI.
+            StepResult::Back => match back_transition(current, start_at) {
+                BackTransition::ExitToBridge => {
                     state.backed_out = true;
                     return Ok(state);
                 }
-                current -= 1;
-                // If navigating back to Discovery, clear domain state so the
-                // step re-prompts for a domain name instead of short-circuiting.
-                if current == 0 {
-                    state.domain = None;
-                    state.available = false;
+                BackTransition::GoTo { step, clear_domain } => {
+                    current = step;
+                    if clear_domain {
+                        state.domain = None;
+                        state.available = false;
+                    }
                 }
-            }
+            },
             StepResult::Cancel => {
                 eprintln!(
                     "\n  {} Wizard cancelled. No charges were made.",
@@ -261,6 +291,40 @@ mod tests {
         assert_eq!(STEPS[2].name, "Contacts");
         assert_eq!(STEPS[3].name, "Review & Confirm");
         assert_eq!(STEPS[4].name, "Register");
+    }
+
+    #[test]
+    fn back_transition_from_bridge_entry_steps() {
+        // suggest/available enter at Options — back goes to Discovery, not bridge.
+        assert!(matches!(
+            back_transition(1, 1),
+            BackTransition::GoTo {
+                step: 0,
+                clear_domain: true
+            }
+        ));
+        // Discovery after bridge entry — return to bridge UI.
+        assert!(matches!(
+            back_transition(0, 1),
+            BackTransition::ExitToBridge
+        ));
+
+        // quote enters at Review — back goes to Contacts, not bridge.
+        assert!(matches!(
+            back_transition(3, 3),
+            BackTransition::GoTo {
+                step: 2,
+                clear_domain: false
+            }
+        ));
+        // Mid-flow back within full wizard.
+        assert!(matches!(
+            back_transition(2, 0),
+            BackTransition::GoTo {
+                step: 1,
+                clear_domain: false
+            }
+        ));
     }
 
     #[test]

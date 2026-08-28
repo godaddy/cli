@@ -10,7 +10,7 @@ use super::super::wizard::{StepContext, StepResult, WizardState};
 /// Available registration periods (years).
 const PERIOD_OPTIONS: &[u64] = &[1, 2, 3, 5, 10];
 
-pub(crate) async fn run(state: &mut WizardState, _ctx: &StepContext) -> Result<StepResult> {
+pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<StepResult> {
     eprintln!(
         "\n  {} Configuring registration for {}",
         style("⚙").bold(),
@@ -72,7 +72,12 @@ pub(crate) async fn run(state: &mut WizardState, _ctx: &StepContext) -> Result<S
         if state.auto_renew { "on" } else { "off" },
     );
 
-    let choices = vec!["Continue", "↩ Go back to domain selection"];
+    let back_label = if ctx.wizard_start_at > 0 {
+        "↩ Go back to change domain"
+    } else {
+        "↩ Go back to discovery"
+    };
+    let choices = vec!["Continue", back_label];
     let selection = Select::new()
         .items(&choices)
         .default(0)
