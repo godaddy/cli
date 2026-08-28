@@ -191,6 +191,24 @@ async fn run_non_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<
     build_result(&state)
 }
 
+/// Result of an interactive bridge from another domain command into the wizard.
+pub(crate) enum BridgeHandoff {
+    /// Replace the host command's normal stdout output (wizard completed or cancelled).
+    Replace(CommandResult),
+    /// Run the host command's normal output (user declined the bridge prompt).
+    ShowHostOutput,
+}
+
+/// Host-command output after the user cancels the wizard. The wizard already
+/// wrote a cancellation message to stderr; stdout should stay quiet in human mode.
+pub(crate) fn cancelled_host_result(ctx: &CommandContext) -> CommandResult {
+    if ctx.middleware.output_format == "human" {
+        CommandResult::new(json!(""))
+    } else {
+        CommandResult::new(json!({"status": "cancelled"}))
+    }
+}
+
 /// Wizard exit disposition, distinguishing user-initiated back-navigation from
 /// explicit cancellation.
 pub(crate) enum WizardExit {

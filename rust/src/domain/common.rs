@@ -91,6 +91,47 @@ pub(super) fn term_for_period(
     prices.iter().find(|p| p.period == Some(period))
 }
 
+/// Sorted, unique registration periods (years) priced in an availability response.
+pub(super) fn periods_from_prices(prices: &[types::TermPrice]) -> Vec<u64> {
+    let mut periods: Vec<u64> = prices
+        .iter()
+        .filter_map(|t| t.period.map(|p| p.get()))
+        .collect();
+    periods.sort_unstable();
+    periods.dedup();
+    periods
+}
+
+/// Whether an API error body indicates the requested registration period exceeds
+/// the TLD limit. Availability pricing is indicative; quote is authoritative.
+pub(super) fn is_period_limit_error(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    lower.contains("not currently supported") || lower.contains("maximum is")
+}
+
+/// Parse the maximum registration period from a period-limit error body.
+pub(super) fn parse_max_registration_period(body: &str) -> Option<u64> {
+    let lower = body.to_ascii_lowercase();
+    let needle = "maximum is ";
+    let rest = lower.split(needle).nth(1)?;
+    rest.split_whitespace().next()?.parse().ok()
+}
+
+/// Drop unsupported periods and clamp the selected period to the TLD maximum.
+pub(super) fn clamp_registration_periods(
+    available_periods: &mut Vec<u64>,
+    selected_period: &mut u64,
+    max_years: u64,
+) {
+    available_periods.retain(|p| *p <= max_years);
+    if available_periods.is_empty() {
+        available_periods.push(1);
+    }
+    if *selected_period > max_years {
+        *selected_period = available_periods.iter().copied().max().unwrap_or(1);
+    }
+}
+
 /// A registration length with its unit spelled out ("1 year", "2 years") — a
 /// bare number reads ambiguously in a table, so `quote`/`available` show this
 /// alongside the numeric `period` field (which stays a plain number for
@@ -490,6 +531,47 @@ mod tests {
     #[test]
     fn comma_joined_empty_stays_empty() {
         assert_eq!(comma_joined(Vec::<String>::new()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn periods_from_prices_returns_sorted_unique_periods() {
+        use domains_client::types;
+
+        let prices = vec![
+            types::TermPrice {
+                period: std::num::NonZeroU64::new(3),
+                ..Default::default()
+            },
+            types::TermPrice {
+                period: std::num::NonZeroU64::new(1),
+                ..Default::default()
+            },
+            types::TermPrice {
+                period: std::num::NonZeroU64::new(2),
+                ..Default::default()
+            },
+            types::TermPrice {
+                period: std::num::NonZeroU64::new(2),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(periods_from_prices(&prices), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn parse_max_registration_period_reads_api_error_text() {
+        let body = r#"{"details":[{"description":"period 5 is not currently supported; maximum is 3 years"}]}"#;
+        assert!(is_period_limit_error(body));
+        assert_eq!(parse_max_registration_period(body), Some(3));
+    }
+
+    #[test]
+    fn clamp_registration_periods_drops_and_clamps_selection() {
+        let mut periods = vec![1_u64, 2, 3, 5];
+        let mut selected = 5_u64;
+        clamp_registration_periods(&mut periods, &mut selected, 3);
+        assert_eq!(periods, vec![1, 2, 3]);
+        assert_eq!(selected, 3);
     }
 
     fn money(value: Option<i64>, currency: &str) -> types::SimpleMoney {

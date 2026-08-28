@@ -68,6 +68,8 @@ pub(crate) struct WizardState {
     pub privacy: bool,
     pub auto_renew: bool,
     pub nameservers: Vec<String>,
+    /// Registration periods (years) priced for the selected domain.
+    pub available_periods: Vec<u64>,
 
     // Step 3: Contacts
     pub contacts: ContactsChoice,
@@ -223,6 +225,7 @@ pub(crate) async fn run_wizard(
                     if clear_domain {
                         state.domain = None;
                         state.available = false;
+                        state.available_periods.clear();
                     }
                 }
             },

@@ -1,23 +1,24 @@
 //! Bridge functions allowing other domain commands (suggest, available, quote)
 //! to hand off to the registration wizard when running interactively.
 
-use cli_engine::{CliCoreError, CommandResult, Result};
+use cli_engine::{CliCoreError, Result};
 use dialoguer::Confirm;
 
-use super::WizardExit;
 use super::wizard::WizardState;
+use super::{BridgeHandoff, WizardExit, cancelled_host_result};
 
 /// After `domain available` finds a domain is available, offer to continue
-/// with registration. Returns `None` if the user declines or the wizard is
-/// cancelled. Re-asks if the user navigates back from the wizard.
+/// with registration. Returns [`BridgeHandoff::ShowHostOutput`] if the user
+/// declines; re-asks if the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_available(
     ctx: &cli_engine::CommandContext,
     domain: &str,
     price: Option<String>,
     currency: Option<String>,
-) -> Result<Option<CommandResult>> {
+    available_periods: Vec<u64>,
+) -> Result<BridgeHandoff> {
     if !ctx.is_interactive() {
-        return Ok(None);
+        return Ok(BridgeHandoff::ShowHostOutput);
     }
 
     loop {
@@ -28,33 +29,38 @@ pub(crate) async fn offer_registration_from_available(
             .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
         if !proceed {
-            return Ok(None);
+            return Ok(BridgeHandoff::ShowHostOutput);
         }
 
         let mut state = WizardState::new().with_domain(Some(domain.to_owned()));
         state.available = true;
         state.price = price.clone();
         state.currency = currency.clone();
+        state.available_periods = available_periods.clone();
 
         match super::launch_wizard(ctx, state, 1).await? {
             WizardExit::Completed(result) => {
-                return Ok(Some(super::present_for_host_command(ctx, result)));
+                return Ok(BridgeHandoff::Replace(super::present_for_host_command(
+                    ctx, result,
+                )));
             }
             WizardExit::BackedOut => continue,
-            WizardExit::Cancelled => return Ok(None),
+            WizardExit::Cancelled => {
+                return Ok(BridgeHandoff::Replace(cancelled_host_result(ctx)));
+            }
         }
     }
 }
 
 /// After `domain suggest` displays results, offer to pick one and register.
-/// Returns `None` if the user declines or the wizard is cancelled. Re-shows
-/// the selection if the user navigates back from the wizard.
+/// Returns [`BridgeHandoff::ShowHostOutput`] if the user chooses to skip.
+/// Re-shows the selection if the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_suggest(
     ctx: &cli_engine::CommandContext,
     suggestions: &[String],
-) -> Result<Option<CommandResult>> {
+) -> Result<BridgeHandoff> {
     if !ctx.is_interactive() || suggestions.is_empty() {
-        return Ok(None);
+        return Ok(BridgeHandoff::ShowHostOutput);
     }
 
     // Show suggestions inline so the user sees what's available before choosing.
@@ -78,7 +84,7 @@ pub(crate) async fn offer_registration_from_suggest(
 
         // Last option = skip, return None to let normal output render.
         if selection == items.len() - 1 {
-            return Ok(None);
+            return Ok(BridgeHandoff::ShowHostOutput);
         }
 
         // Second-to-last = enter a different domain.
@@ -98,16 +104,20 @@ pub(crate) async fn offer_registration_from_suggest(
 
         match exit {
             WizardExit::Completed(result) => {
-                return Ok(Some(super::present_for_host_command(ctx, result)));
+                return Ok(BridgeHandoff::Replace(super::present_for_host_command(
+                    ctx, result,
+                )));
             }
             WizardExit::BackedOut => continue,
-            WizardExit::Cancelled => return Ok(None),
+            WizardExit::Cancelled => {
+                return Ok(BridgeHandoff::Replace(cancelled_host_result(ctx)));
+            }
         }
     }
 }
 
 /// After `domain quote` prices a domain, offer to purchase it directly.
-/// Returns `None` if the user declines or the wizard is cancelled. Re-asks if
+/// Returns [`BridgeHandoff::ShowHostOutput`] if the user declines. Re-asks if
 /// the user navigates back from the wizard.
 pub(crate) async fn offer_registration_from_quote(
     ctx: &cli_engine::CommandContext,
@@ -116,9 +126,9 @@ pub(crate) async fn offer_registration_from_quote(
     price: Option<String>,
     currency: Option<String>,
     period: u64,
-) -> Result<Option<CommandResult>> {
+) -> Result<BridgeHandoff> {
     if !ctx.is_interactive() {
-        return Ok(None);
+        return Ok(BridgeHandoff::ShowHostOutput);
     }
 
     loop {
@@ -129,7 +139,7 @@ pub(crate) async fn offer_registration_from_quote(
             .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
 
         if !proceed {
-            return Ok(None);
+            return Ok(BridgeHandoff::ShowHostOutput);
         }
 
         let mut state = WizardState::new()
@@ -143,10 +153,14 @@ pub(crate) async fn offer_registration_from_quote(
         // Start at step 3 (Review & Confirm) since quote is already done.
         match super::launch_wizard(ctx, state, 3).await? {
             WizardExit::Completed(result) => {
-                return Ok(Some(super::present_for_host_command(ctx, result)));
+                return Ok(BridgeHandoff::Replace(super::present_for_host_command(
+                    ctx, result,
+                )));
             }
             WizardExit::BackedOut => continue,
-            WizardExit::Cancelled => return Ok(None),
+            WizardExit::Cancelled => {
+                return Ok(BridgeHandoff::Replace(cancelled_host_result(ctx)));
+            }
         }
     }
 }

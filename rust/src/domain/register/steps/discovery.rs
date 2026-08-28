@@ -6,7 +6,7 @@ use console::style;
 use dialoguer::{Input, Select};
 
 use crate::domain::common::{
-    api_error, make_client_with_cred, term_for_period, validate_domain_name,
+    api_error, make_client_with_cred, periods_from_prices, term_for_period, validate_domain_name,
 };
 
 use crate::retry::with_retry;
@@ -48,6 +48,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     if available {
         state.available = true;
         let prices = availability.prices.unwrap_or_default();
+        state.available_periods = periods_from_prices(&prices);
         if let Some(tp) = term_for_period(&prices, 1) {
             state.price = tp
                 .price
@@ -151,12 +152,14 @@ fn select_from_suggestions(
     if selection == items.len() - 2 {
         state.domain = None;
         state.available = false;
+        state.available_periods.clear();
         return Ok(StepResult::Back);
     }
 
     let chosen = &suggestions[selection];
     state.domain = Some(chosen.domain.clone());
     state.available = true;
+    state.available_periods = chosen.available_periods.clone();
     state.price = chosen.price.clone();
     state.currency = chosen.currency.clone();
     eprintln!(
@@ -179,6 +182,7 @@ fn prompt_retry_or_cancel(state: &mut WizardState) -> Result<StepResult> {
     if selection == 0 {
         state.domain = None;
         state.available = false;
+        state.available_periods.clear();
         Ok(StepResult::Back)
     } else {
         Ok(StepResult::Cancel)
@@ -189,6 +193,7 @@ struct SuggestionEntry {
     domain: String,
     price: Option<String>,
     currency: Option<String>,
+    available_periods: Vec<u64>,
 }
 
 /// Extract unique suggestions from raw API items, capped at `max`.
@@ -220,6 +225,7 @@ fn collect_suggestions(
             domain: name.to_owned(),
             price,
             currency,
+            available_periods: periods_from_prices(prices),
         });
     }
     all

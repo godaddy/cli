@@ -406,18 +406,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .get("currency")
                     .and_then(|v| v.as_str())
                     .map(str::to_owned);
-                if let Some(wizard_result) =
-                    super::register::bridge::offer_registration_from_quote(
-                        &ctx,
-                        &domain,
-                        &token,
-                        quote_price,
-                        quote_currency,
-                        period,
-                    )
-                    .await?
+                match super::register::bridge::offer_registration_from_quote(
+                    &ctx,
+                    &domain,
+                    &token,
+                    quote_price,
+                    quote_currency,
+                    period,
+                )
+                .await?
                 {
-                    return Ok(wizard_result);
+                    super::register::BridgeHandoff::Replace(wizard_result) => {
+                        return Ok(wizard_result);
+                    }
+                    super::register::BridgeHandoff::ShowHostOutput => {}
                 }
 
                 next_actions.push(

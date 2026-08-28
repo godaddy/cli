@@ -10,7 +10,8 @@ use domains_client::types;
 
 use crate::contacts::Role;
 use crate::domain::common::{
-    api_error, format_money, make_client_with_cred, period_label, validate_nameserver_hosts,
+    api_error, clamp_registration_periods, format_api_error, format_money, is_period_limit_error,
+    make_client_with_cred, parse_max_registration_period, period_label, validate_nameserver_hosts,
 };
 use crate::environments;
 use crate::quote_cache;
@@ -90,13 +91,54 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     .await
     {
         Ok(r) => r.into_inner(),
-        Err(e) => {
-            let err = api_error("domain quote", debug, e).await;
-            if is_payment_error(&err) {
-                return handle_payment_required(ctx).await;
+        Err(e) => match e {
+            domains_client::Error::UnexpectedResponse(resp) => {
+                let status = resp.status();
+                let request_id = resp
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                let body = resp.text().await.unwrap_or_default();
+                if is_period_limit_error(&body)
+                    && let Some(max_years) = parse_max_registration_period(&body)
+                {
+                    let rejected = state.period;
+                    clamp_registration_periods(
+                        &mut state.available_periods,
+                        &mut state.period,
+                        max_years,
+                    );
+                    eprintln!(
+                        "\n  {} Period {} is not supported for this domain (maximum is {}). \
+                         Go back to Options to choose a different length.",
+                        style("⚠").yellow().bold(),
+                        rejected,
+                        max_years
+                    );
+                    return Ok(StepResult::Back);
+                }
+                let err = CliCoreError::message(format_api_error(
+                    "domain quote",
+                    status.as_u16(),
+                    &status.to_string(),
+                    &body,
+                    request_id.as_deref(),
+                    debug,
+                ));
+                if is_payment_error(&err) {
+                    return handle_payment_required(ctx).await;
+                }
+                return Err(err);
             }
-            return Err(err);
-        }
+            other => {
+                let err = api_error("domain quote", debug, other).await;
+                if is_payment_error(&err) {
+                    return handle_payment_required(ctx).await;
+                }
+                return Err(err);
+            }
+        },
     };
 
     // Extract pricing and agreement info.

@@ -180,11 +180,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .iter()
                 .filter_map(|s| s["domain"].as_str().map(str::to_owned))
                 .collect();
-            if let Some(wizard_result) =
-                super::register::bridge::offer_registration_from_suggest(&ctx, &domain_names)
-                    .await?
+            match super::register::bridge::offer_registration_from_suggest(&ctx, &domain_names)
+                .await?
             {
-                return Ok(wizard_result);
+                super::register::BridgeHandoff::Replace(result) => return Ok(result),
+                super::register::BridgeHandoff::ShowHostOutput => {}
             }
 
             Ok(

@@ -8,7 +8,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, term_for_period, validate_domain_name,
+    api_error, format_money, make_client, period_label, periods_from_prices, term_for_period,
+    validate_domain_name,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -166,16 +167,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .and_then(|t| t.price.as_ref())
                     .and_then(format_money);
                 let currency_str = shared_currency(&prices);
-                if let Some(wizard_result) =
-                    super::register::bridge::offer_registration_from_available(
-                        &ctx,
-                        &resolved_domain,
-                        price_1yr,
-                        currency_str,
-                    )
-                    .await?
+                match super::register::bridge::offer_registration_from_available(
+                    &ctx,
+                    &resolved_domain,
+                    price_1yr,
+                    currency_str,
+                    periods_from_prices(&prices),
+                )
+                .await?
                 {
-                    return Ok(wizard_result);
+                    super::register::BridgeHandoff::Replace(wizard_result) => {
+                        return Ok(wizard_result);
+                    }
+                    super::register::BridgeHandoff::ShowHostOutput => {}
                 }
 
                 Ok(cmd.with_next_actions(vec![
