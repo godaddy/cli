@@ -35,7 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<SearchArgs>("search", "Search API endpoints by keyword")
             .with_long(
                 "Full-text searches across all API domains, matching against \
-                operation IDs, paths, and descriptions. Use \
+                operation IDs, paths, summaries, and descriptions. Use \
                 `api operation get <operationId>` to inspect a result in full \
                 detail.",
             )
