@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.11](https://github.com/godaddy/cli/compare/v0.2.10...v0.2.11) (2026-08-25)
+
+
+### Bug Fixes
+
+* **email:** pointing to EFD vs productivity panel api ([#232](https://github.com/godaddy/cli/issues/232)) ([4bc57a1](https://github.com/godaddy/cli/commit/4bc57a17c3c516bc1f7c59ca6968486ef5fbd963))
+
+
+### Build System
+
+* **deps:** upgrade cli-engine to 0.9 and progenitor to 0.14 for reqwest 0.13 ([#228](https://github.com/godaddy/cli/issues/228)) ([764adc1](https://github.com/godaddy/cli/commit/764adc18a549cde05367ce03a792e57df64b9cdc))
+
+## [0.2.10](https://github.com/godaddy/cli/compare/v0.2.9...v0.2.10) (2026-08-24)
+
+
+### Features
+
+* **email:** Added CLI support for panel based email services ([#212](https://github.com/godaddy/cli/issues/212)) ([c99004a](https://github.com/godaddy/cli/commit/c99004a571517b045d67c05540c5936d6fcc666e))
+
+
+### Bug Fixes
+
+* **extensions:** restore pre-bundle AST security scan [DEVEX-710] ([#208](https://github.com/godaddy/cli/issues/208)) ([e3a2010](https://github.com/godaddy/cli/commit/e3a2010f6040bc9c6781f52a72d1dbab7a5a1e88))
+* omit null settings presentation fields ([#225](https://github.com/godaddy/cli/issues/225)) ([ef745d9](https://github.com/godaddy/cli/commit/ef745d98f5be9bb2dda423648a73b6e64048bc25))
+
 ## [0.2.9](https://github.com/godaddy/cli/compare/v0.2.8...v0.2.9) (2026-08-21)
 
 

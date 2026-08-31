@@ -430,6 +430,44 @@ mod tests {
         }
     }
 
+    fn list_group_presentation() -> crate::config::settings_form::SettingsFormV1Presentation {
+        use crate::config::settings_form::{
+            ChoiceOption, ListGroupItem, SelectValue, SettingsFormV1Field, SettingsFormV1Section,
+        };
+        crate::config::settings_form::SettingsFormV1Presentation {
+            sections: vec![SettingsFormV1Section {
+                key: "rules".to_owned(),
+                label: "Rules".to_owned(),
+                description: None,
+                visible_when: None,
+                fields: vec![SettingsFormV1Field::ListGroup {
+                    key: "rules".to_owned(),
+                    label: "Rules".to_owned(),
+                    description: None,
+                    required: false,
+                    min_items: None,
+                    max_items: None,
+                    item: ListGroupItem {
+                        id_field: "id".to_owned(),
+                        title_field: None,
+                        fields: vec![SettingsFormV1Field::Select {
+                            key: "country".to_owned(),
+                            label: "Country".to_owned(),
+                            description: None,
+                            required: true,
+                            options: vec![ChoiceOption {
+                                value: SelectValue::Str("US".to_owned()),
+                                label: "United States".to_owned(),
+                                description: None,
+                            }],
+                            default_value: None,
+                        }],
+                    },
+                }],
+            }],
+        }
+    }
+
     #[test]
     fn setting_entry_rejects_missing_presentation() {
         let err = super::setting_entry(&placement_only_setting(), std::path::Path::new(""))
@@ -459,6 +497,18 @@ mod tests {
             entry.get("iconName").is_none(),
             "absent icon should be omitted"
         );
+        assert!(
+            entry["presentation"]["sections"][0]
+                .get("visibleWhen")
+                .is_none(),
+            "absent section visibility should be omitted instead of serialized as null"
+        );
+        assert!(
+            entry["presentation"]["sections"][0]["fields"][0]
+                .get("description")
+                .is_none(),
+            "absent field properties should be omitted instead of serialized as null"
+        );
     }
 
     #[test]
@@ -482,6 +532,30 @@ mod tests {
         assert_eq!(entry["iconName"], "percent");
         assert_eq!(entry["iconLibrary"], "lucide");
         assert_eq!(entry["metadata"]["provider"], "godaddy-tax");
+    }
+
+    #[test]
+    fn setting_entry_omits_absent_list_group_and_choice_option_fields() {
+        let mut setting = placement_only_setting();
+        setting.presentation = Some(list_group_presentation());
+
+        let entry = super::setting_entry(&setting, std::path::Path::new(""))
+            .expect("list-group entry builds");
+        let list_group = &entry["presentation"]["sections"][0]["fields"][0];
+        assert!(
+            list_group.get("minItems").is_none(),
+            "absent list-group bounds should be omitted instead of serialized as null"
+        );
+        assert!(
+            list_group["item"].get("titleField").is_none(),
+            "absent list-group item properties should be omitted instead of serialized as null"
+        );
+
+        let option = &list_group["item"]["fields"][0]["options"][0];
+        assert!(
+            option.get("description").is_none(),
+            "absent choice-option properties should be omitted instead of serialized as null"
+        );
     }
 
     #[test]

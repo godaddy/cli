@@ -33,7 +33,7 @@ struct GraphqlCallArgs {
     header: Vec<String>,
 
     /// Include response headers in output.
-    #[arg(long, short = 'i')]
+    #[arg(long)]
     include: bool,
 
     /// Additional required OAuth scope(s), merged with the operation's.

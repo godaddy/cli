@@ -10,11 +10,10 @@ This is a command-line application. Source code is written in Rust and lives und
 - **Lint**: `cargo clippy -- -D warnings`
 - **Format**: `cargo fmt`
 - **Check**: `cargo check`
-- **Regenerate API catalog**: `cargo run -p generate-api-catalog`
-  — clones upstream OpenAPI specs and writes `rust/schemas/api/*.json`. Set
-  `GITHUB_TOKEN` for full repo discovery; falls back to a hardcoded bootstrap
-  list otherwise.
-- **Regenerate Node.js Hosting spec**: `./rust/scripts/regenerate-hosting-spec.sh`
+- **Refresh API specs**: `cargo run -p generate-api-catalog`
+  — set `SKIP_DOMAINS_REFRESH`/`SKIP_HOSTING_REFRESH` to skip either pull for
+  local iteration without network access; `HOSTING_SPEC_URL`/`HOSTING_SPEC_PATH`
+  override where the hosting-nodejs spec comes from.
 
 ## Verification Checklist (required before finishing work)
 
@@ -72,12 +71,16 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 
 ### Extension security scanner
 
+- Pre-bundle AST scan in `extension/security/` (oxc): SEC001–SEC010, SEC012, plus
+  SEC011 package scripts (`scan_extension`).
 - Post-bundle regex scanner in `extension/security/mod.rs` (rule data in
   `extension/security/rules.rs`).
 - Rules SEC101–SEC110 ported from the TS scanner; SEC111–SEC115 added in the
   Rust port with no TS baseline (SEC111/SEC112/SEC115 block, SEC113/SEC114
   warn). Uses `fancy-regex` for lookahead support.
-- `scan_bundle(content, path) -> Vec<Finding>`, `is_blocked(findings) -> bool`.
+- `scan_extension(dir) -> Result<ScanReport, ScanError>`, `scan_bundle(content, path) -> Vec<Finding>`,
+  `is_blocked(findings) -> bool`.
+- Deploy runs pre-bundle scan before esbuild, then post-bundle scan on the artifact.
 
 ### esbuild dependency
 

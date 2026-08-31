@@ -272,6 +272,7 @@ mod tests {
             data: data.to_owned(),
             flag: None,
             name: "www".to_owned(),
+            parameters: None,
             port: None,
             priority: None,
             protocol: None,

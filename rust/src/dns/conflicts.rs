@@ -211,6 +211,7 @@ mod tests {
             data: data.to_string(),
             flag: None,
             name: "www".to_string(),
+            parameters: None,
             port: None,
             priority: None,
             protocol: None,

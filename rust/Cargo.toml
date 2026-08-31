@@ -1,6 +1,6 @@
 [package]
 name = "godaddy-cli"
-version = "0.2.9"
+version = "0.2.11"
 edition = "2024"
 description = "GoDaddy developer CLI"
 license = "Proprietary"
@@ -20,15 +20,22 @@ async-trait = "0.1"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.5", features = ["std", "string"] }
-cli-engine = { features = ["pkce-auth"], version = "0.8.6" }
+cli-engine = { features = ["pkce-auth"], version = "0.9.0" }
 dirs = "6"
 domains-client = { path = "domains-client" }
 fancy-regex = "0.14"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+globset = "0.4"
 open = "5"
+oxc_allocator = "0.143"
+oxc_ast = "0.143"
+oxc_ast_visit = "0.143"
+oxc_parser = "0.143"
+oxc_span = "0.143"
+oxc_syntax = "0.143"
 phonenumber = "0.3"
 regex = { version = "1", features = ["std"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "form", "rustls"] }
 self-replace = "1.5.0"
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 sha2 = "0.10"

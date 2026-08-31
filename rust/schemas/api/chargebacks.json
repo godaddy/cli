@@ -191,8 +191,16 @@
       "type": "object"
     },
     "error": {
-      "$id": "https://godaddy.com/schema/common/error.v1",
+      "$id": "https://godaddy.com/schemas/common/error.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
       "description": "The error information.",
       "properties": {
         "correlationId": {
@@ -237,7 +245,7 @@
       "type": "object"
     },
     "error-details": {
-      "$id": "https://godaddy.com/schema/common/error-details.v1",
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The error details. Required for client-side `4XX` errors.",
       "properties": {
@@ -270,7 +278,7 @@
       "type": "object"
     },
     "link-description": {
-      "$id": "https://godaddy.com/schema/common/link-description.v1",
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
       "properties": {
@@ -334,7 +342,7 @@
       "type": "object"
     },
     "patch": {
-      "$id": "https://godaddy.com/schema/common/patch.v1",
+      "$id": "https://godaddy.com/schemas/common/patch.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "The JSON patch object to apply partial updates to resources.",
       "properties": {
@@ -391,7 +399,7 @@
       "type": "object"
     },
     "patch-request": {
-      "$id": "https://godaddy.com/schema/common/patch-request.v1",
+      "$id": "https://godaddy.com/schemas/common/patch-request.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "An array of JSON patch objects to apply partial updates to resources.",
       "items": {

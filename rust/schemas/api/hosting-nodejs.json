@@ -1,5 +1,26 @@
 {
   "$defs": {
+    "PublicApiError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "type": "object"
+    },
     "PublicAppCreationJob": {
       "additionalProperties": false,
       "properties": {
@@ -520,8 +541,14 @@
                 "type": "string"
               },
               "description": {
-                "nullable": true,
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "fullName": {
                 "type": "string"
@@ -601,8 +628,14 @@
               "type": "string"
             },
             "name": {
-              "nullable": true,
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -671,6 +704,9 @@
       "properties": {
         "detail": {
           "additionalProperties": {},
+          "propertyNames": {
+            "type": "string"
+          },
           "type": "object"
         },
         "message": {
@@ -1037,7 +1073,7 @@
     }
   },
   "baseUrl": "https://api.godaddy.com/v1/hosting/nodejs",
-  "description": "Gateway-integrated API for customer apps. Authenticate with a forwarded customer session (Gasket auth), a developer portal API key (`Authorization: sso-key` on the public gateway URL), or an OAuth Bearer access token. When using Bearer auth, each operation requires the OAuth scope listed on that operation. API keys do not use OAuth scopes. After publish or domain changes, poll GET …/deployments and GET …/status. After zip upload, poll GET …/source/status with the returned jobId.",
+  "description": "An API for managing Node.js hosting applications: create and configure apps, deploy code from a zip upload or a connected GitHub repository, manage environment secrets, and monitor deployment status and application logs.",
   "endpoints": [
     {
       "method": "GET",
@@ -1051,7 +1087,10 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1084,7 +1123,10 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1120,10 +1162,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1159,10 +1207,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1205,10 +1259,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1241,10 +1301,16 @@
           "description": "App deleted"
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1291,10 +1357,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1324,16 +1396,22 @@
       "path": "/apps/{appId}/deployments",
       "responses": {
         "200": {
-          "description": "Publish started",
+          "description": "Publish started; poll GET …/deployments or GET …/status for progress.",
           "schema": {
             "$ref": "#/$defs/PublicPublishResponse"
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1396,10 +1474,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1461,10 +1545,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1500,10 +1590,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1577,10 +1673,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1617,19 +1719,28 @@
       },
       "responses": {
         "200": {
-          "description": "Rollback started",
+          "description": "Rollback started; poll GET …/deployments or GET …/status for progress.",
           "schema": {
             "$ref": "#/$defs/PublicRollbackResponse"
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "403": {
-          "description": "Rollback not enabled"
+          "description": "Rollback not enabled",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1677,10 +1788,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 60 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1723,10 +1840,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1772,16 +1895,22 @@
       },
       "responses": {
         "200": {
-          "description": "Upload accepted",
+          "description": "Upload accepted; poll GET …/source/status with the returned jobId for progress.",
           "schema": {
             "$ref": "#/$defs/PublicZipUploadResponse"
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1824,10 +1953,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 10 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1871,10 +2006,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1918,10 +2059,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",
@@ -1957,10 +2104,16 @@
           }
         },
         "401": {
-          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)"
+          "description": "Unauthorized (missing session, invalid API key or Bearer token, or insufficient OAuth scope)",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "404": {
-          "description": "Not found"
+          "description": "Not found",
+          "schema": {
+            "$ref": "#/$defs/PublicApiError"
+          }
         },
         "429": {
           "description": "Too many requests. Limit: 120 requests per minute per client IP. X-RateLimit-* headers are returned on successful responses as well.",

@@ -48,7 +48,7 @@ struct CallArgs {
     header: Vec<String>,
 
     /// Include response headers in output.
-    #[arg(long, short = 'i')]
+    #[arg(long)]
     include: bool,
 
     /// Additional required OAuth scope(s), merged with the endpoint's.
@@ -546,7 +546,7 @@ mod tests {
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
         assert_eq!(
-            rendered["data"]["path"], "/v3/domains/domain-names/example.com/nameservers",
+            rendered["data"]["path"], "/domain-names/example.com/nameservers",
             "{}",
             output.rendered
         );
@@ -607,7 +607,7 @@ mod tests {
                 "gddy",
                 "api",
                 "call",
-                "/v3/domains/domain-names/example.com/nameservers",
+                "/domain-names/example.com/nameservers",
                 "--method",
                 "PUT",
                 "--param",
@@ -621,7 +621,7 @@ mod tests {
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
         assert_eq!(
-            rendered["data"]["path"], "/v3/domains/domain-names/example.com/nameservers",
+            rendered["data"]["path"], "/domain-names/example.com/nameservers",
             "{}",
             output.rendered
         );
@@ -643,7 +643,7 @@ mod tests {
                 "gddy",
                 "api",
                 "call",
-                "/v3/domains/domain-names/example.com/nameservers?foo=bar",
+                "/domain-names/example.com/nameservers?foo=bar",
                 "--method",
                 "PUT",
                 "--dry-run",

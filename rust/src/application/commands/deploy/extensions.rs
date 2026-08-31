@@ -84,6 +84,29 @@ fn upload_completed_event(
     event
 }
 
+fn format_security_findings(findings: &[crate::extension::Finding]) -> String {
+    findings
+        .iter()
+        .filter(|f| f.severity == crate::extension::Severity::Block)
+        .map(|f| {
+            let loc = if f.col > 0 {
+                format!("{}:{}:{}", f.file, f.line, f.col)
+            } else {
+                format!("{}:{}", f.file, f.line)
+            };
+            if f.snippet.is_empty() {
+                format!("  {} ({}): {}", f.rule_id, loc, f.message)
+            } else {
+                format!(
+                    "  {} ({}): {}\n    > {}",
+                    f.rule_id, loc, f.message, f.snippet
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub(super) struct DeployExtensionArgs<'a> {
     pub(super) application_id: &'a str,
     pub(super) release_id: &'a str,
@@ -109,6 +132,52 @@ pub(super) async fn deploy_extension(
     let ext_name = &ext.name;
     let ext_type = ext.ext_type;
 
+    let repo_root = crate::extension::repo_root_from_cwd();
+    let (ext_dir, source) =
+        crate::extension::resolve_extension_paths(&repo_root, &ext.handle, &ext.source, ext_name)
+            .map_err(super::super::validation_err)?;
+    crate::extension::require_extension_source_file(ext.handle.as_str(), ext_name, &source)
+        .map_err(super::super::validation_err)?;
+
+    // ---- Pre-bundle AST security scan (SEC001–SEC012 + SEC011) ----
+    sender
+        .send(json!({
+            "type": "progress",
+            "name": "scan.prebundle",
+            "status": "started",
+            "extensionName": ext_name,
+            "extensionDir": ext_dir.display().to_string(),
+        }))
+        .await;
+
+    let pre_report = crate::extension::scan_extension(&ext_dir).map_err(|e| {
+        crate::error::GddyError::security(format!(
+            "pre-bundle security scan failed for '{ext_name}': {e}"
+        ))
+        .into_cli_error()
+    })?;
+
+    sender
+        .send(json!({
+            "type": "progress",
+            "name": "scan.prebundle",
+            "status": "completed",
+            "extensionName": ext_name,
+            "totalFindings": pre_report.summary.total,
+            "blockedFindings": pre_report.summary.block,
+            "warnings": pre_report.summary.warn,
+            "scannedFiles": pre_report.scanned_files,
+        }))
+        .await;
+
+    if pre_report.blocked {
+        return Err(crate::error::GddyError::security(format!(
+            "pre-bundle security scan blocked deployment of '{ext_name}':\n{}",
+            format_security_findings(&pre_report.findings)
+        ))
+        .into_cli_error());
+    }
+
     // ---- Bundle ----
     sender
         .send(json!({
@@ -120,12 +189,6 @@ pub(super) async fn deploy_extension(
         }))
         .await;
 
-    let repo_root = crate::extension::repo_root_from_cwd();
-    let (ext_dir, source) =
-        crate::extension::resolve_extension_paths(&repo_root, &ext.handle, &ext.source, ext_name)
-            .map_err(super::super::validation_err)?;
-    crate::extension::require_extension_source_file(ext.handle.as_str(), ext_name, &source)
-        .map_err(super::super::validation_err)?;
     let bundle = crate::extension::bundle_extension(
         &source,
         ext_type,
@@ -156,7 +219,7 @@ pub(super) async fn deploy_extension(
         }))
         .await;
 
-    // ---- Security scan ----
+    // ---- Post-bundle regex security scan ----
     sender
         .send(json!({
             "type": "progress",
@@ -172,23 +235,9 @@ pub(super) async fn deploy_extension(
     let findings = crate::extension::scan_bundle(&content, source_display);
 
     if crate::extension::is_blocked(&findings) {
-        let blocked_msgs: Vec<String> = findings
-            .iter()
-            .filter(|f| f.severity == crate::extension::Severity::Block)
-            .map(|f| {
-                if f.snippet.is_empty() {
-                    format!("  {} ({}:{}): {}", f.rule_id, f.file, f.line, f.message)
-                } else {
-                    format!(
-                        "  {} ({}:{}): {}\n    > {}",
-                        f.rule_id, f.file, f.line, f.message, f.snippet
-                    )
-                }
-            })
-            .collect();
         return Err(crate::error::GddyError::security(format!(
             "security scan blocked deployment of '{ext_name}':\n{}",
-            blocked_msgs.join("\n")
+            format_security_findings(&findings)
         ))
         .into_cli_error());
     }

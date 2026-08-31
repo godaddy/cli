@@ -1,6 +1,8 @@
 mod dereference;
+mod domains_merge;
 mod github;
 mod graphql;
+mod hosting_spec;
 mod manifest;
 mod openapi;
 
@@ -68,6 +70,11 @@ fn resolve_output_dir() -> PathBuf {
     manifest_dir.join("../../schemas/api")
 }
 
+fn resolve_hosting_spec_path() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir.join("../../schemas/openapi/hosting-nodejs-public-v1.yaml")
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -76,17 +83,36 @@ fn main() -> Result<()> {
     let output_dir = resolve_output_dir();
     std::fs::create_dir_all(&output_dir).context("failed to create output dir")?;
 
+    hosting_spec::refresh(&resolve_hosting_spec_path())?;
+
     let source_manifest = load_source_manifest()?;
     eprintln!("Discovering specification repositories...");
     let (mut sources, tmpdir) = discover_spec_sources(&source_manifest)?;
+
+    let ct_dir = tmpdir.join("__common-types");
+    let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
+
+    // `domains` is a normal remote source (cloned like any commerce/location
+    // repo), but its v3 OpenAPI doc is *also* progenitor's codegen input for
+    // the domains-client crate once merged with the one v1 operation v3
+    // doesn't yet serve. Reuse this same clone rather than fetching it twice.
+    // The spec spans multiple files (external `$ref`s into models/enums/
+    // common-types dirs), so it needs the same dereferencing pass the
+    // catalog processing below uses, not a bare YAML parse.
+    if let Some(domains_source) = sources.iter().find(|s| s.domain == "domains") {
+        domains_merge::refresh(
+            &domains_source.spec_file,
+            common_types,
+            &domains_merge::domains_client_oas3_path(),
+        )
+        .context("failed to refresh domains-client codegen spec")?;
+    }
+
     sources.extend(local_spec_sources(&source_manifest)?);
 
     if sources.is_empty() {
         bail!("no specification repositories discovered — refusing to overwrite catalog output");
     }
-
-    let ct_dir = tmpdir.join("__common-types");
-    let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
 
     let mut manifest = CatalogManifest {
         generated: chrono::Utc::now().to_rfc3339(),
