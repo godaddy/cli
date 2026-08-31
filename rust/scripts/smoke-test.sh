@@ -392,6 +392,76 @@ else
 fi
 check_valid "A22 config validate accepts the CLI-added placement-only entry"
 
+write_manifest <<'EOF'
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "write"]
+
+[settings.presentation]
+label = "Configure PayPal"
+openMode = "new-window"
+EOF
+check_invalid "A23 rejects settings-link-v1 without exactly read+open capabilities" "requires exactly the read and open capabilities"
+
+write_manifest <<'EOF'
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open"]
+
+[settings.presentation]
+label = ""
+openMode = "new-window"
+EOF
+check_invalid "A24 rejects a settings-link-v1 presentation with an empty label" "label must not be empty"
+
+write_manifest <<'EOF'
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open"]
+
+[settings.presentation]
+label = "Configure PayPal"
+openMode = "same-window"
+EOF
+check_invalid "A25 rejects a settings-link-v1 presentation with a non-new-window openMode" "openMode must be"
+
+write_manifest <<'EOF'
+[[settings]]
+group = "tax-center"
+slug = "manual-tax"
+entryPath = "/settings/manual-tax"
+capabilities = ["read", "write", "open"]
+
+[[settings.presentation.sections]]
+key = "defaults"
+label = "Defaults"
+
+[[settings.presentation.sections.fields]]
+type = "boolean"
+key = "flag"
+label = "Flag"
+EOF
+check_invalid "A26 rejects the open capability on a settings-form-v1 presentation" "only valid for a settings-link-v1"
+
+write_manifest <<'EOF'
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open"]
+
+[settings.presentation]
+label = "Configure PayPal"
+openMode = "new-window"
+EOF
+check_valid "A27 config validate accepts a well-formed settings-link-v1 entry"
+
 echo "=== Group B: release-time behavior (mocked network) ==="
 
 cat >fixtures/manual-tax.json <<'EOF'
@@ -810,6 +880,32 @@ if echo "$release_out" | jq -e '
   pass "C3b release echoes visibleWhen/minItems/maxItems/numeric option values unchanged"
 else
   fail "C3b release did not echo extended field options as expected: $release_out"
+fi
+
+write_manifest <<'EOF'
+
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+title = "PayPal Payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open"]
+
+[settings.presentation]
+label = "Configure PayPal"
+openMode = "new-window"
+EOF
+release_out="$(gddy platform app release --application-id smoke-app-id --version 0.0.1 2>&1)"
+if echo "$release_out" | jq -e '
+    .data.settings[0].presentation.type == "link"
+    and .data.settings[0].presentation.schemaVersion == "settings-link-v1"
+    and .data.settings[0].presentation.label == "Configure PayPal"
+    and .data.settings[0].presentation.openMode == "new-window"
+    and .data.settings[0].capabilities == ["read","open"]
+  ' >/dev/null 2>&1; then
+  pass "C4 release echoes a settings-link-v1 entry with type/schemaVersion/label/openMode"
+else
+  fail "C4 release did not echo the link entry as expected: $release_out"
 fi
 
 echo "=== Group D: server error responses (mocked network) ==="

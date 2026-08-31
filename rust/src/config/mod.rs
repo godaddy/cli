@@ -446,7 +446,7 @@ pub fn write_env_file(
 #[cfg(test)]
 mod tests {
     use super::settings_form::{
-        SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
+        SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
     };
     use super::*;
 
@@ -763,7 +763,7 @@ mod tests {
             }),
             metadata: None,
             presentation_file: None,
-            presentation: Some(SettingsFormV1Presentation {
+            presentation: Some(SettingPresentation::Form(SettingsFormV1Presentation {
                 sections: vec![SettingsFormV1Section {
                     key: "defaults".to_owned(),
                     label: "Defaults".to_owned(),
@@ -777,19 +777,20 @@ mod tests {
                         default_value: Some(true),
                     }],
                 }],
-            }),
+            })),
         });
         write_config(&path, &config).expect("write config with setting");
         let read_back = read_config(&path).expect("read config with setting");
         assert_eq!(read_back.settings.len(), 1);
         assert_eq!(read_back.settings[0].entry_path, "/settings/godaddy-tax");
-        let SettingsFormV1Field::Boolean { default_value, .. } = &read_back.settings[0]
+        let SettingPresentation::Form(form) = read_back.settings[0]
             .presentation
             .as_ref()
             .expect("presentation")
-            .sections[0]
-            .fields[0]
         else {
+            unreachable!("expected form presentation");
+        };
+        let SettingsFormV1Field::Boolean { default_value, .. } = &form.sections[0].fields[0] else {
             unreachable!("expected boolean field");
         };
         assert_eq!(default_value, &Some(true));

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::schemas::ApplicationRelease;
 use crate::config::settings_form::{
-    SettingsFormV1Presentation, presentation_from_json, validate_presentation,
+    SettingPresentation, presentation_from_json, validate_presentation,
 };
 use crate::next_action::next_action;
 use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
@@ -38,7 +38,7 @@ fn ui_extension_entry(
 fn resolve_presentation(
     setting: &crate::config::SettingConfig,
     manifest_dir: &Path,
-) -> cli_engine::Result<SettingsFormV1Presentation> {
+) -> cli_engine::Result<SettingPresentation> {
     match (&setting.presentation, &setting.presentation_file) {
         (Some(_), Some(_)) => Err(crate::error::GddyError::validation(format!(
             "setting '{}' has both presentation and presentationFile — provide only one",
@@ -81,7 +81,12 @@ fn setting_entry(
 ) -> cli_engine::Result<Value> {
     let presentation = resolve_presentation(setting, manifest_dir)?;
     let mut errors = Vec::new();
-    validate_presentation(&presentation, &mut errors, "presentation");
+    validate_presentation(
+        &presentation,
+        &setting.capabilities,
+        &mut errors,
+        "presentation",
+    );
     if !errors.is_empty() {
         return Err(crate::error::GddyError::validation(format!(
             "setting '{}' presentation is invalid: {}",
@@ -93,8 +98,16 @@ fn setting_entry(
     let mut presentation_json = serde_json::to_value(&presentation)
         .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
     if let Value::Object(map) = &mut presentation_json {
-        map.insert("type".to_owned(), json!("form"));
-        map.insert("schemaVersion".to_owned(), json!("settings-form-v1"));
+        match &presentation {
+            SettingPresentation::Form(_) => {
+                map.insert("type".to_owned(), json!("form"));
+                map.insert("schemaVersion".to_owned(), json!("settings-form-v1"));
+            }
+            SettingPresentation::Link(_) => {
+                map.insert("type".to_owned(), json!("link"));
+                map.insert("schemaVersion".to_owned(), json!("settings-link-v1"));
+            }
+        }
     }
 
     let mut entry = json!({
@@ -342,9 +355,12 @@ mod tests {
         }
     }
 
-    fn boolean_presentation() -> crate::config::settings_form::SettingsFormV1Presentation {
-        use crate::config::settings_form::{SettingsFormV1Field, SettingsFormV1Section};
-        crate::config::settings_form::SettingsFormV1Presentation {
+    fn boolean_presentation() -> crate::config::settings_form::SettingPresentation {
+        use crate::config::settings_form::{
+            SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation,
+            SettingsFormV1Section,
+        };
+        SettingPresentation::Form(SettingsFormV1Presentation {
             sections: vec![SettingsFormV1Section {
                 key: "defaults".to_owned(),
                 label: "Defaults".to_owned(),
@@ -358,14 +374,23 @@ mod tests {
                     default_value: Some(true),
                 }],
             }],
-        }
+        })
     }
 
-    fn list_group_presentation() -> crate::config::settings_form::SettingsFormV1Presentation {
+    fn link_presentation() -> crate::config::settings_form::SettingPresentation {
+        use crate::config::settings_form::{SettingPresentation, SettingsLinkV1Presentation};
+        SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: "Configure PayPal".to_owned(),
+            open_mode: "new-window".to_owned(),
+        })
+    }
+
+    fn list_group_presentation() -> crate::config::settings_form::SettingPresentation {
         use crate::config::settings_form::{
-            ChoiceOption, ListGroupItem, SelectValue, SettingsFormV1Field, SettingsFormV1Section,
+            ChoiceOption, ListGroupItem, SelectValue, SettingPresentation, SettingsFormV1Field,
+            SettingsFormV1Presentation, SettingsFormV1Section,
         };
-        crate::config::settings_form::SettingsFormV1Presentation {
+        SettingPresentation::Form(SettingsFormV1Presentation {
             sections: vec![SettingsFormV1Section {
                 key: "rules".to_owned(),
                 label: "Rules".to_owned(),
@@ -396,7 +421,7 @@ mod tests {
                     },
                 }],
             }],
-        }
+        })
     }
 
     #[test]
@@ -439,6 +464,48 @@ mod tests {
                 .get("description")
                 .is_none(),
             "absent field properties should be omitted instead of serialized as null"
+        );
+    }
+
+    #[test]
+    fn setting_entry_maps_link_placement_and_presentation() {
+        let mut setting = crate::config::SettingConfig {
+            group: "payment-methods".to_owned(),
+            slug: "paypal-payments".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/paypal".to_owned(),
+            order: None,
+            capabilities: vec!["read".to_owned(), "open".to_owned()],
+            icon: None,
+            metadata: None,
+            presentation_file: None,
+            presentation: None,
+        };
+        setting.presentation = Some(link_presentation());
+        let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
+        assert_eq!(entry["groupSlug"], "payment-methods");
+        assert_eq!(entry["appSettingSlug"], "paypal-payments");
+        assert_eq!(entry["entryPath"], "/settings/paypal");
+        assert_eq!(entry["presentation"]["type"], "link");
+        assert_eq!(entry["presentation"]["schemaVersion"], "settings-link-v1");
+        assert_eq!(entry["presentation"]["label"], "Configure PayPal");
+        assert_eq!(entry["presentation"]["openMode"], "new-window");
+        assert_eq!(entry["capabilities"], serde_json::json!(["read", "open"]));
+    }
+
+    #[test]
+    fn setting_entry_rejects_link_with_wrong_capabilities() {
+        let mut setting = placement_only_setting();
+        setting.entry_path = "/settings/paypal".to_owned();
+        setting.capabilities = vec!["read".to_owned(), "write".to_owned()];
+        setting.presentation = Some(link_presentation());
+        let err = super::setting_entry(&setting, std::path::Path::new(""))
+            .expect_err("wrong capabilities must be rejected");
+        assert!(
+            err.to_string()
+                .contains("requires exactly the read and open capabilities"),
+            "{err}"
         );
     }
 

@@ -46,7 +46,7 @@ struct SettingsArgs {
     order: Option<i64>,
 
     /// One or more lifecycle capabilities (read, write, validate, test,
-    /// delete). Defaults to read+write server-side when omitted.
+    /// delete, open) — a link presentation requires exactly read+open.
     #[arg(long = "capability", value_name = "CAPABILITY", num_args = 1..)]
     capabilities: Vec<String>,
 
@@ -181,10 +181,11 @@ pub(super) fn group() -> RuntimeGroupSpec {
             "Register the placement metadata for an application-settings \
             capability in the godaddy.toml manifest in the current directory. \
             This command only writes group/slug/entryPath/order/capabilities/icon \
-            — it cannot author the settings-form-v1 form itself. After running \
-            it, hand-add a [settings.presentation] block (sections and fields) \
-            to the written entry; `gddy platform app release` rejects a \
-            settings entry with no presentation.",
+            — it cannot author the settings-form-v1 form or settings-link-v1 \
+            link itself. After running it, hand-add a [settings.presentation] \
+            block to the written entry — sections and fields for a form, or a \
+            label and openMode for a link; `gddy platform app release` rejects \
+            a settings entry with no presentation.",
         )
         .with_system("applications")
         .with_tier(Tier::Mutate)

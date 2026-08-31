@@ -49,6 +49,9 @@ jobs:
       - name: Test
         run: cargo test
 
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh
+
       - name: Check module size limits
         working-directory: .
         run: ./rust/scripts/check-module-size.sh
