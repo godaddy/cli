@@ -94,7 +94,7 @@ mod tests {
     #[tokio::test]
     async fn domain_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 9] = [
+        let cases: [&[&str]; 10] = [
             &["gddy", "domain", "list", "--output", "json"],
             &["gddy", "domain", "get", "example.com", "--output", "json"],
             &[
@@ -132,6 +132,13 @@ mod tests {
             &[
                 "gddy",
                 "domain",
+                "register",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
                 "nameservers",
                 "set",
                 "example.com",
@@ -144,7 +151,6 @@ mod tests {
                 "gddy",
                 "domain",
                 "operation",
-                "status",
                 "dummy-op-id",
                 "--output",
                 "json",
