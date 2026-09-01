@@ -129,13 +129,7 @@ mod tests {
                 "--output",
                 "json",
             ],
-            &[
-                "gddy",
-                "domain",
-                "register",
-                "--output",
-                "json",
-            ],
+            &["gddy", "domain", "register", "--output", "json"],
             &[
                 "gddy",
                 "domain",
