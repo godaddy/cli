@@ -109,6 +109,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
                         &mut state.period,
                         max_years,
                     );
+                    state.period_prices.retain(|years, _| *years <= max_years);
                     eprintln!(
                         "\n  {} Period {} is not supported for this domain (maximum is {}). \
                          Go back to Options to choose a different length.",

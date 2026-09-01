@@ -9,8 +9,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, validate_domain_name,
-    validate_nameserver_hosts,
+    fetch_with_domain_retry, format_money, period_label, resolve_domain_name,
+    resolve_nameserver_hosts,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -305,11 +305,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(view_columns())
         .with_scopes(&[DOMAINS_READ]),
         |ctx, args: QuoteArgs| async move {
-            let domain = validate_domain_name(&args.domain)?;
+            let domain = resolve_domain_name(
+                &ctx,
+                &args.domain,
+                "Domain name to quote (e.g. example.com)",
+            )?;
             let period = args.period;
             let privacy = args.privacy;
             let renew_auto = !args.no_renew;
-            let name_servers = validate_nameserver_hosts(args.nameserver)?;
+            let name_servers = resolve_nameserver_hosts(
+                &ctx,
+                args.nameserver,
+                "Custom nameserver host (e.g. ns1.example.com)",
+            )?;
             let debug = !ctx.middleware.debug.is_empty();
             let period_nz =
                 std::num::NonZeroU64::new(period).expect("clap value_parser enforces period >= 1");
@@ -317,7 +325,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Resolve auth first (fail closed before reading local config), then
             // build the profile. The token is bound to a hash of this quoted
             // request, so what's quoted here is what `purchase` later registers.
-            let client = make_client(&ctx).await?;
             let profile = build_profile(privacy, renew_auto, &name_servers)?;
             // Cache the exact profile we quote with: the token binds a hash of the
             // domain/price/profile, so `purchase` must re-send this verbatim or the
@@ -330,20 +337,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ))
             })?;
 
-            let quote = match client
-                .quote_domain_registration()
-                .body(types::QuoteDomainRegistrationBody {
-                    domain: domain.clone(),
-                    period: period_nz,
-                    profile: Some(profile),
-                    profile_id: None,
-                })
-                .send()
-                .await
-            {
-                Ok(r) => r.into_inner(),
-                Err(e) => return Err(api_error("quoting registration", debug, e).await),
-            };
+            let quote = fetch_with_domain_retry(
+                &ctx,
+                domain.clone(),
+                "Domain name to quote (e.g. example.com)",
+                "quoting registration",
+                debug,
+                |client, domain| {
+                    let profile = profile.clone();
+                    async move {
+                        client
+                            .quote_domain_registration()
+                            .body(types::QuoteDomainRegistrationBody {
+                                domain,
+                                period: period_nz,
+                                profile: Some(profile),
+                                profile_id: None,
+                            })
+                            .send()
+                            .await
+                            .map(|r| r.into_inner())
+                    }
+                },
+            )
+            .await?;
 
             let view = quote_to_json(&quote, &domain);
 

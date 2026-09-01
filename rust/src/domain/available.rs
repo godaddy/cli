@@ -8,8 +8,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, periods_from_prices, term_for_period,
-    validate_domain_name,
+    api_error, format_money, make_client, period_label, period_price_map, periods_from_prices,
+    resolve_domain_name, term_for_period,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -118,7 +118,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: AvailableArgs| async move {
-            let domain = validate_domain_name(&args.domain)?;
+            let domain = resolve_domain_name(
+                &ctx,
+                &args.domain,
+                "Domain name to check (e.g. example.com)",
+            )?;
             // --check-type fast|full → v3 optimizeFor SPEED|ACCURACY.
             let optimize_for = match args.check_type.as_deref() {
                 Some("fast") => Some(types::OptimizationTarget::Speed),
@@ -173,6 +177,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     price_1yr,
                     currency_str,
                     periods_from_prices(&prices),
+                    period_price_map(&prices),
                 )
                 .await?
                 {

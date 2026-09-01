@@ -10,7 +10,7 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use crate::domain::common::{is_terminal_status, validate_domain_name};
+use crate::domain::common::{is_terminal_status, resolve_domain_name, validate_domain_name};
 use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -120,7 +120,14 @@ async fn run_interactive(ctx: CommandContext, args: RegisterArgs) -> Result<Comm
     let debug = !ctx.middleware.debug.is_empty();
 
     // Pre-populate state from any flags the user already provided.
-    let domain = args.domain.map(|d| validate_domain_name(&d)).transpose()?;
+    let domain = match args.domain {
+        Some(d) => Some(resolve_domain_name(
+            &ctx,
+            &d,
+            "Enter domain name to register (e.g. example.com)",
+        )?),
+        None => None,
+    };
 
     let state = WizardState::new()
         .with_domain(domain)
@@ -288,7 +295,7 @@ fn build_result(state: &WizardState) -> Result<CommandResult> {
     {
         actions.push(
             next_action(
-                "domain operation status <operation-id>",
+                "domain operation <operation-id>",
                 "Check whether registration has finished since polling gave up",
             )
             .with_param("operation-id", required_value(op.clone())),
@@ -413,7 +420,7 @@ mod tests {
             .metadata
             .next_actions
             .iter()
-            .find(|a| a.command.contains("operation status"))
+            .find(|a| a.command.contains("domain operation"))
             .expect("pending registration should suggest operation status");
         assert_eq!(
             status_action

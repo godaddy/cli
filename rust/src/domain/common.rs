@@ -4,6 +4,8 @@
 
 use cli_engine::{CliCoreError, CommandContext, Credential, Result};
 
+use std::future::Future;
+
 use crate::environments;
 
 use domains_client::types;
@@ -102,6 +104,22 @@ pub(super) fn periods_from_prices(prices: &[types::TermPrice]) -> Vec<u64> {
     periods
 }
 
+/// Indicative total registration price keyed by period years.
+pub(super) fn period_price_map(
+    prices: &[types::TermPrice],
+) -> std::collections::BTreeMap<u64, String> {
+    let mut map = std::collections::BTreeMap::new();
+    for term in prices {
+        let Some(period) = term.period.map(|p| p.get()) else {
+            continue;
+        };
+        if let Some(price) = term.price.as_ref().and_then(format_money) {
+            map.insert(period, price);
+        }
+    }
+    map
+}
+
 /// Whether an API error body indicates the requested registration period exceeds
 /// the TLD limit. Availability pricing is indicative; quote is authoritative.
 pub(super) fn is_period_limit_error(body: &str) -> bool {
@@ -184,6 +202,278 @@ pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
     Ok(trimmed.to_owned())
 }
 
+/// Normalize and validate a TLD label for `--tld` / `--tlds` flags.
+///
+/// Accepts `com` or `.com` (leading dot stripped), lowercases, and validates
+/// each dot-separated label as LDH.
+pub(super) fn validate_tld(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CliCoreError::message("TLD is required"));
+    }
+    let stripped = trimmed.trim_start_matches('.');
+    if stripped.is_empty() {
+        return Err(CliCoreError::message(
+            "TLD is required (expected something like com, not just a leading dot)",
+        ));
+    }
+    let lower = stripped.to_ascii_lowercase();
+    let labels: Vec<&str> = lower.split('.').collect();
+    if labels.iter().any(|label| !is_ldh_label(label)) {
+        return Err(CliCoreError::message(format!(
+            "{raw:?} doesn't look like a valid TLD (expected something like com or co.uk, without a leading dot)"
+        )));
+    }
+    if labels
+        .last()
+        .is_some_and(|tld| tld.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(CliCoreError::message(format!("{raw:?} is not a valid TLD")));
+    }
+    Ok(lower)
+}
+
+/// Prompt until the user enters a valid TLD or cancels.
+pub(super) fn prompt_validated_tld(prompt: &str) -> Result<String> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt(prompt)
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_tld(input).map(|_| ()).map_err(|e| e.to_string())
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    validate_tld(&input)
+}
+
+/// Validate `--tld` values, re-prompting interactively when input is invalid.
+#[allow(clippy::print_stderr)]
+pub(super) fn resolve_tlds(
+    ctx: &CommandContext,
+    raw: Vec<String>,
+    prompt: &str,
+) -> Result<Vec<String>> {
+    if raw.is_empty() {
+        if ctx.is_interactive() {
+            return Ok(vec![prompt_validated_tld(prompt)?]);
+        }
+        return Err(CliCoreError::message("at least one --tld is required"));
+    }
+    match raw
+        .iter()
+        .map(|t| validate_tld(t))
+        .collect::<Result<Vec<_>>>()
+    {
+        Ok(tlds) => Ok(tlds),
+        Err(e) if ctx.is_interactive() => {
+            eprintln!("  {e}");
+            Ok(vec![prompt_validated_tld(prompt)?])
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// User-facing hint when the agreements API rejects a TLD the user can retry.
+pub(super) fn recoverable_tld_api_error(status: u16, body: &str) -> Option<String> {
+    if status != 422 {
+        return None;
+    }
+    #[derive(serde::Deserialize)]
+    struct CodeMessage {
+        #[serde(default)]
+        code: String,
+        #[serde(default)]
+        message: String,
+    }
+    let parsed = serde_json::from_str::<CodeMessage>(body).ok()?;
+    if parsed.code != "UNSUPPORTED_TLD" {
+        return None;
+    }
+    if parsed.message.is_empty() {
+        Some("that TLD is not supported; try another (e.g. com)".to_owned())
+    } else {
+        Some(format!(
+            "that TLD is not supported: {} — try another (e.g. com)",
+            parsed.message
+        ))
+    }
+}
+
+/// User-facing hint when an operation lookup fails and the user can retry.
+pub(super) fn recoverable_operation_api_error(status: u16, _body: &str) -> Option<String> {
+    if status == 404 {
+        Some("no operation found with that ID — check the operation ID and try again".to_owned())
+    } else {
+        None
+    }
+}
+
+/// User-facing hint when a domain lookup fails and the user can retry.
+pub(super) fn recoverable_domain_lookup_api_error(status: u16, _body: &str) -> Option<String> {
+    match status {
+        404 => Some("that domain was not found — check the name and try again".to_owned()),
+        422 => Some("that domain could not be looked up — check the name and try again".to_owned()),
+        _ => None,
+    }
+}
+
+/// Normalize and validate an async operation ID (UUID).
+pub(super) fn validate_operation_id(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CliCoreError::message("operation ID is required"));
+    }
+    uuid::Uuid::parse_str(trimmed).map_err(|_| {
+        CliCoreError::message(format!(
+            "{trimmed:?} doesn't look like a valid operation ID (expected a UUID)"
+        ))
+    })?;
+    Ok(trimmed.to_owned())
+}
+
+/// Prompt until the user enters a valid operation ID or cancels.
+pub(super) fn prompt_validated_operation_id(prompt: &str) -> Result<String> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt(prompt)
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_operation_id(input)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    validate_operation_id(&input)
+}
+
+/// Validate an operation ID, re-prompting interactively when input is invalid.
+#[allow(clippy::print_stderr)]
+pub(super) fn resolve_operation_id(
+    ctx: &CommandContext,
+    raw: &str,
+    prompt: &str,
+) -> Result<String> {
+    match validate_operation_id(raw) {
+        Ok(id) => Ok(id),
+        Err(e) if ctx.is_interactive() => {
+            eprintln!("  {e}");
+            prompt_validated_operation_id(prompt)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Validate a quote token string (non-empty).
+pub(super) fn validate_quote_token(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CliCoreError::message("quote token is required"));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Prompt until the user enters a non-empty quote token or cancels.
+pub(super) fn prompt_validated_quote_token(prompt: &str) -> Result<String> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt(prompt)
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_quote_token(input)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    validate_quote_token(&input)
+}
+
+/// Resolve a quote token, re-prompting interactively when missing or invalid.
+#[allow(clippy::print_stderr)]
+pub(super) fn resolve_quote_token(
+    ctx: &CommandContext,
+    raw: Option<String>,
+    prompt: &str,
+) -> Result<String> {
+    match raw {
+        Some(token) => match validate_quote_token(&token) {
+            Ok(token) => Ok(token),
+            Err(e) if ctx.is_interactive() => {
+                eprintln!("  {e}");
+                prompt_validated_quote_token(prompt)
+            }
+            Err(e) => Err(e),
+        },
+        None if ctx.is_interactive() => prompt_validated_quote_token(prompt),
+        None => Err(CliCoreError::message(
+            "--quote-token is required.\n\
+             \n  Get one with `gddy domain quote <domain>`, or use the interactive \
+             wizard:\n\
+             \n    gddy domain register\n\
+             \n  Then purchase with:\n\
+             \n    gddy domain purchase --quote-token <token> --agree --confirm",
+        )),
+    }
+}
+
+/// Validate optional `--tlds` filters, re-prompting interactively when invalid.
+#[allow(clippy::print_stderr)]
+pub(super) fn resolve_optional_tlds(
+    ctx: &CommandContext,
+    raw: Vec<String>,
+    prompt: &str,
+) -> Result<Vec<String>> {
+    if raw.is_empty() {
+        return Ok(vec![]);
+    }
+    match raw
+        .iter()
+        .map(|t| validate_tld(t))
+        .collect::<Result<Vec<_>>>()
+    {
+        Ok(tlds) => Ok(tlds),
+        Err(e) if ctx.is_interactive() => {
+            eprintln!("  {e}");
+            Ok(vec![prompt_validated_tld(prompt)?])
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Prompt until the user enters a valid domain name or cancels.
+pub(super) fn prompt_validated_domain_name(prompt: &str) -> Result<String> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt(prompt)
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_domain_name(input)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    validate_domain_name(&input)
+}
+
+/// Validate a domain name, re-prompting interactively when input is invalid.
+///
+/// Used by leaf commands whose positional `DOMAIN` arg may be supplied via
+/// cli-engine's missing-arg recovery (which does not validate format).
+#[allow(clippy::print_stderr)] // interactive user-facing feedback, not diagnostic logging
+pub(super) fn resolve_domain_name(ctx: &CommandContext, raw: &str, prompt: &str) -> Result<String> {
+    match validate_domain_name(raw) {
+        Ok(domain) => Ok(domain),
+        Err(e) if ctx.is_interactive() => {
+            eprintln!("  {e}");
+            prompt_validated_domain_name(prompt)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Validate every value of a repeatable `--nameserver`-style flag as a
 /// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
 /// with the flag's own name — used by both `quote` (the registration
@@ -196,6 +486,141 @@ pub(super) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>>
             validate_domain_name(&h).map_err(|e| CliCoreError::message(format!("--nameserver {e}")))
         })
         .collect()
+}
+
+/// Prompt until the user enters a valid nameserver host or cancels.
+pub(super) fn prompt_validated_nameserver(prompt: &str) -> Result<String> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt(prompt)
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_domain_name(input)
+                .map(|_| ())
+                .map_err(|e| format!("--nameserver {e}"))
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    validate_domain_name(&input)
+}
+
+/// Resolve `--nameserver` hosts, re-prompting interactively when missing or invalid.
+#[allow(clippy::print_stderr)]
+pub(super) fn resolve_nameserver_hosts(
+    ctx: &CommandContext,
+    raw: Vec<String>,
+    prompt: &str,
+) -> Result<Vec<String>> {
+    if raw.is_empty() {
+        if ctx.is_interactive() {
+            return Ok(vec![prompt_validated_nameserver(prompt)?]);
+        }
+        return Err(CliCoreError::message(
+            "at least one --nameserver is required",
+        ));
+    }
+    match validate_nameserver_hosts(raw) {
+        Ok(hosts) => Ok(hosts),
+        Err(e) if ctx.is_interactive() => {
+            eprintln!("  {e}");
+            Ok(vec![prompt_validated_nameserver(prompt)?])
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Re-run a domain-scoped API call, re-prompting for the domain on recoverable errors.
+#[allow(clippy::print_stderr)]
+pub(super) async fn fetch_with_domain_retry<T, F, Fut>(
+    ctx: &CommandContext,
+    initial_domain: String,
+    prompt: &str,
+    action: &str,
+    debug: bool,
+    fetch: F,
+) -> Result<T>
+where
+    F: Fn(domains_client::Client, String) -> Fut,
+    Fut: Future<Output = std::result::Result<T, domains_client::Error<()>>>,
+{
+    let client = make_client(ctx).await?;
+    let mut domain = initial_domain;
+    loop {
+        match fetch(client.clone(), domain.clone()).await {
+            Ok(value) => return Ok(value),
+            Err(domains_client::Error::UnexpectedResponse(resp)) if ctx.is_interactive() => {
+                let status = resp.status().as_u16();
+                let status_display = resp.status().to_string();
+                let request_id = resp
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                let body = resp.text().await.unwrap_or_default();
+                if let Some(hint) = recoverable_domain_lookup_api_error(status, &body) {
+                    eprintln!("  {hint}");
+                    domain = prompt_validated_domain_name(prompt)?;
+                    continue;
+                }
+                return Err(CliCoreError::message(format_api_error(
+                    action,
+                    status,
+                    &status_display,
+                    &body,
+                    request_id.as_deref(),
+                    debug,
+                )));
+            }
+            Err(e) => return Err(api_error(action, debug, e).await),
+        }
+    }
+}
+
+/// Re-run an operation lookup, re-prompting for the operation ID on recoverable errors.
+#[allow(clippy::print_stderr)]
+pub(super) async fn fetch_with_operation_retry<T, F, Fut>(
+    ctx: &CommandContext,
+    initial_id: String,
+    prompt: &str,
+    action: &str,
+    debug: bool,
+    fetch: F,
+) -> Result<T>
+where
+    F: Fn(domains_client::Client, String) -> Fut,
+    Fut: Future<Output = std::result::Result<T, domains_client::Error<()>>>,
+{
+    let client = make_client(ctx).await?;
+    let mut operation_id = initial_id;
+    loop {
+        match fetch(client.clone(), operation_id.clone()).await {
+            Ok(value) => return Ok(value),
+            Err(domains_client::Error::UnexpectedResponse(resp)) if ctx.is_interactive() => {
+                let status = resp.status().as_u16();
+                let status_display = resp.status().to_string();
+                let request_id = resp
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                let body = resp.text().await.unwrap_or_default();
+                if let Some(hint) = recoverable_operation_api_error(status, &body) {
+                    eprintln!("  {hint}");
+                    operation_id = prompt_validated_operation_id(prompt)?;
+                    continue;
+                }
+                return Err(CliCoreError::message(format_api_error(
+                    action,
+                    status,
+                    &status_display,
+                    &body,
+                    request_id.as_deref(),
+                    debug,
+                )));
+            }
+            Err(e) => return Err(api_error(action, debug, e).await),
+        }
+    }
 }
 
 /// A single RFC 1035/1123 "LDH label": 1-63 bytes, alphanumeric, interior
@@ -559,6 +984,22 @@ mod tests {
     }
 
     #[test]
+    fn period_price_map_formats_indicative_totals() {
+        use domains_client::types;
+
+        let prices = vec![types::TermPrice {
+            period: std::num::NonZeroU64::new(2),
+            price: Some(types::SimpleMoney {
+                value: Some(6098),
+                currency_code: Some(types::CurrencyCode("USD".to_string())),
+            }),
+            ..Default::default()
+        }];
+        let map = period_price_map(&prices);
+        assert_eq!(map.get(&2).map(String::as_str), Some("60.98"));
+    }
+
+    #[test]
     fn parse_max_registration_period_reads_api_error_text() {
         let body = r#"{"details":[{"description":"period 5 is not currently supported; maximum is 3 years"}]}"#;
         assert!(is_period_limit_error(body));
@@ -709,6 +1150,50 @@ mod tests {
     fn validate_domain_name_rejects_missing_or_numeric_tld() {
         assert!(validate_domain_name("example").is_err());
         assert!(validate_domain_name("example.123").is_err());
+    }
+
+    #[test]
+    fn validate_tld_strips_leading_dot_and_lowercases() {
+        assert_eq!(validate_tld(".org").expect("valid"), "org");
+        assert_eq!(validate_tld("COM").expect("valid"), "com");
+        assert_eq!(validate_tld("co.uk").expect("valid"), "co.uk");
+    }
+
+    #[test]
+    fn validate_tld_rejects_empty_or_dot_only() {
+        assert!(validate_tld("").is_err());
+        assert!(validate_tld(".").is_err());
+        assert!(validate_tld("   ").is_err());
+    }
+
+    #[test]
+    fn recoverable_tld_api_error_matches_unsupported_tld() {
+        let hint = recoverable_tld_api_error(
+            422,
+            r#"{"code":"UNSUPPORTED_TLD","message":"The specified TLD is currently unsupported"}"#,
+        )
+        .expect("recoverable");
+        assert!(hint.contains("not supported"));
+    }
+
+    #[test]
+    fn recoverable_tld_api_error_ignores_other_codes() {
+        assert!(recoverable_tld_api_error(422, r#"{"code":"OTHER","message":"nope"}"#).is_none());
+        assert!(recoverable_tld_api_error(404, r#"{"code":"UNSUPPORTED_TLD"}"#).is_none());
+    }
+
+    #[test]
+    fn validate_operation_id_accepts_uuid() {
+        assert_eq!(
+            validate_operation_id("550e8400-e29b-41d4-a716-446655440000").expect("valid"),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    #[test]
+    fn validate_operation_id_rejects_garbage() {
+        assert!(validate_operation_id("not-a-uuid").is_err());
+        assert!(validate_operation_id("").is_err());
     }
 
     #[test]

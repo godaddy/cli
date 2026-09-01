@@ -16,6 +16,7 @@ pub(crate) async fn offer_registration_from_available(
     price: Option<String>,
     currency: Option<String>,
     available_periods: Vec<u64>,
+    period_prices: std::collections::BTreeMap<u64, String>,
 ) -> Result<BridgeHandoff> {
     if !ctx.is_interactive() {
         return Ok(BridgeHandoff::ShowHostOutput);
@@ -37,6 +38,7 @@ pub(crate) async fn offer_registration_from_available(
         state.price = price.clone();
         state.currency = currency.clone();
         state.available_periods = available_periods.clone();
+        state.period_prices = period_prices.clone();
 
         match super::launch_wizard(ctx, state, 1).await? {
             WizardExit::Completed(result) => {

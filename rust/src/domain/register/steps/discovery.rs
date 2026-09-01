@@ -3,10 +3,11 @@
 
 use cli_engine::{CliCoreError, Result};
 use console::style;
-use dialoguer::{Input, Select};
+use dialoguer::Select;
 
 use crate::domain::common::{
-    api_error, make_client_with_cred, periods_from_prices, term_for_period, validate_domain_name,
+    api_error, make_client_with_cred, period_price_map, periods_from_prices,
+    prompt_validated_domain_name, term_for_period,
 };
 
 use crate::retry::with_retry;
@@ -24,7 +25,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
 
     let domain = match &state.domain {
         Some(d) => d.clone(),
-        None => prompt_domain_name()?,
+        None => prompt_validated_domain_name("Enter domain name to register")?,
     };
 
     let client = make_client_with_cred(&ctx.env, &ctx.credential)?;
@@ -49,6 +50,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         state.available = true;
         let prices = availability.prices.unwrap_or_default();
         state.available_periods = periods_from_prices(&prices);
+        state.period_prices = period_price_map(&prices);
         if let Some(tp) = term_for_period(&prices, 1) {
             state.price = tp
                 .price
@@ -82,19 +84,6 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     }
 
     select_from_suggestions(state, &suggestions)
-}
-
-fn prompt_domain_name() -> Result<String> {
-    let input: String = Input::new()
-        .with_prompt("Enter domain name to register")
-        .validate_with(|input: &String| -> std::result::Result<(), String> {
-            validate_domain_name(input)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        })
-        .interact_text()
-        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
-    validate_domain_name(&input)
 }
 
 async fn fetch_suggestions(
@@ -153,6 +142,7 @@ fn select_from_suggestions(
         state.domain = None;
         state.available = false;
         state.available_periods.clear();
+        state.period_prices.clear();
         return Ok(StepResult::Back);
     }
 
@@ -160,6 +150,7 @@ fn select_from_suggestions(
     state.domain = Some(chosen.domain.clone());
     state.available = true;
     state.available_periods = chosen.available_periods.clone();
+    state.period_prices = chosen.period_prices.clone();
     state.price = chosen.price.clone();
     state.currency = chosen.currency.clone();
     eprintln!(
@@ -183,6 +174,7 @@ fn prompt_retry_or_cancel(state: &mut WizardState) -> Result<StepResult> {
         state.domain = None;
         state.available = false;
         state.available_periods.clear();
+        state.period_prices.clear();
         Ok(StepResult::Back)
     } else {
         Ok(StepResult::Cancel)
@@ -194,6 +186,7 @@ struct SuggestionEntry {
     price: Option<String>,
     currency: Option<String>,
     available_periods: Vec<u64>,
+    period_prices: std::collections::BTreeMap<u64, String>,
 }
 
 /// Extract unique suggestions from raw API items, capped at `max`.
@@ -226,6 +219,7 @@ fn collect_suggestions(
             price,
             currency,
             available_periods: periods_from_prices(prices),
+            period_prices: period_price_map(prices),
         });
     }
     all

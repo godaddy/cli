@@ -8,7 +8,8 @@ use domains_client::types;
 
 use crate::domain::common::{
     api_error, clamp_registration_periods, is_period_limit_error, make_client_with_cred,
-    parse_max_registration_period, period_label, periods_from_prices, validate_domain_name,
+    parse_max_registration_period, period_label, period_price_map, periods_from_prices,
+    validate_domain_name,
 };
 use crate::retry::with_retry;
 
@@ -24,10 +25,12 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     ensure_available_periods(state, ctx).await?;
     refine_periods_with_quote_limit(state, ctx).await?;
 
+    let back_label = options_back_label(ctx);
+
     let period_labels: Vec<String> = state
         .available_periods
         .iter()
-        .map(|p| period_label(*p))
+        .map(|p| period_option_label(*p, state))
         .collect();
 
     let default_idx = state
@@ -36,12 +39,19 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         .position(|&p| p == state.period)
         .unwrap_or(0);
 
+    let mut period_items = period_labels;
+    period_items.push(back_label.clone());
+
     let period_idx = Select::new()
         .with_prompt("Registration period")
-        .items(&period_labels)
-        .default(default_idx)
+        .items(&period_items)
+        .default(default_idx.min(period_items.len().saturating_sub(2)))
         .interact()
         .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+
+    if period_idx == period_items.len() - 1 {
+        return Ok(StepResult::Back);
+    }
     state.period = state.available_periods[period_idx];
 
     // Privacy protection.
@@ -79,12 +89,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         if state.auto_renew { "on" } else { "off" },
     );
 
-    let back_label = if ctx.wizard_start_at > 0 {
-        "↩ Go back to change domain"
-    } else {
-        "↩ Go back to discovery"
-    };
-    let choices = vec!["Continue", back_label];
+    let choices = vec!["Continue", back_label.as_str()];
     let selection = Select::new()
         .items(&choices)
         .default(0)
@@ -131,12 +136,33 @@ async fn ensure_available_periods(state: &mut WizardState, ctx: &StepContext) ->
         )));
     }
 
-    state.available_periods = periods_from_prices(&availability.prices.unwrap_or_default());
+    let prices = availability.prices.unwrap_or_default();
+    state.available_periods = periods_from_prices(&prices);
+    state.period_prices = period_price_map(&prices);
     if state.available_periods.is_empty() {
         state.available_periods = vec![1];
     }
 
     Ok(())
+}
+
+/// Back-navigation label for the options step, depending on wizard entry point.
+fn options_back_label(ctx: &StepContext) -> String {
+    if ctx.wizard_start_at > 0 {
+        "↩ Go back to change domain".to_string()
+    } else {
+        "↩ Go back to discovery".to_string()
+    }
+}
+
+/// Label for a period option, including indicative total price when known.
+fn period_option_label(period: u64, state: &WizardState) -> String {
+    let base = period_label(period);
+    match (state.period_prices.get(&period), state.currency.as_deref()) {
+        (Some(price), Some(currency)) => format!("{base} — {price} {currency}"),
+        (Some(price), None) => format!("{base} — {price}"),
+        _ => base,
+    }
 }
 
 /// Availability pricing is indicative; probe the quote endpoint with the longest
@@ -184,20 +210,12 @@ async fn refine_periods_with_quote_limit(state: &mut WizardState, ctx: &StepCont
             if is_period_limit_error(&body)
                 && let Some(max_years) = parse_max_registration_period(&body)
             {
-                let before = state.available_periods.len();
                 clamp_registration_periods(
                     &mut state.available_periods,
                     &mut state.period,
                     max_years,
                 );
-                if state.available_periods.len() < before {
-                    eprintln!(
-                        "  {} This TLD supports up to {} years; longer indicative \
-                         prices from availability were removed.",
-                        style("ℹ").cyan().bold(),
-                        max_years
-                    );
-                }
+                state.period_prices.retain(|years, _| *years <= max_years);
             }
             Ok(())
         }
@@ -236,6 +254,9 @@ fn prompt_nameservers() -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domain::register::wizard::WizardState;
+
     #[test]
     fn default_period_index_falls_back_when_current_period_unavailable() {
         let periods = [1_u64, 2, 3];
@@ -243,5 +264,27 @@ mod tests {
         let default_idx = periods.iter().position(|&p| p == current).unwrap_or(0);
         assert_eq!(default_idx, 0);
         assert_eq!(periods[default_idx], 1);
+    }
+
+    #[test]
+    fn options_back_label_reflects_entry_point() {
+        let mut ctx = StepContext {
+            credential: cli_engine::Credential::default(),
+            env: "test".to_string(),
+            debug: false,
+            wizard_start_at: 0,
+        };
+        assert_eq!(options_back_label(&ctx), "↩ Go back to discovery");
+        ctx.wizard_start_at = 1;
+        assert_eq!(options_back_label(&ctx), "↩ Go back to change domain");
+    }
+
+    #[test]
+    fn period_option_label_includes_price_when_known() {
+        let mut state = WizardState::new();
+        state.currency = Some("USD".to_string());
+        state.period_prices.insert(3, "120.97".to_string());
+        assert_eq!(period_option_label(3, &state), "3 years — 120.97 USD");
+        assert_eq!(period_option_label(1, &state), "1 year");
     }
 }

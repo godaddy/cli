@@ -33,26 +33,29 @@ enum BackTransition {
 }
 
 /// Compute the next step (or bridge exit) when the user chooses Back.
+///
+/// When the wizard was entered mid-flow from another command (suggest,
+/// available, quote), backing out at the entry step returns to that command's
+/// bridge UI — not an earlier wizard step the user never saw.
 fn back_transition(current: usize, start_at: usize) -> BackTransition {
     if current == 0 && start_at > 0 {
         return BackTransition::ExitToBridge;
     }
     if current == start_at {
         if start_at > 0 {
-            let step = start_at - 1;
-            BackTransition::GoTo {
-                step,
-                clear_domain: step == 0,
-            }
-        } else {
-            BackTransition::ExitToBridge
+            return BackTransition::ExitToBridge;
         }
-    } else {
-        let step = current.saturating_sub(1);
-        BackTransition::GoTo {
-            step,
-            clear_domain: step == 0,
-        }
+        // Full `domain register` flow at Discovery — re-run discovery (e.g. "try
+        // a different domain") instead of exiting the wizard.
+        return BackTransition::GoTo {
+            step: 0,
+            clear_domain: true,
+        };
+    }
+    let step = current.saturating_sub(1);
+    BackTransition::GoTo {
+        step,
+        clear_domain: step == 0,
     }
 }
 
@@ -70,6 +73,8 @@ pub(crate) struct WizardState {
     pub nameservers: Vec<String>,
     /// Registration periods (years) priced for the selected domain.
     pub available_periods: Vec<u64>,
+    /// Indicative total price per period (years → formatted amount).
+    pub period_prices: std::collections::BTreeMap<u64, String>,
 
     // Step 3: Contacts
     pub contacts: ContactsChoice,
@@ -226,6 +231,7 @@ pub(crate) async fn run_wizard(
                         state.domain = None;
                         state.available = false;
                         state.available_periods.clear();
+                        state.period_prices.clear();
                     }
                 }
             },
@@ -298,13 +304,10 @@ mod tests {
 
     #[test]
     fn back_transition_from_bridge_entry_steps() {
-        // suggest/available enter at Options — back goes to Discovery, not bridge.
+        // suggest/available enter at Options — back returns to the host bridge UI.
         assert!(matches!(
             back_transition(1, 1),
-            BackTransition::GoTo {
-                step: 0,
-                clear_domain: true
-            }
+            BackTransition::ExitToBridge
         ));
         // Discovery after bridge entry — return to bridge UI.
         assert!(matches!(
@@ -312,13 +315,10 @@ mod tests {
             BackTransition::ExitToBridge
         ));
 
-        // quote enters at Review — back goes to Contacts, not bridge.
+        // quote enters at Review — back returns to the host bridge UI.
         assert!(matches!(
             back_transition(3, 3),
-            BackTransition::GoTo {
-                step: 2,
-                clear_domain: false
-            }
+            BackTransition::ExitToBridge
         ));
         // Mid-flow back within full wizard.
         assert!(matches!(
@@ -326,6 +326,14 @@ mod tests {
             BackTransition::GoTo {
                 step: 1,
                 clear_domain: false
+            }
+        ));
+        // Full register at Discovery — restart discovery, don't exit.
+        assert!(matches!(
+            back_transition(0, 0),
+            BackTransition::GoTo {
+                step: 0,
+                clear_domain: true
             }
         ));
     }

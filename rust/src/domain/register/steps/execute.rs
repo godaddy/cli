@@ -197,10 +197,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
                 style("⏳").bold()
             );
             eprintln!("     Your domain will be registered — this is normal for some TLDs.");
-            eprintln!(
-                "     Check progress with: gddy domain operation status {}",
-                op_id
-            );
+            eprintln!("     Check progress with: gddy domain operation {}", op_id);
         }
     }
 
@@ -231,10 +228,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
             status
         );
         if let Some(op) = &operation_id {
-            eprintln!(
-                "     Check progress with: gddy domain operation status {}",
-                op
-            );
+            eprintln!("     Check progress with: gddy domain operation {}", op);
         }
     }
 

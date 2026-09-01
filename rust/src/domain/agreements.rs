@@ -1,15 +1,24 @@
 //! `gddy domain agreements` — the legal agreements a TLD requires (v1).
 
+// Interactive recovery prompts write user-facing feedback to stderr.
+#![allow(clippy::print_stderr)]
+
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn,
+    Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, comma_joined, make_client};
+use super::common::{
+    comma_joined, format_api_error, make_client, prompt_validated_tld, recoverable_tld_api_error,
+    resolve_tlds,
+};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
+
+const TLD_PROMPT: &str = "TLD whose agreements to retrieve, e.g. com (without a leading dot)";
 
 #[derive(Debug, Clone, clap::Args)]
 struct AgreementsArgs {
@@ -44,46 +53,82 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_json_schema::<types::V1LegalAgreement>()
         .with_scopes(&[DOMAINS_READ]),
         |ctx, args: AgreementsArgs| async move {
-            let tlds = args.tld;
             let privacy = args.privacy;
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
-            let resp = match client
-                .agreements()
-                .tlds(comma_joined(tlds))
-                .privacy(privacy)
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => return Err(api_error("retrieving legal agreements", debug, e).await),
-            };
-            let agreements: Vec<serde_json::Value> = resp
-                .into_inner()
-                .into_iter()
-                .map(|a| {
-                    json!({
-                        "agreementKey": a.agreement_key,
-                        "title": a.title,
-                        "url": a.url,
-                        "content": a.content,
+            let mut tlds = resolve_tlds(&ctx, args.tld, TLD_PROMPT)?;
+
+            loop {
+                let resp = match client
+                    .agreements()
+                    .tlds(comma_joined(tlds.clone()))
+                    .privacy(privacy)
+                    .send()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(domains_client::Error::UnexpectedResponse(resp))
+                        if ctx.is_interactive() =>
+                    {
+                        let status = resp.status().as_u16();
+                        let status_display = resp.status().to_string();
+                        let request_id = resp
+                            .headers()
+                            .get("x-request-id")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned);
+                        let body = resp.text().await.unwrap_or_default();
+                        if let Some(hint) = recoverable_tld_api_error(status, &body) {
+                            eprintln!("  {hint}");
+                            tlds = vec![prompt_validated_tld(TLD_PROMPT)?];
+                            continue;
+                        }
+                        return Err(CliCoreError::message(format_api_error(
+                            "retrieving legal agreements",
+                            status,
+                            &status_display,
+                            &body,
+                            request_id.as_deref(),
+                            debug,
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(super::common::api_error(
+                            "retrieving legal agreements",
+                            debug,
+                            e,
+                        )
+                        .await);
+                    }
+                };
+
+                let agreements: Vec<serde_json::Value> = resp
+                    .into_inner()
+                    .into_iter()
+                    .map(|a| {
+                        json!({
+                            "agreementKey": a.agreement_key,
+                            "title": a.title,
+                            "url": a.url,
+                            "content": a.content,
+                        })
                     })
-                })
-                .collect();
-            Ok(
-                CommandResult::new(json!(agreements)).with_next_actions(vec![
-                    next_action(
-                        "domain quote <domain>",
-                        "Price a registration and see the agreements for a specific domain",
-                    )
-                    .with_param("domain", NextActionParam::required()),
-                    next_action(
-                        "domain purchase --quote-token <quote-token> --agree --confirm",
-                        "Register once you have a quote",
-                    )
-                    .with_param("quote-token", NextActionParam::required()),
-                ]),
-            )
+                    .collect();
+                return Ok(
+                    CommandResult::new(json!(agreements)).with_next_actions(vec![
+                        next_action(
+                            "domain quote <domain>",
+                            "Price a registration and see the agreements for a specific domain",
+                        )
+                        .with_param("domain", NextActionParam::required()),
+                        next_action(
+                            "domain purchase --quote-token <quote-token> --agree --confirm",
+                            "Register once you have a quote",
+                        )
+                        .with_param("quote-token", NextActionParam::required()),
+                    ]),
+                );
+            }
         },
     )
 }

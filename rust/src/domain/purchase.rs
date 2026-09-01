@@ -1,5 +1,7 @@
 //! `gddy domain purchase` — register a domain by accepting a cached quote (v3).
 
+#![allow(clippy::print_stderr)] // interactive quote-token recovery writes to stderr
+
 use cli_engine::{
     CliCoreError, CommandResult, CommandSpec, Credential, NextActionParam, Result,
     RuntimeCommandSpec, Tier,
@@ -8,7 +10,10 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
+use super::common::{
+    api_error, format_operation_error, is_terminal_status, make_client_with_cred,
+    prompt_validated_quote_token, resolve_quote_token,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::quote_cache;
@@ -145,8 +150,10 @@ fn purchase_consent_types(
 #[derive(Debug, Clone, clap::Args)]
 struct PurchaseArgs {
     /// The quote token from `gddy domain quote` (locks the price + settings).
+    /// Optional at the clap layer so interactive mode can give a clear recovery
+    /// path instead of prompting for an opaque UUID.
     #[arg(long = "quote-token", value_name = "TOKEN")]
-    quote_token: String,
+    quote_token: Option<String>,
 
     /// Consent to the quote's legal agreements (run without it to list them;
     /// review with `gddy guide domain-purchase`).
@@ -189,7 +196,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<DomainPurchaseResult>()
         .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE]),
         |ctx, args: PurchaseArgs| async move {
-            let quote_token = args.quote_token;
+            const QUOTE_TOKEN_PROMPT: &str = "Quote token from `gddy domain quote`";
+
+            let mut quote_token = resolve_quote_token(&ctx, args.quote_token, QUOTE_TOKEN_PROMPT)?;
             let agree = args.agree;
             let confirm = args.confirm;
             let debug = !ctx.middleware.debug.is_empty();
@@ -206,28 +215,42 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
             // a failed charge leaves the quote reusable.
-            let cached = match quote_cache::get(&quote_token) {
-                quote_cache::Lookup::Found(q) => *q,
-                quote_cache::Lookup::Expired => {
-                    return Err(CliCoreError::message(
-                        "that quote has expired (quotes last ~10 minutes). Re-run \
+            let cached = loop {
+                match quote_cache::get(&quote_token) {
+                    quote_cache::Lookup::Found(q) => break *q,
+                    quote_cache::Lookup::Expired if ctx.is_interactive() => {
+                        eprintln!(
+                            "  that quote has expired (quotes last ~10 minutes); enter a fresh token from `gddy domain quote`"
+                        );
+                        quote_token = prompt_validated_quote_token(QUOTE_TOKEN_PROMPT)?;
+                    }
+                    quote_cache::Lookup::Missing if ctx.is_interactive() => {
+                        eprintln!(
+                            "  no cached quote for that token; run `gddy domain quote <domain>` on this machine first"
+                        );
+                        quote_token = prompt_validated_quote_token(QUOTE_TOKEN_PROMPT)?;
+                    }
+                    quote_cache::Lookup::Expired => {
+                        return Err(CliCoreError::message(
+                            "that quote has expired (quotes last ~10 minutes). Re-run \
                              `gddy domain quote <domain>` for a fresh quote and token.",
-                    ));
-                }
-                quote_cache::Lookup::Missing => {
-                    return Err(CliCoreError::message(
-                        "no cached quote for that token. Run `gddy domain quote <domain>` \
+                        ));
+                    }
+                    quote_cache::Lookup::Missing => {
+                        return Err(CliCoreError::message(
+                            "no cached quote for that token. Run `gddy domain quote <domain>` \
                              first — quotes are cached locally, so quote and purchase must run \
                              on the same machine within the token's ~10-minute lifetime.",
-                    ));
-                }
-                quote_cache::Lookup::NoConfigDir => {
-                    return Err(CliCoreError::message(
-                        "could not locate a config directory to read the quote cache from. \
+                        ));
+                    }
+                    quote_cache::Lookup::NoConfigDir => {
+                        return Err(CliCoreError::message(
+                            "could not locate a config directory to read the quote cache from. \
                              `domain purchase` needs the local quote written by `domain quote`; \
                              ensure a home/config directory is available (e.g. set HOME or \
                              XDG_CONFIG_HOME) and re-run `gddy domain quote <domain>`.",
-                    ));
+                        ));
+                    }
                 }
             };
             let domain = cached.domain.clone();
@@ -390,7 +413,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     %status,
                     operation_id = %op,
                     "registration still in progress after polling; check later with \
-                     `gddy domain operation status {op}`"
+                     `gddy domain operation {op}`"
                 );
             }
 
@@ -418,7 +441,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 if let Some(op) = &operation_id {
                     actions.push(
                         next_action(
-                            "domain operation status <operation-id>",
+                            "domain operation <operation-id>",
                             "Check whether registration has finished since polling gave up",
                         )
                         .with_param("operation-id", NextActionParam::value(op.to_string())),

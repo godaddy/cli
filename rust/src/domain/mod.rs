@@ -50,7 +50,7 @@ pub fn module() -> Module {
              • register          — interactive wizard: discover, configure, and buy\n\
              • quote / purchase  — scripted two-step registration (quote then buy)\n\
              • nameservers set   — point a domain at custom nameservers\n\
-             • operation status  — check on an async operation (e.g. a pending purchase)\n\
+             • operation          — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase/register also\n\
              need `domains.domain:create`, and `nameservers set` needs\n\
@@ -67,7 +67,7 @@ pub fn module() -> Module {
         .with_command(register::command())
         .with_group(nameservers::group())
         .with_group(contacts::group())
-        .with_group(operation::group())
+        .with_command(operation::command())
     })
     .with_guides_from_markdown([
         (

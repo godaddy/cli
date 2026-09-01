@@ -7,7 +7,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, comma_joined, format_money, make_client, term_for_period};
+use super::common::{
+    api_error, comma_joined, format_money, make_client, resolve_optional_tlds, term_for_period,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -148,7 +150,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: SuggestArgs| async move {
             let query = args.query;
-            let tlds = args.tlds;
+            let tlds = resolve_optional_tlds(
+                &ctx,
+                args.tlds,
+                "TLD filter (e.g. com, without a leading dot)",
+            )?;
             let limit = args.limit.and_then(nonzero);
             let length_min = args.length_min;
             let length_max = args.length_max;
