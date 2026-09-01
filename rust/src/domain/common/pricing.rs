@@ -126,7 +126,6 @@ pub(crate) fn period_label(period: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domains_client::types;
 
     #[test]
     fn periods_from_prices_returns_sorted_unique_periods() {
