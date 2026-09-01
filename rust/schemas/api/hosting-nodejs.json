@@ -1697,6 +1697,7 @@
       "summary": "Get application logs"
     },
     {
+      "description": "**Deprecated.** This operation is not available in v2 per API design review. It remains live and feature-flagged in production but may be removed in a future v1 maintenance release. Clients should not build new integrations against this endpoint.",
       "method": "POST",
       "operationId": "rollbackApp",
       "parameters": [
@@ -1812,6 +1813,7 @@
       "summary": "List app secrets (metadata only)"
     },
     {
+      "description": "Superseded by `POST /v2/hosting/nodejs/apps/{appId}/sync-secrets`, which accepts the same operation shape under the `hosting.secret:write` OAuth scope and returns the same secret-metadata response. This v1 endpoint remains live.",
       "method": "POST",
       "operationId": "updateAppSecrets",
       "parameters": [

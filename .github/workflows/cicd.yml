@@ -38,16 +38,16 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check
-        run: cargo check
+        run: cargo check --workspace
 
       - name: Format
         run: cargo fmt --check
 
       - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Smoke test
         run: ./scripts/smoke-test.sh
