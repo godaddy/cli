@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-26T18:46:42.423872066+00:00",
+  "generated": "2026-09-01T16:02:33.125619062+00:00",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -34,7 +34,7 @@
     "domains": {
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
-      "endpointCount": 16
+      "endpointCount": 17
     },
     "fulfillments": {
       "file": "fulfillments.json",

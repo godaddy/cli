@@ -140,6 +140,16 @@
           "$ref": "#/components/schemas/uuid"
         }
       },
+      "tld": {
+        "description": "The Top-Level Domain (e.g. com, net, io) whose registration schema should be retrieved.\n",
+        "example": "com",
+        "in": "path",
+        "name": "tld",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
       "totalRequired": {
         "description": "When true, the response includes totalItems and totalPages for the current filter when at least one record matches. Both are omitted when the result set is empty. Defaults to false; omitting totals avoids the cost of a count query on large collections.\n",
         "example": true,
@@ -1578,6 +1588,13 @@
           }
         },
         "title": "Registration Quote",
+        "type": "object"
+      },
+      "RegistrationSchema": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-schema.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "TLD-specific JSON Schema describing the fields required to register a domain under this TLD. The structure varies per TLD and is not further constrained at the API layer. Use the contents to guide construction of the POST /registration-quotes and POST /registrations request bodies.\n",
+        "title": "Registration Schema",
         "type": "object"
       },
       "ResolvedSettings": {
@@ -3299,6 +3316,74 @@
         "summary": "Quote a single-domain registration (no commitment)",
         "tags": [
           "Registration Quotes"
+        ]
+      }
+    },
+    "/v3/domains/registration-schemas/{tld}": {
+      "get": {
+        "description": "Returns the TLD-specific JSON Schema describing the fields required\nwhen calling POST /registration-quotes or POST /registrations for\nthe given TLD. The schema shape varies by TLD; clients should call\nthis endpoint before quoting or registering to discover required\ncontact and eligibility fields.\n",
+        "operationId": "getRegistrationSchema",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Top-Level Domain (e.g. com, net, io) whose registration schema should be retrieved.\n",
+            "example": "com",
+            "in": "path",
+            "name": "tld",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSchema"
+                }
+              }
+            },
+            "description": "TLD-specific registration schema.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "summary": "Retrieve the registration schema for a TLD",
+        "tags": [
+          "Registrations"
         ]
       }
     },
