@@ -179,6 +179,24 @@ pub enum SelectValue {
     Bool(bool),
 }
 
+/// The `settings-link-v1` shape — for a GPA that owns its own configuration
+/// page or provider authorization flow instead of a native form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsLinkV1Presentation {
+    pub label: String,
+    pub open_mode: String,
+}
+
+/// A setting's presentation — `sections` vs `label`+`openMode` are
+/// structurally disjoint, so untagged matching is unambiguous.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SettingPresentation {
+    Form(SettingsFormV1Presentation),
+    Link(SettingsLinkV1Presentation),
+}
+
 /// True when `key` matches the same `fieldNamePattern` the API uses:
 /// `^[A-Za-z][A-Za-z0-9_]*$`.
 fn is_field_name(key: &str) -> bool {
@@ -190,12 +208,59 @@ fn is_field_name(key: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Structural validation for a `presentation` block: field-name shape,
-/// non-empty choice options, and the two uniqueness checks
-/// `SettingsFormV1Presentation`'s own Zod `superRefine` runs (unique section
-/// keys, unique top-level field keys across sections). Bounds/default
-/// consistency and `list-group` depth are left to the API.
+/// Validates a presentation's own shape plus its capabilities, mirroring the
+/// API's `validatePresentationCapabilities` refinement in `application-setting.ts`.
 pub(crate) fn validate_presentation(
+    presentation: &SettingPresentation,
+    capabilities: &[String],
+    errors: &mut Vec<String>,
+    path: &str,
+) {
+    match presentation {
+        SettingPresentation::Form(form) => {
+            if capabilities.iter().any(|c| c == "open") {
+                errors.push(format!(
+                    "{path}: the \"open\" capability is only valid for a settings-link-v1 presentation"
+                ));
+            }
+            validate_form_presentation(form, errors, path);
+        }
+        SettingPresentation::Link(link) => {
+            let capability_set: HashSet<&str> = capabilities.iter().map(String::as_str).collect();
+            if capabilities.len() != 2
+                || !capability_set.contains("read")
+                || !capability_set.contains("open")
+            {
+                errors.push(format!(
+                    "{path}: a settings-link-v1 presentation requires exactly the read and open capabilities"
+                ));
+            }
+            validate_link_presentation(link, errors, path);
+        }
+    }
+}
+
+/// Structural validation for a link presentation: non-empty `label`, and
+/// `openMode` matching the only value the API accepts today.
+fn validate_link_presentation(
+    presentation: &SettingsLinkV1Presentation,
+    errors: &mut Vec<String>,
+    path: &str,
+) {
+    if presentation.label.trim().is_empty() {
+        errors.push(format!("{path}.label must not be empty"));
+    }
+    if presentation.open_mode != "new-window" {
+        errors.push(format!(
+            "{path}.openMode must be \"new-window\" (got {:?})",
+            presentation.open_mode
+        ));
+    }
+}
+
+/// Structural validation for a form block: field-name shape, non-empty
+/// choice options, and unique section/field keys.
+fn validate_form_presentation(
     presentation: &SettingsFormV1Presentation,
     errors: &mut Vec<String>,
     path: &str,
@@ -233,33 +298,63 @@ pub(crate) fn validate_presentation(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PresentationFileDocument {
-    #[serde(default)]
-    r#type: Option<String>,
+struct FormPresentationFileDocument {
     #[serde(default)]
     schema_version: Option<String>,
     sections: Vec<SettingsFormV1Section>,
 }
 
-/// Parses a `presentationFile`'s JSON (full API object: `type`,
-/// `schemaVersion`, `sections`).
-pub(crate) fn presentation_from_json(content: &str) -> Result<SettingsFormV1Presentation, String> {
-    let doc: PresentationFileDocument = serde_json::from_str(content).map_err(|e| e.to_string())?;
-    if let Some(t) = &doc.r#type
-        && t != "form"
-    {
-        return Err(format!("type must be \"form\" (got {t:?})"));
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkPresentationFileDocument {
+    #[serde(default)]
+    schema_version: Option<String>,
+    label: String,
+    open_mode: String,
+}
+
+/// Parses a `presentationFile`'s JSON, dispatching on `type` (defaults to
+/// `"form"` when absent, matching existing fixtures that never wrote it).
+pub(crate) fn presentation_from_json(content: &str) -> Result<SettingPresentation, String> {
+    let value: serde_json::Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
+    let kind = match value.get("type") {
+        None | Some(serde_json::Value::Null) => "form".to_owned(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(other) => return Err(format!("type must be a string (got {other:?})")),
+    };
+
+    match kind.as_str() {
+        "form" => {
+            let doc: FormPresentationFileDocument =
+                serde_json::from_value(value).map_err(|e| e.to_string())?;
+            if let Some(v) = &doc.schema_version
+                && v != "settings-form-v1"
+            {
+                return Err(format!(
+                    "schemaVersion must be \"settings-form-v1\" (got {v:?})"
+                ));
+            }
+            Ok(SettingPresentation::Form(SettingsFormV1Presentation {
+                sections: doc.sections,
+            }))
+        }
+        "link" => {
+            let doc: LinkPresentationFileDocument =
+                serde_json::from_value(value).map_err(|e| e.to_string())?;
+            if let Some(v) = &doc.schema_version
+                && v != "settings-link-v1"
+            {
+                return Err(format!(
+                    "schemaVersion must be \"settings-link-v1\" (got {v:?})"
+                ));
+            }
+            Ok(SettingPresentation::Link(SettingsLinkV1Presentation {
+                label: doc.label,
+                open_mode: doc.open_mode,
+            }))
+        }
+        other => Err(format!("type must be \"form\" or \"link\" (got {other:?})")),
     }
-    if let Some(v) = &doc.schema_version
-        && v != "settings-form-v1"
-    {
-        return Err(format!(
-            "schemaVersion must be \"settings-form-v1\" (got {v:?})"
-        ));
-    }
-    Ok(SettingsFormV1Presentation {
-        sections: doc.sections,
-    })
 }
 
 fn validate_field(field: &SettingsFormV1Field, errors: &mut Vec<String>, path: &str) {
@@ -336,26 +431,36 @@ mod tests {
         assert!(!is_field_name("has-dash"));
     }
 
+    fn form(sections: Vec<SettingsFormV1Section>) -> SettingPresentation {
+        SettingPresentation::Form(SettingsFormV1Presentation { sections })
+    }
+
+    fn link(label: &str, open_mode: &str) -> SettingPresentation {
+        SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: label.to_owned(),
+            open_mode: open_mode.to_owned(),
+        })
+    }
+
     #[test]
     fn validate_presentation_accepts_well_formed() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![text_field("calculateUsing")])],
-        };
+        let presentation = form(vec![section(
+            "defaults",
+            vec![text_field("calculateUsing")],
+        )]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
     fn validate_presentation_rejects_duplicate_section_keys() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![
-                section("defaults", vec![text_field("a")]),
-                section("defaults", vec![text_field("b")]),
-            ],
-        };
+        let presentation = form(vec![
+            section("defaults", vec![text_field("a")]),
+            section("defaults", vec![text_field("b")]),
+        ]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors
                 .iter()
@@ -366,14 +471,12 @@ mod tests {
 
     #[test]
     fn validate_presentation_rejects_duplicate_field_keys_across_sections() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![
-                section("a", vec![text_field("shared")]),
-                section("b", vec![text_field("shared")]),
-            ],
-        };
+        let presentation = form(vec![
+            section("a", vec![text_field("shared")]),
+            section("b", vec![text_field("shared")]),
+        ]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors
                 .iter()
@@ -384,11 +487,9 @@ mod tests {
 
     #[test]
     fn validate_presentation_rejects_bad_field_key() {
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![text_field("bad-key")])],
-        };
+        let presentation = form(vec![section("defaults", vec![text_field("bad-key")])]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors.iter().any(|e| e.contains("must match")),
             "{errors:?}"
@@ -405,15 +506,129 @@ mod tests {
             options: vec![],
             default_value: None,
         };
-        let presentation = SettingsFormV1Presentation {
-            sections: vec![section("defaults", vec![field])],
-        };
+        let presentation = form(vec![section("defaults", vec![field])]);
         let mut errors = Vec::new();
-        validate_presentation(&presentation, &mut errors, "settings[0].presentation");
+        validate_presentation(&presentation, &[], &mut errors, "settings[0].presentation");
         assert!(
             errors.iter().any(|e| e.contains("options must contain")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_open_capability_on_form() {
+        let presentation = form(vec![section("defaults", vec![text_field("a")])]);
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("only valid for a settings-link-v1")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_accepts_well_formed_link() {
+        let presentation = link("Configure PayPal", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_without_exact_read_open_capabilities() {
+        let presentation = link("Configure PayPal", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "write".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("requires exactly the read and open capabilities")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_with_empty_label() {
+        let presentation = link("", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("label must not be empty")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_with_wrong_open_mode() {
+        let presentation = link("Configure PayPal", "same-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &["read".to_owned(), "open".to_owned()],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("openMode must be")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn presentation_from_json_parses_link() {
+        let json = r#"{
+            "type": "link",
+            "schemaVersion": "settings-link-v1",
+            "label": "Configure PayPal",
+            "openMode": "new-window"
+        }"#;
+        let presentation = presentation_from_json(json).expect("valid link presentation json");
+        let SettingPresentation::Link(link) = presentation else {
+            unreachable!("expected link presentation");
+        };
+        assert_eq!(link.label, "Configure PayPal");
+        assert_eq!(link.open_mode, "new-window");
+    }
+
+    #[test]
+    fn presentation_from_json_rejects_wrong_link_schema_version() {
+        let json = r#"{
+            "type": "link",
+            "schemaVersion": "settings-link-v2",
+            "label": "Configure PayPal",
+            "openMode": "new-window"
+        }"#;
+        let err = presentation_from_json(json).expect_err("wrong schemaVersion must be rejected");
+        assert!(err.contains("schemaVersion"), "{err}");
+    }
+
+    #[test]
+    fn presentation_from_json_rejects_non_string_type() {
+        let json = r#"{"type": 123, "sections": []}"#;
+        let err = presentation_from_json(json).expect_err("non-string type must be rejected");
+        assert!(err.contains("type must be a string"), "{err}");
     }
 
     #[test]

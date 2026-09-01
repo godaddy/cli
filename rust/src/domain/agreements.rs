@@ -62,7 +62,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 let resp = match client
                     .agreements()
                     .tlds(comma_joined(tlds.clone()))
-                    .privacy(privacy)
+                    .v1_privacy(privacy)
                     .send()
                     .await
                 {
@@ -161,7 +161,7 @@ mod tests {
         client
             .agreements()
             .tlds(tlds)
-            .privacy(false)
+            .v1_privacy(false)
             .send()
             .await
             .expect("request succeeds");

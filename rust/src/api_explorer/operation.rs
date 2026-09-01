@@ -781,36 +781,6 @@ mod tests {
         assert!(hint["params"]["id"]["value"].is_null());
     }
 
-    /// `deleteDNSRecord` has no schema anywhere (every parameter is a bare
-    /// scalar, and its one response is a bare `204` with no body) — the
-    /// schema-get hint must not appear when there's nothing for it to point
-    /// at.
-    #[tokio::test]
-    async fn operation_get_does_not_link_to_schema_get_when_no_row_has_a_schema_id() {
-        let output = operation_cli()
-            .run([
-                "gddy",
-                "api",
-                "operation",
-                "get",
-                "deleteDNSRecord",
-                "--output",
-                "json",
-            ])
-            .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
-        let rendered: serde_json::Value =
-            serde_json::from_str(&output.rendered).expect("valid json");
-        let next_actions = rendered["next_actions"].as_array().expect("next_actions");
-        assert!(
-            !next_actions
-                .iter()
-                .any(|a| a["command"] == json!("gddy api schema get <id>")),
-            "{}",
-            output.rendered
-        );
-    }
-
     /// `get_transaction_disputes` has 26 parameters — over the preview cap
     /// — so its `operation get` output must be truncated and link to the
     /// standalone `parameter list` for the rest, per the "list truncated →

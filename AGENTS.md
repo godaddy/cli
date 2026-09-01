@@ -10,11 +10,10 @@ This is a command-line application. Source code is written in Rust and lives und
 - **Lint**: `cargo clippy -- -D warnings`
 - **Format**: `cargo fmt`
 - **Check**: `cargo check`
-- **Regenerate API catalog**: `cargo run -p generate-api-catalog`
-  — clones upstream OpenAPI specs and writes `rust/schemas/api/*.json`. Set
-  `GITHUB_TOKEN` for full repo discovery; falls back to a hardcoded bootstrap
-  list otherwise.
-- **Regenerate Node.js Hosting spec**: `./rust/scripts/regenerate-hosting-spec.sh`
+- **Refresh API specs**: `cargo run -p generate-api-catalog`
+  — set `SKIP_DOMAINS_REFRESH`/`SKIP_HOSTING_REFRESH` to skip either pull for
+  local iteration without network access; `HOSTING_SPEC_URL`/`HOSTING_SPEC_PATH`
+  override where the hosting-nodejs spec comes from.
 
 ## Verification Checklist (required before finishing work)
 

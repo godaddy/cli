@@ -131,20 +131,11 @@ fn purchase_consent_types(
         )));
     }
 
-    agreement_types
+    Ok(agreement_types
         .iter()
-        .map(|t| {
-            t.parse::<types::AgreementType>().map_err(|_| {
-                CliCoreError::message(format!(
-                    "the cached quote for {domain} recorded an agreement type ({t:?}) this CLI \
-                     version doesn't recognize; re-run `gddy domain quote {domain}` for a fresh \
-                     quote in case the cache was just stale. If the fresh quote still fails, the \
-                     API has introduced an agreement type this CLI build doesn't know about yet — \
-                     update to the latest CLI version and try again."
-                ))
-            })
-        })
-        .collect()
+        .cloned()
+        .map(types::AgreementType)
+        .collect())
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -484,23 +475,6 @@ mod tests {
     }
 
     #[test]
-    fn purchase_consent_types_rejects_a_cached_type_this_cli_no_longer_recognizes() {
-        // A quote cached before an agreement-type rename (e.g. the API's
-        // DNRA -> API_DPA rename) must fail with a clear re-quote message
-        // rather than panicking or silently dropping the type.
-        let titles = vec!["Registration Agreement (https://x)".to_string()];
-        let ty = vec!["DNRA".to_string()];
-        let err = purchase_consent_types("example.com", 1, true, true, &titles, &ty)
-            .expect_err("unrecognized agreement type must error");
-        let msg = err.to_string();
-        assert!(msg.contains("doesn't recognize"), "{msg}");
-        assert!(msg.contains("gddy domain quote example.com"), "{msg}");
-        // A fresh quote won't help if the API itself added a new agreement type
-        // this CLI build predates — the message must also point at upgrading.
-        assert!(msg.contains("update to the latest CLI version"), "{msg}");
-    }
-
-    #[test]
     fn purchase_consent_rejects_when_no_agreement_types() {
         // --agree given, but the cached quote carried no agreement types.
         let err = purchase_consent_types("example.com", 1, true, true, &[], &[])
@@ -603,7 +577,7 @@ mod tests {
         let consent = types::Consent {
             agreed_at: types::DateTime("2026-06-30T00:00:00Z".to_string()),
             agreed_by: None,
-            agreement_types: vec![types::AgreementType::ApiDpa],
+            agreement_types: vec![types::AgreementType("API_DPA".to_string())],
             acknowledged_fees: vec![],
         };
         let value = serde_json::to_value(&consent).expect("serializes");
