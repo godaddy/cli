@@ -71,5 +71,4 @@ mod tests {
         let neither = types::Error::default();
         assert_eq!(format_operation_error(Some(&neither)), "");
     }
-
 }

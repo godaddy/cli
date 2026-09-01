@@ -2,7 +2,6 @@
 //! client, money formatting, argument helpers, and API-error rendering. Each
 //! `gddy domain` subcommand lives in its own sibling module and draws from here.
 
-
 mod client;
 mod errors;
 mod interactive;
@@ -69,5 +68,4 @@ mod tests {
     fn comma_joined_empty_stays_empty() {
         assert_eq!(comma_joined(Vec::<String>::new()), Vec::<String>::new());
     }
-
 }

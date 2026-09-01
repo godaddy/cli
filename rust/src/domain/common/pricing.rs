@@ -190,5 +190,4 @@ mod tests {
         assert_eq!(period_label(2), "2 years");
         assert_eq!(period_label(10), "10 years");
     }
-
 }
