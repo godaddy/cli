@@ -1,0 +1,18 @@
+---
+description: Design documents go on the wip-docs branch
+globs: docs/design/**/*.md
+alwaysApply: false
+---
+
+# Design Document Branch Rule
+
+All design documents (`docs/design/*.md`) live on the `wip-docs` branch.
+
+When creating or editing design documents:
+
+1. Switch to the `wip-docs` branch before making changes
+2. Stash any unrelated working-tree changes on the current branch first
+3. Commit design docs to `wip-docs`
+4. Switch back to the original branch and restore the stash
+
+When the user asks a design question that will produce a document, write it directly on `wip-docs` without being asked.
