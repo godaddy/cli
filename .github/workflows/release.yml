@@ -128,7 +128,7 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           P12_PATH="$RUNNER_TEMP/cert.p12"
-          printf '%s' "$P12_BASE64" | base64 -d > "$P12_PATH"
+          printf '%s' "$P12_BASE64" | base64 -D > "$P12_PATH"
           security import "$P12_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$P12_PASSWORD" \
@@ -176,7 +176,7 @@ jobs:
       #       exit 1
       #     fi
       #     KEY_PATH="$RUNNER_TEMP/notary_key.p8"
-      #     printf '%s' "$API_KEY_BASE64" | base64 -d > "$KEY_PATH"
+      #     printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY_PATH"
       #     chmod 600 "$KEY_PATH"
       #
       #     NOTARY_ZIP="$RUNNER_TEMP/notarize.zip"
