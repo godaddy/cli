@@ -95,6 +95,120 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
 
+      # macOS code signing + notarization. Gated on the signing secrets being
+      # present so releases keep working unsigned until they're provisioned:
+      #   SIGNING_CERTIFICATE_P12       base64 Developer ID Application .p12
+      #   SIGNING_CERTIFICATE_PASSWORD  password for that .p12
+      #   NOTARIZATION_API_KEY          base64 App Store Connect API .p8 key
+      #   NOTARIZATION_KEY_ID           key ID for the above
+      #   NOTARIZATION_ISSUER_ID        issuer ID for the above
+      #
+      # gddy ships as a flat binary (no .app bundle, no sibling helper
+      # processes sharing keychain access), so unlike gocode-client this
+      # needs no bundle staging, provisioning profile, or entitlements —
+      # signing alone gives gddy a stable code identity across releases,
+      # which is what lets macOS Keychain remember "Always Allow" instead of
+      # re-prompting on every version bump.
+      - name: Set up signing keychain (macOS)
+        id: signing_keychain
+        if: matrix.os == 'macos-latest'
+        env:
+          P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::warning::SIGNING_CERTIFICATE_P12 / _PASSWORD are not set - shipping an unsigned macOS binary"
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/sign.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          P12_PATH="$RUNNER_TEMP/cert.p12"
+          printf '%s' "$P12_BASE64" | base64 -D > "$P12_PATH"
+          security import "$P12_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$P12_PATH"
+
+          existing_keychains=()
+          while IFS= read -r keychain; do
+            [ -n "$keychain" ] && existing_keychains+=("$keychain")
+          done < <(security list-keychains -d user | sed -e 's/^[[:space:]]*//' -e 's/"//g')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Codesign gddy (macOS)
+        if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/gddy"
+          codesign --force --sign "Developer ID Application: GoDaddy Mobile LLC (7UMADG39Z9)" \
+            --options runtime --timestamp "$BIN"
+          codesign --verify --strict --verbose=2 "$BIN"
+
+      # Notarization is temporarily disabled — tracked in DEVEX-1080. Signing
+      # alone already fixes DEVEX-896's Keychain-reprompt bug; notarization
+      # only matters for browser-downloaded (quarantined) tarballs, so it's
+      # safe to land signing first and re-enable this once the
+      # NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID
+      # secrets exist on this repo.
+      # - name: Notarize gddy (macOS)
+      #   if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+      #   shell: bash
+      #   env:
+      #     API_KEY_BASE64: ${{ secrets.NOTARIZATION_API_KEY }}
+      #     KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+      #     ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+      #   run: |
+      #     if [ -z "$API_KEY_BASE64" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ]; then
+      #       echo "::error::gddy was signed but NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID are missing"
+      #       exit 1
+      #     fi
+      #     KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+      #     printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+      #     chmod 600 "$KEY_PATH"
+      #
+      #     NOTARY_ZIP="$RUNNER_TEMP/notarize.zip"
+      #     ditto -c -k --sequesterRsrc "target/${{ matrix.target }}/release/gddy" "$NOTARY_ZIP"
+      #
+      #     xcrun notarytool submit "$NOTARY_ZIP" \
+      #       --key "$KEY_PATH" \
+      #       --key-id "$KEY_ID" \
+      #       --issuer "$ISSUER_ID" \
+      #       --wait
+      #
+      #     rm -f "$KEY_PATH" "$NOTARY_ZIP"
+
+      - name: Tear down signing keychain (macOS)
+        if: always() && matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        run: security delete-keychain "${{ steps.signing_keychain.outputs.keychain_path }}" || true
+
+      # Windows Authenticode signing via DigiCert KeyLocker is temporarily
+      # disabled — tracked in DEVEX-1081. No SM_HOST/SM_API_KEY/etc. secrets
+      # or ENABLE_WINDOWS_SIGNING/KEYLOCKER_KEYPAIR_ALIAS vars exist on this
+      # repo yet. Re-enable once those land (see .github/workflows/Sign-WithKeyLocker.ps1).
+      # - name: Sign gddy.exe (DigiCert KeyLocker)
+      #   if: matrix.os == 'windows-latest' && vars.ENABLE_WINDOWS_SIGNING == '1'
+      #   shell: pwsh
+      #   env:
+      #     SM_HOST: ${{ secrets.SM_HOST }}
+      #     SM_API_KEY: ${{ secrets.SM_API_KEY }}
+      #     SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+      #     SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE }}
+      #   run: ../.github/workflows/Sign-WithKeyLocker.ps1 -Path "target/${{ matrix.target }}/release/gddy.exe" -KeypairAlias "${{ vars.KEYLOCKER_KEYPAIR_ALIAS }}"
+
       - name: Package gddy
         shell: bash
         run: |
