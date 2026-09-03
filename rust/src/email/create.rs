@@ -12,7 +12,7 @@ struct CreateArgs {
     email: String,
     /// ID of an existing eligible account to provision this mailbox under,
     /// from `check-eligibility`'s `eligibleAccounts[].accountId` (see
-    /// `gddy guide email-mailboxes`). Not a shopper/customer ID.
+    /// `gddy guide email`). Not a shopper/customer ID.
     #[arg(long = "account-id", value_name = "ACCOUNT_ID")]
     account_id: Option<String>,
     /// First name of the mailbox owner.
@@ -21,15 +21,16 @@ struct CreateArgs {
     /// Last name of the mailbox owner.
     #[arg(long = "last-name", value_name = "LAST_NAME")]
     last_name: Option<String>,
-    /// Agreement types the caller has obtained consent for, e.g. `EMAIL_TOS`.
-    /// Repeatable: `--consent EMAIL_TOS --consent PRIVACY_POLICY`.
-    #[arg(long, value_name = "AGREEMENT_TYPE")]
+    /// Requirement types the caller has obtained consent for (from
+    /// `check-eligibility`'s `eligibleAccounts[].requirements[].type`), e.g.
+    /// `FREETRIAL_AUTORENEW`. Repeatable: `--consent FREETRIAL_AUTORENEW`.
+    #[arg(long, value_name = "REQUIREMENT_TYPE")]
     consent: Vec<String>,
 }
 
 fn request_body(args: &CreateArgs) -> Value {
     let mut body = serde_json::Map::new();
-    body.insert("email".to_owned(), json!(args.email));
+    body.insert("emailAddress".to_owned(), json!(args.email));
     if let Some(account_id) = &args.account_id {
         body.insert("accountId".to_owned(), json!(account_id));
     }
@@ -40,7 +41,8 @@ fn request_body(args: &CreateArgs) -> Value {
         body.insert("lastName".to_owned(), json!(last_name));
     }
     if !args.consent.is_empty() {
-        body.insert("consents".to_owned(), json!(args.consent));
+        let consents: Vec<Value> = args.consent.iter().map(|t| json!({ "type": t })).collect();
+        body.insert("consents".to_owned(), json!(consents));
     }
     Value::Object(body)
 }
@@ -95,9 +97,9 @@ mod tests {
             consent: vec!["EMAIL_TOS".to_owned()],
         };
         let body = request_body(&args);
-        assert_eq!(body["email"], "someone@example.com");
+        assert_eq!(body["emailAddress"], "someone@example.com");
         assert_eq!(body["accountId"], "acct-1");
         assert!(body.get("firstName").is_none());
-        assert_eq!(body["consents"], json!(["EMAIL_TOS"]));
+        assert_eq!(body["consents"], json!([{ "type": "EMAIL_TOS" }]));
     }
 }

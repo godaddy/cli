@@ -35,7 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// Always points at `email create` and prefills `--account-id` when the
-/// response names an eligible account, plus a pointer at the `email-mailboxes`
+/// response names an eligible account, plus a pointer at the `email`
 /// guide for what an account ID actually is.
 fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
     let mut create = next_action("email create", "Create a mailbox for this address")
@@ -47,7 +47,7 @@ fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
 
     vec![
         create,
-        next_action("guide email-mailboxes", "Learn about email accounts"),
+        next_action("guide email", "Learn about email accounts"),
     ]
 }
 
@@ -86,15 +86,20 @@ mod tests {
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
         assert_eq!(actions[0].command, "gddy email create");
-        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
+        assert_eq!(actions[1].command, "gddy guide email");
     }
 
     #[test]
     fn next_actions_still_point_at_create_when_no_eligible_accounts() {
-        let data = json!({ "isEligible": false, "ineligibleReasons": ["NO_ELIGIBLE_ACCOUNT"] });
+        let data = json!({
+            "isEligible": false,
+            "ineligibilityReasons": [
+                { "type": "NO_ELIGIBLE_ACCOUNT", "message": "No eligible account was found." }
+            ]
+        });
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
         assert_eq!(actions[0].command, "gddy email create");
-        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
+        assert_eq!(actions[1].command, "gddy guide email");
     }
 }

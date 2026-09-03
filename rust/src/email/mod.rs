@@ -14,14 +14,18 @@ pub fn module() -> Module {
     Module::new("Email", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("email", "Create, list, and inspect GoDaddy Email mailboxes").with_long(
-                "Manage GoDaddy Email mailboxes over panel-v3.\n\
+                "Manage GoDaddy Email mailboxes.\n\
              \n\
              • check-eligibility — see which account(s) an address can be created\n\
              \x20  under, and what consent is outstanding\n\
              • create            — provision a mailbox\n\
              • list / get        — your existing mailboxes and their details\n\
              \n\
-             See `gddy guide email-mailboxes` for what an account ID is and how the\n\
+             check-eligibility/list/get need the `email.mailbox:read` scope; create needs\n\
+             `email.mailbox:create`. Run `gddy auth scopes --command \"email <subcommand>\"`\n\
+             for details, or `gddy auth login --scope <scope>` to step up.\n\
+             \n\
+             See `gddy guide email` for what an account ID is and how the\n\
              check-eligibility → create flow works.",
             ),
         )
@@ -31,10 +35,7 @@ pub fn module() -> Module {
         .with_command(check_eligibility::command())
     })
     .with_feature_flag("email", Stage::Beta)
-    .with_guides_from_markdown([(
-        "email-mailboxes.md",
-        include_bytes!("guides/email-mailboxes.md").as_slice(),
-    )])
+    .with_guides_from_markdown([("email.md", include_bytes!("guides/email.md").as_slice())])
 }
 
 #[cfg(test)]
