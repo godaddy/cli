@@ -38,10 +38,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
 /// response names an eligible account, plus a pointer at the `email`
 /// guide for what an account ID actually is.
 fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
-    let mut create = next_action("email create", "Create a mailbox for this address")
+    let account_id = first_eligible_account_id(data);
+    let command = if account_id.is_some() {
+        "email create --email <email> --account-id <account-id>"
+    } else {
+        "email create --email <email>"
+    };
+    let mut create = next_action(command, "Create a mailbox for this address")
         .with_param("email", NextActionParam::value(email.to_owned()));
 
-    if let Some(account_id) = first_eligible_account_id(data) {
+    if let Some(account_id) = account_id {
         create = create.with_param("account-id", NextActionParam::value(account_id));
     }
 
@@ -85,7 +91,10 @@ mod tests {
         });
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy email create");
+        assert_eq!(
+            actions[0].command,
+            "gddy email create --email <email> --account-id <account-id>"
+        );
         assert_eq!(actions[1].command, "gddy guide email");
     }
 
@@ -99,7 +108,7 @@ mod tests {
         });
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy email create");
+        assert_eq!(actions[0].command, "gddy email create --email <email>");
         assert_eq!(actions[1].command, "gddy guide email");
     }
 }

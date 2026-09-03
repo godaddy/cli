@@ -14,7 +14,7 @@ pub fn module() -> Module {
     Module::new("Email", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("email", "Create, list, and inspect GoDaddy Email mailboxes").with_long(
-                "Manage GoDaddy Email mailboxes.\n\
+                "Manage GoDaddy Business Emails.\n\
              \n\
              • check-eligibility — see which account(s) an address can be created\n\
              \x20  under, and what consent is outstanding\n\
@@ -35,7 +35,7 @@ pub fn module() -> Module {
         .with_command(check_eligibility::command())
     })
     .with_feature_flag("email", Stage::Beta)
-    .with_guides_from_markdown([("email.md", include_bytes!("guides/email.md").as_slice())])
+    .with_guides_from_markdown([("email.md", include_bytes!("guides/email-create.md").as_slice())])
 }
 
 #[cfg(test)]

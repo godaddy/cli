@@ -52,7 +52,6 @@ impl EmailClient {
         method: Method,
         path: &str,
         query: &[(&str, String)],
-        extra_headers: &[(&str, String)],
         body: Option<Value>,
     ) -> Result<Value, ClientError> {
         let mut req = self
@@ -60,9 +59,6 @@ impl EmailClient {
             .request(method, self.url(path))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id());
-        for (key, value) in extra_headers {
-            req = req.header(*key, value);
-        }
         for (key, value) in query {
             req = req.query(&[(key, value)]);
         }
@@ -101,31 +97,17 @@ impl EmailClient {
     }
 
     pub async fn list_mailboxes(&self, query: &[(&str, String)]) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, "/mailboxes", query, &[], None)
-            .await
+        self.send_json(Method::GET, "/mailboxes", query, None).await
     }
 
     pub async fn get_mailbox(&self, mailbox_id: &str) -> Result<Value, ClientError> {
-        self.send_json(
-            Method::GET,
-            &format!("/mailboxes/{mailbox_id}"),
-            &[],
-            &[],
-            None,
-        )
-        .await
+        self.send_json(Method::GET, &format!("/mailboxes/{mailbox_id}"), &[], None)
+            .await
     }
 
     pub async fn create_mailbox(&self, body: Value) -> Result<Value, ClientError> {
-        let idempotency_key = uuid::Uuid::new_v4().to_string();
-        self.send_json(
-            Method::POST,
-            "/mailboxes",
-            &[],
-            &[("idempotency-key", idempotency_key)],
-            Some(body),
-        )
-        .await
+        self.send_json(Method::POST, "/mailboxes", &[], Some(body))
+            .await
     }
 
     pub async fn check_eligibility(&self, email: &str) -> Result<Value, ClientError> {
@@ -133,7 +115,6 @@ impl EmailClient {
             Method::GET,
             "/check-mailbox-eligibility",
             &[("email", email.to_owned())],
-            &[],
             None,
         )
         .await
@@ -204,7 +185,6 @@ mod tests {
                 when.method(POST)
                     .path("/v1/email/mailboxes")
                     .header("authorization", "Bearer test-token")
-                    .header_exists("idempotency-key")
                     .json_body(json!({ "emailAddress": "someone@example.com" }));
                 then.status(202)
                     .json_body(json!({ "mailboxId": "mbx-456", "status": "EXECUTING" }));
