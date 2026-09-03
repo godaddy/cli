@@ -28,6 +28,7 @@ mod nameservers;
 mod operation;
 mod purchase;
 mod quote;
+mod register;
 mod suggest;
 
 // Shared with the `dns` module, which builds the same Domains API client and
@@ -46,13 +47,13 @@ pub fn module() -> Module {
              \n\
              • list / get        — your existing domains and their details\n\
              • available / suggest — find a name to register\n\
-             • quote             — price a registration and see required agreements\n\
-             • purchase          — register a new domain (charges your account)\n\
+             • register          — interactive wizard: discover, configure, and buy\n\
+             • quote / purchase  — scripted two-step registration (quote then buy)\n\
              • nameservers set   — point a domain at custom nameservers\n\
-             • operation status  — check on an async operation (e.g. a pending purchase)\n\
+             • operation          — check on an async operation (e.g. a pending purchase)\n\
              \n\
-             Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`, and `nameservers set` needs\n\
+             Reads need the `domains.domain:read` scope; purchase/register also\n\
+             need `domains.domain:create`, and `nameservers set` needs\n\
              `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )
@@ -63,14 +64,21 @@ pub fn module() -> Module {
         .with_command(agreements::command())
         .with_command(quote::command())
         .with_command(purchase::command())
+        .with_command(register::command())
         .with_group(nameservers::group())
         .with_group(contacts::group())
-        .with_group(operation::group())
+        .with_command(operation::command())
     })
-    .with_guides_from_markdown([(
-        "domain-purchase.md",
-        include_bytes!("guides/domain-purchase.md").as_slice(),
-    )])
+    .with_guides_from_markdown([
+        (
+            "domain-purchase.md",
+            include_bytes!("guides/domain-purchase.md").as_slice(),
+        ),
+        (
+            "domain-register.md",
+            include_bytes!("guides/domain-register.md").as_slice(),
+        ),
+    ])
 }
 
 #[cfg(test)]
@@ -86,7 +94,7 @@ mod tests {
     #[tokio::test]
     async fn domain_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 9] = [
+        let cases: [&[&str]; 10] = [
             &["gddy", "domain", "list", "--output", "json"],
             &["gddy", "domain", "get", "example.com", "--output", "json"],
             &[
@@ -121,6 +129,7 @@ mod tests {
                 "--output",
                 "json",
             ],
+            &["gddy", "domain", "register", "--output", "json"],
             &[
                 "gddy",
                 "domain",
@@ -136,7 +145,6 @@ mod tests {
                 "gddy",
                 "domain",
                 "operation",
-                "status",
                 "dummy-op-id",
                 "--output",
                 "json",

@@ -6,9 +6,11 @@ use cli_engine::{
 
 use domains_client::types;
 
-use super::common::{api_error, make_client, validate_domain_name};
+use super::common::{fetch_with_domain_retry, resolve_domain_name};
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
+
+const DOMAIN_PROMPT: &str = "Domain to look up (e.g. example.com)";
 
 #[derive(Debug, Clone, clap::Args)]
 struct GetArgs {
@@ -30,18 +32,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_json_schema::<types::Domain>()
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: GetArgs| async move {
-            let domain = validate_domain_name(&args.domain)?;
             let debug = !ctx.middleware.debug.is_empty();
-            let client = make_client(&ctx).await?;
-            let detail = match client
-                .get_domain()
-                .domain_name(domain.as_str())
-                .send()
-                .await
-            {
-                Ok(r) => r.into_inner(),
-                Err(e) => return Err(api_error("retrieving domain details", debug, e).await),
-            };
+            let domain = resolve_domain_name(&ctx, &args.domain, DOMAIN_PROMPT)?;
+            let detail = fetch_with_domain_retry(
+                &ctx,
+                domain,
+                DOMAIN_PROMPT,
+                "retrieving domain details",
+                debug,
+                |client, domain| async move {
+                    client
+                        .get_domain()
+                        .domain_name(domain.as_str())
+                        .send()
+                        .await
+                        .map(|r| r.into_inner())
+                },
+            )
+            .await?;
             let value = serde_json::to_value(&detail).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize domain details: {e}"))
             })?;
