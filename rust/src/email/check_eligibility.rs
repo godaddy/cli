@@ -34,40 +34,49 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Always points at `email create` and prefills `--account-id` when the
-/// response names an eligible account, plus a pointer at the `email`
-/// guide for what an account ID actually is.
+/// Points at `email create` (prefilling `--account-id` and any required
+/// `--consent` flags) only when the response names an eligible account —
+/// with no eligible account there is nothing to create. Always includes a
+/// pointer at the `email` guide for what an account ID actually is.
 fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
-    let account_id = first_eligible_account_id(data);
-    let command = if account_id.is_some() {
-        "email create --email <email> --account-id <account-id>"
-    } else {
-        "email create --email <email>"
-    };
-    let mut create = next_action(command, "Create a mailbox for this address")
-        .with_param("email", NextActionParam::value(email.to_owned()));
+    let mut actions = Vec::new();
 
-    if let Some(account_id) = account_id {
-        create = create.with_param("account-id", NextActionParam::value(account_id));
+    if let Some(account) = first_eligible_account(data)
+        && let Some(account_id) = account.get("accountId").and_then(Value::as_str)
+    {
+        let mut command = "email create --email <email> --account-id <account-id>".to_owned();
+        for requirement_type in requirement_types(account) {
+            command.push_str(&format!(" --consent {requirement_type}"));
+        }
+        actions.push(
+            next_action(command, "Create a mailbox for this address")
+                .with_param("email", NextActionParam::value(email.to_owned()))
+                .with_param("account-id", NextActionParam::value(account_id.to_owned())),
+        );
     }
 
-    vec![
-        create,
-        next_action("guide email", "Learn about email accounts"),
-    ]
+    actions.push(next_action("guide email", "Learn about email accounts"));
+    actions
 }
 
 // Every field here is read out of an untyped `serde_json::Value`, as is every
 // other `EmailClient` response in this module — panel-v3-api has no published
 // OpenAPI spec yet. Once it does, a generated typed client (mirroring
 // `domains_client`) would remove this class of bug; not actionable today.
-fn first_eligible_account_id(data: &Value) -> Option<String> {
-    data.get("eligibleAccounts")?
-        .as_array()?
-        .first()?
-        .get("accountId")?
-        .as_str()
-        .map(str::to_owned)
+fn first_eligible_account(data: &Value) -> Option<&Value> {
+    data.get("eligibleAccounts")?.as_array()?.first()
+}
+
+fn requirement_types(account: &Value) -> Vec<&str> {
+    account
+        .get("requirements")
+        .and_then(Value::as_array)
+        .map(|reqs| {
+            reqs.iter()
+                .filter_map(|r| r.get("type").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -99,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn next_actions_still_point_at_create_when_no_eligible_accounts() {
+    fn next_actions_omit_create_when_no_eligible_accounts() {
         let data = json!({
             "isEligible": false,
             "ineligibilityReasons": [
@@ -107,8 +116,25 @@ mod tests {
             ]
         });
         let actions = eligibility_next_actions("someone@example.com", &data);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy guide email");
+    }
+
+    #[test]
+    fn next_actions_include_consent_flags_for_outstanding_requirements() {
+        let data = json!({
+            "isEligible": true,
+            "eligibleAccounts": [{
+                "accountId": "acct-1",
+                "requirements": [{ "type": "FREETRIAL_AUTORENEW" }]
+            }]
+        });
+        let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy email create --email <email>");
+        assert_eq!(
+            actions[0].command,
+            "gddy email create --email <email> --account-id <account-id> --consent FREETRIAL_AUTORENEW"
+        );
         assert_eq!(actions[1].command, "gddy guide email");
     }
 }

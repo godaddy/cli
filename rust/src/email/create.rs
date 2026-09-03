@@ -1,8 +1,11 @@
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
 use crate::email::client::ClientError;
 use crate::email::{client_err, client_err_with_fix, make_client};
+use crate::next_action::next_action;
 use crate::scopes::EMAIL_CREATE;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -47,6 +50,19 @@ fn request_body(args: &CreateArgs) -> Value {
     Value::Object(body)
 }
 
+fn create_next_actions(data: &Value) -> Vec<NextAction> {
+    let Some(mailbox_id) = data.get("mailboxId").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    vec![
+        next_action(
+            "email get <mailbox-id>",
+            "Poll the mailbox until its status reaches COMPLETED",
+        )
+        .with_param("mailbox-id", NextActionParam::value(mailbox_id.to_owned())),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<CreateArgs, _, _, _>(
         CommandSpec::from_args::<CreateArgs>("create", "Create a new Email mailbox")
@@ -70,7 +86,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
                 _ => client_err(e),
             })?;
-            Ok(CommandResult::new(data))
+            let next_actions = create_next_actions(&data);
+            Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
     )
 }
@@ -101,5 +118,23 @@ mod tests {
         assert_eq!(body["accountId"], "acct-1");
         assert!(body.get("firstName").is_none());
         assert_eq!(body["consents"], json!([{ "type": "EMAIL_TOS" }]));
+    }
+
+    #[test]
+    fn create_next_actions_points_at_get_when_mailbox_id_present() {
+        let data = json!({ "mailboxId": "mb-1", "status": "EXECUTING" });
+        let actions = create_next_actions(&data);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy email get <mailbox-id>");
+        assert_eq!(
+            actions[0].params["mailbox-id"].value,
+            Some("mb-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn create_next_actions_empty_when_mailbox_id_absent() {
+        let data = json!({ "status": "EXECUTING" });
+        assert!(create_next_actions(&data).is_empty());
     }
 }
