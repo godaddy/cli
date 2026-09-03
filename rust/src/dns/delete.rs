@@ -217,7 +217,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((rec.data.clone().unwrap_or_default(), err));
+                outcomes.push((rec.data.as_deref().unwrap_or("(no data)").to_string(), err));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
