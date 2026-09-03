@@ -395,10 +395,33 @@
     "DNSRecord": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/dns-record.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A single DNS resource record in the zone for a domain managed by GoDaddy DNS. Supports standard IANA record types plus the GoDaddy ALIAS extension. SOA records are read-only and managed by GoDaddy's authoritative DNS infrastructure. The record is uniquely identified by the combination of name, type, and data. HTTPS and SVCB records (RFC 9460) use the priority field for SvcPriority and the optional parameters field for SvcParams.\n",
+      "description": "A single DNS resource record in the zone for a domain managed by GoDaddy DNS. Supports standard IANA record types plus the GoDaddy ALIAS extension. SOA records are read-only and managed by GoDaddy's authoritative DNS infrastructure. The record is uniquely identified by its type-specific key fields: name, type, and data for most record types; name, type, usage, selector, matchingType, and certificateData for TLSA records. HTTPS and SVCB records (RFC 9460) use the priority field for SvcPriority and the optional parameters field for SvcParams. TLSA records (RFC 6698) require usage, selector, matchingType, and certificateData instead of data; the DNS name is composed as _port._proto.name from the port, protocol, and name fields. All other record types require data.\n",
+      "else": {
+        "required": [
+          "data"
+        ]
+      },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "TLSA"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
       "properties": {
+        "certificateData": {
+          "description": "Hex-encoded certificate association data (RFC 6698; TLSA only). Content depends on selector and matchingType: the full DER-encoded certificate or SubjectPublicKeyInfo (matchingType 0), or its SHA-256 (matchingType 1) or SHA-512 (matchingType 2) digest. Must be an even number of hex digits (whole bytes). Supplying this field for any other record type is ignored.\n",
+          "example": "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971",
+          "maxLength": 4096,
+          "minLength": 2,
+          "pattern": "^([0-9a-fA-F]{2})+$",
+          "type": "string"
+        },
         "data": {
-          "description": "The record data, formatted per the record type. For MX: the mail exchange hostname (e.g. \"mail.example.com.\"). Supply priority as the sibling priority field. For SRV: the target hostname; supply priority, weight, port, service, and protocol as sibling fields. For TXT: the text value (quotes are handled by the DNS layer). For A/AAAA: the IP address. For CNAME/ALIAS: the target hostname with trailing dot. For HTTPS/SVCB: the target hostname (\".\" for the zone apex); supply priority as SvcPriority and optional SvcParams in the sibling parameters field.\n",
+          "description": "The record data, formatted per the record type. For MX: the mail exchange hostname (e.g. \"mail.example.com.\"). Supply priority as the sibling priority field. For SRV: the target hostname; supply priority, weight, port, service, and protocol as sibling fields. For TXT: the text value (quotes are handled by the DNS layer). For A/AAAA: the IP address. For CNAME/ALIAS: the target hostname with trailing dot. For HTTPS/SVCB: the target hostname (\".\" for the zone apex); supply priority as SvcPriority and optional SvcParams in the sibling parameters field. Not used for TLSA records; supply usage, selector, matchingType, and certificateData instead.\n",
           "example": "192.0.2.1",
           "maxLength": 512,
           "minLength": 1,
@@ -410,6 +433,9 @@
           "maximum": 255,
           "minimum": 0,
           "type": "integer"
+        },
+        "matchingType": {
+          "$ref": "#/$defs/TLSAMatchingType"
         },
         "name": {
           "description": "The DNS record name (label), relative to the zone apex. Use @ to represent the zone apex itself. Wildcards (*) are supported for A, AAAA, and CNAME records.\n",
@@ -446,8 +472,11 @@
           "readOnly": true,
           "type": "string"
         },
+        "selector": {
+          "$ref": "#/$defs/TLSASelector"
+        },
         "service": {
-          "description": "Service name for SRV and TLSA records, prefixed with an underscore (e.g. `_http`, `_smtp`). Combined with the protocol to form the record name as `_service._proto.name`.\n",
+          "description": "Service name for SRV records, prefixed with an underscore (e.g. `_http`, `_smtp`). Combined with the protocol to form the record name as `_service._proto.name`.\n",
           "example": "_http",
           "type": "string"
         },
@@ -469,10 +498,13 @@
               "$ref": "#/$defs/DNSRecordType"
             },
             {
-              "description": "The DNS resource record type. Together with name and data, uniquely identifies this record in the zone. Determines the expected data format and which optional fields (priority, service, port, etc.) apply. SOA and NS records are read-only.\n",
+              "description": "The DNS resource record type. Together with name and the type-specific record data fields, uniquely identifies this record in the zone. Determines the expected data format and which optional fields (priority, service, port, etc.) apply. SOA and NS records are read-only.\n",
               "example": "A"
             }
           ]
+        },
+        "usage": {
+          "$ref": "#/$defs/TLSAUsage"
         },
         "weight": {
           "description": "Relative weight for load distribution among SRV records with equal priority. Higher values increase the probability of selection. Use 0 when only one target exists at a given priority.\n",
@@ -485,16 +517,23 @@
       "required": [
         "name",
         "type",
-        "data",
         "ttl"
       ],
+      "then": {
+        "required": [
+          "usage",
+          "selector",
+          "matchingType",
+          "certificateData"
+        ]
+      },
       "title": "DNS Record",
       "type": "object"
     },
     "DNSRecordType": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/dns-record-type.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4 address record. AAAA — IPv6 address record. CAA — certification authority authorization record. CNAME — canonical name alias record. HTTPS — HTTPS service binding record (RFC 9460); data is the target hostname, priority is the SvcPriority (0 = AliasMode), and optional SvcParams are supplied in the sibling parameters field. MX — mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS — nameserver delegation record; read-only. SOA — start of authority record; managed by the registry; read-only. SRV — service locator record. SVCB — service binding record (RFC 9460); same structure as HTTPS but for non-HTTP services. TXT — free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
+      "description": "The type of a DNS resource record. Values correspond to IANA-assigned DNS record type mnemonics. A — IPv4 address record. AAAA — IPv6 address record. CAA — certification authority authorization record. CNAME — canonical name alias record. HTTPS — HTTPS service binding record (RFC 9460); data is the target hostname, priority is the SvcPriority (0 = AliasMode), and optional SvcParams are supplied in the sibling parameters field. MX — mail exchange record; data is the mail exchange hostname, priority is the sibling priority field. NS — nameserver delegation record; read-only. SOA — start of authority record; managed by the registry; read-only. SRV — service locator record. SVCB — service binding record (RFC 9460); same structure as HTTPS but for non-HTTP services. TLSA — TLS certificate association record (RFC 6698); used for DANE. TXT — free-form text; used for SPF, DKIM, DMARC, and domain verification.\n",
       "title": "DNS Record Type",
       "type": "string"
     },
@@ -1398,6 +1437,48 @@
       ],
       "title": "Suggestion Source",
       "type": "string"
+    },
+    "TLSAMatchingType": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/tlsa-matching-type.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "TLSA matching type (RFC 6698 §2.1.3). Specifies how the selected certificate material is compared to the association data. Values outside the defined set (3–255) are not currently supported and will be rejected. 0 — Exact match: association data is compared byte-for-byte to the selected content. 1 — SHA-256: association data is the SHA-256 digest of the selected content. 2 — SHA-512: association data is the SHA-512 digest of the selected content.\n",
+      "examples": [
+        0,
+        1,
+        2
+      ],
+      "maximum": 255,
+      "minimum": 0,
+      "title": "TLSA Matching Type",
+      "type": "integer"
+    },
+    "TLSASelector": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/tlsa-selector.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "TLSA selector (RFC 6698 §2.1.2). Specifies which part of the TLS certificate is matched against the association data. Values outside the defined set (2–255) are not currently supported and will be rejected. 0 — Full certificate: the entire DER-encoded certificate. 1 — SubjectPublicKeyInfo: the DER-encoded SubjectPublicKeyInfo of the certificate.\n",
+      "examples": [
+        0,
+        1
+      ],
+      "maximum": 255,
+      "minimum": 0,
+      "title": "TLSA Selector",
+      "type": "integer"
+    },
+    "TLSAUsage": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/tlsa-usage.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "TLSA certificate usage (RFC 6698 §2.1.1). Constrains how the certificate association data is interpreted during DANE authentication. Values outside the defined set (4–255) are not currently supported and will be rejected. 0 — PKIX-TA (CA constraint): association must match a trust anchor in the PKIX validation path. 1 — PKIX-EE (service certificate constraint): association must match the end-entity certificate, which must also pass PKIX validation. 2 — DANE-TA (trust anchor assertion): association is a trust anchor for DANE validation; PKIX path building is not required. 3 — DANE-EE (domain-issued certificate): association must match the end-entity certificate; PKIX validation is not required.\n",
+      "examples": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "maximum": 255,
+      "minimum": 0,
+      "title": "TLSA Usage",
+      "type": "integer"
     },
     "Term": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/term.v3",
@@ -3301,7 +3382,7 @@
       "summary": "Create a DNS record for a zone"
     },
     {
-      "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields (name, type, data,\nttl) must be supplied; partial updates are not supported on this\nendpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be modified.\n",
+      "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields applicable to the\nrecord type must be supplied; partial updates are not supported\non this endpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be modified.\n",
       "method": "PUT",
       "operationId": "replaceDNSRecord",
       "parameters": [
@@ -3497,5 +3578,5 @@
   ],
   "name": "domains",
   "title": "Domain Lifecycle Management API",
-  "version": "3.2.0"
+  "version": "3.3.0"
 }

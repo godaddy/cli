@@ -125,7 +125,7 @@ pub(super) fn record_label(
     existing
         .iter()
         .find(|r| r.record_id.as_deref() == Some(record_id))
-        .map(|r| format!("{record_type} {}", r.data))
+        .map(|r| format!("{record_type} {}", r.data.as_deref().unwrap_or("(no data)")))
         .unwrap_or_else(|| record_id.to_string())
 }
 
