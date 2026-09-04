@@ -5,6 +5,7 @@
 use domains_client::types;
 use serde_json::{Value, json};
 
+use super::super::records::record_value;
 use super::plan::SetAction;
 
 /// Outcome of one applied `set` reconcile action, for reporting.
@@ -125,7 +126,7 @@ pub(super) fn record_label(
     existing
         .iter()
         .find(|r| r.record_id.as_deref() == Some(record_id))
-        .map(|r| format!("{record_type} {}", r.data.as_deref().unwrap_or("(no data)")))
+        .map(|r| format!("{record_type} {}", record_value(r).unwrap_or("(no data)")))
         .unwrap_or_else(|| record_id.to_string())
 }
 
@@ -133,6 +134,40 @@ pub(super) fn record_label(
 mod tests {
     use super::*;
     use crate::dns::set::plan::plan_set;
+
+    fn tlsa_record(record_id: &str, cert: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: Some(cert.to_owned()),
+            matching_type: None,
+            selector: None,
+            usage: None,
+            data: None,
+            flag: None,
+            name: "www".to_owned(),
+            parameters: None,
+            port: None,
+            priority: None,
+            protocol: None,
+            record_id: Some(record_id.to_owned()),
+            service: None,
+            tag: None,
+            ttl: 3600,
+            type_: types::DnsRecordType("TLSA".to_owned()),
+            weight: None,
+        }
+    }
+
+    /// TLSA's value lives in `certificate_data`, not `data` — the label must
+    /// read through `record_value` to show it rather than "(no data)".
+    #[test]
+    fn record_label_shows_tlsa_certificate_data_as_the_value() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let existing = vec![tlsa_record("r1", cert)];
+        assert_eq!(
+            record_label(&existing, "TLSA", "r1"),
+            format!("TLSA {cert}")
+        );
+    }
 
     #[test]
     fn summarize_set_reports_counts_and_flags_partial_failure() {

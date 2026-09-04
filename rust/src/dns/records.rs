@@ -283,6 +283,15 @@ pub(super) fn v3_records(
     data.iter().map(|d| v3_record(name, ty, d, opts)).collect()
 }
 
+/// The user-facing "value" of a fetched v3 `DnsRecord`: `data` for every type
+/// except TLSA, which carries its value in `certificateData` instead (see
+/// [`v3_record`]'s TLSA branch). Conflict diagnosis, delete/set reporting, and
+/// exact-duplicate detection all need "the value" regardless of which wire
+/// field holds it, so they read through this rather than `data` directly.
+pub(super) fn record_value(rec: &types::DnsRecord) -> Option<&str> {
+    rec.data.as_deref().or(rec.certificate_data.as_deref())
+}
+
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
 /// filters, paging through the collection (v3 list is paginated). Shared by
 /// `list`, `set`, and `delete` — the latter two need the matching records' ids.
