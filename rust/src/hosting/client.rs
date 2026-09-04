@@ -11,6 +11,11 @@ pub enum ClientError {
     Http { status: u16, body: String },
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
+    #[error("failed to read {path}: {source}")]
+    Io {
+        path: String,
+        source: std::io::Error,
+    },
 }
 
 impl From<ClientError> for crate::error::GddyError {
@@ -19,6 +24,9 @@ impl From<ClientError> for crate::error::GddyError {
             ClientError::Http { status, body } => Self::from_http(status, body, "hosting"),
             ClientError::Network(e) => {
                 Self::network(format!("network error: {e}")).with_system("hosting")
+            }
+            ClientError::Io { path, source } => {
+                Self::validation(format!("failed to read {path}: {source}")).with_system("hosting")
             }
         }
     }
@@ -267,6 +275,51 @@ impl HostingClient {
             Some(json!({ "repositoryFullName": repo, "branch": branch })),
         )
         .await
+    }
+
+    pub async fn create_import_zip(
+        &self,
+        app_id: &str,
+        zip_path: &std::path::Path,
+    ) -> Result<Value, ClientError> {
+        let form = reqwest::multipart::Form::new()
+            .file("file", zip_path)
+            .await
+            .map_err(|e| ClientError::Io {
+                path: zip_path.display().to_string(),
+                source: e,
+            })?;
+
+        let request = self
+            .client
+            .post(self.url(&format!("/apps/{app_id}/imports")))
+            .bearer_auth(&self.token)
+            .header("x-request-id", Self::new_request_id())
+            .multipart(form)
+            .build()?;
+        cli_engine::transport::debug_log_reqwest_request(&request);
+        let resp = self.client.execute(request).await?;
+
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = resp.bytes().await?;
+        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+
+        let status = status.as_u16();
+        if !(200..300).contains(&status) {
+            return Err(ClientError::Http {
+                status,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+            });
+        }
+
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
+            status,
+            body: format!(
+                "invalid JSON response: {e} (body: {})",
+                String::from_utf8_lossy(&bytes)
+            ),
+        })
     }
 
     pub async fn get_import(&self, app_id: &str, import_id: &str) -> Result<Value, ClientError> {

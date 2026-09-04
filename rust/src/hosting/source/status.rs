@@ -33,11 +33,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .get_import(&app_id, &args.import_id)
                 .await
                 .map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![next_action(
-                "hosting deployment publish --app-id <app-id>",
-                "Deploy the imported source",
-            )
-            .with_param("app-id", NextActionParam::value(app_id))]))
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "hosting deployment publish --app-id <app-id>",
+                    "Deploy the imported source",
+                )
+                .with_param("app-id", NextActionParam::value(app_id)),
+            ]))
         },
     )
 }

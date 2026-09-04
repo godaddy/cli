@@ -298,6 +298,28 @@ async fn get_import_hits_correct_path() {
 }
 
 #[tokio::test]
+async fn create_import_zip_sends_multipart_to_imports_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/imports")
+                .header_exists("content-type");
+            then.status(202).json_body(json!({ "id": "imp-zip-1" }));
+        })
+        .await;
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+    let result = client(&server.base_url())
+        .create_import_zip("app-1", tmp.path())
+        .await
+        .expect("create import zip");
+
+    mock.assert_async().await;
+    assert_eq!(result["id"], "imp-zip-1");
+}
+
+#[tokio::test]
 async fn get_github_connection_hits_correct_path() {
     let server = MockServer::start_async().await;
     let mock = server

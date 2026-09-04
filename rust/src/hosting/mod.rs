@@ -6,11 +6,11 @@ pub mod common;
 mod deployment;
 mod domain;
 mod github;
-mod source;
 mod log;
 mod operation;
 mod runtime;
 mod secrets;
+mod source;
 mod subscription;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
@@ -23,7 +23,7 @@ pub fn module() -> Module {
                  \n\
                  • app          — Hosting applications (create, inspect, update, delete, restart)\n\
                  • deployment   — Build and deploy application source\n\
-                 • source       — Import source code from GitHub\n\
+                 • source       — Import source code\n\
                  • github       — GitHub connection, repositories, branches\n\
                  • secrets      — Application secrets (create, update, delete, list)\n\
                  • log          — Application log entries\n\
