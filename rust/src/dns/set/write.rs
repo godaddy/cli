@@ -7,7 +7,7 @@ use domains_client::types;
 use crate::dns::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
-use crate::dns::records::{RecordOptions, v3_record};
+use crate::dns::records::{RecordOptions, record_value, v3_record};
 use crate::domain::{api_error, format_api_error};
 
 use super::outcome::SetOutcome;
@@ -41,7 +41,7 @@ async fn delete_conflicts(
         let detail = format!(
             "{} {}",
             rec.type_.as_str(),
-            rec.data.as_deref().unwrap_or("(no data)")
+            record_value(rec).unwrap_or("(no data)")
         );
         let Some(record_id) = rec.record_id.as_deref() else {
             outcomes.push(SetOutcome::new(
@@ -266,6 +266,10 @@ mod tests {
             service: None,
             flag: None,
             tag: None,
+            usage: None,
+            selector: None,
+            matching_type: None,
+            parameters: None,
         }
     }
 
@@ -290,6 +294,93 @@ mod tests {
             name: "www",
             record_type: "A",
             value: "1.2.3.4",
+            opts: &opts,
+            replace_conflicting: false,
+            debug: false,
+        };
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
+
+        create.assert_async().await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "created");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    #[tokio::test]
+    async fn write_with_conflict_handling_sends_https_parameters_in_request_body() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .json_body(json!({
+                        "data": ".",
+                        "name": "@",
+                        "parameters": "alpn=h2,h3",
+                        "priority": 1,
+                        "ttl": 3600,
+                        "type": "HTTPS"
+                    }));
+                then.status(201)
+                    .json_body(json!({ "type": "HTTPS", "name": "@", "data": ".", "ttl": 3600 }));
+            })
+            .await;
+
+        let mut opts = write_opts();
+        opts.priority = Some(1);
+        opts.parameters = Some("alpn=h2,h3".to_string());
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "@",
+            record_type: "HTTPS",
+            value: ".",
+            opts: &opts,
+            replace_conflicting: false,
+            debug: false,
+        };
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
+
+        create.assert_async().await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "created");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    #[tokio::test]
+    async fn write_with_conflict_handling_sends_tlsa_fields_in_request_body() {
+        let server = MockServer::start_async().await;
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .json_body(json!({
+                        "certificateData": cert,
+                        "matchingType": 1,
+                        "name": "www",
+                        "port": 443,
+                        "protocol": "_tcp",
+                        "selector": 1,
+                        "ttl": 3600,
+                        "type": "TLSA",
+                        "usage": 3
+                    }));
+                then.status(201)
+                    .json_body(json!({ "type": "TLSA", "name": "www", "ttl": 3600 }));
+            })
+            .await;
+
+        let mut opts = write_opts();
+        opts.usage = Some(3);
+        opts.selector = Some(1);
+        opts.matching_type = Some(1);
+        opts.protocol = Some("_tcp".to_string());
+        opts.port = Some(443);
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "TLSA",
+            value: cert,
             opts: &opts,
             replace_conflicting: false,
             debug: false,

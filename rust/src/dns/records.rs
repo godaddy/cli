@@ -13,12 +13,13 @@ use domains_client::types;
 /// NS and SOA are registry-managed / read-only, so they're excluded. v3's
 /// `DNSRecordType` is otherwise an open string; this list is the CLI's guardrail
 /// against typos and includes `CAA` and GoDaddy's `ALIAS` extension.
-pub(super) const WRITABLE_TYPES: &[&str] =
-    &["A", "AAAA", "ALIAS", "CAA", "CNAME", "MX", "SRV", "TXT"];
+pub(super) const WRITABLE_TYPES: &[&str] = &[
+    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "SRV", "SVCB", "TLSA", "TXT",
+];
 /// Record types accepted by the `list` filter — the writable set plus the
 /// read-only NS/SOA, which are listable even though they can't be modified.
 pub(super) const LISTABLE_TYPES: &[&str] = &[
-    "A", "AAAA", "ALIAS", "CAA", "CNAME", "MX", "NS", "SOA", "SRV", "TXT",
+    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "NS", "SOA", "SRV", "SVCB", "TLSA", "TXT",
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
@@ -64,7 +65,8 @@ pub(super) fn parse_list_type_arg(raw: &str) -> Result<String, String> {
 }
 
 /// Optional record fields shared by `add` and `set`, including the CAA-only
-/// `flag`/`tag`.
+/// `flag`/`tag`, the TLSA-only `usage`/`selector`/`matching_type`, and the
+/// HTTPS/SVCB-only `parameters` (SvcParams).
 pub(super) struct RecordOptions {
     pub(super) ttl: Option<i64>,
     pub(super) priority: Option<i64>,
@@ -74,6 +76,10 @@ pub(super) struct RecordOptions {
     pub(super) service: Option<String>,
     pub(super) flag: Option<i64>,
     pub(super) tag: Option<String>,
+    pub(super) usage: Option<i64>,
+    pub(super) selector: Option<i64>,
+    pub(super) matching_type: Option<i64>,
+    pub(super) parameters: Option<String>,
 }
 
 impl RecordOptions {
@@ -87,6 +93,10 @@ impl RecordOptions {
             service: args.service.clone(),
             flag: args.flag,
             tag: args.tag.clone(),
+            usage: args.usage,
+            selector: args.selector,
+            matching_type: args.matching_type,
+            parameters: args.parameters.clone(),
         }
     }
 }
@@ -99,7 +109,7 @@ pub(super) struct RecordWriteArgs {
     #[arg(value_name = "DOMAIN")]
     pub(super) domain: String,
 
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT).
+    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
     pub(super) record_type: String,
 
@@ -107,7 +117,9 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "NAME")]
     pub(super) name: String,
 
-    /// Record value (repeatable for multiple records on the same name).
+    /// Record value (repeatable for multiple records on the same name). For
+    /// TLSA, this is the hex-encoded certificate association data; use
+    /// `--usage`/`--selector`/`--matching-type` for the rest.
     #[arg(long, value_name = "VALUE", required = true)]
     pub(super) data: Vec<String>,
 
@@ -115,11 +127,12 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(i64).range(1..))]
     pub(super) ttl: Option<i64>,
 
-    /// Record priority (MX and SRV only).
+    /// Record priority (MX, SRV, HTTPS, and SVCB only). For HTTPS/SVCB, 0
+    /// means AliasMode.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
     pub(super) priority: Option<i64>,
 
-    /// Service port (SRV only).
+    /// Service port (SRV and TLSA only).
     #[arg(long, value_name = "PORT", value_parser = clap::value_parser!(i64).range(1..=65535))]
     pub(super) port: Option<i64>,
 
@@ -127,7 +140,7 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
     pub(super) weight: Option<i64>,
 
-    /// Service protocol (SRV only).
+    /// Service protocol, e.g. _tcp (SRV and TLSA only).
     #[arg(long, value_name = "PROTO")]
     pub(super) protocol: Option<String>,
 
@@ -145,6 +158,26 @@ pub(super) struct RecordWriteArgs {
     /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
     #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
     pub(super) tag: Option<String>,
+
+    /// TLSA certificate usage, 0-3 (RFC 6698 §2.1.1; TLSA only; required for
+    /// TLSA). 0 PKIX-TA, 1 PKIX-EE, 2 DANE-TA, 3 DANE-EE.
+    #[arg(long = "usage", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=3), required_if_eq("record_type", "TLSA"))]
+    pub(super) usage: Option<i64>,
+
+    /// TLSA selector, 0-1 (RFC 6698 §2.1.2; TLSA only; required for TLSA). 0
+    /// full certificate, 1 SubjectPublicKeyInfo.
+    #[arg(long = "selector", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=1), required_if_eq("record_type", "TLSA"))]
+    pub(super) selector: Option<i64>,
+
+    /// TLSA matching type, 0-2 (RFC 6698 §2.1.3; TLSA only; required for
+    /// TLSA). 0 exact match, 1 SHA-256, 2 SHA-512.
+    #[arg(long = "matching-type", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=2), required_if_eq("record_type", "TLSA"))]
+    pub(super) matching_type: Option<i64>,
+
+    /// SvcParams for HTTPS/SVCB records (RFC 9460), e.g. "alpn=h2,h3
+    /// port=8443" (HTTPS/SVCB only).
+    #[arg(long, value_name = "PARAMS")]
+    pub(super) parameters: Option<String>,
 }
 
 /// Validate the CAA-specific fields against the record type. A CAA record needs a
@@ -168,9 +201,39 @@ pub(super) fn validate_caa_fields(record_type: &str, opts: &RecordOptions) -> Re
     Ok(())
 }
 
+/// Validate the TLSA-specific fields against the record type. `--usage`/
+/// `--selector`/`--matching-type` being present when `record_type` is TLSA is
+/// already enforced by clap (`required_if_eq`); this only guards the reverse —
+/// they're meaningless for other types. Pure so it's unit-testable and runs
+/// before any network call.
+pub(super) fn validate_tlsa_fields(record_type: &str, opts: &RecordOptions) -> Result<(), String> {
+    if record_type != "TLSA"
+        && (opts.usage.is_some() || opts.selector.is_some() || opts.matching_type.is_some())
+    {
+        return Err(format!(
+            "--usage/--selector/--matching-type are only valid for TLSA records, not {record_type}"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate the HTTPS/SVCB-specific `--parameters` (SvcParams) field against
+/// the record type — meaningless for anything else. Pure so it's
+/// unit-testable and runs before any network call.
+pub(super) fn validate_svcb_fields(record_type: &str, opts: &RecordOptions) -> Result<(), String> {
+    if opts.parameters.is_some() && !matches!(record_type, "HTTPS" | "SVCB") {
+        return Err(format!(
+            "--parameters is only valid for HTTPS/SVCB records, not {record_type}"
+        ));
+    }
+    Ok(())
+}
+
 /// Build one v3 `DnsRecord` from a `--data` value + shared options. `ttl` defaults
 /// to [`DEFAULT_TTL`] (v3 requires it). SRV/MX numerics convert into v3's `u16`
-/// and the CAA `flag` into `u8` (clap already bounds both ranges).
+/// and the CAA `flag`/TLSA `usage`/`selector`/`matchingType` into `u8` (clap
+/// already bounds all four ranges). TLSA doesn't use `data` — v3 wants its
+/// value under `certificateData` instead — so `data`'s value moves there.
 pub(super) fn v3_record(
     name: &str,
     ty: &str,
@@ -178,20 +241,26 @@ pub(super) fn v3_record(
     opts: &RecordOptions,
 ) -> types::DnsRecord {
     let to_u16 = |v: Option<i64>| v.and_then(|n| u16::try_from(n).ok());
+    let to_u8 = |v: Option<i64>| v.and_then(|n| u8::try_from(n).ok());
+    let is_tlsa = ty == "TLSA";
     types::DnsRecord {
-        // TLSA-only fields — the CLI's writable types (WRITABLE_TYPES) never
-        // include TLSA, so these are always absent for records this builds.
-        certificate_data: None,
-        matching_type: None,
-        selector: None,
-        usage: None,
-        data: Some(data.to_owned()),
+        certificate_data: is_tlsa.then(|| data.to_owned()),
+        matching_type: is_tlsa
+            .then(|| to_u8(opts.matching_type))
+            .flatten()
+            .map(types::TlsaMatchingType),
+        selector: is_tlsa
+            .then(|| to_u8(opts.selector))
+            .flatten()
+            .map(types::TlsaSelector),
+        usage: is_tlsa
+            .then(|| to_u8(opts.usage))
+            .flatten()
+            .map(types::TlsaUsage),
+        data: (!is_tlsa).then(|| data.to_owned()),
         flag: opts.flag.and_then(|n| u8::try_from(n).ok()),
         name: name.to_owned(),
-        // SvcParams for HTTPS/SVCB records (RFC 9460) — no CLI flag sets
-        // these yet, so every record is built without them, same as before
-        // this field existed.
-        parameters: None,
+        parameters: opts.parameters.clone(),
         port: to_u16(opts.port),
         priority: to_u16(opts.priority),
         protocol: opts.protocol.clone(),
@@ -212,6 +281,15 @@ pub(super) fn v3_records(
     opts: &RecordOptions,
 ) -> Vec<types::DnsRecord> {
     data.iter().map(|d| v3_record(name, ty, d, opts)).collect()
+}
+
+/// The user-facing "value" of a fetched v3 `DnsRecord`: `data` for every type
+/// except TLSA, which carries its value in `certificateData` instead (see
+/// [`v3_record`]'s TLSA branch). Conflict diagnosis, delete/set reporting, and
+/// exact-duplicate detection all need "the value" regardless of which wire
+/// field holds it, so they read through this rather than `data` directly.
+pub(super) fn record_value(rec: &types::DnsRecord) -> Option<&str> {
+    rec.data.as_deref().or(rec.certificate_data.as_deref())
 }
 
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
@@ -289,6 +367,10 @@ mod tests {
             service: None,
             flag: None,
             tag: None,
+            usage: None,
+            selector: None,
+            matching_type: None,
+            parameters: None,
         }
     }
 
@@ -297,6 +379,9 @@ mod tests {
         assert_eq!(parse_write_type_arg("aaaa").expect("valid"), "AAAA");
         assert_eq!(parse_write_type_arg("caa").expect("valid"), "CAA");
         assert_eq!(parse_write_type_arg("Alias").expect("valid"), "ALIAS");
+        assert_eq!(parse_write_type_arg("https").expect("valid"), "HTTPS");
+        assert_eq!(parse_write_type_arg("svcb").expect("valid"), "SVCB");
+        assert_eq!(parse_write_type_arg("tlsa").expect("valid"), "TLSA");
         // NS/SOA are registry-managed / read-only → rejected with a clear reason.
         for ty in ["NS", "soa"] {
             let err = parse_write_type_arg(ty).expect_err("read-only");
@@ -370,5 +455,62 @@ mod tests {
         assert!(err.contains("only valid for CAA"), "got: {err}");
         // A non-CAA type with no CAA fields → ok.
         assert!(validate_caa_fields("A", &opts()).is_ok());
+    }
+
+    #[test]
+    fn v3_record_carries_https_svcb_and_tlsa_fields() {
+        let mut https_opts = opts();
+        https_opts.priority = Some(1);
+        https_opts.parameters = Some("alpn=h2,h3".to_string());
+        let https = v3_record("@", "HTTPS", ".", &https_opts);
+        assert_eq!(https.priority, Some(1));
+        assert_eq!(https.parameters.as_deref(), Some("alpn=h2,h3"));
+        assert_eq!(https.data.as_deref(), Some("."));
+        assert_eq!(https.certificate_data, None);
+
+        let mut tlsa_opts = opts();
+        tlsa_opts.usage = Some(3);
+        tlsa_opts.selector = Some(1);
+        tlsa_opts.matching_type = Some(1);
+        tlsa_opts.protocol = Some("_tcp".to_string());
+        tlsa_opts.port = Some(443);
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
+        // TLSA doesn't use `data` — the value moves to `certificateData`.
+        assert_eq!(tlsa.data, None);
+        assert_eq!(tlsa.certificate_data.as_deref(), Some(cert));
+        assert_eq!(tlsa.usage.map(|u| u.0), Some(3));
+        assert_eq!(tlsa.selector.map(|s| s.0), Some(1));
+        assert_eq!(tlsa.matching_type.map(|m| m.0), Some(1));
+        assert_eq!(tlsa.protocol.as_deref(), Some("_tcp"));
+        assert_eq!(tlsa.port, Some(443));
+    }
+
+    #[test]
+    fn tlsa_fields_are_required_for_tlsa_and_rejected_otherwise() {
+        // --usage/--selector/--matching-type on a non-TLSA type → rejected.
+        let mut a = opts();
+        a.usage = Some(3);
+        let err = validate_tlsa_fields("A", &a).expect_err("TLSA fields are TLSA-only");
+        assert!(err.contains("only valid for TLSA"), "got: {err}");
+        // TLSA with the fields set → ok.
+        let mut tlsa = opts();
+        tlsa.usage = Some(3);
+        tlsa.selector = Some(1);
+        tlsa.matching_type = Some(1);
+        assert!(validate_tlsa_fields("TLSA", &tlsa).is_ok());
+        // A non-TLSA type with no TLSA fields → ok.
+        assert!(validate_tlsa_fields("A", &opts()).is_ok());
+    }
+
+    #[test]
+    fn svcb_parameters_are_rejected_for_other_types() {
+        let mut a = opts();
+        a.parameters = Some("alpn=h2".to_string());
+        let err = validate_svcb_fields("A", &a).expect_err("parameters are HTTPS/SVCB-only");
+        assert!(err.contains("only valid for HTTPS/SVCB"), "got: {err}");
+        assert!(validate_svcb_fields("HTTPS", &a).is_ok());
+        assert!(validate_svcb_fields("SVCB", &a).is_ok());
+        assert!(validate_svcb_fields("A", &opts()).is_ok());
     }
 }

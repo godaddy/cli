@@ -7,7 +7,7 @@ use crate::domain::{api_error, format_api_error};
 
 use domains_client::types;
 
-use super::records::fetch_records;
+use super::records::{fetch_records, record_value};
 
 /// A v3 validation-error body's `details[].issue` codes. Deliberately not
 /// `domain::common`'s `ApiErrorBody` — that type is about rendering a friendly
@@ -106,14 +106,14 @@ pub(super) fn describe_duplicate_record(
                 "`{name}` already has a CNAME record (→ `{}`), which can't coexist with \
                  {desired_type} records — DNS only allows one or the other at a given \
                  name.{remediation}",
-                conflicts[0].data.as_deref().unwrap_or("(no data)"),
+                record_value(conflicts[0]).unwrap_or("(no data)"),
             )
         };
     }
 
     if at_name
         .iter()
-        .any(|r| r.type_.as_str() == desired_type && r.data.as_deref() == Some(desired_data))
+        .any(|r| r.type_.as_str() == desired_type && record_value(r) == Some(desired_data))
     {
         return format!("a {desired_type} record with this exact value already exists at {name}.");
     }
@@ -228,6 +228,16 @@ mod tests {
         }
     }
 
+    /// A TLSA record as `v3_record` actually builds one: its value lives in
+    /// `certificate_data`, not `data`.
+    fn tlsa_record(cert: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: Some(cert.to_string()),
+            data: None,
+            ..dns_record("TLSA", "")
+        }
+    }
+
     #[test]
     fn duplicate_record_issue_detects_the_v3_issue_code() {
         // The exact body the reporting user got back from a `dns set` CNAME conflict.
@@ -328,5 +338,19 @@ mod tests {
             msg.contains("dns list example.com --type A --name www"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn describe_duplicate_record_recognizes_tlsa_exact_duplicates_via_certificate_data() {
+        // TLSA's value lives in `certificate_data`, not `data` — the exact-
+        // duplicate check must read through `record_value` to see it.
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let exact = vec![tlsa_record(cert)];
+        let msg = describe_duplicate_record("TLSA", cert, "example.com", "www", &exact, true);
+        assert!(msg.contains("exact value already exists"), "{msg}");
+
+        let different = vec![tlsa_record("00")];
+        let msg = describe_duplicate_record("TLSA", cert, "example.com", "www", &different, true);
+        assert!(msg.contains("already has conflicting TLSA data"), "{msg}");
     }
 }

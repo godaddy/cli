@@ -9,7 +9,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use domains_client::types;
 
-use super::records::{fetch_records, parse_write_type_arg, verify_with_list_action};
+use super::records::{fetch_records, parse_write_type_arg, record_value, verify_with_list_action};
 
 output_schema!(DnsDeleteResult {
     "domain": "string";
@@ -85,7 +85,7 @@ fn dry_run_delete_preview(
             } else {
                 "would fail (missing recordId)"
             };
-            json!({"recordId": rec.record_id, "data": rec.data, "status": status})
+            json!({"recordId": rec.record_id, "data": record_value(rec), "status": status})
         })
         .collect();
 
@@ -117,7 +117,7 @@ struct DeleteArgs {
     #[arg(value_name = "DOMAIN")]
     domain: String,
 
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT).
+    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
     record_type: String,
 
@@ -217,7 +217,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((rec.data.as_deref().unwrap_or("(no data)").to_string(), err));
+                outcomes.push((record_value(rec).unwrap_or("(no data)").to_string(), err));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
@@ -296,6 +296,17 @@ mod tests {
         }
     }
 
+    /// A TLSA record as `v3_record` actually builds one: its value lives in
+    /// `certificate_data`, not `data`.
+    fn test_tlsa_record(record_id: &str, cert: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: Some(cert.to_owned()),
+            data: None,
+            type_: types::DnsRecordType("TLSA".to_owned()),
+            ..test_record(record_id, "")
+        }
+    }
+
     #[test]
     fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
         let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
@@ -307,6 +318,18 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0]["data"], "1.2.3.4");
         assert_eq!(records[0]["status"], "would delete");
+    }
+
+    /// TLSA's value lives in `certificate_data`, not `data` — the preview
+    /// must read through `record_value` to show it rather than reporting
+    /// null.
+    #[test]
+    fn dry_run_delete_preview_shows_tlsa_certificate_data_as_the_value() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let existing = vec![test_tlsa_record("r1", cert)];
+        let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[0]["data"], cert);
     }
 
     /// A record without a recordId can't actually be deleted (the real

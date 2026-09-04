@@ -9,7 +9,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::conflicts::{WriteErrorContext, describe_write_error};
 use super::records::{
-    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, verify_with_list_action,
+    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, validate_svcb_fields,
+    validate_tlsa_fields, verify_with_list_action,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -125,6 +126,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let name = args.name;
             let data = args.data;
             validate_caa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            validate_tlsa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            validate_svcb_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
             let records = v3_records(&name, &record_type, &data, &opts);
 

@@ -7,7 +7,10 @@ use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
-use super::records::{RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields};
+use super::records::{
+    RecordOptions, RecordWriteArgs, fetch_records, record_value, validate_caa_fields,
+    validate_svcb_fields, validate_tlsa_fields,
+};
 
 mod outcome;
 mod plan;
@@ -100,6 +103,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let replace_conflicting = args.replace_conflicting_types;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
+            validate_tlsa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            validate_svcb_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
@@ -175,7 +182,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 &req,
                                 &record_id,
                                 &old_detail,
-                                old_record.and_then(|r| r.data.as_deref()),
+                                old_record.and_then(record_value),
                             )
                             .await,
                         );
