@@ -38,7 +38,11 @@ async fn delete_conflicts(
 ) -> Vec<SetOutcome> {
     let mut outcomes = Vec::with_capacity(records.len());
     for rec in records {
-        let detail = format!("{} {}", rec.type_.as_str(), rec.data);
+        let detail = format!(
+            "{} {}",
+            rec.type_.as_str(),
+            rec.data.as_deref().unwrap_or("(no data)")
+        );
         let Some(record_id) = rec.record_id.as_deref() else {
             outcomes.push(SetOutcome::new(
                 "deleted",

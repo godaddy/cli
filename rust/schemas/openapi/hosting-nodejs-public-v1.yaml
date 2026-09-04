@@ -829,20 +829,31 @@ components:
         clientCredentials:
           tokenUrl: https://oauth.api.godaddy.com/v2/oauth2/token
           scopes:
-            hosting.paas.analytics:read: Access application analytics.
+            hosting.paas.analytics:read: Access application analytics. Applies to all apps
+              in the customer's account.
             hosting.paas.apps:create: Create applications and poll creation job status.
-            hosting.paas.apps:delete: Delete applications.
-            hosting.paas.apps:read: Read application details, list apps, deployments, and status.
+              Applies to all apps in the customer's account.
+            hosting.paas.apps:delete: Delete applications. Applies to all apps in the customer's account.
+            hosting.paas.apps:read: Read application details, list apps, deployments, and
+              status. Applies to all apps in the customer's account.
             hosting.paas.apps:update: Update application metadata and runtime configuration.
+              Applies to all apps in the customer's account.
             hosting.paas.code:read: Read, list, and export files; read database schemas,
-              tables, and data; read Git history.
-            hosting.paas.code:write: Write files; run zip uploads; sync GitHub; run database imports.
-            hosting.paas.deploy:execute: Publish, rollback, restart, and deploy applications.
+              tables, and data; read Git history. Applies to all apps in the
+              customer's account.
+            hosting.paas.code:write: Write files; run zip uploads; sync GitHub; run database
+              imports. Applies to all apps in the customer's account.
+            hosting.paas.deploy:execute: Publish, rollback, restart, and deploy
+              applications. Applies to all apps in the customer's account.
             hosting.paas.github:execute: Configure GitHub connections (auth, disconnect,
-              pull, repository access).
+              pull, repository access). Applies to all apps in the customer's
+              account.
             hosting.paas.health:read: Access application health and diagnose functionality.
-            hosting.paas.logs:read: Access application logs.
-            hosting.paas.secrets:write: Manage application secrets.
+              Applies to all apps in the customer's account.
+            hosting.paas.logs:read: Access application logs. Applies to all apps in the
+              customer's account.
+            hosting.paas.secrets:write: Manage application secrets. Applies to all apps in
+              the customer's account.
   schemas:
     PublicAppList:
       type: object
