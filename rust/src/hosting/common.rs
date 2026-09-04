@@ -99,9 +99,9 @@ mod tests {
 
     #[test]
     fn parse_app_type_accepts_known_types_case_insensitive() {
-        assert_eq!(parse_app_type("NODEJS").unwrap(), "NODEJS");
-        assert_eq!(parse_app_type("nodejs").unwrap(), "NODEJS");
-        assert_eq!(parse_app_type("MHWP").unwrap(), "MHWP");
+        assert_eq!(parse_app_type("NODEJS").expect("NODEJS"), "NODEJS");
+        assert_eq!(parse_app_type("nodejs").expect("nodejs"), "NODEJS");
+        assert_eq!(parse_app_type("MHWP").expect("MHWP"), "MHWP");
     }
 
     #[test]
