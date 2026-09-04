@@ -150,7 +150,7 @@ declare_scopes! {
     HOSTING_DOMAIN_WRITE => "hosting.domain:write",
     /// Read hosting subscriptions (`hosting subscription list/get`).
     HOSTING_SUBSCRIPTION_READ => "hosting.subscription:read",
-    /// Attach a subscription to an application (`hosting subscription attach`).
+    /// Attach an an application to a hosting plan (`hosting subscription attach`).
     HOSTING_SUBSCRIPTION_WRITE => "hosting.subscription:write",
 
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).

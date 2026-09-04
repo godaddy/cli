@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingSourceImport, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SOURCE_READ as SOURCE_READ;
 
@@ -25,7 +25,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[SOURCE_READ]),
+            .with_scopes(&[SOURCE_READ])
+            .with_output_schema::<HostingSourceImport>(),
         |ctx, args: SourceStatusArgs| async move {
             let app_id = args.app_id.clone();
             let client = make_client(&ctx, &[SOURCE_READ]).await?;

@@ -12,32 +12,101 @@ output_schema!(HostingAppSummary {
 });
 
 output_schema!(HostingDeploymentSummary {
-    "id": "string";
+    "deploymentId": "string";
     "status": "string";
     "createdAt": "string";
+    "updatedAt": "string";
+    "gitHash": "string";
 });
 
 output_schema!(HostingSecretSummary {
     "name": "string";
-    "scope": "string";
+    "systemManaged": "boolean";
 });
 
 output_schema!(HostingDomainSummary {
     "id": "string";
     "hostname": "string";
-    "status": "string";
+    "role": "string";
+    "verificationStatus": "string";
 });
 
 output_schema!(HostingSubscriptionSummary {
-    "id": "string";
-    "planName": "string";
+    "subscriptionId": "string";
+    "hostingProduct": "string";
+    "tier": "string";
+    "label": "string";
     "status": "string";
+    "slotLimit": "number";
+    "attachedCount": "number";
+    "availableSlots": "number";
+    "paidThroughDate": "string";
+});
+
+output_schema!(HostingSubscriptionAttachment {
+    "subscriptionId": "string";
+    "hostingProduct": "string";
+    "attachState": "string";
 });
 
 output_schema!(HostingLogEntry {
     "timestamp": "string";
     "level": "string";
+    "source": "string";
     "message": "string";
+});
+
+output_schema!(HostingApplication {
+    "id": "string";
+    "name": "string";
+    "appType": "string";
+    "status": "string";
+    "urls": "object";
+    "createdAt": "string";
+    "updatedAt": "string";
+});
+
+output_schema!(HostingAppOperation {
+    "operationId": "string";
+    "status": "string";
+});
+
+output_schema!(HostingApplicationStatus {
+    "status": "string";
+    "variants": "array";
+});
+
+output_schema!(HostingSourceImport {
+    "id": "string";
+    "importType": "string";
+    "status": "string";
+    "createdAt": "string";
+});
+
+output_schema!(HostingDomain {
+    "id": "string";
+    "hostname": "string";
+    "role": "string";
+    "verificationStatus": "string";
+});
+
+output_schema!(HostingGitHubProfile {
+    "connected": "boolean";
+    "appInstalled": "boolean";
+    "appInstallUrl": "string";
+});
+
+output_schema!(HostingRepository {
+    "fullName": "string";
+});
+
+output_schema!(HostingBranch {
+    "name": "string";
+});
+
+output_schema!(HostingRuntime {
+    "runtime": "string";
+    "version": "string";
 });
 
 pub fn client_err(e: ClientError) -> CliCoreError {

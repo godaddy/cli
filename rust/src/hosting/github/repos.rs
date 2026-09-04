@@ -1,7 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::hosting::common::{client_err, make_client, next_page_token};
+use crate::hosting::common::{HostingRepository, client_err, make_client, next_page_token};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_GITHUB_READ as GH_READ;
 
@@ -22,7 +22,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[GH_READ])
-            .with_default_fields("fullName"),
+            .with_default_fields("fullName")
+            .with_output_schema::<HostingRepository>(),
         |ctx, args: ReposArgs| async move {
             let limit = args.limit;
             let client = make_client(&ctx, &[GH_READ]).await?;
@@ -54,16 +55,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(
-                CommandResult::new(json!({ "items": all_items })).with_next_actions(vec![
-                    next_action(
-                        "hosting github branches --owner <owner> --repo <repo>",
-                        "List branches for a repository",
-                    )
-                    .with_param("owner", NextActionParam::required())
-                    .with_param("repo", NextActionParam::required()),
-                ]),
-            )
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
+                next_action(
+                    "hosting github branches --owner <owner> --repo <repo>",
+                    "List branches for a repository",
+                )
+                .with_param("owner", NextActionParam::required())
+                .with_param("repo", NextActionParam::required()),
+            ]))
         },
     )
 }

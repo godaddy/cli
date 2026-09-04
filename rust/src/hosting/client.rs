@@ -64,7 +64,7 @@ impl HostingClient {
     ) -> Result<Value, ClientError> {
         let mut req = self
             .client
-            .request(method, self.url(path))
+            .request(method.clone(), self.url(path))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id());
 
@@ -74,6 +74,8 @@ impl HostingClient {
 
         if let Some(body) = body {
             req = req.json(&body);
+        } else if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
+            req = req.json(&json!({}));
         }
 
         let request = req.build()?;

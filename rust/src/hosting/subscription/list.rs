@@ -27,7 +27,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("hosting")
         .with_tier(Tier::Read)
         .with_scopes(&[SUB_READ])
-        .with_default_fields("id,planName,status")
+        .with_default_fields("subscriptionId,hostingProduct,status,availableSlots")
         .with_output_schema::<HostingSubscriptionSummary>(),
         |ctx, args: SubscriptionListArgs| async move {
             let limit = args.limit;
@@ -60,16 +60,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(
-                CommandResult::new(json!({ "items": all_items })).with_next_actions(vec![
-                    next_action(
-                        "hosting subscription attach --app-id <app-id> --subscription-id <id>",
-                        "Attach a subscription to an application",
-                    )
-                    .with_param("app-id", NextActionParam::required())
-                    .with_param("subscription-id", NextActionParam::required()),
-                ]),
-            )
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
+                next_action(
+                    "hosting subscription attach --app-id <app-id> --subscription-id <id>",
+                    "Attach an application to a hosting plan",
+                )
+                .with_param("app-id", NextActionParam::required())
+                .with_param("subscription-id", NextActionParam::required()),
+            ]))
         },
     )
 }

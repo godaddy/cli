@@ -1,4 +1,5 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use serde_json::{Value, json};
 
 use crate::hosting::common::{HostingSecretSummary, client_err, make_client};
 use crate::next_action::next_action;
@@ -25,7 +26,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[SECRET_READ])
-            .with_default_fields("name,scope")
+            .with_default_fields("name,systemManaged")
             .with_output_schema::<HostingSecretSummary>(),
         |ctx, args: SecretsListArgs| async move {
             let app_id = args.app_id.clone();
@@ -34,7 +35,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .list_secrets(&app_id, args.variant.as_deref())
                 .await
                 .map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
+            let items: Vec<Value> = data
+                .get("items")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            Ok(CommandResult::new(json!(items)).with_next_actions(vec![
                 next_action(
                     "hosting secrets create --app-id <app-id> --name <name> --value <value>",
                     "Add a new secret",

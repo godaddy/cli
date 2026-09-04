@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{AppIdArgs, client_err, make_client};
+use crate::hosting::common::{AppIdArgs, HostingDeploymentSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
@@ -15,7 +15,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[DEPLOY_EXECUTE]),
+            .with_scopes(&[DEPLOY_EXECUTE])
+            .with_output_schema::<HostingDeploymentSummary>(),
         |ctx, args: AppIdArgs| async move {
             let app_id = args.app_id;
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
@@ -24,7 +25,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             let deployment_id = data
-                .get("id")
+                .get("deploymentId")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_owned();

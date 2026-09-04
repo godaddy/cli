@@ -1,7 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingApplication, client_err, make_client};
 use crate::scopes::HOSTING_APPLICATION_UPDATE as APP_UPDATE;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -30,7 +30,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[APP_UPDATE]),
+            .with_scopes(&[APP_UPDATE])
+            .with_output_schema::<HostingApplication>(),
         |ctx, args: AppUpdateArgs| async move {
             let app_id = args.app_id;
             let name = args.name.filter(|s| !s.trim().is_empty());

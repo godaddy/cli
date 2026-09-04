@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingDeploymentSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
@@ -21,7 +21,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long("Get the current status and details of a specific deployment.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[APP_READ]),
+            .with_scopes(&[APP_READ])
+            .with_output_schema::<HostingDeploymentSummary>(),
         |ctx, args: DeploymentGetArgs| async move {
             let app_id = args.app_id.clone();
             let deployment_id = args.deployment_id;

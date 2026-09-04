@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingDomain, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_DOMAIN_READ as DOMAIN_READ;
 
@@ -21,7 +21,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long("Get the details and status of a domain attached to a hosting application.")
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[DOMAIN_READ]),
+            .with_scopes(&[DOMAIN_READ])
+            .with_output_schema::<HostingDomain>(),
         |ctx, args: DomainGetArgs| async move {
             let app_id = args.app_id.clone();
             let domain_id = args.domain_id.clone();

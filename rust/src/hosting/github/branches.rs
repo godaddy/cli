@@ -1,7 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::hosting::common::{client_err, make_client, next_page_token};
+use crate::hosting::common::{HostingBranch, client_err, make_client, next_page_token};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_GITHUB_READ as GH_READ;
 
@@ -30,7 +30,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[GH_READ])
-            .with_default_fields("name"),
+            .with_default_fields("name")
+            .with_output_schema::<HostingBranch>(),
         |ctx, args: BranchesArgs| async move {
             let limit = args.limit;
             let client = make_client(&ctx, &[GH_READ]).await?;
@@ -67,17 +68,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(
-                CommandResult::new(json!({ "items": all_items })).with_next_actions(vec![
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
                 next_action(
                     "hosting import create --app-id <app-id> --repo <owner/repo> --branch <branch>",
                     "Import from this branch",
                 )
                 .with_param("app-id", NextActionParam::required())
-                .with_param("repo", NextActionParam::value(format!("{}/{}", args.owner, args.repo)))
+                .with_param(
+                    "repo",
+                    NextActionParam::value(format!("{}/{}", args.owner, args.repo)),
+                )
                 .with_param("branch", NextActionParam::required()),
-            ]),
-            )
+            ]))
         },
     )
 }

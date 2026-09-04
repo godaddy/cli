@@ -68,8 +68,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            let data = json!({ "items": all_items });
-            Ok(CommandResult::new(data).with_next_actions(vec![
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
                 next_action(
                     "hosting app get --app-id <app-id>",
                     "Get details for an application",

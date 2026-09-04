@@ -26,7 +26,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
-            .with_default_fields("id,status,createdAt")
+            .with_default_fields("deploymentId,status,createdAt")
             .with_output_schema::<HostingDeploymentSummary>(),
         |ctx, args: DeploymentListArgs| async move {
             let app_id = args.app_id;
@@ -60,16 +60,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(
-                CommandResult::new(json!({ "items": all_items })).with_next_actions(vec![
-                    next_action(
-                        "hosting deployment get --app-id <app-id> --deployment-id <id>",
-                        "Get full details of a deployment",
-                    )
-                    .with_param("app-id", NextActionParam::required())
-                    .with_param("deployment-id", NextActionParam::required()),
-                ]),
-            )
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
+                next_action(
+                    "hosting deployment get --app-id <app-id> --deployment-id <id>",
+                    "Get full details of a deployment",
+                )
+                .with_param("app-id", NextActionParam::required())
+                .with_param("deployment-id", NextActionParam::required()),
+            ]))
         },
     )
 }

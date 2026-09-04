@@ -1,7 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
-use crate::hosting::common::{client_err, make_client, parse_app_type};
+use crate::hosting::common::{HostingAppOperation, client_err, make_client, parse_app_type};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
 
@@ -29,7 +29,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[APP_CREATE]),
+            .with_scopes(&[APP_CREATE])
+            .with_output_schema::<HostingAppOperation>(),
         |ctx, args: AppCreateArgs| async move {
             let app_type = args.app_type;
             let name = args.name;

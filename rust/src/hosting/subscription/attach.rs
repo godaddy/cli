@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingSubscriptionAttachment, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_WRITE as SUB_WRITE;
 
@@ -28,7 +28,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("hosting")
         .with_tier(Tier::Mutate)
         .mutates(true)
-        .with_scopes(&[SUB_WRITE]),
+        .with_scopes(&[SUB_WRITE])
+        .with_output_schema::<HostingSubscriptionAttachment>(),
         |ctx, args: SubscriptionAttachArgs| async move {
             let app_id = args.app_id.clone();
             let client = make_client(&ctx, &[SUB_WRITE]).await?;

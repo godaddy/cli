@@ -26,7 +26,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[DOMAIN_READ])
-            .with_default_fields("id,hostname,status")
+            .with_default_fields("id,hostname,verificationStatus")
             .with_output_schema::<HostingDomainSummary>(),
         |ctx, args: DomainListArgs| async move {
             let app_id = args.app_id.clone();
@@ -60,15 +60,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(
-                CommandResult::new(json!({ "items": all_items })).with_next_actions(vec![
-                    next_action(
-                        "hosting domain attach --app-id <app-id> --hostname <hostname>",
-                        "Attach a new domain",
-                    )
-                    .with_param("app-id", NextActionParam::value(app_id)),
-                ]),
-            )
+            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
+                next_action(
+                    "hosting domain attach --app-id <app-id> --hostname <hostname>",
+                    "Attach a new domain",
+                )
+                .with_param("app-id", NextActionParam::value(app_id)),
+            ]))
         },
     )
 }

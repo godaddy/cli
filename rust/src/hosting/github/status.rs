@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingGitHubProfile, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_GITHUB_READ as GH_READ;
 
@@ -13,7 +13,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
-            .with_scopes(&[GH_READ]),
+            .with_scopes(&[GH_READ])
+            .with_output_schema::<HostingGitHubProfile>(),
         |ctx, _args: ()| async move {
             let client = make_client(&ctx, &[GH_READ]).await?;
             let data = client.get_github_connection().await.map_err(client_err)?;

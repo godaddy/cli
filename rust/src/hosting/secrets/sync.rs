@@ -1,7 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::hosting::common::{client_err, make_client};
+use crate::hosting::common::{HostingSecretSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SECRET_WRITE as SECRET_WRITE;
 
@@ -39,7 +39,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[SECRET_WRITE]),
+            .with_scopes(&[SECRET_WRITE])
+            .with_output_schema::<HostingSecretSummary>(),
         |ctx, args: SecretSyncArgs| async move {
             let app_id = args.app_id.clone();
 

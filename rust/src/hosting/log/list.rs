@@ -83,7 +83,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(CommandResult::new(json!({ "items": all_items })))
+            Ok(CommandResult::new(json!(all_items)))
         },
     )
 }
