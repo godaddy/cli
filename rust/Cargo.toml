@@ -25,6 +25,7 @@ dirs = "6"
 domains-client = { path = "domains-client" }
 fancy-regex = "0.14"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
 globset = "0.4"
 open = "5"
 oxc_allocator = "0.143"
@@ -44,6 +45,7 @@ serde_json = "1"
 tar = { version = "0.4.46", default-features = false }
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.30.0", features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

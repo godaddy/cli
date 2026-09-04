@@ -4,6 +4,7 @@ mod application;
 mod auth;
 mod config;
 mod contacts;
+mod db;
 mod dns;
 mod domain;
 mod email;
@@ -39,6 +40,7 @@ use crate::next_action::next_action;
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
         api_explorer::module(),
+        db::module(),
         dns::module(),
         domain::module(),
         email::module(),
@@ -377,6 +379,46 @@ mod tests {
                     "every top-level node should have a non-empty {field:?}: {node}"
                 );
             }
+        }
+    }
+
+    /// The `db` group is `Stage::Experimental`: hidden at the GA default, and
+    /// once revealed it publishes `db tunnel` with its full flag set. Guards the
+    /// `main.rs` wiring and that `TunnelArgs` parses into the command spec.
+    #[tokio::test]
+    async fn db_tunnel_is_gated_and_exposes_its_flags_when_revealed() {
+        let hidden = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+        let output = hidden.run(["gddy", "db", "--help"]).await;
+        assert_ne!(
+            output.exit_code, 0,
+            "db should stay hidden at the Ga default: {}",
+            output.rendered
+        );
+
+        let revealed = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_modules(super::all_modules()),
+        );
+        let output = revealed.run(["gddy", "db", "tunnel", "--help"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        for flag in ["--app-id", "--port", "--listen-host"] {
+            assert!(
+                output.rendered.contains(flag),
+                "db tunnel help should list {flag:?}: {}",
+                output.rendered
+            );
+        }
+        for gone in ["--agent-url", "--jwt"] {
+            assert!(
+                !output.rendered.contains(gone),
+                "db tunnel help should no longer list the local/testing flag {gone:?}: {}",
+                output.rendered
+            );
         }
     }
 
