@@ -4,8 +4,7 @@ summary: How GoDaddy Email mailboxes, accounts, and consent fit together
 
 # GoDaddy Email
 
-This guide explains the GoDaddy email system and how to use the `gddy email` commands to check
-eligibility for, create, and manage mailboxes.
+This guide explains the GoDaddy email system and how to use the `gddy email` commands to check eligibility for, create, and manage mailboxes.
 
 ## What an "account" is here
 
