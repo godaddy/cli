@@ -161,17 +161,17 @@ pub(super) struct RecordWriteArgs {
 
     /// TLSA certificate usage, 0-3 (RFC 6698 §2.1.1; TLSA only; required for
     /// TLSA). 0 PKIX-TA, 1 PKIX-EE, 2 DANE-TA, 3 DANE-EE.
-    #[arg(long = "usage", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255), required_if_eq("record_type", "TLSA"))]
+    #[arg(long = "usage", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=3), required_if_eq("record_type", "TLSA"))]
     pub(super) usage: Option<i64>,
 
     /// TLSA selector, 0-1 (RFC 6698 §2.1.2; TLSA only; required for TLSA). 0
     /// full certificate, 1 SubjectPublicKeyInfo.
-    #[arg(long = "selector", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255), required_if_eq("record_type", "TLSA"))]
+    #[arg(long = "selector", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=1), required_if_eq("record_type", "TLSA"))]
     pub(super) selector: Option<i64>,
 
     /// TLSA matching type, 0-2 (RFC 6698 §2.1.3; TLSA only; required for
     /// TLSA). 0 exact match, 1 SHA-256, 2 SHA-512.
-    #[arg(long = "matching-type", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255), required_if_eq("record_type", "TLSA"))]
+    #[arg(long = "matching-type", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=2), required_if_eq("record_type", "TLSA"))]
     pub(super) matching_type: Option<i64>,
 
     /// SvcParams for HTTPS/SVCB records (RFC 9460), e.g. "alpn=h2,h3
