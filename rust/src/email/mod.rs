@@ -35,7 +35,10 @@ pub fn module() -> Module {
         .with_command(check_eligibility::command())
     })
     .with_feature_flag("email", Stage::Beta)
-    .with_guides_from_markdown([("email.md", include_bytes!("guides/email-create.md").as_slice())])
+    .with_guides_from_markdown([(
+        "email.md",
+        include_bytes!("guides/email-create.md").as_slice(),
+    )])
 }
 
 #[cfg(test)]
