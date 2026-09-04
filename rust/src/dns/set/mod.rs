@@ -8,8 +8,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
 use super::records::{
-    RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields, validate_svcb_fields,
-    validate_tlsa_fields,
+    RecordOptions, RecordWriteArgs, fetch_records, record_value, validate_caa_fields,
+    validate_svcb_fields, validate_tlsa_fields,
 };
 
 mod outcome;
@@ -182,7 +182,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 &req,
                                 &record_id,
                                 &old_detail,
-                                old_record.and_then(|r| r.data.as_deref()),
+                                old_record.and_then(record_value),
                             )
                             .await,
                         );

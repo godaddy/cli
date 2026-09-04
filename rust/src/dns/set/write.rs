@@ -7,7 +7,7 @@ use domains_client::types;
 use crate::dns::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
-use crate::dns::records::{RecordOptions, v3_record};
+use crate::dns::records::{RecordOptions, record_value, v3_record};
 use crate::domain::{api_error, format_api_error};
 
 use super::outcome::SetOutcome;
@@ -41,7 +41,7 @@ async fn delete_conflicts(
         let detail = format!(
             "{} {}",
             rec.type_.as_str(),
-            rec.data.as_deref().unwrap_or("(no data)")
+            record_value(rec).unwrap_or("(no data)")
         );
         let Some(record_id) = rec.record_id.as_deref() else {
             outcomes.push(SetOutcome::new(
