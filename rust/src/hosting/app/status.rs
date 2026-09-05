@@ -10,7 +10,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Get the runtime status of a hosting application's environments \
                  (preview and publish). Use this to check whether an environment \
-                 is ACTIVE, IDLE, or in a transitional state after a restart or deployment.",
+                 is ACTIVE, IDLE, or in a transitional state after a restart or deployment. \
+                 The `variants` array contains one entry per environment (PREVIEW and PUBLISH) \
+                 with the runtime status for that environment.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)

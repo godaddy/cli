@@ -10,7 +10,7 @@ struct SourceStatusArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// Import ID returned by `hosting source import`.
+    /// Import ID returned by `hosting source upload` or `hosting source github`.
     #[arg(long = "import-id", value_name = "IMPORT_ID")]
     import_id: String,
 }
@@ -19,8 +19,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SourceStatusArgs, _, _, _>(
         CommandSpec::from_args::<SourceStatusArgs>("status", "Get the status of a source import")
             .with_long(
-                "Poll the status of a source import started with `hosting source import`. \
-                 Keep polling until status is COMPLETED or FAILED, \
+                "Poll the status of a source import started with `hosting source upload` or \
+                 `hosting source github`. Keep polling until status is COMPLETED or FAILED, \
                  then use `hosting deployment publish` to deploy.",
             )
             .with_system("hosting")

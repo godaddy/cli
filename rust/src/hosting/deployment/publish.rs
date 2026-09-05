@@ -8,9 +8,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("publish", "Trigger a deployment")
             .with_long(
-                "Build the latest imported source and deploy it to the publish environment. \
-                 Returns immediately with a deployment ID. Poll `hosting deployment get` \
-                 until status is COMPLETED or FAILED.",
+                "Promote the current PREVIEW build to PUBLISH. Hosting uses a two-stage model: \
+                 `hosting source upload` (or `hosting source github`) refreshes PREVIEW, \
+                 and `hosting deployment publish` builds that source and rolls it out to PUBLISH — \
+                 which is why there is no --variant flag here. Returns immediately with a \
+                 deployment ID; poll `hosting deployment get` until status is COMPLETED or FAILED.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)

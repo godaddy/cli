@@ -69,6 +69,10 @@ output_schema!(HostingApplication {
 output_schema!(HostingAppOperation {
     "operationId": "string";
     "status": "string";
+    "application": "object";
+    "error": "object";
+    "createdAt": "string";
+    "links": "array";
 });
 
 output_schema!(HostingApplicationStatus {

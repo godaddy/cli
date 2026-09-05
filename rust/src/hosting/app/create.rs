@@ -23,8 +23,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "Provision a new hosting application slot. Because no app ID exists \
                  until provisioning completes, this returns an operation ID. \
                  Poll `hosting operation get --operation-id <id>` until \
-                 status is COMPLETED or FAILED. The completed operation result \
-                 includes the created application with its ID.",
+                 status is COMPLETED or FAILED. On COMPLETED, the operation's \
+                 `application` field carries the created app; use `application.id` \
+                 as the --app-id for all subsequent calls.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)

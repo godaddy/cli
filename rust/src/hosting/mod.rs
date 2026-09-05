@@ -31,7 +31,15 @@ pub fn module() -> Module {
                  • domain       — Domains attached to an application\n\
                  • subscription — Hosting plan subscriptions\n\
                  • operation    — Poll async operations\n\
-                 • nodejs       — Node.js PaaS applications (legacy; use `app` for new work)",
+                 \n\
+                 Typical flow:\n\
+                 1. `hosting app create` — provision the app (returns an operation to poll)\n\
+                 2. `hosting source upload` — upload a zip archive, poll `hosting source status`\n\
+                 3. Preview the app at the PREVIEW URL from `hosting app get`\n\
+                 4. `hosting subscription attach` — attach a hosting plan\n\
+                 5. `hosting deployment publish` — build and deploy to PUBLISH, poll `hosting deployment get`\n\
+                 \n\
+                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
             ),
         )
         .with_group(app::group())

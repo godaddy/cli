@@ -20,7 +20,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<DomainAttachArgs>("attach", "Attach a domain to an application")
             .with_long(
                 "Attach a fully-qualified domain name to a hosting application. \
-                 The domain must be registered and have DNS pointing to GoDaddy hosting.",
+                 The domain must be registered and have DNS pointing to GoDaddy hosting. \
+                 Returns immediately — poll `hosting domain get` until status is ACTIVE.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)

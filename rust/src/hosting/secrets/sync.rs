@@ -32,9 +32,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SecretSyncArgs, _, _, _>(
         CommandSpec::from_args::<SecretSyncArgs>("sync", "Sync secrets in bulk")
             .with_long(
-                "Low-level access to the secrets sync endpoint. Accepts additions, updates, \
-                 and deletions in a single call. At least one of --additions, --updates, \
-                 or --deletions is required. Each value is a JSON array.",
+                "Apply many secret changes in a single call. Prefer this over separate \
+                 `create`/`update`/`delete` invocations when changing several secrets at once — \
+                 it is faster and applies as one batch. Accepts additions, updates, and \
+                 deletions together; at least one of --additions, --updates, or --deletions \
+                 is required. Each value is a JSON array.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)

@@ -7,7 +7,11 @@ use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("get", "Get a hosting application")
-            .with_long("Get details for a single hosting application by ID.")
+            .with_long(
+                "Get details for a single hosting application by ID. \
+                 The `urls` object exposes the reachable URLs for each environment \
+                 variant (preview and publish).",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
