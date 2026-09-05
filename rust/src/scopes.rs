@@ -122,6 +122,37 @@ declare_scopes! {
     /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
     HOSTING_LOGS_READ => "hosting.paas.logs:read",
 
+    /// Read hosting applications (`hosting app list/get/status`).
+    HOSTING_APPLICATION_READ => "hosting.application:read",
+    /// Create a hosting application (`hosting app create`).
+    HOSTING_APPLICATION_CREATE => "hosting.application:create",
+    /// Update a hosting application (`hosting app update`).
+    HOSTING_APPLICATION_UPDATE => "hosting.application:update",
+    /// Delete a hosting application (`hosting app delete`).
+    HOSTING_APPLICATION_DELETE => "hosting.application:delete",
+    /// Trigger deployments and restarts (`hosting app restart`, `hosting deployment publish`).
+    HOSTING_DEPLOYMENT_EXECUTE => "hosting.deployment:execute",
+    /// Read source imports (`hosting import get`).
+    HOSTING_SOURCE_READ => "hosting.source:read",
+    /// Create a source import (`hosting import create`).
+    HOSTING_SOURCE_WRITE => "hosting.source:write",
+    /// Read the GitHub connection and browse repositories (`hosting github status/repos/branches`).
+    HOSTING_GITHUB_READ => "hosting.github:read",
+    /// Read application secrets (`hosting secrets list`).
+    HOSTING_SECRET_READ => "hosting.secret:read",
+    /// Write application secrets (`hosting secrets create/update/delete/sync`).
+    HOSTING_SECRET_WRITE => "hosting.secret:write",
+    /// Read application logs (`hosting log list`).
+    HOSTING_LOG_READ => "hosting.log:read",
+    /// Read application domains (`hosting domain list/get`).
+    HOSTING_DOMAIN_READ => "hosting.domain:read",
+    /// Attach or detach application domains (`hosting domain attach/detach`).
+    HOSTING_DOMAIN_WRITE => "hosting.domain:write",
+    /// Read hosting subscriptions (`hosting subscription list/get`).
+    HOSTING_SUBSCRIPTION_READ => "hosting.subscription:read",
+    /// Attach an an application to a hosting plan (`hosting subscription attach`).
+    HOSTING_SUBSCRIPTION_WRITE => "hosting.subscription:write",
+
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
     EMAIL_READ => "email.mailbox:read",
     /// Create a mailbox (`email create`).
@@ -218,6 +249,81 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_LOGS_READ,
         description: "Read Node.js Hosting app logs",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPLICATION_READ,
+        description: "Read hosting applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPLICATION_CREATE,
+        description: "Create a hosting application",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPLICATION_UPDATE,
+        description: "Update a hosting application",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_APPLICATION_DELETE,
+        description: "Delete a hosting application",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_DEPLOYMENT_EXECUTE,
+        description: "Trigger deployments and restarts",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SOURCE_READ,
+        description: "Read source imports for hosting applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SOURCE_WRITE,
+        description: "Create source imports for hosting applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_GITHUB_READ,
+        description: "Read the GitHub connection and browse repositories and branches",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SECRET_READ,
+        description: "Read application secret names",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SECRET_WRITE,
+        description: "Create, update, or delete application secrets",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_LOG_READ,
+        description: "Read application logs",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_DOMAIN_READ,
+        description: "Read domains attached to hosting applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_DOMAIN_WRITE,
+        description: "Attach or detach domains from hosting applications",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SUBSCRIPTION_READ,
+        description: "Read hosting subscriptions",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_SUBSCRIPTION_WRITE,
+        description: "Attach a hosting subscription to an application",
         default: false,
     },
     ScopeInfo {
