@@ -11,8 +11,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "Promote the current PREVIEW build to PUBLISH. Hosting uses a two-stage model: \
                  `hosting source upload` (or `hosting source github`) refreshes PREVIEW, \
                  and `hosting deployment publish` builds that source and rolls it out to PUBLISH — \
-                 which is why there is no --variant flag here. Returns immediately with a \
-                 deployment ID; poll `hosting deployment get` until status is COMPLETED or FAILED.",
+                 which is why there is no --variant flag here. Requires a subscription on the app; \
+                 first time only, run `hosting subscription list` then `hosting subscription attach`. \
+                 Returns immediately with a deployment ID; poll `hosting deployment get` until \
+                 status is COMPLETED or FAILED.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)

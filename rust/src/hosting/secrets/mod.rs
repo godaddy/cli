@@ -11,7 +11,8 @@ pub(super) fn group() -> RuntimeGroupSpec {
         GroupSpec::new("secrets", "Manage application secrets").with_long(
             "Create, update, delete, and list secrets for a hosting application. \
              Secret values are write-only — list returns names only. \
-             Use --variant to target PREVIEW or PUBLISH (defaults to PREVIEW for writes).",
+             Use --variant to target PREVIEW (staging) or PUBLISH (production); \
+             writes default to PREVIEW.",
         ),
     )
     .with_command(list::command())

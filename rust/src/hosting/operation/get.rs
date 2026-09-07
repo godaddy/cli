@@ -14,10 +14,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<OperationGetArgs, _, _, _>(
         CommandSpec::from_args::<OperationGetArgs>("get", "Get an operation")
             .with_long(
-                "Poll an async operation by ID. Operations are returned by `hosting app create` \
-                 and `hosting deployment publish`. Keep polling until status is COMPLETED or FAILED. \
-                 On COMPLETED, the `app` field carries the created application (with `app.id` \
-                 as the app ID to use for subsequent calls). On FAILED, the `error` field describes why.",
+                "Poll an async operation by ID. Today only `hosting app create` returns one — \
+                 `hosting deployment publish` has its own poller at `hosting deployment get`. \
+                 Keep polling until status is COMPLETED or FAILED. On COMPLETED, the `app` field \
+                 carries the created application; use `app.id` for subsequent calls. On FAILED, \
+                 the `error` field describes why.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)

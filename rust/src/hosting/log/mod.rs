@@ -5,8 +5,8 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(GroupSpec::new("log", "View application logs").with_long(
         "Retrieve log entries for a hosting application. \
-             Use --variant to select the environment, --since to set a time window, \
-             and --level/--source to filter.",
+             Use --variant to select the environment (PREVIEW = staging, PUBLISH = production), \
+             --since to set a time window, and --level/--source to filter.",
     ))
     .with_command(list::command())
 }
