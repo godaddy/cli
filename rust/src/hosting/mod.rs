@@ -32,12 +32,14 @@ pub fn module() -> Module {
                  • subscription — Hosting plan subscriptions\n\
                  • operation    — Poll async operations\n\
                  \n\
-                 Typical flow:\n\
-                 1. `hosting app create` — provision the app (returns an operation to poll)\n\
-                 2. `hosting source upload` — upload a zip archive, poll `hosting source status`\n\
-                 3. Preview the app at the PREVIEW URL from `hosting app get`\n\
-                 4. `hosting subscription attach` — attach a hosting plan\n\
-                 5. `hosting deployment publish` — build and deploy to PUBLISH, poll `hosting deployment get`\n\
+                 First-time setup:\n\
+                 1. `hosting app create` — provision the app, poll `hosting operation get`\n\
+                 2. `hosting source upload` — upload source, poll `hosting source status`\n\
+                 3. Preview at the PREVIEW URL from `hosting app get` (no plan needed)\n\
+                 4. `hosting subscription attach` — one-time; required before publish\n\
+                 5. `hosting deployment publish` — deploy to PUBLISH, poll `hosting deployment get`\n\
+                 \n\
+                 To redeploy: repeat steps 2–3, then 5.\n\
                  \n\
                  Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
             ),
