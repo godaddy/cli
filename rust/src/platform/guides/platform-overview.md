@@ -21,7 +21,7 @@ This calls the app-registry API to create the application, then writes `godaddy.
 - `add action --name <name> --url <url>` — an HTTP endpoint the platform calls on the app's behalf.
 - `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook events` to see valid event types.
 - `add extension <embed|checkout|blocks> ...` — a UI extension bundle (see that subcommand's own `--help`).
-- `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the form itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
+- `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form or link. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
 Run `gddy platform app config validate` any time to check the manifest against every rule the API would otherwise enforce (required fields, URL/UUID/semver shapes, settings placement rules) without a network call — it reports every violation found, not just the first.
 
@@ -59,5 +59,5 @@ Makes the application (and everything in its latest release — actions, subscri
 
 ## See also
 
-- `gddy guide platform-settings` — the `settings-form-v1` presentation shape in depth.
+- `gddy guide platform-settings` — the `settings-form-v1`/`settings-link-v1` presentation shapes in depth.
 - `docs/application-settings.md` in this repo — the same settings content, plus a pointer to `app-registry-api`'s platform-contract docs for the Commerce-side settings surface.

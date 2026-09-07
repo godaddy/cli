@@ -2,9 +2,9 @@
 summary: How GoDaddy Email mailboxes, accounts, and consent fit together
 ---
 
-# GoDaddy Email mailboxes
+# GoDaddy Email
 
-This guide explains the GoDaddy email system and how to use the `gddy email` commands to manage it.
+This guide explains the GoDaddy email system and how to use the `gddy email` commands to check eligibility for, create, and manage mailboxes.
 
 ## What an "account" is here
 
@@ -32,11 +32,19 @@ accepted first):
 ```json
 {
   "isEligible": false,
-  "ineligibleReasons": ["NO_ELIGIBLE_ACCOUNT"],
+  "ineligibilityReasons": [
+    { "type": "NO_ELIGIBLE_ACCOUNT", "message": "No eligible account was found." }
+  ],
   "eligibleAccounts": [
     {
       "accountId": "acct-123",
-      "requirements": [{ "agreementType": "EMAIL_TOS", "url": "https://..." }]
+      "requirements": [
+        {
+          "type": "FREETRIAL_AUTORENEW",
+          "title": "Email auto renew",
+          "reference": "By continuing, you agree this mailbox will auto-renew..."
+        }
+      ]
     }
   ]
 }
@@ -48,11 +56,12 @@ into `create`:
 ```
 gddy email create --email someone@example.com \
   --account-id acct-123 \
-  --consent EMAIL_TOS
+  --consent FREETRIAL_AUTORENEW
 ```
 
-`--consent` is repeatable — pass one per required `agreementType`. If
-`create` fails with a `400`/`422` about missing agreements or no eligible
+`--consent` is repeatable — pass one per required requirement `type`.
+`FREETRIAL_AUTORENEW` is currently the only requirement type the API issues.
+If `create` fails with a `400`/`422` about missing agreements or no eligible
 account, re-run `check-eligibility` to see the current requirements.
 
 ## Command reference
@@ -61,7 +70,7 @@ account, re-run `check-eligibility` to see the current requirements.
   any) can receive a new mailbox for this address, and what consent is
   outstanding.
 - `gddy email create --email <email> [--account-id] [--first-name]
-  [--last-name] [--consent <agreementType>]...` — provision a mailbox.
+  [--last-name] [--consent <requirement-type>]...` — provision a mailbox.
 - `gddy email list [--status] [--fields] [--limit] [--offset]` — list your
   mailboxes.
 - `gddy email get <mailbox-id>` — look up one mailbox by ID.

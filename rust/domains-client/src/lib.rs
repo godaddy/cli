@@ -248,7 +248,7 @@ mod tests {
             .check_availability()
             .body(types::AvailabilityCheckCriteria {
                 domains: vec!["a.com".to_string(), "b.com".to_string()],
-                optimize_for: types::OptimizationTarget::Speed,
+                optimize_for: Some(types::OptimizationTarget::Speed),
                 isc_code: None,
             })
             .send()
@@ -361,9 +361,9 @@ mod tests {
                         actor: None,
                         ip: Some("127.0.0.1".to_string()),
                         principal: "shopper-42".to_string(),
-                        type_: types::ConsentActorType::Direct,
+                        type_: types::ConsentActorType("DIRECT".to_string()),
                     }),
-                    agreement_types: vec![types::AgreementType::ApiDpa],
+                    agreement_types: vec![types::AgreementType("API_DPA".to_string())],
                     acknowledged_fees: vec![],
                 },
                 created_at: None,
@@ -474,6 +474,7 @@ mod tests {
                 data: "1.2.3.4".to_string(),
                 flag: None,
                 name: "www".to_string(),
+                parameters: None,
                 port: None,
                 priority: None,
                 protocol: None,
@@ -540,7 +541,7 @@ mod tests {
                 when.method(GET)
                     .path("/v1/domains/agreements")
                     .query_param("tlds", "com")
-                    .query_param("privacy", "false");
+                    .query_param("v1-privacy", "false");
                 then.status(200).json_body(json!([
                     { "agreementKey": "DNRA", "title": "Registration Agreement", "url": "https://x" }
                 ]));
@@ -550,7 +551,7 @@ mod tests {
         let agreements = client_for(&server)
             .agreements()
             .tlds(vec!["com".to_string()])
-            .privacy(false)
+            .v1_privacy(false)
             .send()
             .await
             .expect("request succeeds")

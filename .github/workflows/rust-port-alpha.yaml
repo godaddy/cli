@@ -54,10 +54,10 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-test-
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
   build:
     name: Build ${{ matrix.target }}

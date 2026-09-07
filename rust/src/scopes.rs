@@ -125,7 +125,7 @@ declare_scopes! {
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
     EMAIL_READ => "email.mailbox:read",
     /// Create a mailbox (`email create`).
-    EMAIL_CREATE => "email.mailbox:write",
+    EMAIL_CREATE => "email.mailbox:create",
 }
 
 /// A requestable scope, its human description, and whether it is requested at

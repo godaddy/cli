@@ -6,10 +6,12 @@ This is a command-line application. Source code is written in Rust and lives und
 
 - **Build**: `cargo build`
 - **Run**: `cargo run -- <command>`
-- **Test**: `cargo test`
-- **Lint**: `cargo clippy -- -D warnings`
+- **Test**: `cargo test --workspace` (the workspace has a root package, so plain
+  `cargo test` silently skips the `domains-client` and `generate-api-catalog`
+  members — always pass `--workspace`)
+- **Lint**: `cargo clippy --workspace -- -D warnings`
 - **Format**: `cargo fmt`
-- **Check**: `cargo check`
+- **Check**: `cargo check --workspace`
 - **Refresh API specs**: `cargo run -p generate-api-catalog`
   — set `SKIP_DOMAINS_REFRESH`/`SKIP_HOSTING_REFRESH` to skip either pull for
   local iteration without network access; `HOSTING_SPEC_URL`/`HOSTING_SPEC_PATH`
@@ -17,9 +19,9 @@ This is a command-line application. Source code is written in Rust and lives und
 
 ## Verification Checklist (required before finishing work)
 
-- `cargo check` — must pass
-- `cargo clippy -- -D warnings` — must pass with zero warnings
-- `cargo test` — must pass
+- `cargo check --workspace` — must pass
+- `cargo clippy --workspace -- -D warnings` — must pass with zero warnings
+- `cargo test --workspace` — must pass
 - `cargo fmt --check` — must be clean
 - `./rust/scripts/check-module-size.sh` — must pass
 

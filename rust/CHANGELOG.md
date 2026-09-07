@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.12](https://github.com/godaddy/cli/compare/v0.2.11...v0.2.12) (2026-09-01)
+
+
+### Features
+
+* **deps:** bump cli-engine to 0.9.3 ([#239](https://github.com/godaddy/cli/issues/239)) ([cfde433](https://github.com/godaddy/cli/commit/cfde433f3697fc82148394ad08cbf4745b9ad1d2))
+* **platform:** add support for settings-link-v1 schema ([#234](https://github.com/godaddy/cli/issues/234)) ([c61ef7b](https://github.com/godaddy/cli/commit/c61ef7b6d281c52873346ee7610b6c8c468752e7))
+
+
+### Bug Fixes
+
+* **api-catalog:** unify spec pulling, catalog generation, and domains-client codegen ([#236](https://github.com/godaddy/cli/issues/236)) ([d7be5fd](https://github.com/godaddy/cli/commit/d7be5fd671c5e90a94ca03423c6f3e0fc8d4510b))
+* **api-search:** make operationId the leading default column ([#238](https://github.com/godaddy/cli/issues/238)) ([6546339](https://github.com/godaddy/cli/commit/654633916e16f29bd1052e8a9c1dc8b96b7a3d14))
+
 ## [0.2.11](https://github.com/godaddy/cli/compare/v0.2.10...v0.2.11) (2026-08-25)
 
 

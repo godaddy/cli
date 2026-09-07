@@ -1284,6 +1284,13 @@
       "title": "Registration Quote",
       "type": "object"
     },
+    "RegistrationSchema": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-schema.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "TLD-specific JSON Schema describing the fields required to register a domain under this TLD. The structure varies per TLD and is not further constrained at the API layer. Use the contents to guide construction of the POST /registration-quotes and POST /registrations request bodies.\n",
+      "title": "Registration Schema",
+      "type": "object"
+    },
     "ResolvedSettings": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/resolved-settings.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2670,6 +2677,83 @@
         "domains.domain:read"
       ],
       "summary": "Quote a single-domain registration (no commitment)"
+    },
+    {
+      "description": "Returns the TLD-specific JSON Schema describing the fields required\nwhen calling POST /registration-quotes or POST /registrations for\nthe given TLD. The schema shape varies by TLD; clients should call\nthis endpoint before quoting or registering to discover required\ncontact and eligibility fields.\n",
+      "method": "GET",
+      "operationId": "getRegistrationSchema",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The Top-Level Domain (e.g. com, net, io) whose registration schema should be retrieved.\n",
+          "in": "path",
+          "name": "tld",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/registration-schemas/{tld}",
+      "responses": {
+        "200": {
+          "description": "TLD-specific registration schema.",
+          "schema": {
+            "$ref": "#/$defs/RegistrationSchema"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:read"
+      ],
+      "summary": "Retrieve the registration schema for a TLD"
     },
     {
       "description": "Executes a previously quoted domain registration. **Irreversible once\naccepted; creates a charge.** Requires a valid unexpired quoteToken from\n`quoteDomainRegistration`, an `Idempotency-Key` header, and a consent\nrecord. The target domain and period are in the request body alongside\nthe quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Registration` entity. Poll `links[rel=self]`\n(`GET /registrations/{registrationId}`) until status is `COMPLETED` or\n`FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n\nWhen `iscCode` was supplied at quote time, the same value must be\nprovided here or the request fails with `422 quote_mismatch`.\n\n**PREMIUM domains:** when the quote's `fees` array is non-empty\n(inventory `PREMIUM`), the execute request must include\n`consent.acknowledgedFees` containing the same fees verbatim —\nsame types, amounts, and currencies. This confirms the customer\nexplicitly saw and accepted the specific charge before the\nirreversible purchase is executed.\n\n- `acknowledgedFees` absent when fees exist → `422` with error\n  name `consent_fees_required` (conditionally required by the quote; the\n  constraint spans two requests and cannot be expressed in the\n  schema).\n- `acknowledgedFees` present but type or amount does not match\n  the locked quote → `422` with error name `quote_mismatch`.\n",

@@ -3,9 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::settings_form::{SettingsFormV1Presentation, validate_presentation};
+use super::settings_form::{SettingPresentation, validate_presentation};
 
-const ALLOWED_CAPABILITIES: &[&str] = &["read", "write", "validate", "test", "delete"];
+const ALLOWED_CAPABILITIES: &[&str] = &["read", "write", "validate", "test", "delete", "open"];
 const ALLOWED_ICON_LIBRARIES: &[&str] = &["ux", "lucide", "commerce"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,13 +30,10 @@ pub struct SettingConfig {
     /// directory at release time. Mutually exclusive with `presentation`.
     #[serde(default)]
     pub presentation_file: Option<String>,
-    /// The `settings-form-v1` form shape. `None` until hand-added to
-    /// `godaddy.toml` — `gddy platform app add settings` can only write the
-    /// placement fields above; `release` rejects a settings entry with no
-    /// presentation instead of `Config::validate()`, so a placement-only
-    /// entry still parses/writes/validates fine for every other command.
+    /// The `settings-form-v1` or `settings-link-v1` shape; `None` until
+    /// hand-added — `release` rejects a settings entry with no presentation.
     #[serde(default)]
-    pub presentation: Option<SettingsFormV1Presentation>,
+    pub presentation: Option<SettingPresentation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,7 +137,12 @@ pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<Str
             ));
         }
         if let Some(presentation) = &setting.presentation {
-            validate_presentation(presentation, errors, &format!("{path}.presentation"));
+            validate_presentation(
+                presentation,
+                &setting.capabilities,
+                errors,
+                &format!("{path}.presentation"),
+            );
         }
     }
 
@@ -159,6 +161,7 @@ pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::settings_form::{SettingsFormV1Presentation, SettingsLinkV1Presentation};
 
     fn setting(slug: &str, entry_path: &str) -> SettingConfig {
         SettingConfig {
@@ -247,13 +250,63 @@ mod tests {
     fn validate_settings_rejects_both_presentation_and_presentation_file() {
         let mut s = setting("godaddy-tax", "/settings/godaddy-tax");
         s.presentation_file = Some("presentation.json".to_owned());
-        s.presentation = Some(SettingsFormV1Presentation { sections: vec![] });
+        s.presentation = Some(SettingPresentation::Form(SettingsFormV1Presentation {
+            sections: vec![],
+        }));
         let mut errors = Vec::new();
         validate_settings(&[s], &mut errors);
         assert!(
             errors
                 .iter()
                 .any(|e| e.contains("presentation") && e.contains("presentationFile")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_settings_accepts_well_formed_link_setting() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec!["read".to_owned(), "open".to_owned()];
+        s.presentation = Some(SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: "Configure PayPal".to_owned(),
+            open_mode: "new-window".to_owned(),
+        }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_settings_rejects_link_setting_with_wrong_capabilities() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec!["read".to_owned(), "write".to_owned()];
+        s.presentation = Some(SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: "Configure PayPal".to_owned(),
+            open_mode: "new-window".to_owned(),
+        }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("requires exactly the read and open capabilities")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_settings_rejects_form_setting_with_open_capability() {
+        let mut s = setting("godaddy-tax", "/settings/godaddy-tax");
+        s.capabilities = vec!["read".to_owned(), "open".to_owned()];
+        s.presentation = Some(SettingPresentation::Form(SettingsFormV1Presentation {
+            sections: vec![],
+        }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("only valid for a settings-link-v1")),
             "{errors:?}"
         );
     }

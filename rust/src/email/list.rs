@@ -90,12 +90,12 @@ async fn fetch_mailboxes(
             query.push(("status", status.to_owned()));
         }
         if let Some(fields) = fields {
-            query.push(("fields", fields.to_owned()));
+            query.push(("field", fields.to_owned()));
         }
 
         let data = client.list_mailboxes(&query).await?;
         let page_items = data
-            .get("mailboxes")
+            .get("items")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
@@ -156,7 +156,7 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(3, 0) }));
+                    .json_body(json!({ "items": page_of(3, 0) }));
             })
             .await;
 
@@ -178,7 +178,7 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
+                    .json_body(json!({ "items": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
             })
             .await;
         let page2 = server
@@ -187,7 +187,7 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "2");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(10, SERVER_PAGE_SIZE_CAP) }));
+                    .json_body(json!({ "items": page_of(10, SERVER_PAGE_SIZE_CAP) }));
             })
             .await;
 
@@ -210,7 +210,7 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "1");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
+                    .json_body(json!({ "items": page_of(SERVER_PAGE_SIZE_CAP, 0) }));
             })
             .await;
         let page2 = server
@@ -219,7 +219,7 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "2");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(5, SERVER_PAGE_SIZE_CAP) }));
+                    .json_body(json!({ "items": page_of(5, SERVER_PAGE_SIZE_CAP) }));
             })
             .await;
 
@@ -241,9 +241,9 @@ mod tests {
                 when.method(GET)
                     .path("/v1/email/mailboxes")
                     .query_param("status", "ACTIVE")
-                    .query_param("fields", "mailboxId,status");
+                    .query_param("field", "mailboxId,status");
                 then.status(200)
-                    .json_body(json!({ "mailboxes": page_of(1, 0) }));
+                    .json_body(json!({ "items": page_of(1, 0) }));
             })
             .await;
 
