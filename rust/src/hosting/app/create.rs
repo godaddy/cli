@@ -24,7 +24,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  until provisioning completes, this returns an operation ID. \
                  Poll `hosting operation get --operation-id <id>` until \
                  status is COMPLETED or FAILED. On COMPLETED, the operation's \
-                 `application` field carries the created app; use `application.id` \
+                 `app` field carries the created app; use `app.id` \
                  as the --app-id for all subsequent calls.",
             )
             .with_system("hosting")

@@ -16,7 +16,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Poll an async operation by ID. Operations are returned by `hosting app create` \
                  and `hosting deployment publish`. Keep polling until status is COMPLETED or FAILED. \
-                 On COMPLETED, the `application` field carries the created application (with `application.id` \
+                 On COMPLETED, the `app` field carries the created application (with `app.id` \
                  as the app ID to use for subsequent calls). On FAILED, the `error` field describes why.",
             )
             .with_system("hosting")

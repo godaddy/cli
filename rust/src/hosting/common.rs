@@ -47,6 +47,7 @@ output_schema!(HostingSubscriptionAttachment {
     "subscriptionId": "string";
     "hostingProduct": "string";
     "attachState": "string";
+    "appState": "string";
 });
 
 output_schema!(HostingLogEntry {
@@ -69,22 +70,25 @@ output_schema!(HostingApplication {
 output_schema!(HostingAppOperation {
     "operationId": "string";
     "status": "string";
-    "application": "object";
-    "error": "object";
-    "createdAt": "string";
+    "app": "object", optional;
+    "error": "object", optional;
+    "createdAt": "string", optional;
     "links": "array";
 });
 
 output_schema!(HostingApplicationStatus {
     "status": "string";
     "variants": "array";
+    "links": "array";
 });
 
 output_schema!(HostingSourceImport {
     "id": "string";
     "importType": "string";
     "status": "string";
+    "gitHash": "string", optional;
     "createdAt": "string";
+    "links": "array";
 });
 
 output_schema!(HostingDomain {
@@ -92,20 +96,30 @@ output_schema!(HostingDomain {
     "hostname": "string";
     "role": "string";
     "verificationStatus": "string";
+    "links": "array";
 });
 
 output_schema!(HostingGitHubProfile {
     "connected": "boolean";
-    "appInstalled": "boolean";
-    "appInstallUrl": "string";
+    "appInstalled": "boolean", optional;
+    "repositorySelection": "string", optional;
+    "appInstallUrl": "string", optional;
+    "error": "string", optional;
 });
 
 output_schema!(HostingRepository {
+    "id": "number";
+    "name": "string";
     "fullName": "string";
+    "private": "boolean";
+    "defaultBranch": "string";
+    "url": "string";
 });
 
 output_schema!(HostingBranch {
     "name": "string";
+    "protected": "boolean";
+    "commit": "object";
 });
 
 output_schema!(HostingRuntime {
