@@ -533,7 +533,7 @@ async fn list_subscriptions_hits_correct_path() {
         .await;
 
     client(&server.base_url())
-        .list_subscriptions(None, None)
+        .list_subscriptions(None, None, None)
         .await
         .expect("list subscriptions");
 

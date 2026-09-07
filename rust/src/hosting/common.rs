@@ -31,16 +31,9 @@ output_schema!(HostingDomainSummary {
     "verificationStatus": "string";
 });
 
-output_schema!(HostingSubscriptionSummary {
-    "subscriptionId": "string";
-    "hostingProduct": "string";
-    "tier": "string";
-    "label": "string";
-    "status": "string";
-    "slotLimit": "number";
-    "attachedCount": "number";
-    "availableSlots": "number";
-    "paidThroughDate": "string";
+output_schema!(HostingSubscriptionList {
+    "items": "array";
+    "totalAvailableSlots": "number";
 });
 
 output_schema!(HostingSubscriptionAttachment {

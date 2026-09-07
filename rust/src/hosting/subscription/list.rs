@@ -1,14 +1,16 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
-use crate::hosting::common::{
-    HostingSubscriptionSummary, client_err, make_client, next_page_token,
-};
+use crate::hosting::common::{HostingSubscriptionList, client_err, make_client, next_page_token};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
 #[derive(Debug, Clone, clap::Args)]
 struct SubscriptionListArgs {
+    /// Filter by hosting product (WEB_HOSTING or MANAGED_WORDPRESS).
+    #[arg(long, value_name = "PRODUCT")]
+    hosting_product: Option<String>,
+
     /// Maximum number of subscriptions to return. Omit to return all.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     limit: Option<u32>,
@@ -27,10 +29,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("hosting")
         .with_tier(Tier::Read)
         .with_scopes(&[SUB_READ])
-        .with_default_fields("subscriptionId,hostingProduct,status,availableSlots")
-        .with_output_schema::<HostingSubscriptionSummary>(),
+        .with_default_fields("totalAvailableSlots,items")
+        .with_output_schema::<HostingSubscriptionList>(),
         |ctx, args: SubscriptionListArgs| async move {
             let limit = args.limit;
+            let hosting_product = args.hosting_product.as_deref();
             let client = make_client(&ctx, &[SUB_READ]).await?;
 
             let mut all_items: Vec<Value> = Vec::new();
@@ -41,7 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     limit.map(|cap| cap.saturating_sub(all_items.len() as u32).min(100));
 
                 let response = client
-                    .list_subscriptions(page_token.as_deref(), page_limit)
+                    .list_subscriptions(page_token.as_deref(), page_limit, hosting_product)
                     .await
                     .map_err(client_err)?;
 
@@ -60,7 +63,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
+            let total_available_slots: u64 = all_items
+                .iter()
+                .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
+                .sum();
+
+            Ok(CommandResult::new(json!({
+                "items": all_items,
+                "totalAvailableSlots": total_available_slots,
+            }))
+            .with_next_actions(vec![
                 next_action(
                     "hosting subscription attach --app-id <app-id> --subscription-id <id>",
                     "Attach an application to a hosting plan",

@@ -501,6 +501,7 @@ impl HostingClient {
         &self,
         page_token: Option<&str>,
         limit: Option<u32>,
+        hosting_product: Option<&str>,
     ) -> Result<Value, ClientError> {
         let mut query: Vec<(&str, String)> = Vec::new();
         if let Some(t) = page_token {
@@ -508,6 +509,9 @@ impl HostingClient {
         }
         if let Some(l) = limit {
             query.push(("limit", l.to_string()));
+        }
+        if let Some(p) = hosting_product {
+            query.push(("hostingProduct", p.to_owned()));
         }
         self.send_json(Method::GET, "/subscriptions", &query, None)
             .await
