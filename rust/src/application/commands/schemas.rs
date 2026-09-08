@@ -12,6 +12,17 @@ output_schema!(ApplicationSummary {
     "proxyUrl": "string", optional;
 });
 
+output_schema!(EnabledApplication {
+    "id": "string";
+    "name": "string";
+    "label": "string", optional;
+    "description": "string", optional;
+    "status": "string";
+    "url": "string", optional;
+    "proxyUrl": "string", optional;
+    "release": "object", optional;
+});
+
 output_schema!(ApplicationInit {
     "id": "string";
     "name": "string";

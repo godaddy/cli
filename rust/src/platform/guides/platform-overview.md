@@ -54,6 +54,7 @@ Makes the application (and everything in its latest release — actions, subscri
 
 - `gddy platform app validate <name>` — check *remote* application state (URL/proxy-url set, not INACTIVE), as opposed to `config validate`'s local manifest check.
 - `gddy platform app info --name <name>` / `list` — inspect a single app or list all of them.
+- `gddy platform app enablements --store-id <storeId>` — list the applications enabled for a store.
 - `gddy platform app archive <name>` — irreversible; confirm the name with `list` first.
 - `gddy platform actions` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
 

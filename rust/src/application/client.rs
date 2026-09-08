@@ -170,6 +170,20 @@ impl ApplicationClient {
         Ok(json!(nodes))
     }
 
+    /// Lists applications currently enabled for a store.
+    pub async fn list_enabled_applications(&self, store_id: &str) -> Result<Value, ClientError> {
+        let data = self
+            .query(json!({
+                "query": "query EnabledStoreApplications($storeId: String!) { enabledStoreApplications(storeId: $storeId) { id label name description status url proxyUrl release { id version description status createdAt updatedAt activatedAt } } }",
+                "variables": { "storeId": store_id }
+            }))
+            .await?;
+        Ok(data
+            .get("enabledStoreApplications")
+            .cloned()
+            .unwrap_or_else(|| json!([])))
+    }
+
     pub async fn get_application(&self, name: &str) -> Result<Value, ClientError> {
         self.query(json!({
             "query": "query Application($name: String!) { application(name: $name) { id label name description status url proxyUrl } }",
@@ -458,6 +472,43 @@ mod tests {
         mock.assert_async().await;
         assert_eq!(data.as_array().expect("array").len(), 2);
         assert_eq!(data[1]["status"], "INACTIVE");
+    }
+
+    #[tokio::test]
+    async fn list_enabled_applications_sends_store_id_and_returns_nodes() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("EnabledStoreApplications")
+                            && body.contains(r#""storeId":"store-123""#)
+                            && body.contains("release")
+                    });
+                then.status(200).json_body(json!({
+                    "data": {
+                        "enabledStoreApplications": [{
+                            "id": "app-1",
+                            "name": "test-app",
+                            "status": "ACTIVE",
+                            "release": { "id": "release-1", "version": "1.0.0" }
+                        }]
+                    }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .list_enabled_applications("store-123")
+            .await
+            .expect("list enabled applications");
+
+        mock.assert_async().await;
+        assert_eq!(data[0]["id"], "app-1");
+        assert_eq!(data[0]["release"]["version"], "1.0.0");
     }
 
     #[tokio::test]
