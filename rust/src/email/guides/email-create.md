@@ -1,7 +1,7 @@
 ---
 
-## summary: Create a GoDaddy Business Email
-
+summary: Create a GoDaddy Business Email
+---
 # GoDaddy Business Email
 
 This guide explains how to use the `gddy email` commands to check eligibility for, create, and manage mailboxes.
