@@ -24,7 +24,7 @@ When an account has `default: true` it is the recommended choice. Use it when yo
 
 ### Step 1 — Check eligibility
 
-Before creating a mailbox, verify the email address is eligible and discover which email plan can be used:
+Before creating a mailbox, verify the email address is eligible and discover which email plan can be used. The domain must be owned by the authenticated GoDaddy shopper.
 
 ```
 gddy email check-eligibility --email someone@example.com
