@@ -1,26 +1,28 @@
 ---
 
-## summary: Create a GoDaddy Business Email
+## summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create and manage mailboxes
 
-# GoDaddy Business Email
+# Create GoDaddy Business Email with `gddy`
 
-This guide explains how to use the `gddy email` commands to check eligibility for, create, and manage mailboxes.
+This guide explains the GoDaddy Business Email product and how to use the GoDaddy CLI to create, and manage mailboxes.
+
+Creating a mailbox is a **three-step** flow:
+
+1. `gddy email check-eligibility --email <address>` — verify the address is eligible, find which account to use, and see what consents are required.
+2. `gddy email create --email <address> ...` — submit the provisioning request. Returns immediately with a mailbox ID.
+3. `gddy email get <mailboxId>` — poll until `status` is `COMPLETED`.
 
 ## Key concepts
 
+
+
 ### Accounts
 
-An **account** (`accountId`) identifies an existing GoDaddy Email plan you already hold. It is separate from your GoDaddy login and unrelated to domain or hosting "accounts" elsewhere in `gddy` — think of it as a container that can hold a mailbox. You may have zero, one, or several eligible accounts (for example, if you have bought more than one email plan), so `email create` needs to know which one to provision the new mailbox under.
+An **account** (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. It is separate from your GoDaddy login and unrelated to domain or hosting "accounts" elsewhere in `gddy` — think of it as a container that can hold a mailbox. You may have zero, one, or several eligible accounts (for example, if you have bought more than one email plan), so `email create` needs to know which one to provision the new mailbox under.
 
 When an account has `default: true` it is the recommended choice. Use it when you have no other preference.
 
-### Mailbox creation is asynchronous
-
-`gddy email create` submits a provisioning request and returns immediately; the mailbox is not ready until the backend finishes. Poll with `gddy email get <mailboxId>` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2-4 seconds; do not poll faster than once per second.
-
-## The check-eligibility → create → poll flow
-
-
+## Creating a Mailbox
 
 ### Step 1 — Check eligibility
 
@@ -56,11 +58,11 @@ gddy email check-eligibility --email someone@example.com
 Key fields:
 
 
-| Field                             | Description                                                                                             |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                               |
-| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                            |
-| `eligibleAccounts[].requirements` | Legal agreements the customer must accept. Each `type` must be passed as `--consent` on `email create`. |
+| Field                             | Description                                                                                    |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
+| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
+| `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
 
 
 When the account has **no free-trial** plan, `requirements` is an empty array and no `--consent` flag is needed:
@@ -98,7 +100,7 @@ gddy email create --email someone@example.com \
 
 `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
 
-The command returns `202 Accepted` immediately with the new mailbox at `status: CONFIRMED` and the mailbox ID. The mailbox is **not yet ready to use**.
+The command returns `202 Accepted` immediately with the new mailbox at `status: CONFIRMED` and the mailbox ID. The mailbox is **not yet ready to use** — provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; do not poll faster than once per second.
 
 **Example response (with consents):**
 
@@ -157,10 +159,34 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
 Use the `mailboxId` from the create response:
 
 ```
-gddy email get <mailboxId>
+gddy email get 73e99614-0db5-46b1-8ea7-b5228a1fe7a6
 ```
 
 Repeat until `status` in the response is `COMPLETED` or `FAILED`. Typical provisioning takes several seconds to a minute. On `FAILED`, there is no automatic retry — the creation request must be resubmitted if appropriate.
+
+**Example response (**`COMPLETED`**):**
+
+```json
+{
+  "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
+  "emailAddress": "someone@example.com",
+  "mailboxType": "TITAN",
+  "firstName": "Jane",
+  "lastName": "Smith",
+  "displayName": "Jane Smith",
+  "status": "COMPLETED",
+  "createdAt": "2026-09-02T17:51:29Z",
+  "modifiedAt": "2026-09-02T17:51:50Z",
+  "links": [
+    {
+      "rel": "self",
+      "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
+    }
+  ]
+}
+```
+
+
 
 ## Error handling
 
@@ -168,17 +194,17 @@ Repeat until `status` in the response is `COMPLETED` or `FAILED`. Typical provis
 
 ### Eligibility failure reasons
 
-When `check-eligibility` returns a 422, the `details` array contains one or more of the following `issue` codes. 
+When `check-eligibility` returns a 422, the `details` array contains one or more of the following `issue` codes.
 
 
-| `issue`                          | When it occurs                                                                         | Recommended action                                                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `EMAIL_PLAN_NOT_ELIGIBLE`        | The domain is linked to an email plan that does not support provisioning via this API. | Direct the customer to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail) to create the mailbox manually. |
-| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | The domain is already provisioned through a different email provider (not Titan).      | The domain cannot be used for a Titan mailbox. No action available via the API.                                                    |
-| `DOMAIN_NOT_ELIGIBLE`            | The domain exists but is not eligible for API provisioning.                            | Direct the customer to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | The customer must purchase an email plan before a mailbox can be created.                                                          |
-| `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                                           |
-| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                                 |
+| `issue`                          | When it occurs                                                                         | Recommended action                                                                                                |
+| -------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `EMAIL_PLAN_NOT_ELIGIBLE`        | The domain is linked to an email plan that does not support provisioning via this API. | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail) to create the mailbox manually. |
+| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | The domain is already provisioned through a different email provider.                  | The domain cannot be used with GoDaddy Business Email. No action available via the API.                           |
+| `DOMAIN_NOT_ELIGIBLE`            | The domain exists but is not eligible for API provisioning.                            | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Purchase an email plan before creating a mailbox.                                                                 |
+| `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                          |
+| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                |
 
 
 
@@ -191,7 +217,7 @@ The create command re-runs the eligibility check internally. A 422 can occur eve
 | `issue`                          | When it occurs                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                       |
-| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different provider.                                             |
+| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                       |
 | `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                         |
 | `EMAIL_PLAN_NOT_AVAILABLE`       | No active email plan for this domain.                                                           |
 | `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type. |
@@ -239,6 +265,5 @@ receive a new mailbox for this address, and what consent is outstanding.
   - `--field`: comma-separated list of fields to include (sparse fieldset).
   - `--page`: page number, 1-based (default `1`).
   - `--page-size`: results per page, max 100 (default `25`).
-  - `--total-required`: include `totalItems`, `totalPages`, and a `rel=last` link  
-  in the response.
+  - `--total-required`: include `totalItems`, `totalPages`, and a `rel=last` link in the response.
 
