@@ -41,6 +41,14 @@ output_schema!(ApplicationRef {
     "id": "string";
 });
 
+output_schema!(StoreEnablement {
+    "name": "string";
+    "status": "string";
+    "releaseVersion": "string", optional;
+    "id": "string", optional;
+    "label": "string", optional;
+});
+
 output_schema!(ApplicationArchive {
     "id": "string";
     "name": "string";
