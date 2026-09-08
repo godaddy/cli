@@ -8,8 +8,8 @@ This guide explains the GoDaddy Business Email product and how to use the GoDadd
 
 Creating a mailbox is a **three-step** flow:
 
-1. `gddy email check-eligibility --email <address>` — verify the address is eligible, find which account to use, and see what consents are required.
-2. `gddy email create --email <address>` — submit the provisioning request. Returns immediately with a mailbox ID.
+1. `gddy email check-eligibility --email <emailAddress>` — verify the address is eligible, find which account to use, and see what consents are required.
+2. `gddy email create --email <emailAddress>` — submit the provisioning request. Returns immediately with a mailbox ID.
 3. `gddy email get <mailboxId>` — poll until `status` is `COMPLETED`.
 
 ## Key concepts
