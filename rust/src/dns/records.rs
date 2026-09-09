@@ -337,6 +337,25 @@ pub(super) fn record_value(rec: &types::DnsRecord) -> Option<&str> {
     }
 }
 
+/// Re-merge a TLSA record's split fields (`usage`/`selector`/`matchingType`/
+/// `certificateData`) back into a single presentation-format string, for
+/// `dns list` output. DNS itself treats a TLSA record's RDATA as one blob
+/// (RFC 6698 §2.1) — `dig`/zone-file output shows
+/// `"<usage> <selector> <matching-type> <hex>"` — the v3 API's split into
+/// four JSON fields is that API's own modeling, not something DNS does (same
+/// story as CAA's `flag`/`tag`/`data` split). The write path (`v3_record`)
+/// never populates `data` for TLSA, so `dns list` reconstructs it here for
+/// display; the original four fields are left untouched alongside it.
+pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
+    format!(
+        "{} {} {} {}",
+        rec.usage.as_ref().map_or(0, |u| u.0),
+        rec.selector.as_ref().map_or(0, |s| s.0),
+        rec.matching_type.as_ref().map_or(0, |m| m.0),
+        rec.certificate_data.as_deref().unwrap_or(""),
+    )
+}
+
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
 /// filters, paging through the collection (v3 list is paginated). Shared by
 /// `list`, `set`, and `delete` — the latter two need the matching records' ids.
@@ -597,5 +616,16 @@ mod tests {
         // Non-TLSA types are unaffected — `data` still wins.
         let a = v3_record("www", "A", "1.2.3.4", &opts());
         assert_eq!(record_value(&a), Some("1.2.3.4"));
+    }
+
+    #[test]
+    fn merged_tlsa_data_reconstructs_the_rfc6698_presentation_format() {
+        let mut tlsa_opts = opts();
+        tlsa_opts.usage = Some(3);
+        tlsa_opts.selector = Some(1);
+        tlsa_opts.matching_type = Some(1);
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
+        assert_eq!(merged_tlsa_data(&tlsa), format!("3 1 1 {cert}"));
     }
 }
