@@ -175,7 +175,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 &req,
                                 &record_id,
                                 &old_detail,
-                                old_record.map(|r| r.data.as_str()),
+                                old_record.and_then(|r| r.data.as_deref()),
                             )
                             .await,
                         );

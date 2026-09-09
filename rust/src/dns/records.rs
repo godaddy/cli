@@ -179,7 +179,13 @@ pub(super) fn v3_record(
 ) -> types::DnsRecord {
     let to_u16 = |v: Option<i64>| v.and_then(|n| u16::try_from(n).ok());
     types::DnsRecord {
-        data: data.to_owned(),
+        // TLSA-only fields — the CLI's writable types (WRITABLE_TYPES) never
+        // include TLSA, so these are always absent for records this builds.
+        certificate_data: None,
+        matching_type: None,
+        selector: None,
+        usage: None,
+        data: Some(data.to_owned()),
         flag: opts.flag.and_then(|n| u8::try_from(n).ok()),
         name: name.to_owned(),
         // SvcParams for HTTPS/SVCB records (RFC 9460) — no CLI flag sets
@@ -319,10 +325,10 @@ mod tests {
         assert_eq!(recs.len(), 2);
         assert_eq!(recs[0].name, "www");
         assert_eq!(recs[0].type_.as_str(), "A");
-        assert_eq!(recs[0].data, "1.2.3.4");
+        assert_eq!(recs[0].data.as_deref(), Some("1.2.3.4"));
         // v3 requires a ttl; an omitted --ttl falls back to the default.
         assert_eq!(recs[0].ttl, DEFAULT_TTL);
-        assert_eq!(recs[1].data, "5.6.7.8");
+        assert_eq!(recs[1].data.as_deref(), Some("5.6.7.8"));
     }
 
     #[test]

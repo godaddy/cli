@@ -106,14 +106,14 @@ pub(super) fn describe_duplicate_record(
                 "`{name}` already has a CNAME record (→ `{}`), which can't coexist with \
                  {desired_type} records — DNS only allows one or the other at a given \
                  name.{remediation}",
-                conflicts[0].data,
+                conflicts[0].data.as_deref().unwrap_or("(no data)"),
             )
         };
     }
 
     if at_name
         .iter()
-        .any(|r| r.type_.as_str() == desired_type && r.data == desired_data)
+        .any(|r| r.type_.as_str() == desired_type && r.data.as_deref() == Some(desired_data))
     {
         return format!("a {desired_type} record with this exact value already exists at {name}.");
     }
@@ -208,7 +208,11 @@ mod tests {
 
     fn dns_record(ty: &str, data: &str) -> types::DnsRecord {
         types::DnsRecord {
-            data: data.to_string(),
+            certificate_data: None,
+            matching_type: None,
+            selector: None,
+            usage: None,
+            data: Some(data.to_string()),
             flag: None,
             name: "www".to_string(),
             parameters: None,

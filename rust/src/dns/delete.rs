@@ -217,7 +217,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((rec.data.clone(), err));
+                outcomes.push((rec.data.as_deref().unwrap_or("(no data)").to_string(), err));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
@@ -269,7 +269,11 @@ mod tests {
 
     fn test_record(record_id: &str, data: &str) -> types::DnsRecord {
         types::DnsRecord {
-            data: data.to_owned(),
+            certificate_data: None,
+            matching_type: None,
+            selector: None,
+            usage: None,
+            data: Some(data.to_owned()),
             flag: None,
             name: "www".to_owned(),
             parameters: None,

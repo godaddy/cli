@@ -471,7 +471,11 @@ mod tests {
             .create_dns_record()
             .zone("example.com")
             .body(types::DnsRecord {
-                data: "1.2.3.4".to_string(),
+                certificate_data: None,
+                matching_type: None,
+                selector: None,
+                usage: None,
+                data: Some("1.2.3.4".to_string()),
                 flag: None,
                 name: "www".to_string(),
                 parameters: None,
@@ -601,7 +605,7 @@ mod tests {
         let items = body.items.expect("items present");
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].record_id.as_deref(), Some("rec-1"));
-        assert_eq!(items[0].data, "1.2.3.4");
+        assert_eq!(items[0].data.as_deref(), Some("1.2.3.4"));
     }
 
     #[tokio::test]
