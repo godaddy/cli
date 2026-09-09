@@ -102,7 +102,7 @@ gddy email create --email someone@example.com \
 
 `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
 
-The command returns `202 Accepted` immediately with the new mailbox at `status: CONFIRMED` and the mailbox ID. The mailbox is **not yet ready to use** — provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; do not poll faster than once per second.
+The command returns `202 Accepted` immediately with the new mailbox at `status: EXECUTING` and the mailbox ID. The mailbox is **not yet ready to use** — provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; do not poll faster than once per second.
 
 **Example response (with consents):**
 
@@ -114,7 +114,7 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
   "firstName": "Jane",
   "lastName": "Smith",
   "displayName": "Jane Smith",
-  "status": "CONFIRMED",
+  "status": "EXECUTING",
   "createdAt": "2026-09-02T17:51:29Z",
   "updatedAt": "2026-09-02T17:51:29Z",
   "agreements": [
@@ -142,7 +142,7 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
   "firstName": "Jane",
   "lastName": "Smith",
   "displayName": "Jane Smith",
-  "status": "CONFIRMED",
+  "status": "EXECUTING",
   "createdAt": "2026-09-02T17:51:29Z",
   "updatedAt": "2026-09-02T17:51:29Z",
   "links": [
@@ -202,4 +202,52 @@ When `check-eligibility` returns a 422, the `details` array contains one or more
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                          |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                |
 
+### Create failure reasons (422 from `gddy email create`)
 
+The create command re-runs the eligibility check internally. A 422 can occur even if a prior `check-eligibility` succeeded, if domain state changed between the two calls.
+
+| `issue`                          | When it occurs                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                       |
+| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                       |
+| `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                         |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | No active email plan for this domain.                                                           |
+| `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type. |
+| `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                           |
+| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                     |
+
+If `CONSENT_NOT_PROVIDED` appears, re-run `check-eligibility` to get the current requirements list, then resubmit `create` with all required consent types.
+
+### Username rules
+
+The username (the part before `@`) must:
+
+- Contain only letters (`a–z`, `A–Z`), digits (`0–9`), periods (`.`), underscores (`_`), and hyphens (`-`).
+- Not start or end with a period or hyphen.
+- Not contain consecutive periods (`..`).
+- Not contain spaces.
+- Not exceed 30 characters, or a shorter limit when the domain name is long enough that the full address would exceed 64 characters.
+
+### Other HTTP errors
+
+| Code | Meaning                                                                   |
+| ---- | ------------------------------------------------------------------------- |
+| 400  | Malformed request — missing required field or bad parameter.              |
+| 401  | Access token is missing, expired, or invalid.                             |
+| 403  | Token is valid but does not have permission for this resource.            |
+| 404  | The requested mailbox does not exist or belongs to a different account.   |
+| 409  | A mailbox with the requested email address already exists.                |
+| 429  | Rate limit exceeded. Retry after the seconds in the `Retry-After` header. |
+
+## Command reference
+
+- `gddy email check-eligibility --email <email>` — see which accounts (if any) can
+  receive a new mailbox for this address, and what consent is outstanding.
+- `gddy email create --email <email> [--account-id <id>] [--first-name <name>] [--last-name <name>] [--consent <requirement-type>]...` — submit a provisioning request. Returns 202 with the mailbox at `status: EXECUTING`; poll with `gddy email get` until `COMPLETED` or `FAILED`.
+- `gddy email get <mailbox-id>` — look up one mailbox by ID. Use to poll provisioning status.
+- `gddy email list [--status <status>] [--field <fields>] [--page <n>] [--page-size <n>] [--total-required]` — list your mailboxes.
+  - `--status`: filter by lifecycle status (`COMPLETED`, `EXECUTING`, `FAILED`).
+  - `--field`: comma-separated list of fields to include (sparse fieldset).
+  - `--page`: page number, 1-based (default `1`).
+  - `--page-size`: results per page, max 100 (default `25`).
+  - `--total-required`: include `totalItems`, `totalPages`, and a `rel=last` link in the response.
