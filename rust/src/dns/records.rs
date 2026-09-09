@@ -285,9 +285,11 @@ pub(super) fn v3_records(
 
 /// The user-facing "value" of a fetched v3 `DnsRecord`: `data` for every type
 /// except TLSA, which carries its value in `certificateData` instead (see
-/// [`v3_record`]'s TLSA branch). Conflict diagnosis, delete/set reporting, and
-/// exact-duplicate detection all need "the value" regardless of which wire
-/// field holds it, so they read through this rather than `data` directly.
+/// [`v3_record`]'s TLSA branch). Delete/set per-record reporting and the
+/// CNAME-conflict message need "the value" regardless of which wire field
+/// holds it, so they read through this rather than `data` directly (exact-
+/// duplicate/no-op detection compares full records via [`same_content`]
+/// instead, since a shared value alone doesn't make two records identical).
 /// Checks `type_` rather than just falling back on an absent `data`, so a
 /// TLSA record correctly prefers `certificateData` even if the API ever
 /// returns both fields populated.
@@ -337,8 +339,12 @@ pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
 /// rather than a hand-maintained field list, so a future `DnsRecord` field
 /// is covered without another update here.
 pub(super) fn same_content(a: &types::DnsRecord, b: &types::DnsRecord) -> bool {
+    // `DnsRecord` is all plain String/Option/newtype fields, so this should
+    // never actually fail — falling back to a placeholder value on error
+    // would let two unrelated records that both failed to serialize compare
+    // as "equal" and silently skip a real change.
     let strip = |r: &types::DnsRecord| {
-        let mut v = serde_json::to_value(r).unwrap_or(serde_json::Value::Null);
+        let mut v = serde_json::to_value(r).expect("DnsRecord always serializes to JSON");
         if let Some(obj) = v.as_object_mut() {
             obj.remove("ttl");
             obj.remove("recordId");
