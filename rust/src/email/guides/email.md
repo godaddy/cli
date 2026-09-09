@@ -1,6 +1,6 @@
 ---
-summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create and manage mailboxes
----
+
+## summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create and manage mailboxes
 
 # Create GoDaddy Business Email with `gddy`
 
@@ -14,11 +14,13 @@ Creating a mailbox is a **three-step** flow:
 
 ## Key concepts
 
+### Mailbox
 
+A **mailbox** is a single email address (e.g., `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous — the create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
 
-### Accounts
+### Email Plan/Account
 
-An **account** (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. It is separate from your GoDaddy login and unrelated to domain or hosting "accounts" elsewhere in `gddy` — think of it as a container that can hold a mailbox. You may have zero, one, or several eligible accounts (for example, if you have bought more than one email plan), so `email create` needs to know which one to provision the new mailbox under.
+An email plan or **account** (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. Think of it as a container that can hold a mailbox. You may have zero, one, or several eligible accounts (for example, if you have bought more than one email plan), so `email create` needs to know which one to provision the new mailbox under.
 
 When an account has `default: true` it is the recommended choice. Use it when you have no other preference.
 
@@ -152,8 +154,6 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
 }
 ```
 
-
-
 ### Step 3 — Poll until ready
 
 Use the `mailboxId` from the create response:
@@ -186,11 +186,7 @@ Repeat until `status` in the response is `COMPLETED` or `FAILED`. Typical provis
 }
 ```
 
-
-
 ## Error handling
-
-
 
 ### Eligibility failure reasons
 
@@ -206,64 +202,4 @@ When `check-eligibility` returns a 422, the `details` array contains one or more
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                          |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                |
 
-
-
-
-### Create failure reasons (422 from `gddy email create`)
-
-The create command re-runs the eligibility check internally. A 422 can occur even if a prior `check-eligibility` succeeded, if domain state changed between the two calls.
-
-
-| `issue`                          | When it occurs                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                       |
-| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                       |
-| `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                         |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | No active email plan for this domain.                                                           |
-| `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type. |
-| `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                           |
-| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                     |
-
-
-If `CONSENT_NOT_PROVIDED` appears, re-run `check-eligibility` to get the current requirements list, then resubmit `create` with all required consent types.
-
-### Username rules
-
-The username (the part before `@`) must:
-
-- Contain only letters (`a–z`, `A–Z`), digits (`0–9`), periods (`.`), underscores (`_`), and hyphens (`-`).
-- Not start or end with a period or hyphen.
-- Not contain consecutive periods (`..`).
-- Not contain spaces.
-- Not exceed 30 characters, or a shorter limit when the domain name is long enough that the full address would exceed 64 characters.
-
-
-
-### Other HTTP errors
-
-
-| Code | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| 400  | Malformed request — missing required field or bad parameter.              |
-| 401  | Access token is missing, expired, or invalid.                             |
-| 403  | Token is valid but does not have permission for this resource.            |
-| 404  | The requested mailbox does not exist or belongs to a different account.   |
-| 409  | A mailbox with the requested email address already exists.                |
-| 429  | Rate limit exceeded. Retry after the seconds in the `Retry-After` header. |
-
-
-
-
-## Command reference
-
-- `gddy email check-eligibility --email <email>` — see which accounts (if any) can
-receive a new mailbox for this address, and what consent is outstanding.
-- `gddy email create --email <email> [--account-id <id>] [--first-name <name>] [--last-name <name>] [--consent <requirement-type>]...` — submit a provisioning request. Returns 202 with the mailbox at `status: CONFIRMED`; poll with `gddy email get` until `COMPLETED` or `FAILED`.
-- `gddy email get <mailbox-id>` — look up one mailbox by ID. Use to poll provisioning status.
-- `gddy email list [--status <status>] [--field <fields>] [--page <n>] [--page-size <n>] [--total-required]` — list your mailboxes.
-  - `--status`: filter by lifecycle status (`COMPLETED`, `CONFIRMED`, `FAILED`).
-  - `--field`: comma-separated list of fields to include (sparse fieldset).
-  - `--page`: page number, 1-based (default `1`).
-  - `--page-size`: results per page, max 100 (default `25`).
-  - `--total-required`: include `totalItems`, `totalPages`, and a `rel=last` link in the response.
 
