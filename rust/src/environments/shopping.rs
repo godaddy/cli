@@ -1,9 +1,9 @@
-//! Order Management Shopping API base-URL resolution per environment.
+//! Shopping API base-URL resolution per environment.
 
 use super::config::clean_url;
 use super::{env_prefix, resolve};
 
-/// Base URL for the direct Order Management Shopping API for `name`.
+/// Base URL for the direct Shopping API for `name`.
 ///
 /// Until the service is available through the public front door, configure its
 /// explicit Katana endpoint in `environments.toml` as `shopping_url`. Shell

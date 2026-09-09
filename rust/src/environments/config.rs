@@ -70,8 +70,8 @@ pub struct GddyEnvConfig {
     )]
     pub devx_core_url: String,
 
-    /// Base URL for the Order Management Shopping API. This direct-service
-    /// endpoint is configured per environment until Shopping reaches the
+    /// Base URL for the Shopping API. This direct-service endpoint is
+    /// configured per environment until Shopping reaches the
     /// public front door. Shell overrides are applied by `shopping_url`.
     #[env_config(
         from_toml = parse_url_from_toml,

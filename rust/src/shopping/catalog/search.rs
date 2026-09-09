@@ -25,10 +25,6 @@ struct Args {
     /// Maximum number of products to return (1-100).
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=100))]
     limit: Option<u8>,
-
-    /// Opaque cursor returned by a preceding search with the same criteria.
-    #[arg(long, value_name = "CURSOR")]
-    cursor: Option<String>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -36,10 +32,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<Args>("search", "Search the Shopping catalog")
             .with_long(
                 "Search the Shopping catalog. Human output groups purchasable variants under each \
-                 product. Use --output json to receive the unmodified OMS response. Supply the \
+                 product. Use --output json to receive the unmodified Shopping API response. Supply the \
                  complete UCP search request with --body or --file; use `{}` to browse all products. \
-                 Use --limit (1-100) and the response cursor with the same search criteria to retrieve \
-                 later pages. Use `gddy shopping catalog get` for a selected product's complete record.",
+                 Place `pagination.limit` and the response cursor in the request body to retrieve later \
+                 pages with the same search criteria. Use `gddy shopping catalog get` for a selected \
+                 product's complete record.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -48,7 +45,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_view_id(HUMAN_VIEW_ID),
         |ctx, args: Args| async move {
             let mut request = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
-            merge_pagination(&mut request, args.limit, args.cursor.as_deref())?;
+            merge_pagination(&mut request, args.limit)?;
             let client = make_client(&ctx).await?;
             let response = client.catalog_search(request.clone()).await.map_err(client_err)?;
             let next_actions = next_actions(&response, &mut request, &ctx.middleware.env)?;
@@ -94,6 +91,7 @@ fn human_response(response: &Value, actions: &[cli_engine::NextAction]) -> Value
             .enumerate()
             .map(|(index, product)| json!({
                 "number": index + 1,
+                "id": product.get("id").and_then(Value::as_str).unwrap_or_default(),
                 "title": product.get("title").and_then(Value::as_str).unwrap_or("Untitled product"),
                 "variants": purchasable_variants(product)
                     .iter()
@@ -118,8 +116,8 @@ fn human_response(response: &Value, actions: &[cli_engine::NextAction]) -> Value
     })
 }
 
-fn merge_pagination(request: &mut Value, limit: Option<u8>, cursor: Option<&str>) -> Result<()> {
-    if limit.is_none() && cursor.is_none() {
+fn merge_pagination(request: &mut Value, limit: Option<u8>) -> Result<()> {
+    if limit.is_none() {
         return Ok(());
     }
     let object = request
@@ -140,17 +138,6 @@ fn merge_pagination(request: &mut Value, limit: Option<u8>, cursor: Option<&str>
             .into_cli_error());
         }
         pagination.insert("limit".to_owned(), json!(limit));
-    }
-    if let Some(cursor) = cursor {
-        if let Some(existing) = pagination.get("cursor")
-            && existing.as_str() != Some(cursor)
-        {
-            return Err(crate::error::GddyError::validation(
-                "--cursor conflicts with pagination.cursor in the request body",
-            )
-            .into_cli_error());
-        }
-        pagination.insert("cursor".to_owned(), json!(cursor));
     }
     Ok(())
 }
@@ -239,7 +226,14 @@ fn next_page_action(
             )
             .into_cli_error()
         })?;
-    merge_pagination(request, None, Some(cursor))?;
+    let request = request
+        .as_object_mut()
+        .expect("read_json validates the request is an object");
+    let pagination = request.entry("pagination").or_insert_with(|| json!({}));
+    let pagination = pagination.as_object_mut().ok_or_else(|| {
+        crate::error::GddyError::validation("pagination must be a JSON object").into_cli_error()
+    })?;
+    pagination.insert("cursor".to_owned(), json!(cursor));
     let encoded_request = serde_json::to_string(request).map_err(|error| {
         crate::error::GddyError::unexpected(format!("failed to encode next-page request: {error}"))
             .into_cli_error()
@@ -271,7 +265,7 @@ fn render_human(response: &Value) -> String {
     {
         output.push('\n');
         output.push_str(&format!(
-            "{}. {}\n{}\n",
+            "{}. {} (ID: {})\n{}\n",
             product
                 .get("number")
                 .and_then(Value::as_u64)
@@ -280,6 +274,10 @@ fn render_human(response: &Value) -> String {
                 .get("title")
                 .and_then(Value::as_str)
                 .unwrap_or("Untitled product"),
+            product
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
             "─".repeat(72)
         ));
         output.push_str(&render_variants_table(product));
@@ -478,9 +476,9 @@ mod tests {
     }
 
     #[test]
-    fn merges_cursor_and_limit_into_a_request() {
-        let mut request = json!({"query": "email"});
-        merge_pagination(&mut request, Some(25), Some("cursor-1")).expect("valid pagination");
+    fn merges_limit_without_changing_a_body_cursor() {
+        let mut request = json!({"query": "email", "pagination": {"cursor": "cursor-1"}});
+        merge_pagination(&mut request, Some(25)).expect("valid pagination");
         assert_eq!(
             request,
             json!({"query": "email", "pagination": {"limit": 25, "cursor": "cursor-1"}})
@@ -513,7 +511,10 @@ mod tests {
         let actions = next_actions(&response, &mut json!({}), "test").expect("actions");
         let rendered = render_human(&human_response(&response, &actions));
         assert!(rendered.contains("Showing 1 of 14 products · 1 purchasable variants"));
-        assert!(rendered.contains("1. Product"), "{rendered}");
+        assert!(
+            rendered.contains("1. Product (ID: product-1)"),
+            "{rendered}"
+        );
         assert!(!rendered.contains("PRODUCT ID"));
         assert!(
             rendered.contains("ID             Description"),
