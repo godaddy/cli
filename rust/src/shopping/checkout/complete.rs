@@ -22,7 +22,7 @@ struct Args {
     #[arg(long, value_name = "PATH")]
     file: Option<String>,
 
-    /// Wait for the completed order to become visible in the order read model.
+    /// Wait for the completed order to become available.
     #[arg(long)]
     wait_for_order: bool,
 
@@ -35,9 +35,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("complete", "Complete a Shopping checkout and place an order")
             .with_long(
-                "Places a real order. The JSON request must include a selected saved payment instrument \
-                 and a non-empty idempotency_key. The CLI never retries completion automatically. Use \
-                 --wait-for-order to poll the eventually consistent order read model after success.",
+                "Places a real order. Supply the Shopping API completion request through --body or \
+                 --file; it must include a selected saved payment instrument and a non-empty \
+                 idempotency_key. The CLI never retries completion automatically. Use --wait-for-order \
+                 to poll until the new order becomes available after success.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)

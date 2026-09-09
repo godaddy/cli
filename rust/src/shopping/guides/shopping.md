@@ -1,23 +1,6 @@
 # Shopping API
 
-`gddy shopping` is a direct integration with the Shopping API.
-It is currently intended for configured non-production Katana environments; it
-does not fall back to the GoDaddy front door.
-
-## Configure the direct service
-
-Add the service URL to `~/.config/gddy/environments.toml`:
-
-```toml
-[test]
-api_url = "https://api.test-godaddy.com"
-client_id = "<CLI OAuth client ID for test>"
-shopping_url = "https://ecommorder-order-management-mcp-test.ecommorder-test.prod.onkatana.net"
-```
-
-For one invocation, use `TEST_SHOPPING_URL` or `SHOPPING_URL`. Per-environment
-overrides take precedence over the global variable, which takes precedence over
-`shopping_url` in the TOML file.
+`gddy shopping` integrates with the Shopping API.
 
 ## Authentication
 
@@ -39,20 +22,30 @@ gddy auth login \
   --scope shopping.order:read
 ```
 
-PATs are not currently accepted by the direct Katana service. Use OAuth until
-Shopping is exposed through the front door, where PAT exchange can occur.
+PATs are not currently accepted by the configured Shopping API endpoint. Use OAuth
+until Shopping is exposed through the front door, where PAT exchange can occur.
 
 ## Workflow
 
-Use raw JSON (`--body`) or a JSON document (`--file`) for request bodies:
+Use `--body` for a small inline JSON request or `--file` for a reusable JSON document.
+`--file` takes precedence over `--body`. The Shopping API uses nested checkout objects, so
+checkout create, update, and complete requests remain JSON documents instead of a long list
+of CLI flags. Use `gddy shopping <command> --help` for command-specific requirements; the
+examples below show the request fields required for common checkout operations.
 
 ```bash
 gddy --env test shopping catalog search --body '{}' --limit 3
 gddy --env test shopping catalog lookup --body '{"ids":["nes-wsb-vnext-tier1"]}'
 gddy --env test shopping catalog get --body '{"id":"nes-wsb-vnext-tier1"}'
-gddy --env test shopping checkout create --file create-checkout.json
+gddy --env test shopping checkout create --body '{"context":{"currency":"USD"},"line_items":[{"item":{"id":"nes-wsb-vnext-tier1"},"quantity":1}]}'
 gddy --env test shopping checkout update <checkout-id> --file update-checkout.json
 ```
+
+Use a variant ID selected from `catalog search` as `line_items[].item.id`; product IDs are
+for catalog lookup. For a full checkout update, start with the open checkout returned by
+`shopping checkout get <checkout-id>`, edit the complete desired state, and send it with
+`--file`. `update` replaces the checkout with the supplied document, so omitted fields may
+be removed. An empty `line_items` array deliberately clears the cart.
 
 ### Catalog search and pagination
 
@@ -82,23 +75,37 @@ exposed by this CLI yet.
 
 ## Completing a checkout
 
-`checkout complete` places a real order. Its body must include a selected saved
-payment instrument and a caller-owned, non-empty `idempotency_key`. Never create a
-new idempotency key when retrying an uncertain completion; reuse the original key.
+`checkout complete` places a real order. Its Shopping API request must include a selected
+saved payment instrument and a caller-owned, non-empty `idempotency_key`. Use the checkout's
+`payment.instruments` list to select the saved instrument: mark exactly one entry with
+`"selected": true`. Never create a new idempotency key when retrying an uncertain completion;
+reuse the original key only for the same intended purchase.
+
+```json
+{
+  "payment": {
+    "instruments": [
+      {
+        "id": "<saved-payment-instrument-id>",
+        "selected": true
+      }
+    ]
+  },
+  "idempotency_key": "<caller-generated-key>"
+}
+```
 
 ```bash
 gddy --env test shopping checkout complete <checkout-id> \
   --file complete-checkout.json --wait-for-order
 ```
 
-Order read models are eventually consistent and normally become visible 3–10
-seconds after completion. `--wait-for-order` polls the returned order ID for up to
-15 seconds by default. You can also run:
+New orders normally become available 3–10 seconds after completion. `--wait-for-order` polls
+the returned order ID for up to 15 seconds by default. You can also run:
 
 ```bash
 gddy --env test shopping order get <order-id> --wait --timeout 15
 ```
 
-Do not call `shopping checkout get` after completion: the current service reads the
-underlying open basket and does not accurately represent completed checkouts. Use
-`shopping order get` instead.
+After completion, use `shopping order get` with the returned order ID. `shopping checkout get`
+is for open checkout sessions only.

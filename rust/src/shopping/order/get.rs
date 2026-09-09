@@ -18,7 +18,7 @@ struct Args {
     #[arg(value_name = "ORDER_ID")]
     id: String,
 
-    /// Poll while the eventually consistent order read model catches up.
+    /// Poll until the new order becomes available.
     #[arg(long)]
     wait: bool,
 
@@ -31,8 +31,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("get", "Get a completed Shopping order")
             .with_long(
-                "Read a completed order. New orders are eventually consistent and usually appear \
-                 within 3-10 seconds; use --wait to poll up to 15 seconds by default.",
+                "Read a completed order. New orders usually become available within 3-10 seconds; \
+                 use --wait to poll for up to 15 seconds by default.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)

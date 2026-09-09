@@ -22,8 +22,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("update", "Fully replace a Shopping checkout")
             .with_long(
-                "Replace checkout fields with a UCP JSON object. The request must include \
-                 line_items; use an empty array only to deliberately clear the cart.",
+                "Fully replace a checkout with a Shopping API request object supplied through \
+                 --body or --file. The request must include line_items; use an empty array only to \
+                 deliberately clear the cart. `gddy guide shopping` documents the request format.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)

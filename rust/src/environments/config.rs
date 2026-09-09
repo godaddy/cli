@@ -127,9 +127,9 @@ fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
 }
 
 fn default_shopping_url(_sources: &SourceChain<'_>) -> String {
-    // Shopping is currently exposed directly by the Order Management service,
-    // rather than the public front door. The resolver reports a configuration
-    // error until an environment supplies the explicit service URL.
+    // Shopping is currently configured with an explicit service URL rather
+    // than a public-front-door URL. The resolver reports a configuration
+    // error until an environment supplies the service URL.
     String::new()
 }
 

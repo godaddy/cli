@@ -31,8 +31,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("create", "Create a Shopping checkout session")
             .with_long(
-                "Create a checkout from a UCP JSON object. This mutates the remote Shopping \
-                 service but does not purchase; use `checkout complete` only after review.",
+                "Create a checkout from a Shopping API request object. Supply it with --body or \
+                 --file; `gddy guide shopping` documents the required line_items format. This \
+                 creates a checkout but does not place an order; use `checkout complete` only after \
+                 reviewing the checkout.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)

@@ -6,9 +6,9 @@ use super::{env_prefix, resolve};
 /// Base URL for the direct Shopping API for `name`.
 ///
 /// Until the service is available through the public front door, configure its
-/// explicit Katana endpoint in `environments.toml` as `shopping_url`. Shell
-/// overrides take precedence: `<PREFIX>_SHOPPING_URL` (for example,
-/// `TEST_SHOPPING_URL`), then `SHOPPING_URL`.
+/// explicit endpoint in `environments.toml` as `shopping_url`. Shell overrides
+/// take precedence: `<PREFIX>_SHOPPING_URL` (for example, `TEST_SHOPPING_URL`),
+/// then `SHOPPING_URL`.
 pub fn shopping_url(name: &str) -> Option<String> {
     let configured = resolve(name)
         .ok()

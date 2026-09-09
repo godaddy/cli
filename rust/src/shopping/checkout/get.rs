@@ -14,9 +14,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("get", "Get an open Shopping checkout session")
             .with_long(
-                "Get an open checkout session. Do not use after completion: the current Order \
-                 Management service reconstructs it from an open basket. Use `shopping order get` \
-                 with the order ID returned by completion instead.",
+                "Get an open checkout session. Do not use after completion: completed checkouts \
+                 cannot be retrieved through this command. Use `shopping order get` with the order \
+                 ID returned by completion instead.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
