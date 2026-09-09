@@ -21,6 +21,7 @@ mod platform;
 mod quote_cache;
 mod scopes;
 mod scopes_cmd;
+mod shopping;
 mod summary;
 mod truncation;
 mod update;
@@ -47,6 +48,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         pat::module(),
         payment_methods::module(),
         platform::module(),
+        shopping::module(),
         update::module(),
     ]
 }

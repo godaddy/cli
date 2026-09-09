@@ -69,6 +69,15 @@ pub struct GddyEnvConfig {
         default_fn = default_devx_core_url
     )]
     pub devx_core_url: String,
+
+    /// Base URL for the Order Management Shopping API. This direct-service
+    /// endpoint is configured per environment until Shopping reaches the
+    /// public front door. Shell overrides are applied by `shopping_url`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        default_fn = default_shopping_url
+    )]
+    pub shopping_url: String,
 }
 
 /// `name`'s `default_fn`: the field itself is never set by any real TOML/env
@@ -114,6 +123,13 @@ fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
     // A custom environment must configure this value explicitly. The empty
     // default keeps the field optional for unrelated CLI commands; callers
     // that require DevX Core report a missing URL through `devx_core_url`.
+    String::new()
+}
+
+fn default_shopping_url(_sources: &SourceChain<'_>) -> String {
+    // Shopping is currently exposed directly by the Order Management service,
+    // rather than the public front door. The resolver reports a configuration
+    // error until an environment supplies the explicit service URL.
     String::new()
 }
 

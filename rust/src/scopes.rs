@@ -126,6 +126,13 @@ declare_scopes! {
     EMAIL_READ => "email.mailbox:read",
     /// Create a mailbox (`email create`).
     EMAIL_CREATE => "email.mailbox:create",
+
+    /// Browse and resolve Shopping catalog products.
+    SHOPPING_CATALOG_READ => "shopping.catalog:read",
+    /// Create, update, read, and complete Shopping checkout sessions.
+    SHOPPING_CHECKOUT_EXECUTE => "shopping.checkout:execute",
+    /// Read completed Shopping orders.
+    SHOPPING_ORDER_READ => "shopping.order:read",
 }
 
 /// A requestable scope, its human description, and whether it is requested at
@@ -233,6 +240,21 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: EMAIL_CREATE,
         description: "Create a mailbox",
+        default: false,
+    },
+    ScopeInfo {
+        scope: SHOPPING_CATALOG_READ,
+        description: "Browse and resolve Shopping catalog products",
+        default: false,
+    },
+    ScopeInfo {
+        scope: SHOPPING_CHECKOUT_EXECUTE,
+        description: "Create, update, read, and complete Shopping checkout sessions",
+        default: false,
+    },
+    ScopeInfo {
+        scope: SHOPPING_ORDER_READ,
+        description: "Read completed Shopping orders",
         default: false,
     },
     ScopeInfo {
