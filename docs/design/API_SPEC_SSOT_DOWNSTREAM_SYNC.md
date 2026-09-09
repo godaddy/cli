@@ -6,6 +6,13 @@
 
 GoDaddy's developer platform API specifications currently flow through multiple repositories and organizations.
 
+> **Architect one-pager:** shareable summary (problem, solution, why, timeline) in
+> [API_SPEC_SSOT_ARCHITECT_ONEPAGER.md](./API_SPEC_SSOT_ARCHITECT_ONEPAGER.md).
+>
+> **Implementation walkthrough:** step-by-step publish → pin → consumer PR flow
+> (push vs pull, portal sync, how teams learn about new versions) is in
+> [API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md).
+>
 > **Repo reality check (Aug 2026):** A full analysis of the live repos is in
 > [API_SPEC_REPO_ANALYSIS_SSOT.md](./API_SPEC_REPO_ANALYSIS_SSOT.md). Key correction:
 > modern Published APIs (e.g. Domains Lifecycle v3) are authored in
@@ -34,7 +41,8 @@ Manual sync does not scale. Teams can merge implementation changes that break th
 
 ## Goals
 
-- Establish **one editable source** for each API contract (`gdcorp-platform/api-spec`).
+- Keep **one editable source per API capability** in its existing
+  `gdcorp-platform/<domain>.<capability>-specification` repo.
 - **Automate propagation** to developer docs and consumer repos — no hand-editing downstream copies.
 - **Block breaking changes** at PR time unless explicitly versioned and approved.
 - **Prove implementation matches spec** before service releases (phased rollout).
@@ -45,64 +53,70 @@ Manual sync does not scale. Teams can merge implementation changes that break th
 - Replacing Pact/consumer-driven contracts for all APIs in phase 1 (optional later layer).
 - Mandating Backstage/catalog setup before SSOT is working.
 - Consolidating all team implementation repos into one org.
+- **Migrating all `*-specification` repos into an `api-spec` monorepo** (rejected for
+  this design — keep federated repos; see walkthrough).
 
 ---
 
 ## Recommended Architecture
 
-### Principle: Write once, publish many — **per product/version tree**
+### Principle: Write once, publish many — **per specification repo**
 
-Canonical edits happen in **`api-spec/apis/<product>/<version>/`** (e.g.
-`apis/domains/v3/`). Each version tree has its **own package semver / release
-artifact**. A Domains v3 change publishes `domains/v3@1.4.2` only — it does
-**not** bump Domains v2, Shoppers, Hosting, or a repo-wide `api-spec` version
-that consumers must all take.
+Canonical edits happen in the capability’s **`*-specification` repository**
+(created from [`api-specification-template`](https://github.com/gdcorp-platform/api-specification-template)).
+Example: Domains Lifecycle v3 lives in
+`domains.domain-lifecycle-specification` under `v3/schemas/`.
 
-Everything outside `api-spec` is a **pinned derivative** of those packages.
+Each repo publishes **its own** versioned OpenAPI artifact. A Domains release
+does **not** bump Shoppers or any other API. After publish, that repo’s GitHub
+workflow **notifies a hardcoded list** of consumers (&lt;3: developer portal,
+`godaddy/cli`, optional service). Consumers pin and open sync PRs.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  gdcorp-platform/api-spec                                       │
-│  apis/domains/{v2,v3}/   apis/shoppers/v1/   apis/certificates/v1/ … │
-│  • Humans edit OpenAPI in their product/version folder          │
-│  • Spectral + oasdiff path-filtered per version tree            │
-│  • CODEOWNERS per apis/<product>/                               │
-│  • Architecture review process stays in this repo               │
+│  gdcorp-platform/<domain>.<capability>-specification            │
+│  (SSOT — humans edit here; one repo per capability)             │
+│  Example: domains.domain-lifecycle-specification/v3/schemas/    │
+│  • Spectral lint + oasdiff on every PR                          │
+│  • Release workflow → artifact + tag                            │
+│  • Notify hardcoded consumers (reusable workflow / template)    │
+│                                                                 │
+│  gdcorp-platform/api-spec  (review gate + legacy Swagger store) │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ merge → release ONLY changed trees
+                           │ merge → GitHub Release for THIS api only
+                           │ push: repository_dispatch → docs, cli, …
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Publish pipeline (per apis/<product>/<version>/)               │
-│  • Validate + bundle that tree                                  │
-│  • Version: domains/v3@1.4.2 (independent of domains/v2, etc.)  │
-│  • Upload immutable artifact (checksum + CHANGELOG)             │
+│  Consumer sync workflows (one per consumer repo)                │
+│  • Pull exact artifact (checksum)                               │
+│  • Update pins.json + that API’s vendored/codegen slice only    │
+│  • Open PR (auto-merge patch/minor optional)                    │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
            ┌───────────────┼───────────────┐
            ▼               ▼               ▼
    ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐
-   │ docs portal  │ │ service repos│ │ consumer repos       │
-   │ pin + sync   │ │ (pin+verify) │ │ (gddy, SDKs, etc.)   │
-   │ that package │ │              │ │ pin per product/ver  │
+   │ docs portal  │ │ service repos│ │ godaddy/cli          │
+   │ pin + generate│ │ (pin+verify) │ │ pin + codegen        │
    └──────────────┘ └──────────────┘ └──────────────────────┘
 ```
 
-> **Migration:** Today many contracts live in
-> `gdcorp-platform/<domain>.<capability>-specification`. Treat those as sources
-> to import into `api-spec/apis/<product>/<version>/`; do not keep spawning new
-> repos long-term. Details:
-> [API_SPEC_REPO_ANALYSIS_SSOT.md](./API_SPEC_REPO_ANALYSIS_SSOT.md) Part 5b.
+> **Implementation detail:** see
+> [API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md).
+> Each `*-specification` needs publish+notify (share via reusable workflow);
+> docs/CLI each need one sync handler keyed by `packageId`.
 
 ### Repository roles
 
 | Repository | Role | Who edits | Sync mechanism |
 |------------|------|-----------|----------------|
-| `gdcorp-platform/api-spec` | **Canonical SSOT monorepo** (`apis/<product>/<version>/`) | Capability teams via PR + CODEOWNERS | N/A — source; publishes per-tree artifacts |
-| `*-specification` (legacy) | Migration source until cutover | Same teams | Archive after import |
-| `api-specification-aggregator` | Temporary discovery while federated | Submodule pins | Retire when monorepo is complete |
-| `gdcorp-commerce/developer-ecosystem-documentation` | **Published developer docs** | Guides: humans; `openapi-specs/specs/`: bot only | Automated PR from **per-tree** releases → `registry.ts` pipeline |
-| Team service repos | **Implementation** | Service teams | Pin that product/version package; CI verifies |
-| `godaddy/cli` | **CLI API catalog / clients** | Nobody (generator only) | Pin per product/version; regen check |
+| `gdcorp-platform/<domain>.<capability>-specification` | **Canonical contract** | Capability team (via PR) | Release + notify hardcoded consumers |
+| `gdcorp-platform/api-specification-template` | Bootstrap + reusable release/notify workflow | Platform | New repos inherit caller workflow |
+| `gdcorp-platform/api-spec` | **Review / legacy registry** | API owners via architecture review | Not the Domains v3 write path |
+| `gdcorp-platform/api-specification-aggregator` | **Discovery view** | Submodule pins only | Manual submodule add for new repos |
+| `gdcorp-commerce/developer-ecosystem-documentation` | **Published developer docs** | Guides: humans; `openapi-specs/specs/`: bot only | `repository_dispatch` → pin PR |
+| Team service repos | **Implementation** | Service teams | Pin package; CI verifies |
+| `godaddy/cli` | **CLI API catalog / clients** | Nobody (generator only) | `repository_dispatch` → pin + regen |
 
 ---
 
@@ -120,74 +134,43 @@ Key lesson: **the spec is an artifact, not a document teams copy around.**
 
 ## Versioning Strategy
 
-Version **each `apis/<product>/<version>/` tree independently**. Document the
-scheme in `api-spec/CONTRIBUTING.md`. Do **not** ship a single repo-wide semver
-that republishes every API.
+Version **each `*-specification` repository independently** (natural isolation).
+Document the scheme in the template’s `CONTRIBUTING` / README. Prefer tags like
+`v1.4.2` or `domains-v3@1.4.2` plus an immutable release asset.
 
-Prefer nested paths (`apis/domains/v3/`) over flat folder names (`domains-v3/`).
-Flat ids remain OK only as **pin/registry keys**.
+Pin keys in consumers may still use `domains/v3` for clarity even though the
+source repo is `domains.domain-lifecycle-specification`.
 
 ### Two version axes
 
 | Axis | Meaning | Example |
 |------|---------|---------|
-| API version (folder) | Public contract generation | `v3` under `apis/domains/` |
-| Spec package semver | Revisions of that OpenAPI doc | `domains/v3@1.4.2` |
-
-### Option A: Semver per version tree (recommended for REST OpenAPI)
-
-- Package id: `domains/v3`, `shoppers/v1`, …
-- Version: `1.2.3` — patch = docs/examples only; minor = additive; major = breaking **within that API generation**.
-- Tag: `domains/v3@1.2.3`.
-- New public HTTP generation → new folder (`domains/v4/`), not only a package bump under `v3`.
-
-### Option B: Date-version per version tree (Stripe-style)
-
-- `domains/v3@2026-08-28` — rolling versions named by release date for that tree.
-- Backward-incompatible changes ship in new date versions; old versions supported for N months.
+| API version (folder) | Public contract generation | `v3/` in the Domains specification repo |
+| Spec package semver | Revisions of that OpenAPI doc | release `v1.4.2` |
 
 ### Artifact format
 
-Each publish produces **one version tree** (not the whole monorepo):
+Each publish produces **that repo’s** OpenAPI tree:
 
 ```text
 domains-v3-1.2.3/
   openapi.yaml
   openapi.json
   models/…
-  manifest.json     # product, apiVersion, packageVersion, checksums
-  CHANGELOG.md      # domains/v3 only
-```
-
-Optional generated index (not a consumer pin):
-
-```text
-catalog.json        # { "domains/v3": "1.2.3", "shoppers/v1": "2.1.0", … }
-```
-
-`manifest.json` example:
-
-```json
-{
-  "product": "domains",
-  "apiVersion": "v3",
-  "packageVersion": "1.2.3",
-  "publishedAt": "2026-08-28T14:00:00Z",
-  "files": [
-    { "path": "openapi.yaml", "sha256": "abc123..." }
-  ]
-}
+  manifest.json
+  CHANGELOG.md
 ```
 
 ### How consumers consume a release
 
 | Consumer | Mechanism |
 |----------|-----------|
-| Developer portal | Release webhook → bot updates only that key under `openapi-specs/specs/` + `pins.json` → `bundle-specs` / `generate` → docs PR |
-| CLI / SDKs | Pin file lists `domains/v3@1.2.3`; fetch artifact; regen that client only |
-| Service repos | Same pin; contract tests against the artifact |
+| Developer portal | Spec-repo notify → pull artifact → `pins.json` + specs dir → generate → PR |
+| CLI / SDKs | Same notify → pin + codegen → PR |
+| Service repos | Same pin pattern |
 
-See analysis Part 5b for the full pin shape and path-filtered publish flow.
+Hardcoded consumer list lives in the **reusable** release/notify workflow shared
+by specification repos. See the walkthrough.
 ---
 
 ## Breaking Change Policy
@@ -211,14 +194,14 @@ Enforcement: **oasdiff** (or openapi-diff) in CI compares PR branch against `mai
 
 ## Automated Gate Stack
 
-### Layer 1: Authoring (api-spec PR)
+### Layer 1: Authoring (`*-specification` PR)
 
 | Check | Tool | Blocks merge when |
 |-------|------|-------------------|
 | Lint | [Spectral](https://stoplight.io/open-source/spectral) | Invalid OpenAPI, missing `operationId`, bad naming |
 | Breaking change | [oasdiff](https://github.com/Tufin/oasdiff) | Breaking diff without approval |
 | Examples | Spectral custom rule | Missing request/response examples on public ops |
-| Ownership | GitHub CODEOWNERS | PR merged without domain owner review |
+| Ownership | GitHub CODEOWNERS / team | PR merged without capability owner review |
 
 Example Spectral rules to enable early:
 
@@ -226,14 +209,14 @@ Example Spectral rules to enable early:
 - `info-contact` — contact block present.
 - `oas3-api-servers` — servers defined per environment.
 
-### Layer 2: Publish (api-spec merge to main)
+### Layer 2: Publish (`*-specification` merge → release + notify)
 
 | Step | Action |
 |------|--------|
-| 1 | Bundle/dereference specs (resolve `$ref`) |
+| 1 | Bundle/dereference OpenAPI (resolve `$ref`, including common-types) |
 | 2 | Compute checksums |
-| 3 | Create GitHub Release `v1.2.3` with artifact tarball |
-| 4 | Trigger downstream sync workflows |
+| 3 | Create GitHub Release with artifact tarball |
+| 4 | **Notify hardcoded consumers** (`repository_dispatch` to docs + CLI) via reusable workflow |
 
 ### Layer 3: Downstream sync (docs repo)
 
@@ -257,178 +240,154 @@ Example Spectral rules to enable early:
 
 | Check | Tool | Blocks merge when |
 |-------|------|-------------------|
-| Regen diff | `cargo run -p generate-api-catalog` | Catalog changes without manifest pin bump |
+| Regen diff | `cargo run -p generate-api-catalog` | Catalog changes without pin bump |
 | Codegen diff | progenitor / openapi-generator | Generated client changes unexpectedly |
 
-The `gddy` CLI already discovers specs from `gdcorp-platform` repos via `generate-api-catalog`. After SSOT adoption, it should pin to **released artifacts** from `api-spec` rather than cloning arbitrary repos.
+The `gddy` CLI should pin to **released artifacts** from the relevant
+`*-specification` repo (not clone arbitrary tips). Detailed phased checklist:
+[API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md) §8
+is the **canonical checklist**. The tables below match that plan.
+
+---
+
+## Roles of `api-spec` vs `*-specification` (do not dual-source)
+
+| Repo | Role | Portal / CLI should pin from it? |
+|------|------|----------------------------------|
+| `*-specification` (e.g. Domains Lifecycle) | **Editable SSOT** for that modern API | **Yes** — one pin per API |
+| `api-spec` | **Architecture review gate** + **legacy** Swagger/OAS catalog (exposure Private→Published; `@API Designers`) | **Only** for APIs whose true editable source is still only there (e.g. older Domains v1/v2). **Never** also copy Domains v3 from `api-spec` |
+
+**Rule:** one public API version → one upstream repo → one pin.
 
 ---
 
 ## Implementation Work Breakdown
 
-### Phase 0: Baseline & Policy (2–4 weeks)
+### Phase 0: Baseline & policy (1–2 weeks)
 
-**Deliverable:** api-spec has lint + breaking-change gates; policy documented.
+**Deliverable:** Agreed federated SSOT model; inventory of which portal keys map to which `*-specification` (vs legacy `api-spec`).
 
 | ID | Task | Owner | Verification |
 |----|------|-------|--------------|
-| 0.1 | Inventory all spec locations (api-spec, docs repo, team repos, gddy `schemas/api/`) | Platform | Spreadsheet or catalog JSON |
-| 0.2 | Assign CODEOWNERS per API domain in api-spec | Platform + domain leads | PR requires owner approval |
-| 0.3 | Add Spectral config (`.spectral.yaml`) with baseline rules | Platform | `spectral lint` passes locally |
-| 0.4 | Add oasdiff breaking-change check to api-spec PR CI | Platform | PR with removed field fails CI |
-| 0.5 | Write `CONTRIBUTING.md`: versioning, breaking policy, deprecation | Platform | Reviewed by 2+ domain owners |
-| 0.6 | Add `deprecated: true` + removal date convention to policy | Platform | Example in CONTRIBUTING |
-| 0.7 | Announce SSOT initiative to API-owning teams | Platform PM | Slack/email with timeline |
-
-**Manual test:**
-
-```bash
-# In api-spec repo
-spectral lint openapi/domains-v3.yaml
-oasdiff breaking openapi/domains-v3.yaml openapi/domains-v3-main.yaml
-```
+| 0.1 | Inventory portal `registry.ts` keys → upstream repo (spec repo vs `api-spec` vs unknown) | Platform + Docs | Spreadsheet / `pins.json` stub |
+| 0.2 | Confirm non-goal: no monorepo migration into `api-spec` | Platform | Written in design docs |
+| 0.3 | Confirm hardcoded consumers: docs + `godaddy/cli` (+ optional service) | Platform | List in reusable workflow design |
+| 0.4 | Document one-pin-one-source rule (no dual copy) | Platform | In CONTRIBUTING / walkthrough |
+| 0.5 | Document versioning + breaking-change policy for specification repos | Platform | Template README / CONTRIBUTING |
+| 0.6 | Announce initiative to capability teams | Platform PM | Slack/email |
+| 0.7 | Pilot choice: `domains.domain-lifecycle-specification` only | Platform + Domains | Signed off |
 
 ---
 
-### Phase 1: Publish Pipeline + Docs Sync (4–6 weeks)
+### Phase 1: Publisher workflow on Domains + reusable template (2–4 weeks)
 
-**Deliverable:** Merging api-spec main publishes versioned artifact and opens PR to docs repo.
+**Deliverable:** Domains specification repo releases an OpenAPI artifact and notifies docs + CLI.
 
 | ID | Task | Owner | Verification |
 |----|------|-------|--------------|
-| 1.1 | Create `publish.yml` workflow on api-spec main merge | Platform | Release artifact on test merge |
-| 1.2 | Implement spec bundling/dereference step | Platform | No unresolved `$ref` in artifact |
-| 1.3 | Generate `manifest.json` with checksums | Platform | Manifest validates against files |
-| 1.4 | Create GitHub Release with semver tag | Platform | Release visible with assets |
-| 1.5 | Build docs-sync bot workflow | Platform | Bot opens PR to docs repo |
-| 1.6 | Configure docs repo branch protection (no direct spec edits) | Docs team | Direct push rejected |
-| 1.7 | Add spec version badge to docs site (version + date) | Docs team | Badge shows current release |
-| 1.8 | Migrate one pilot API (e.g. Domains v3) end-to-end | Domains team | Docs match api-spec release |
-| 1.9 | Document rollback procedure (re-publish previous version) | Platform | Runbook tested once |
+| 1.1 | Spectral + oasdiff on Domains `*-specification` CI | Domains + Platform | Breaking PR fails CI |
+| 1.2 | Bundle/dereference OpenAPI (incl. common-types) → artifact + checksum | Platform | Clean bundled OpenAPI |
+| 1.3 | GitHub Release on merge/tag from Domains repo | Domains + Platform | Release + asset visible |
+| 1.4 | Hardcoded `repository_dispatch` to docs + CLI | Platform | Dispatch received |
+| 1.5 | Extract **reusable** release+notify workflow | Platform | Reusable workflow callable |
+| 1.6 | Add caller workflow to `api-specification-template` | Platform | New-from-template repos inherit |
+| 1.7 | Document rollback (re-notify prior release / pin) | Platform | Runbook once |
 
-**Publish workflow sketch (api-spec):**
+**Publish sketch (on each `*-specification`, calling reusable workflow):**
 
 ```yaml
-# .github/workflows/publish.yml
-name: Publish API Spec
+# .github/workflows/release.yml  (in domains.domain-lifecycle-specification)
+name: Release OpenAPI
 on:
   push:
-    branches: [main]
+    branches: [main, develop]  # per-repo default
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lint
-        run: npx @stoplight/spectral-cli lint '**/*.{yaml,yml,json}'
-      - name: Bundle specs
-        run: ./scripts/bundle-specs.sh
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          files: dist/**
+  release:
+    uses: gdcorp-platform/api-specification-template/.github/workflows/release-and-notify.yml@main
+    with:
+      package_id: domains/v3
+      # consumers hardcoded inside the reusable workflow
+    secrets: inherit
 ```
-
-**Docs sync workflow sketch:**
-
-```yaml
-# Triggered by repository_dispatch from api-spec publish
-- name: Update specs in docs repo
-  run: |
-    curl -L -o dist/api-spec-${{ inputs.version }}.tar.gz \
-      https://github.com/gdcorp-platform/api-spec/releases/download/v${{ inputs.version }}/api-spec.tar.gz
-    tar xzf dist/api-spec-*.tar.gz -C content/specs/
-- name: Open PR
-  uses: peter-evans/create-pull-request@v6
-  with:
-    title: "chore(specs): sync api-spec v${{ inputs.version }}"
-    branch: sync/api-spec-v${{ inputs.version }}
-```
-
-**Manual test:**
-
-1. Merge a non-breaking change to api-spec main.
-2. Confirm GitHub Release created.
-3. Confirm bot PR opened in developer-ecosystem-documentation.
-4. Merge bot PR; verify docs site shows updated spec.
 
 ---
 
-### Phase 2: Service Repo Adoption (6–10 weeks)
+### Phase 2: Developer portal sync (2–4 weeks)
 
-**Deliverable:** Pilot services pin published artifact and verify runtime in CI.
+**Deliverable:** Domains release opens a docs PR that updates only `domains-v3` + pin.
 
 | ID | Task | Owner | Verification |
 |----|------|-------|--------------|
-| 2.1 | Create reusable GitHub Action: `pin-api-spec@v1` | Platform | Action downloads + pins artifact |
-| 2.2 | Add `api-spec-version` field to service repo config | Platform | Documented in template |
-| 2.3 | Pilot Domains service: pin + Schemathesis in CI | Domains team | CI fails on impl drift |
-| 2.4 | Pilot Hosting service: same pattern | Hosting team | CI green on matching impl |
-| 2.5 | Add PR check: local spec must match pinned artifact | Platform | Edited local copy fails CI |
-| 2.6 | Template repo for new services includes pin + verify | Platform | New service scaffold works |
-| 2.7 | Roll out to remaining GA APIs (rolling schedule) | Domain owners | Tracker shows adoption % |
-| 2.8 | Add deprecation enforcement: code cannot remove before spec marks deprecated | Platform | CI catches premature removal |
+| 2.1 | Add `openapi-specs/pins.json` per §5.2 schema (`domains/v3` entry) | Docs | Pin committed; schema-valid |
+| 2.2 | Add `openapi-specs/package-map.json` (`packageId` → specsDir + registryKey) | Docs | Lookup fails closed for unknown ids |
+| 2.3 | `sync-api-spec.yml` on `repository_dispatch` (reads package-map) | Docs | Workflow runs on dispatch |
+| 2.4 | Replace specs tree + generate + open PR | Docs | PR title includes version |
+| 2.5 | Branch protection: bot-only on `openapi-specs/specs/**` | Docs | Human direct edit blocked |
+| 2.6 | Auto-merge patch/minor; human review major | Docs | Policy live |
+| 2.7 | Optional: show package version on reference pages | Docs | Footer/badge |
+| 2.8 | E2E: Domains tag → portal PR → site shows change | Domains + Docs | Manual test pass |
 
-**Service repo CI sketch:**
+**Docs sync sketch:**
 
 ```yaml
-- name: Download pinned api-spec
-  run: |
-    VERSION=$(cat .api-spec-version)
-    gh release download "v${VERSION}" --repo gdcorp-platform/api-spec -D spec/
+# Triggered by repository_dispatch from the specification repo
+on:
+  repository_dispatch:
+    types: [api-spec-release]
+# Pull client_payload.assetUrl, verify sha256, update only mapped path + pins.json
+```
 
+---
+
+### Phase 3: CLI consumer pinning (1–3 weeks, parallel with Phase 2)
+
+**Deliverable:** `godaddy/cli` pins Domains release; regen-check enforced.
+
+| ID | Task | Owner | Verification |
+|----|------|-------|--------------|
+| 3.1 | Add `pins.json` (or equivalent) for `domains/v3` | CLI | Pin committed |
+| 3.2 | Sync workflow on same `api-spec-release` dispatch | CLI | PR opened on Domains release |
+| 3.3 | Fetch release asset (not live clone tip) for codegen/catalog | CLI | Generator uses pin |
+| 3.4 | CI regen-check fails without pin bump | CLI | Drift PR fails |
+| 3.5 | Document upgrade runbook | CLI + Platform | Team can follow |
+
+---
+
+### Phase 4: Roll out more APIs + drift (ongoing)
+
+**Deliverable:** Additional `*-specification` repos notify; drift visible.
+
+| ID | Task | Owner | Verification |
+|----|------|-------|--------------|
+| 4.1 | **Backport** thin release+notify caller to existing `*-specification` repos (portal-backed first; template does not auto-update old repos) | Capability teams + Platform | Each fires dispatch |
+| 4.1a | **Script** to open batch PRs (`targets.csv` / package-map → add `.github/workflows/release.yml` caller); App/PAT with cross-repo PR rights | Platform | Dry-run on 2–3 repos; then wave |
+| 4.2 | Extend docs/CLI mappings per new `packageId` | Docs + CLI | Pins update independently |
+| 4.3 | Weekly job: pins vs latest GitHub Releases on `sourceRepo` | Platform | Slack drift report |
+| 4.4 | New template repos include caller by default; aggregator submodule add still manual | Platform | Checklist for new APIs |
+| 4.5 | Legacy APIs still only in `api-spec`: decide migrate-to-spec-repo vs stay pinned from `api-spec` | Platform | Per-API decision recorded |
+
+---
+
+### Phase 5: Service implementation verification (later / parallel)
+
+**Deliverable:** Pilot services pin the **same** Domains artifact and contract-test.
+
+| ID | Task | Owner | Verification |
+|----|------|-------|--------------|
+| 5.1 | Reusable action/script: download pinned release from `sourceRepo` | Platform | Action works |
+| 5.2 | Pilot Domains service: pin + Schemathesis (or equivalent) | Domains | CI fails on impl drift |
+| 5.3 | Block local OpenAPI edits without pin bump | Platform | CI gate |
+| 5.4 | Roll out to other GA services on a schedule | Domain owners | Adoption tracker |
+
+```yaml
+- name: Download pinned specification release
+  run: |
+    # Read pins.json / .api-spec-pin → sourceRepo + tag
+    gh release download "$TAG" --repo "$SOURCE_REPO" -D spec/
 - name: Contract test
-  run: |
-    schemathesis run spec/domains-v3/openapi.yaml \
-      --base-url "${{ env.TEST_SERVICE_URL }}" \
-      --checks all
+  run: schemathesis run spec/openapi.yaml --base-url "$TEST_SERVICE_URL" --checks all
 ```
-
-**Manual test:**
-
-1. Deploy service to test environment.
-2. Run Schemathesis locally against test URL.
-3. Introduce intentional response shape change; confirm CI fails.
-
----
-
-### Phase 3: Consumer Pinning (4–6 weeks, parallel with Phase 2)
-
-**Deliverable:** gddy CLI and other consumers pin to released spec versions.
-
-| ID | Task | Owner | Verification |
-|----|------|-------|--------------|
-| 3.1 | Add `api-spec-version` pin to cli `generate-api-catalog` manifest | CLI team | Manifest file committed |
-| 3.2 | Change catalog generator to fetch from GitHub Release, not live repo clone | CLI team | Generator uses release asset |
-| 3.3 | CI check: regen produces no diff unless pin bumped | CLI team | PR with drift fails CI |
-| 3.4 | Document consumer upgrade process in api-spec CHANGELOG | Platform | CLI team can follow runbook |
-| 3.5 | Identify other consumers (SDK gen, portal, partner tools) | Platform | Consumer inventory complete |
-| 3.6 | Roll out pinning to top 3 consumers | Consumer owners | Each has CI gate |
-
-**Manual test:**
-
-```bash
-cd rust
-# Bump pin in schemas/api-source-manifest.toml (or equivalent)
-cargo run -p generate-api-catalog
-git diff schemas/api/   # should be empty if pin unchanged
-```
-
----
-
-### Phase 4: Observability & Governance (ongoing)
-
-**Deliverable:** Drift is visible; owners accountable.
-
-| ID | Task | Owner | Verification |
-|----|------|-------|--------------|
-| 4.1 | Weekly drift job: compare api-spec vs all registered service copies | Platform | Report in Slack/email |
-| 4.2 | Dashboard: spec version per service vs latest release | Platform | Stale services visible |
-| 4.3 | Add `catalog-info.yaml` per API (Backstage-compatible) | Domain owners | Entity links to spec URL |
-| 4.4 | Quarterly review: breaking changes, deprecation cleanup | Platform + owners | Meeting notes archived |
-| 4.5 | Optional: Pact/Specmatic for top 5 provider-consumer pairs | Platform | Compatibility matrix green |
 
 ---
 
@@ -436,29 +395,30 @@ git diff schemas/api/   # should be empty if pin unchanged
 
 | Role | Responsibilities |
 |------|------------------|
-| **Platform team** | Own api-spec repo, publish pipeline, policies, shared Actions |
-| **API domain owner** | Review PRs for their domain; approve breaking changes |
-| **Service team** | Pin artifact; keep implementation matching spec; no local spec edits |
-| **Docs team** | Merge bot PRs; maintain docs site; no manual spec authoring |
-| **Consumer team (CLI/SDK)** | Pin releases; regen on bump; report spec gaps via api-spec issues |
+| **Capability team** | Own `*-specification` OpenAPI; version bumps; merge releases |
+| **Platform team** | Reusable release+notify workflow, template, drift jobs, policy |
+| **Docs team** | Sync workflow, `pins.json`, merge pin PRs; no hand-edited OpenAPI |
+| **CLI team** | Sync workflow, pins, regen-check |
+| **Service team** | Pin artifact; keep runtime matching; no forked SSOT |
+| **API Designers (`api-spec`)** | Continue architecture review for APIs still on that process / legacy catalog |
 
 ---
 
-## Migration Strategy
+## Migration Strategy (rollout waves — not monorepo)
 
-Do not big-bang migrate all APIs at once.
+Do **not** consolidate into `api-spec`. Roll out **automation** wave by wave:
 
-1. **Pilot:** Domains v3 (already used by gddy CLI) — highest visibility, existing catalog generator.
-2. **Wave 2:** Hosting, Shoppers, Certificates — REST APIs with active CLI/docs usage.
-3. **Wave 3:** Remaining public APIs.
-4. **Internal-only APIs:** Optional separate artifact channel or `preview/` directory (Stripe pattern).
+1. **Pilot:** Domains Lifecycle v3 (`domains.domain-lifecycle-specification`) → docs + CLI.
+2. **Wave 2:** High-traffic commerce/capability `*-specification` repos already on the portal.
+3. **Wave 3:** Remaining Published APIs on `*-specification`.
+4. **Legacy:** APIs that exist only in `api-spec` — either migrate into a new `*-specification` (from template) or keep a separate pin from `api-spec` until retired. Never dual-source.
 
-For each wave:
+For each API:
 
-1. Freeze manual edits in docs repo for that API.
-2. Enable publish + bot sync.
-3. Notify service team to pin + add contract tests.
-4. Remove stale copies from team repos after 30-day grace period.
+1. Freeze manual portal edits for that key.
+2. Enable release+notify on its specification repo.
+3. Add mapping + pin on docs/CLI.
+4. Remove stale hand copies after grace period.
 
 ---
 
@@ -466,12 +426,11 @@ For each wave:
 
 | Metric | Target (6 months) |
 |--------|-------------------|
-| APIs published via SSOT pipeline | 100% of public GA APIs |
-| Docs repo manual spec edits | 0 |
-| Service repos with pinned artifact + CI verify | 80% of GA services |
-| Consumer repos with pinned artifact | 100% of platform-owned consumers |
-| Incidents caused by spec/impl drift | Trending to zero |
-| Mean time to propagate spec change to docs | < 24 hours (automated) |
+| Modern portal APIs with pin → `*-specification` release | 100% of in-scope GA |
+| Docs manual OpenAPI edits for pinned APIs | 0 |
+| Mean time Domains release → docs PR | &lt; 1 hour |
+| CLI pin matches Domains release when intended | Measurable via pins |
+| Incidents from spec/docs drift | Trending to zero |
 
 ---
 
@@ -479,21 +438,22 @@ For each wave:
 
 | Risk | Mitigation |
 |------|------------|
-| Teams resist giving up local spec copies | Phased rollout; template repos; CI makes local edits fail |
-| Bot PR backlog in docs repo | Auto-merge for patch/minor; owner review only for major |
-| Cross-org GitHub App permissions | Platform admin sets up org-wide app early |
-| Flaky contract tests | Run against dedicated test env; retry transient failures only |
-| api-spec becomes bottleneck | CODEOWNERS per domain; domain owners approve, platform merges |
+| Copy-paste workflows across 80 repos | Reusable workflow in template |
+| Missed dispatch | Weekly drift job |
+| Dual-sourcing same API from `api-spec` + spec repo | Inventory + one-pin rule; CI on pins |
+| Cross-org token for notify | GitHub App early |
+| Bot PR backlog | Auto-merge patch/minor |
+| Teams still hand-edit portal YAML | Branch protection |
 
 ---
 
 ## Open Questions
 
-1. **Who owns api-spec today vs who should?** Platform vs federated domain owners?
-2. **Semver vs date-version?** REST public APIs often use semver; Stripe uses dates.
-3. **GraphQL APIs?** May need schema registry instead of OpenAPI-only pipeline.
-4. **Internal vs external specs?** Separate artifact channels (`/latest/` vs `/preview/` like stripe/openapi)?
-5. **OTE vs prod spec divergence?** Environment-specific server URLs vs separate spec files?
+1. **Tag scheme** per repo: `v1.4.2` vs `domains-v3@1.4.2`?
+2. **Semver vs date-version** for package releases?
+3. **GraphQL** — keep `SOURCE.md` refresh or same notify pattern?
+4. **Which legacy `api-spec` APIs** must stay on portal long-term?
+5. Does Published review still require an `api-spec` PR **in addition to** the `*-specification` repo, or is review shifting?
 
 ---
 
@@ -515,11 +475,13 @@ For each wave:
 
 | System | Relationship to SSOT |
 |--------|---------------------|
-| `gdcorp-platform/api-spec` | Becomes canonical source |
-| `developer-ecosystem-documentation` | Downstream sync target (bot PRs) |
-| `godaddy/cli` `generate-api-catalog` | Consumer — pin to releases |
-| `godaddy/cli` `domains-client` | Generated from pinned Domains v3 spec |
-| `gddy api call` | Depends on stable `operationId` in spec |
+| `gdcorp-platform/*-specification` | **Canonical editable OpenAPI** per capability |
+| `gdcorp-platform/api-specification-template` | Bootstrap + reusable release/notify |
+| `gdcorp-platform/api-spec` | Architecture review + legacy catalog — not Domains v3 SSOT |
+| `gdcorp-platform/api-specification-aggregator` | Discovery (submodules) |
+| `developer-ecosystem-documentation` | Downstream pin + generate |
+| `godaddy/cli` | Downstream pin + codegen/catalog |
+| [Domains v3 portal](https://developer.godaddy.com/en/docs/references/rest/domains/v3) | Published derivative of Domains pin |
 
 ---
 
@@ -527,21 +489,27 @@ For each wave:
 
 ```
 Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3
-(baseline)   (publish)   (services)  (consumers)
- 2-4 wk       4-6 wk      6-10 wk     4-6 wk
+(policy)    (Domains     (docs       (CLI pin)
+             release+     sync)
+             notify)
+ 1-2 wk      2-4 wk       2-4 wk      1-3 wk
                 │              │
-                └──── Phase 4 (ongoing: drift, catalog, governance)
+                └──── Phase 4 (roll out more APIs + drift)
+                └──── Phase 5 (service contract tests, later)
 ```
 
-**Total to full adoption:** ~6–9 months with phased waves.
+**Pilot (Domains → docs + CLI):** ~6–10 weeks. Broader adoption: rolling.
 
 ---
 
 ## References
 
+- [Walkthrough (implementation)](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md)
+- [Repo analysis](./API_SPEC_REPO_ANALYSIS_SSOT.md)
 - [Stripe: API versioning](https://stripe.com/blog/api-versioning)
 - [Stripe: How API changes flow into developer products](https://stripe.dev/blog/how-api-changes-flow-into-stripes-developer-products)
 - [stripe/openapi](https://github.com/stripe/openapi)
-- [Specmatic: Central contract repository](https://docs.specmatic.io/contract_driven_development/contract_repositories/central_contract_repository)
-- [DeployIt: CI-first OpenAPI workflow](https://deployit.ai/blog/keep-api-docs-in-sync-with-code-a-ci-first-workflow)
 - [GoDaddy REST API Reference](https://developer.godaddy.com/en/docs/references/rest)
+- [api-spec README (review process)](https://github.com/gdcorp-platform/api-spec/blob/master/README.md)
+- [domains.domain-lifecycle-specification](https://github.com/gdcorp-platform/domains.domain-lifecycle-specification)
+- [api-specification-template](https://github.com/gdcorp-platform/api-specification-template)
