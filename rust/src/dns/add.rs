@@ -163,6 +163,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             name: name.as_str(),
                             desired_type: record_type.as_str(),
                             desired_data: value.as_str(),
+                            opts: &opts,
                             action: "adding DNS record",
                             debug,
                         },

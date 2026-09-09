@@ -356,6 +356,28 @@ pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
     )
 }
 
+/// Whether two v3 records have the same content — every field except `ttl`
+/// and `recordId`, neither of which makes two records a different *value*
+/// (a TTL-only change was never treated as a new value, and `recordId` only
+/// ever exists on a fetched record, never a desired one). Used by
+/// duplicate/no-op detection so a record type whose identity spans several
+/// fields (CAA's `flag`/`tag`, SRV's `priority`/`weight`/`port`, TLSA's
+/// `usage`/`selector`/`matchingType`, HTTPS/SVCB's `priority`/`parameters`)
+/// isn't misjudged by comparing only [`record_value`]. Compares via JSON
+/// rather than a hand-maintained field list, so a future `DnsRecord` field
+/// is covered without another update here.
+pub(super) fn same_content(a: &types::DnsRecord, b: &types::DnsRecord) -> bool {
+    let strip = |r: &types::DnsRecord| {
+        let mut v = serde_json::to_value(r).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("ttl");
+            obj.remove("recordId");
+        }
+        v
+    };
+    strip(a) == strip(b)
+}
+
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
 /// filters, paging through the collection (v3 list is paginated). Shared by
 /// `list`, `set`, and `delete` — the latter two need the matching records' ids.
@@ -627,5 +649,36 @@ mod tests {
         let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
         let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
         assert_eq!(merged_tlsa_data(&tlsa), format!("3 1 1 {cert}"));
+    }
+
+    #[test]
+    fn same_content_compares_every_field_except_ttl_and_record_id() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let mut tlsa_opts = opts();
+        tlsa_opts.usage = Some(3);
+        tlsa_opts.selector = Some(1);
+        tlsa_opts.matching_type = Some(1);
+        tlsa_opts.ttl = Some(600);
+        let mut existing = v3_record("www", "TLSA", cert, &tlsa_opts);
+        existing.record_id = Some("r1".to_string());
+
+        // Identical content, different ttl/recordId → still the same record.
+        let desired = v3_record("www", "TLSA", cert, &tlsa_opts);
+        assert!(same_content(&existing, &desired));
+
+        // Same cert data, different usage → not the same record.
+        let mut different_usage = tlsa_opts;
+        different_usage.usage = Some(1);
+        let desired = v3_record("www", "TLSA", cert, &different_usage);
+        assert!(!same_content(&existing, &desired));
+
+        // CAA: same domain value, different tag → not the same record.
+        let mut caa_opts = opts();
+        caa_opts.tag = Some("issue".to_string());
+        let existing_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts);
+        let mut caa_opts_wild = opts();
+        caa_opts_wild.tag = Some("issuewild".to_string());
+        let desired_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts_wild);
+        assert!(!same_content(&existing_caa, &desired_caa));
     }
 }

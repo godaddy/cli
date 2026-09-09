@@ -8,8 +8,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
 use super::records::{
-    RecordOptions, RecordWriteArgs, fetch_records, record_value, validate_caa_fields,
-    validate_svcb_fields, validate_tlsa_fields, validate_tlsa_values,
+    RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields, validate_svcb_fields,
+    validate_tlsa_fields, validate_tlsa_values,
 };
 
 mod outcome;
@@ -183,14 +183,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             .find(|r| r.record_id.as_deref() == Some(record_id.as_str()));
                         let old_detail = record_label(&existing, &record_type, &record_id);
                         outcomes.extend(
-                            apply_replace(
-                                &client,
-                                &req,
-                                &record_id,
-                                &old_detail,
-                                old_record.and_then(record_value),
-                            )
-                            .await,
+                            apply_replace(&client, &req, &record_id, &old_detail, old_record).await,
                         );
                     }
                     SetAction::Create { data: value } => {

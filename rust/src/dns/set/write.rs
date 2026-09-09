@@ -7,7 +7,7 @@ use domains_client::types;
 use crate::dns::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
-use crate::dns::records::{RecordOptions, record_value, v3_record};
+use crate::dns::records::{RecordOptions, record_value, same_content, v3_record};
 use crate::domain::{api_error, format_api_error};
 
 use super::outcome::SetOutcome;
@@ -144,6 +144,7 @@ pub(super) async fn write_with_conflict_handling(
             req.value,
             req.domain,
             req.name,
+            req.opts,
             &at_name,
             true,
         );
@@ -173,13 +174,17 @@ pub(super) async fn write_with_conflict_handling(
 /// is the least-destructive way to emulate one: if the create fails, the old
 /// record is left untouched rather than risking data loss.
 ///
-/// `old_data` is the record's *current* value, if known — when it already
-/// equals `req.value` (a no-op `set`, e.g. re-running the same command, or
-/// only some of several values actually changed) this is a no-op: creating
-/// the "new" value while the identical old record still exists would fail
-/// with v3's exact-duplicate `DUPLICATE_RECORD` (see
+/// `old_record` is the record being replaced, if known — when its content
+/// already matches the desired record (a no-op `set`, e.g. re-running the
+/// same command, or only some of several values actually changed) this is a
+/// no-op: creating the "new" value while the identical old record still
+/// exists would fail with v3's exact-duplicate `DUPLICATE_RECORD` (see
 /// [`crate::dns::conflicts::describe_duplicate_record`]), which isn't a real
-/// failure, just this pairing having nothing to do.
+/// failure, just this pairing having nothing to do. Compares full record
+/// content ([`same_content`]), not just the value — a record type whose
+/// identity spans several fields (CAA's `flag`/`tag`, TLSA's `usage`/
+/// `selector`/`matchingType`, …) could otherwise have a field-only change
+/// wrongly skipped as a no-op.
 ///
 /// Relabels the create outcome's `kind` from `"created"` to `"replaced"` so
 /// `summarize_set_outcomes`'s tallies mean what the user asked for. If the
@@ -192,9 +197,10 @@ pub(super) async fn apply_replace(
     req: &WriteRequest<'_>,
     old_record_id: &str,
     old_detail: &str,
-    old_data: Option<&str>,
+    old_record: Option<&types::DnsRecord>,
 ) -> Vec<SetOutcome> {
-    if old_data == Some(req.value) {
+    let desired = v3_record(req.name, req.record_type, req.value, req.opts);
+    if old_record.is_some_and(|r| same_content(r, &desired)) {
         return vec![SetOutcome::new("replaced", req.value.to_string(), None)];
     }
 
@@ -523,6 +529,28 @@ mod tests {
         }
     }
 
+    fn old_a_record(data: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: None,
+            matching_type: None,
+            selector: None,
+            usage: None,
+            data: Some(data.to_owned()),
+            flag: None,
+            name: "www".to_owned(),
+            parameters: None,
+            port: None,
+            priority: None,
+            protocol: None,
+            record_id: Some("old-1".to_owned()),
+            service: None,
+            tag: None,
+            ttl: 3600,
+            type_: types::DnsRecordType("A".to_owned()),
+            weight: None,
+        }
+    }
+
     #[tokio::test]
     async fn apply_replace_creates_then_deletes_the_old_record() {
         let server = MockServer::start_async().await;
@@ -545,12 +573,13 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
+        let old_record = old_a_record("1.2.3.4");
         let outcomes = apply_replace(
             &client_for(&server),
             &req,
             "old-1",
             "A 1.2.3.4",
-            Some("1.2.3.4"),
+            Some(&old_record),
         )
         .await;
 
@@ -586,12 +615,13 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "1.2.3.4");
+        let old_record = old_a_record("1.2.3.4");
         let outcomes = apply_replace(
             &client_for(&server),
             &req,
             "old-1",
             "A 1.2.3.4",
-            Some("1.2.3.4"),
+            Some(&old_record),
         )
         .await;
 
@@ -608,6 +638,85 @@ mod tests {
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].kind, "replaced");
         assert_eq!(outcomes[0].detail, "1.2.3.4");
+        assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    }
+
+    /// A TLSA record's identity spans `usage`/`selector`/`matchingType`, not
+    /// just its certificate data — keeping the same `--cert-data` while
+    /// changing `--usage` is a real change, not a no-op, even though
+    /// comparing only the value string would say otherwise.
+    #[tokio::test]
+    async fn apply_replace_is_not_a_no_op_when_only_a_sibling_tlsa_field_changes() {
+        let server = MockServer::start_async().await;
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(201).json_body(json!({
+                    "type": "TLSA",
+                    "name": "www",
+                    "ttl": 3600,
+                    "usage": 1,
+                    "selector": 0,
+                    "matchingType": 0,
+                    "certificateData": cert
+                }));
+            })
+            .await;
+        let delete = server
+            .mock_async(|when, then| {
+                when.method(DELETE)
+                    .path("/v3/domains/zones/example.com/dns-records/old-1");
+                then.status(204);
+            })
+            .await;
+
+        let mut opts = write_opts();
+        opts.usage = Some(1);
+        opts.selector = Some(0);
+        opts.matching_type = Some(0);
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "TLSA",
+            value: cert,
+            opts: &opts,
+            replace_conflicting: false,
+            debug: false,
+        };
+        let old_record = types::DnsRecord {
+            certificate_data: Some(cert.to_owned()),
+            matching_type: Some(types::TlsaMatchingType(1)),
+            selector: Some(types::TlsaSelector(1)),
+            usage: Some(types::TlsaUsage(3)),
+            data: None,
+            flag: None,
+            name: "www".to_owned(),
+            parameters: None,
+            port: None,
+            priority: None,
+            protocol: None,
+            record_id: Some("old-1".to_owned()),
+            service: None,
+            tag: None,
+            ttl: 3600,
+            type_: types::DnsRecordType("TLSA".to_owned()),
+            weight: None,
+        };
+        let outcomes = apply_replace(
+            &client_for(&server),
+            &req,
+            "old-1",
+            "TLSA 3 1 1 ...",
+            Some(&old_record),
+        )
+        .await;
+
+        create.assert_async().await;
+        delete.assert_async().await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].kind, "replaced");
         assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
     }
 
@@ -631,12 +740,13 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
+        let old_record = old_a_record("1.2.3.4");
         let outcomes = apply_replace(
             &client_for(&server),
             &req,
             "old-1",
             "A 1.2.3.4",
-            Some("1.2.3.4"),
+            Some(&old_record),
         )
         .await;
 
@@ -676,12 +786,13 @@ mod tests {
 
         let opts = write_opts();
         let req = replace_req(&opts, "9.9.9.9");
+        let old_record = old_a_record("1.2.3.4");
         let outcomes = apply_replace(
             &client_for(&server),
             &req,
             "old-1",
             "A 1.2.3.4",
-            Some("1.2.3.4"),
+            Some(&old_record),
         )
         .await;
 
