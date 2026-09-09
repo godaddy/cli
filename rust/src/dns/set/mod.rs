@@ -7,7 +7,10 @@ use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
-use super::records::{RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields};
+use super::records::{
+    RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields, validate_svcb_fields,
+    validate_tlsa_fields,
+};
 
 mod outcome;
 mod plan;
@@ -96,10 +99,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.write.domain;
             let record_type = args.write.record_type;
             let name = args.write.name;
-            let data = args.write.data;
             let replace_conflicting = args.replace_conflicting_types;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
+            validate_tlsa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            validate_svcb_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            let data = args.write.data;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
@@ -170,14 +177,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             .find(|r| r.record_id.as_deref() == Some(record_id.as_str()));
                         let old_detail = record_label(&existing, &record_type, &record_id);
                         outcomes.extend(
-                            apply_replace(
-                                &client,
-                                &req,
-                                &record_id,
-                                &old_detail,
-                                old_record.and_then(|r| r.data.as_deref()),
-                            )
-                            .await,
+                            apply_replace(&client, &req, &record_id, &old_detail, old_record).await,
                         );
                     }
                     SetAction::Create { data: value } => {

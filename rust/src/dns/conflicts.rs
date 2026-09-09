@@ -7,7 +7,7 @@ use crate::domain::{api_error, format_api_error};
 
 use domains_client::types;
 
-use super::records::fetch_records;
+use super::records::{RecordOptions, fetch_records, record_value, same_content, v3_record};
 
 /// A v3 validation-error body's `details[].issue` codes. Deliberately not
 /// `domain::common`'s `ApiErrorBody` — that type is about rendering a friendly
@@ -68,6 +68,7 @@ pub(super) fn describe_duplicate_record(
     desired_data: &str,
     domain: &str,
     name: &str,
+    opts: &RecordOptions,
     at_name: &[types::DnsRecord],
     can_auto_replace: bool,
 ) -> String {
@@ -106,14 +107,21 @@ pub(super) fn describe_duplicate_record(
                 "`{name}` already has a CNAME record (→ `{}`), which can't coexist with \
                  {desired_type} records — DNS only allows one or the other at a given \
                  name.{remediation}",
-                conflicts[0].data.as_deref().unwrap_or("(no data)"),
+                record_value(conflicts[0]).unwrap_or("(no data)"),
             )
         };
     }
 
+    // Full-content comparison, not just the primary value: CAA's flag/tag,
+    // SRV's priority/weight/port, TLSA's usage/selector/matchingType, and
+    // HTTPS/SVCB's priority/parameters are all part of what makes a record
+    // an "exact duplicate" — matching only `desired_data` would call two
+    // TLSA records with the same cert data but different usage an exact
+    // duplicate even though they're not.
+    let desired = v3_record(name, desired_type, desired_data, opts);
     if at_name
         .iter()
-        .any(|r| r.type_.as_str() == desired_type && r.data.as_deref() == Some(desired_data))
+        .any(|r| r.type_.as_str() == desired_type && same_content(r, &desired))
     {
         return format!("a {desired_type} record with this exact value already exists at {name}.");
     }
@@ -145,6 +153,7 @@ pub(super) struct WriteErrorContext<'a> {
     pub(super) name: &'a str,
     pub(super) desired_type: &'a str,
     pub(super) desired_data: &'a str,
+    pub(super) opts: &'a RecordOptions,
     pub(super) action: &'a str,
     pub(super) debug: bool,
 }
@@ -186,6 +195,7 @@ pub(super) async fn describe_write_error(
             ctx.desired_data,
             ctx.domain,
             ctx.name,
+            ctx.opts,
             &at_name,
             false,
         ),
@@ -228,6 +238,36 @@ mod tests {
         }
     }
 
+    /// A TLSA record as `v3_record` actually builds one: its value lives in
+    /// `certificate_data`, not `data`.
+    fn tlsa_record(cert: &str, usage: u8, selector: u8, matching_type: u8) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: Some(cert.to_string()),
+            usage: Some(types::TlsaUsage(usage)),
+            selector: Some(types::TlsaSelector(selector)),
+            matching_type: Some(types::TlsaMatchingType(matching_type)),
+            data: None,
+            ..dns_record("TLSA", "")
+        }
+    }
+
+    fn opts() -> RecordOptions {
+        RecordOptions {
+            ttl: None,
+            priority: None,
+            port: None,
+            weight: None,
+            protocol: None,
+            service: None,
+            flag: None,
+            tag: None,
+            usage: None,
+            selector: None,
+            matching_type: None,
+            parameters: None,
+        }
+    }
+
     #[test]
     fn duplicate_record_issue_detects_the_v3_issue_code() {
         // The exact body the reporting user got back from a `dns set` CNAME conflict.
@@ -263,13 +303,28 @@ mod tests {
     fn describe_duplicate_record_explains_cname_exclusivity() {
         let at_name = vec![dns_record("CNAME", "parkpage.godaddy.com")];
 
-        let msg = describe_duplicate_record("A", "1.2.3.4", "example.com", "www", &at_name, true);
+        let msg = describe_duplicate_record(
+            "A",
+            "1.2.3.4",
+            "example.com",
+            "www",
+            &opts(),
+            &at_name,
+            true,
+        );
         assert!(msg.contains("already has a CNAME record"), "{msg}");
         assert!(msg.contains("parkpage.godaddy.com"), "{msg}");
         assert!(msg.contains("--replace-conflicting-types"), "{msg}");
 
-        let msg_no_flag =
-            describe_duplicate_record("A", "1.2.3.4", "example.com", "www", &at_name, false);
+        let msg_no_flag = describe_duplicate_record(
+            "A",
+            "1.2.3.4",
+            "example.com",
+            "www",
+            &opts(),
+            &at_name,
+            false,
+        );
         assert!(
             msg_no_flag.contains("dns delete example.com --type CNAME --name www"),
             "{msg_no_flag}"
@@ -285,6 +340,7 @@ mod tests {
             "target.example.net",
             "example.com",
             "www",
+            &opts(),
             &others,
             true,
         );
@@ -298,6 +354,7 @@ mod tests {
             "target.example.net",
             "example.com",
             "www",
+            &opts(),
             &others,
             false,
         );
@@ -315,18 +372,70 @@ mod tests {
     fn describe_duplicate_record_names_exact_and_generic_cases() {
         // Exact same-type-same-data match.
         let exact = vec![dns_record("A", "1.2.3.4")];
-        let msg = describe_duplicate_record("A", "1.2.3.4", "example.com", "www", &exact, true);
+        let msg =
+            describe_duplicate_record("A", "1.2.3.4", "example.com", "www", &opts(), &exact, true);
         assert!(msg.contains("exact value already exists"), "{msg}");
 
         // Same type, different data — DUPLICATE_RECORD but not a cross-type
         // conflict → generic fallback pointing at `dns list`.
         let different_data = vec![dns_record("A", "9.9.9.9")];
-        let msg =
-            describe_duplicate_record("A", "1.2.3.4", "example.com", "www", &different_data, true);
+        let msg = describe_duplicate_record(
+            "A",
+            "1.2.3.4",
+            "example.com",
+            "www",
+            &opts(),
+            &different_data,
+            true,
+        );
         assert!(msg.contains("already has conflicting A data"), "{msg}");
         assert!(
             msg.contains("dns list example.com --type A --name www"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn describe_duplicate_record_recognizes_tlsa_exact_duplicates_via_certificate_data() {
+        // TLSA's value lives in `certificate_data`, not `data` — the exact-
+        // duplicate check must read through `same_content` to see it.
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let mut tlsa_opts = opts();
+        tlsa_opts.usage = Some(3);
+        tlsa_opts.selector = Some(1);
+        tlsa_opts.matching_type = Some(1);
+
+        let exact = vec![tlsa_record(cert, 3, 1, 1)];
+        let msg =
+            describe_duplicate_record("TLSA", cert, "example.com", "www", &tlsa_opts, &exact, true);
+        assert!(msg.contains("exact value already exists"), "{msg}");
+
+        // Different cert data → not a duplicate, generic fallback.
+        let different = vec![tlsa_record("00", 3, 1, 1)];
+        let msg = describe_duplicate_record(
+            "TLSA",
+            cert,
+            "example.com",
+            "www",
+            &tlsa_opts,
+            &different,
+            true,
+        );
+        assert!(msg.contains("already has conflicting TLSA data"), "{msg}");
+
+        // Same cert data but a different usage → a genuinely different TLSA
+        // record, not an exact duplicate (this is the bug: comparing only
+        // the cert data would wrongly call this a duplicate).
+        let same_cert_different_usage = vec![tlsa_record(cert, 1, 0, 0)];
+        let msg = describe_duplicate_record(
+            "TLSA",
+            cert,
+            "example.com",
+            "www",
+            &tlsa_opts,
+            &same_cert_different_usage,
+            true,
+        );
+        assert!(msg.contains("already has conflicting TLSA data"), "{msg}");
     }
 }
