@@ -37,8 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("shopping")
             .with_tier(Tier::Read)
             .with_scopes(SHOPPING_SCOPES)
-            .with_output_schema::<OrderOutput>()
-            .with_default_fields("id,checkout_id,line_items,totals"),
+            .with_output_schema::<OrderOutput>(),
         |ctx, args: Args| async move {
             let client = make_client(&ctx).await?;
             if args.wait {

@@ -59,6 +59,44 @@ pub(crate) fn has_conflicting_checkout_id(body: &Value, id: &str) -> bool {
         .any(|body_id| body_id != id)
 }
 
+pub(crate) fn currency_code(value: &str) -> std::result::Result<String, String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.len() == 3
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
+        Ok(normalized)
+    } else {
+        Err("currency must be a three-letter ISO 4217 code".to_owned())
+    }
+}
+
+pub(crate) fn merge_context_currency(request: &mut Value, currency: Option<&str>) -> Result<()> {
+    let Some(currency) = currency else {
+        return Ok(());
+    };
+    let object = request
+        .as_object_mut()
+        .expect("read_json validates the request is an object");
+    let context = object
+        .entry("context")
+        .or_insert_with(|| serde_json::json!({}));
+    let context = context
+        .as_object_mut()
+        .ok_or_else(|| GddyError::validation("context must be a JSON object").into_cli_error())?;
+    if let Some(existing) = context.get("currency").and_then(Value::as_str)
+        && !existing.eq_ignore_ascii_case(currency)
+    {
+        return Err(GddyError::validation(
+            "--currency conflicts with context.currency in the request body",
+        )
+        .into_cli_error());
+    }
+    context.insert("currency".to_owned(), Value::String(currency.to_owned()));
+    Ok(())
+}
+
 pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
     let selected = body
         .pointer("/payment/instruments")
@@ -69,16 +107,21 @@ pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
                 .filter(|instrument| {
                     instrument.get("selected").and_then(Value::as_bool) == Some(true)
                 })
-                .count()
+                .collect::<Vec<_>>()
         });
-    if selected == Some(1) {
+    if let Some([instrument]) = selected.as_deref()
+        && instrument
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.trim().is_empty())
+    {
         Ok(())
     } else {
         Err(GddyError::validation(
-            "checkout completion requires exactly one selected payment instrument",
+            "checkout completion requires exactly one selected saved payment instrument with an ID",
         )
         .with_fix(
-            "Include payment.instruments with exactly one saved instrument marked selected: true.",
+            "Include payment.instruments with exactly one saved instrument ID marked selected: true.",
         )
         .into_cli_error())
     }
@@ -198,7 +241,7 @@ mod tests {
     fn requires_exactly_one_selected_payment_instrument() {
         assert!(
             require_selected_payment_instrument(&json!({
-                "payment": {"instruments": [{"selected": true}]}
+                "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
             }))
             .is_ok()
         );

@@ -3,8 +3,11 @@ use serde_json::{Value, json};
 
 use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
-use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{client_err, make_client, read_json};
+use crate::shopping::common::{
+    client_err, currency_code, make_client, merge_context_currency, read_json,
+};
+use crate::shopping::money;
+use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
 output_schema!(CatalogSearchOutput {
     "products": "[]object";
@@ -21,6 +24,10 @@ struct Args {
     /// Path to a JSON search request. Takes precedence over --body.
     #[arg(long, value_name = "PATH")]
     file: Option<String>,
+
+    /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or JPY).
+    #[arg(long, value_name = "CODE", value_parser = currency_code)]
+    currency: Option<String>,
 
     /// Maximum number of products to return (1-100).
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=100))]
@@ -45,6 +52,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_view_id(HUMAN_VIEW_ID),
         |ctx, args: Args| async move {
             let mut request = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
+            merge_context_currency(&mut request, args.currency.as_deref())?;
             merge_pagination(&mut request, args.limit)?;
             let client = make_client(&ctx).await?;
             let response = client.catalog_search(request.clone()).await.map_err(client_err)?;
@@ -147,12 +155,12 @@ fn next_actions(
     request: &mut Value,
     env: &str,
 ) -> Result<Vec<cli_engine::NextAction>> {
-    let mut actions = product_actions(response, env);
+    let mut actions = product_actions(response, request, env);
     actions.extend(next_page_action(response, request, env)?);
     Ok(actions)
 }
 
-fn product_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
+fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<cli_engine::NextAction> {
     let Some(product) = response
         .get("products")
         .and_then(Value::as_array)
@@ -163,9 +171,13 @@ fn product_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
     let Some(product_id) = product.get("id").and_then(Value::as_str) else {
         return Vec::new();
     };
-    let product_body = json!({"id": product_id}).to_string();
+    let mut product_request = json!({"id": product_id});
+    if let Some(currency) = request.pointer("/context/currency").and_then(Value::as_str) {
+        product_request["context"] = json!({"currency": currency});
+    }
+    let product_body = product_request.to_string();
     let mut actions = vec![next_action(
-        shopping_command(env, format!("catalog get --body '{product_body}'")),
+        command_for_env(env, format!("catalog get --body '{product_body}'")),
         "View the selected product's complete record",
     )];
     if let Some(variant_id) = product
@@ -193,7 +205,7 @@ fn product_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
         .to_string();
         actions.push(
             next_action(
-                shopping_command(env, format!("checkout create --body '{checkout_body}'")),
+                command_for_env(env, format!("checkout create --body '{checkout_body}'")),
                 "Create a checkout with the first available variant",
             )
             .with_param("variant_id", required_value(variant_id)),
@@ -239,17 +251,9 @@ fn next_page_action(
             .into_cli_error()
     })?;
     Ok(vec![next_action(
-        shopping_command(env, format!("catalog search --body '{encoded_request}'")),
+        command_for_env(env, format!("catalog search --body '{encoded_request}'")),
         "Fetch the next catalog page",
     )])
-}
-
-fn shopping_command(env: &str, command: impl AsRef<str>) -> String {
-    if matches!(env, "prod" | "production") {
-        format!("shopping {}", command.as_ref())
-    } else {
-        format!("--env {env} shopping {}", command.as_ref())
-    }
 }
 
 fn render_human(response: &Value) -> String {
@@ -443,18 +447,16 @@ fn category(product: &Value) -> String {
 }
 
 fn money(value: Option<&Value>) -> Option<String> {
-    let amount = value?.get("amount")?.as_i64()?;
-    let currency = value?.get("currency")?.as_str()?;
-    let major = amount / 100;
-    let minor = amount.unsigned_abs() % 100;
-    Some(format!("{currency} {major}.{minor:02}"))
+    money::format_value(value)
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{human_response, merge_pagination, next_actions, render_human, shopping_command};
+    use super::{human_response, merge_pagination, next_actions, render_human};
+    use crate::shopping::command_for_env;
+    use crate::shopping::common::{currency_code, merge_context_currency};
 
     fn response() -> serde_json::Value {
         json!({
@@ -532,12 +534,37 @@ mod tests {
     #[test]
     fn product_commands_preserve_non_production_environment() {
         assert_eq!(
-            shopping_command("prod", "catalog search"),
+            command_for_env("prod", "catalog search"),
             "shopping catalog search"
         );
         assert_eq!(
-            shopping_command("test", "catalog search"),
+            command_for_env("test", "catalog search"),
             "--env test shopping catalog search"
         );
+    }
+
+    #[test]
+    fn merges_currency_and_preserves_it_for_follow_up_actions() {
+        let response = response();
+        let mut request = json!({"pagination": {"limit": 3}});
+        merge_context_currency(&mut request, Some("jpy")).expect("valid currency");
+        let actions = next_actions(&response, &mut request, "test").expect("actions");
+
+        assert_eq!(request.pointer("/context/currency"), Some(&json!("jpy")));
+        assert!(actions[1].command.contains("\"currency\":\"USD\""));
+        assert!(actions[2].command.contains("\"currency\":\"jpy\""));
+    }
+
+    #[test]
+    fn rejects_conflicting_currency_in_request_body() {
+        let mut request = json!({"context": {"currency": "USD"}});
+        assert!(merge_context_currency(&mut request, Some("JPY")).is_err());
+    }
+
+    #[test]
+    fn validates_and_normalizes_currency_codes() {
+        assert_eq!(currency_code(" jpy ").expect("valid currency"), "JPY");
+        assert!(currency_code("JP").is_err());
+        assert!(currency_code("123").is_err());
     }
 }

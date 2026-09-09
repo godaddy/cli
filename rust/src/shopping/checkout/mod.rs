@@ -1,4 +1,4 @@
-mod complete;
+pub(super) mod complete;
 mod create;
 pub(super) mod get;
 mod update;

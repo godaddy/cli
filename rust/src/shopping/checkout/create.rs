@@ -1,8 +1,10 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use serde_json::Value;
 
+use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
-use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{client_err, make_client, read_json};
+use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
 output_schema!(CheckoutOutput {
     "ucp": "object";
@@ -42,8 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
-            .with_output_schema::<CheckoutOutput>()
-            .with_default_fields("id,status,line_items,totals,messages,action,body"),
+            .with_output_schema::<CheckoutOutput>(),
         |ctx, args: Args| async move {
             let body = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
             if ctx.dry_run() {
@@ -53,9 +54,28 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 })));
             }
             let client = make_client(&ctx).await?;
-            Ok(CommandResult::new(
-                client.create_checkout(body).await.map_err(client_err)?,
-            ))
+            let checkout = client.create_checkout(body).await.map_err(client_err)?;
+            let ready_for_complete =
+                checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
+            let checkout_id = checkout
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            let mut result = CommandResult::new(checkout);
+            if ready_for_complete {
+                result = result.with_next_actions(vec![
+                    next_action(
+                        command_for_env(
+                            &ctx.middleware.env,
+                            format!("checkout complete {checkout_id} --file complete-checkout.json"),
+                        ),
+                        "Complete this checkout with a selected saved payment instrument",
+                    )
+                    .with_param("checkout_id", required_value(checkout_id)),
+                ]);
+            }
+            Ok(result)
         },
     )
 }
