@@ -116,7 +116,7 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
   "displayName": "Jane Smith",
   "status": "CONFIRMED",
   "createdAt": "2026-09-02T17:51:29Z",
-  "modifiedAt": "2026-09-02T17:51:29Z",
+  "updatedAt": "2026-09-02T17:51:29Z",
   "agreements": [
     {
       "type": "FREETRIAL_AUTORENEW",
@@ -144,7 +144,7 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
   "displayName": "Jane Smith",
   "status": "CONFIRMED",
   "createdAt": "2026-09-02T17:51:29Z",
-  "modifiedAt": "2026-09-02T17:51:29Z",
+  "updatedAt": "2026-09-02T17:51:29Z",
   "links": [
     {
       "rel": "self",
@@ -176,7 +176,7 @@ Repeat until `status` in the response is `COMPLETED` or `FAILED`. Typical provis
   "displayName": "Jane Smith",
   "status": "COMPLETED",
   "createdAt": "2026-09-02T17:51:29Z",
-  "modifiedAt": "2026-09-02T17:51:50Z",
+  "updatedAt": "2026-09-02T17:51:50Z",
   "links": [
     {
       "rel": "self",
