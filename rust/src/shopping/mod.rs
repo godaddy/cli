@@ -7,6 +7,8 @@ mod order;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
+use crate::shopping::catalog::search::register_human_view;
+
 use crate::scopes::{SHOPPING_CATALOG_READ, SHOPPING_CHECKOUT_EXECUTE, SHOPPING_ORDER_READ};
 
 /// Every Shopping operation requests the full lifecycle scope bundle at once.
@@ -19,20 +21,21 @@ pub(crate) const SHOPPING_SCOPES: &[&str] = &[
 ];
 
 pub fn module() -> Module {
-    Module::new("Shopping", |_ctx| {
+    Module::new("Shopping", |ctx| {
+        register_human_view(ctx);
         RuntimeGroupSpec::new(
-            GroupSpec::new("shopping", "Browse catalog products and complete purchases").with_long(
-                "Use the direct Order Management Shopping API integration. Every \
-                 command requests catalog, checkout, and order OAuth scopes together, allowing a \
-                 single consent flow for the catalog → checkout → order lifecycle.\n\
+            GroupSpec::new(
+                "shopping",
+                "Browse GoDaddy products, execute checkout, and view completed orders",
+            )
+            .with_long(
+                "Browse GoDaddy products, create/update/complete checkout, and view completed orders.\n\
                  \n\
-                 The direct Katana endpoint must be configured with shopping_url in \
-                 ~/.config/gddy/environments.toml (or SHOPPING_URL). PATs do not work against \
-                 this direct service until front-door token exchange is available.\n\
+                 Shopping commands request the required OAuth permissions together so you can \
+                 complete the catalog → checkout → order workflow without additional consent prompts.\n\
                  \n\
-                 checkout complete places a real order and must include an idempotency_key. Follow \
-                 completion with `shopping order get <order-id> --wait`; checkout get is not valid \
-                 for completed sessions.",
+                 Use `gddy guide shopping` for request formats, checkout-completion safety, and \
+                 environment configuration.",
             ),
         )
         .with_group(catalog::group())

@@ -1,6 +1,6 @@
 mod get;
 mod lookup;
-mod search;
+pub(super) mod search;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
