@@ -1,6 +1,6 @@
 ---
-
-## summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create and manage mailboxes
+summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create and manage mailboxes
+---
 
 # Create GoDaddy Business Email with `gddy`
 
