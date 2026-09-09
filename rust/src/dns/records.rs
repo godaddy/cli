@@ -117,10 +117,17 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "NAME")]
     pub(super) name: String,
 
-    /// Record value (repeatable for multiple records on the same name). For
-    /// TLSA, this is the hex-encoded certificate association data; use
-    /// `--usage`/`--selector`/`--matching-type` for the rest.
-    #[arg(long, value_name = "VALUE", required = true)]
+    /// Record value (repeatable for multiple records on the same name). Not
+    /// used for TLSA — use `--cert-data` instead.
+    // Required for every writable type except TLSA — clap has no "required
+    // unless" value match, so this lists WRITABLE_TYPES minus TLSA; keep the
+    // two in sync.
+    #[arg(long, value_name = "VALUE", required_if_eq_any([
+        ("record_type", "A"), ("record_type", "AAAA"), ("record_type", "ALIAS"),
+        ("record_type", "CAA"), ("record_type", "CNAME"), ("record_type", "HTTPS"),
+        ("record_type", "MX"), ("record_type", "SRV"), ("record_type", "SVCB"),
+        ("record_type", "TXT"),
+    ]))]
     pub(super) data: Vec<String>,
 
     /// Time-to-live in seconds (defaults to 3600 when omitted).
@@ -158,6 +165,16 @@ pub(super) struct RecordWriteArgs {
     /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
     #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
     pub(super) tag: Option<String>,
+
+    /// Certificate association data, hex-encoded (repeatable for multiple
+    /// records on the same name; TLSA only; required for TLSA, in place of
+    /// `--data`).
+    #[arg(
+        long = "cert-data",
+        value_name = "HEX",
+        required_if_eq("record_type", "TLSA")
+    )]
+    pub(super) cert_data: Vec<String>,
 
     /// TLSA certificate usage, 0-3 (RFC 6698 §2.1.1; TLSA only; required for
     /// TLSA). 0 PKIX-TA, 1 PKIX-EE, 2 DANE-TA, 3 DANE-EE.
@@ -212,6 +229,27 @@ pub(super) fn validate_tlsa_fields(record_type: &str, opts: &RecordOptions) -> R
     {
         return Err(format!(
             "--usage/--selector/--matching-type are only valid for TLSA records, not {record_type}"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate `--data`/`--cert-data` against the record type: TLSA carries its
+/// value via `--cert-data` (clap's `required_if_eq` on `cert_data` already
+/// enforces that it's present for TLSA), never `--data`; every other type is
+/// the reverse. Pure so it's unit-testable and runs before any network call.
+pub(super) fn validate_tlsa_values(
+    record_type: &str,
+    data: &[String],
+    cert_data: &[String],
+) -> Result<(), String> {
+    if record_type == "TLSA" {
+        if !data.is_empty() {
+            return Err("TLSA records carry their value via --cert-data, not --data".to_string());
+        }
+    } else if !cert_data.is_empty() {
+        return Err(format!(
+            "--cert-data is only valid for TLSA records, not {record_type}"
         ));
     }
     Ok(())
@@ -512,5 +550,22 @@ mod tests {
         assert!(validate_svcb_fields("HTTPS", &a).is_ok());
         assert!(validate_svcb_fields("SVCB", &a).is_ok());
         assert!(validate_svcb_fields("A", &opts()).is_ok());
+    }
+
+    #[test]
+    fn tlsa_uses_cert_data_not_data_and_vice_versa_for_other_types() {
+        let cert = ["d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971".to_string()];
+        let value = ["1.2.3.4".to_string()];
+
+        // TLSA with --data instead of --cert-data → rejected.
+        let err = validate_tlsa_values("TLSA", &value, &[]).expect_err("TLSA needs --cert-data");
+        assert!(err.contains("--cert-data"), "got: {err}");
+        // TLSA with --cert-data → ok.
+        assert!(validate_tlsa_values("TLSA", &[], &cert).is_ok());
+        // A non-TLSA type with --cert-data → rejected.
+        let err = validate_tlsa_values("A", &value, &cert).expect_err("--cert-data is TLSA-only");
+        assert!(err.contains("only valid for TLSA"), "got: {err}");
+        // A non-TLSA type with --data → ok.
+        assert!(validate_tlsa_values("A", &value, &[]).is_ok());
     }
 }
