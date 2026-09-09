@@ -345,15 +345,23 @@ pub(super) fn record_value(rec: &types::DnsRecord) -> Option<&str> {
 /// four JSON fields is that API's own modeling, not something DNS does (same
 /// story as CAA's `flag`/`tag`/`data` split). The write path (`v3_record`)
 /// never populates `data` for TLSA, so `dns list` reconstructs it here for
-/// display; the original four fields are left untouched alongside it.
+/// display; the original four fields are left untouched alongside it. Only
+/// builds the full presentation string when all three numeric fields are
+/// present — the API's schema guarantees that together for a real TLSA
+/// record, but substituting 0 (a real, meaningful usage/selector/matching-type
+/// value, not a sentinel) for a genuinely absent field would fabricate RDATA
+/// that was never actually returned; fall back to the certificate data alone.
 pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
-    format!(
-        "{} {} {} {}",
-        rec.usage.as_ref().map_or(0, |u| u.0),
-        rec.selector.as_ref().map_or(0, |s| s.0),
-        rec.matching_type.as_ref().map_or(0, |m| m.0),
-        rec.certificate_data.as_deref().unwrap_or(""),
-    )
+    match (&rec.usage, &rec.selector, &rec.matching_type) {
+        (Some(usage), Some(selector), Some(matching_type)) => format!(
+            "{} {} {} {}",
+            usage.0,
+            selector.0,
+            matching_type.0,
+            rec.certificate_data.as_deref().unwrap_or(""),
+        ),
+        _ => rec.certificate_data.clone().unwrap_or_default(),
+    }
 }
 
 /// Whether two v3 records have the same content — every field except `ttl`
@@ -649,6 +657,21 @@ mod tests {
         let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
         let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
         assert_eq!(merged_tlsa_data(&tlsa), format!("3 1 1 {cert}"));
+    }
+
+    /// The API's schema guarantees usage/selector/matchingType/certificateData
+    /// together for a real TLSA record, but if one is ever absent, this must
+    /// not fabricate RDATA by substituting 0 (a real, meaningful value).
+    #[test]
+    fn merged_tlsa_data_falls_back_to_certificate_data_when_a_numeric_field_is_missing() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let mut tlsa = v3_record("www", "TLSA", cert, &opts());
+        // opts() has no usage/selector/matching_type set, so v3_record leaves
+        // them None — exactly the "missing field" case.
+        assert_eq!(merged_tlsa_data(&tlsa), cert);
+
+        tlsa.certificate_data = None;
+        assert_eq!(merged_tlsa_data(&tlsa), "");
     }
 
     #[test]
