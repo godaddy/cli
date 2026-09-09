@@ -326,8 +326,15 @@ pub(super) fn v3_records(
 /// [`v3_record`]'s TLSA branch). Conflict diagnosis, delete/set reporting, and
 /// exact-duplicate detection all need "the value" regardless of which wire
 /// field holds it, so they read through this rather than `data` directly.
+/// Checks `type_` rather than just falling back on an absent `data`, so a
+/// TLSA record correctly prefers `certificateData` even if the API ever
+/// returns both fields populated.
 pub(super) fn record_value(rec: &types::DnsRecord) -> Option<&str> {
-    rec.data.as_deref().or(rec.certificate_data.as_deref())
+    if rec.type_.as_str() == "TLSA" {
+        rec.certificate_data.as_deref().or(rec.data.as_deref())
+    } else {
+        rec.data.as_deref().or(rec.certificate_data.as_deref())
+    }
 }
 
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
@@ -567,5 +574,28 @@ mod tests {
         assert!(err.contains("only valid for TLSA"), "got: {err}");
         // A non-TLSA type with --data → ok.
         assert!(validate_tlsa_values("A", &value, &[]).is_ok());
+    }
+
+    #[test]
+    fn record_value_prefers_certificate_data_for_tlsa_even_if_data_is_also_set() {
+        // A record we'd never build ourselves (v3_record always nulls one of
+        // the two), but defends against the API ever returning both fields
+        // populated for a TLSA record — the certificate data must win, not
+        // whichever field happens to be checked first.
+        let mut tlsa = v3_record(
+            "www",
+            "TLSA",
+            "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971",
+            &opts(),
+        );
+        tlsa.data = Some("stale-or-unrelated".to_string());
+        assert_eq!(
+            record_value(&tlsa),
+            Some("d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971")
+        );
+
+        // Non-TLSA types are unaffected — `data` still wins.
+        let a = v3_record("www", "A", "1.2.3.4", &opts());
+        assert_eq!(record_value(&a), Some("1.2.3.4"));
     }
 }
