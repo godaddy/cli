@@ -38,7 +38,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("type,name,data,ttl")
+            // TLSA records carry their value in `certificateData`, not
+            // `data` (which is absent for them) — include it so `dns list
+            // --type TLSA` doesn't show a blank value column by default.
+            .with_default_fields("type,name,data,certificateData,ttl")
             .with_json_schema::<types::DnsRecord>()
             .with_scopes(&[DOMAINS_READ])
             .with_pagination(PaginationConfig {
@@ -86,6 +89,17 @@ mod tests {
                 max_limit: 500,
                 ..Default::default()
             })
+        );
+    }
+
+    /// TLSA's value lives in `certificateData`, not `data` — the default
+    /// projection must include it or a TLSA row's value column is blank.
+    #[test]
+    fn default_fields_includes_certificate_data_for_tlsa() {
+        let default_fields = command().spec.default_fields.unwrap_or_default();
+        assert!(
+            default_fields.contains("certificateData"),
+            "{default_fields:?}"
         );
     }
 }
