@@ -122,7 +122,7 @@ mod tests {
                     "--matching-type",
                     "1",
                 ],
-                "--cert-data",
+                "--data",
             ),
         ];
         for (args, needle) in cases {

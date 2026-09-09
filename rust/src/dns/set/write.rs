@@ -745,9 +745,9 @@ mod tests {
     }
 
     /// A TLSA record's identity spans `usage`/`selector`/`matchingType`, not
-    /// just its certificate data — keeping the same `--cert-data` while
-    /// changing `--usage` is a real change, not a no-op, even though
-    /// comparing only the value string would say otherwise.
+    /// just its certificate data — keeping the same `--data` while changing
+    /// `--usage` is a real change, not a no-op, even though comparing only
+    /// the value string would say otherwise.
     #[tokio::test]
     async fn apply_replace_is_not_a_no_op_when_only_a_sibling_tlsa_field_changes() {
         let server = MockServer::start_async().await;

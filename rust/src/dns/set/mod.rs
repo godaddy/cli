@@ -9,7 +9,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use super::records::verify_with_list_action;
 use super::records::{
     RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields, validate_svcb_fields,
-    validate_tlsa_fields, validate_tlsa_values,
+    validate_tlsa_fields,
 };
 
 mod outcome;
@@ -106,13 +106,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(crate::error::GddyError::validation)?;
             validate_svcb_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
-            validate_tlsa_values(&record_type, &args.write.data, &args.write.cert_data)
-                .map_err(crate::error::GddyError::validation)?;
-            let data = if record_type == "TLSA" {
-                args.write.cert_data
-            } else {
-                args.write.data
-            };
+            let data = args.write.data;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
