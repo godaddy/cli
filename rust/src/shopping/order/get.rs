@@ -24,7 +24,7 @@ struct Args {
 
     /// Maximum seconds to wait for order visibility (1-60, default 15).
     #[arg(long, value_name = "SECONDS", requires = "wait")]
-    timeout: Option<String>,
+    wait_timeout: Option<u8>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -43,8 +43,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let client = make_client(&ctx).await?;
             if args.wait {
                 let (order, _) =
-                    wait_for_order(&client, &args.id, wait_duration(args.timeout.as_deref())?)
-                        .await?;
+                    wait_for_order(&client, &args.id, wait_duration(args.wait_timeout)?).await?;
                 Ok(CommandResult::new(order))
             } else {
                 Ok(CommandResult::new(

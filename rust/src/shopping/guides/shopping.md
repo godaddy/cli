@@ -22,8 +22,8 @@ gddy auth login \
   --scope shopping.order:read
 ```
 
-PATs are not currently accepted by the configured Shopping API endpoint. Use OAuth
-until Shopping is exposed through the front door, where PAT exchange can occur.
+Shopping requests use the selected environment's standard API front door. Use OAuth
+for Shopping commands.
 
 ## Workflow
 
@@ -76,10 +76,11 @@ exposed by this CLI yet.
 ## Completing a checkout
 
 `checkout complete` places a real order. Its Shopping API request must include a selected
-saved payment instrument and a caller-owned, non-empty `idempotency_key`. Use the checkout's
+saved payment instrument. You can supply a non-empty `idempotency_key`, or omit it to let
+gddy generate one and return it in the completion result. Use the checkout's
 `payment.instruments` list to select the saved instrument: mark exactly one entry with
-`"selected": true`. Never create a new idempotency key when retrying an uncertain completion;
-reuse the original key only for the same intended purchase.
+`"selected": true`. For an uncertain completion, do not retry automatically; reuse the
+effective idempotency key only for the same intended purchase after confirming its outcome.
 
 ```json
 {
@@ -91,20 +92,25 @@ reuse the original key only for the same intended purchase.
       }
     ]
   },
-  "idempotency_key": "<caller-generated-key>"
+  "idempotency_key": "<optional-stable-key>"
 }
 ```
 
+Omit `idempotency_key` to let gddy generate and return one. Include a stable key when you
+need to control a later explicit retry.
+
 ```bash
 gddy --env test shopping checkout complete <checkout-id> \
-  --file complete-checkout.json --wait-for-order
+  --file complete-checkout.json
 ```
 
-New orders normally become available 3–10 seconds after completion. `--wait-for-order` polls
-the returned order ID for up to 15 seconds by default. You can also run:
+Completion returns immediately after the purchase attempt, including the effective
+`idempotency_key` and order ID when the Shopping API provides one. New orders normally become
+available 3–10 seconds after completion. Retrieve the order separately, optionally polling for
+up to 15 seconds by default:
 
 ```bash
-gddy --env test shopping order get <order-id> --wait --timeout 15
+gddy --env test shopping order get <order-id> --wait --wait-timeout 15
 ```
 
 After completion, use `shopping order get` with the returned order ID. `shopping checkout get`

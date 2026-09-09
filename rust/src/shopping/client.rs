@@ -181,6 +181,14 @@ mod tests {
         ShoppingClient::new(base_url, "test-token")
     }
 
+    #[test]
+    fn builds_shopping_paths_from_the_api_front_door() {
+        assert_eq!(
+            client("https://api.test-godaddy.com").url("/catalog/search"),
+            "https://api.test-godaddy.com/v1/shopping/catalog/search"
+        );
+    }
+
     #[tokio::test]
     async fn surfaces_order_not_found_as_retryable() {
         let server = MockServer::start_async().await;

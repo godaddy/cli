@@ -7,7 +7,8 @@ mod order;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
-use crate::shopping::catalog::search::register_human_view;
+use crate::shopping::catalog::search::register_human_view as register_catalog_search_human_view;
+use crate::shopping::checkout::get::register_human_view as register_checkout_get_human_view;
 
 use crate::scopes::{SHOPPING_CATALOG_READ, SHOPPING_CHECKOUT_EXECUTE, SHOPPING_ORDER_READ};
 
@@ -22,7 +23,8 @@ pub(crate) const SHOPPING_SCOPES: &[&str] = &[
 
 pub fn module() -> Module {
     Module::new("Shopping", |ctx| {
-        register_human_view(ctx);
+        register_catalog_search_human_view(ctx);
+        register_checkout_get_human_view(ctx);
         RuntimeGroupSpec::new(
             GroupSpec::new(
                 "shopping",
@@ -34,8 +36,7 @@ pub fn module() -> Module {
                  Shopping commands request the required OAuth permissions together so you can \
                  complete the catalog → checkout → order workflow without additional consent prompts.\n\
                  \n\
-                 Use `gddy guide shopping` for request formats, checkout-completion safety, and \
-                 environment configuration.",
+                 Use `gddy guide shopping` for request formats and checkout-completion safety.",
             ),
         )
         .with_group(catalog::group())

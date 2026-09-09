@@ -1,6 +1,6 @@
 mod complete;
 mod create;
-mod get;
+pub(super) mod get;
 mod update;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};

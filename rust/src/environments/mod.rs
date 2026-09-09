@@ -28,7 +28,6 @@
 mod catalog;
 mod config;
 mod devx_core;
-mod shopping;
 #[cfg(test)]
 mod test_support;
 
@@ -40,7 +39,6 @@ use cli_engine::environments::Environments;
 pub use catalog::resolve_catalog_base_url;
 pub use config::GddyEnvConfig;
 pub use devx_core::devx_core_url;
-pub use shopping::shopping_url;
 
 pub const DEFAULT_ENV: &str = "prod";
 

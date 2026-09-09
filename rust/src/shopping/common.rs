@@ -13,15 +13,7 @@ pub(crate) async fn make_client(ctx: &CommandContext) -> Result<ShoppingClient> 
         .map(|scope| (*scope).to_owned())
         .collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
-    let base_url = crate::environments::shopping_url(&ctx.middleware.env).ok_or_else(|| {
-        GddyError::config(format!(
-            "Shopping API URL is not configured for environment {:?}. Set shopping_url in \
-             ~/.config/gddy/environments.toml, or set {}_SHOPPING_URL or SHOPPING_URL.",
-            ctx.middleware.env,
-            crate::environments::env_prefix(&ctx.middleware.env)
-        ))
-        .into_cli_error()
-    })?;
+    let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
     Ok(ShoppingClient::new(base_url, token))
 }
 
@@ -67,19 +59,48 @@ pub(crate) fn has_conflicting_checkout_id(body: &Value, id: &str) -> bool {
         .any(|body_id| body_id != id)
 }
 
-pub(crate) fn require_idempotency_key(body: &Value) -> Result<()> {
-    if body
-        .get("idempotency_key")
-        .and_then(Value::as_str)
-        .is_some_and(|key| !key.trim().is_empty())
-    {
+pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
+    let selected = body
+        .pointer("/payment/instruments")
+        .and_then(Value::as_array)
+        .map(|instruments| {
+            instruments
+                .iter()
+                .filter(|instrument| {
+                    instrument.get("selected").and_then(Value::as_bool) == Some(true)
+                })
+                .count()
+        });
+    if selected == Some(1) {
         Ok(())
     } else {
         Err(GddyError::validation(
-            "checkout completion requires a non-empty idempotency_key in the JSON body",
+            "checkout completion requires exactly one selected payment instrument",
         )
-        .with_fix("Reuse this idempotency_key if a completion request times out.")
+        .with_fix(
+            "Include payment.instruments with exactly one saved instrument marked selected: true.",
+        )
         .into_cli_error())
+    }
+}
+
+/// Returns a supplied non-empty key, or inserts a new UUID for this one request.
+pub(crate) fn ensure_completion_idempotency_key(body: &mut Value) -> Result<String> {
+    let object = body
+        .as_object_mut()
+        .expect("read_json validates the completion request is an object");
+    match object.get("idempotency_key") {
+        None => {
+            let key = uuid::Uuid::new_v4().to_string();
+            object.insert("idempotency_key".to_owned(), Value::String(key.clone()));
+            Ok(key)
+        }
+        Some(Value::String(key)) if !key.trim().is_empty() => Ok(key.clone()),
+        Some(_) => Err(GddyError::validation(
+            "idempotency_key must be a non-empty string when supplied",
+        )
+        .with_fix("Supply a non-empty idempotency_key, or omit it to let gddy generate one.")
+        .into_cli_error()),
     }
 }
 
@@ -129,18 +150,82 @@ pub(crate) async fn wait_for_order(
     .into_cli_error())
 }
 
-pub(crate) fn wait_duration(raw: Option<&str>) -> Result<Duration> {
+pub(crate) fn wait_duration(seconds: Option<u8>) -> Result<Duration> {
     const DEFAULT: Duration = Duration::from_secs(15);
-    let Some(raw) = raw else {
-        return Ok(DEFAULT);
-    };
-    let seconds = raw.parse::<u64>().map_err(|_| {
-        GddyError::validation("--timeout must be a whole number of seconds").into_cli_error()
-    })?;
-    if seconds == 0 || seconds > 60 {
-        return Err(
-            GddyError::validation("--timeout must be between 1 and 60 seconds").into_cli_error(),
+    match seconds {
+        None => Ok(DEFAULT),
+        Some(seconds @ 1..=60) => Ok(Duration::from_secs(u64::from(seconds))),
+        Some(_) => Err(
+            GddyError::validation("--wait-timeout must be between 1 and 60 seconds")
+                .into_cli_error(),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn generates_and_inserts_missing_completion_idempotency_key() {
+        let mut request = json!({});
+        let key = ensure_completion_idempotency_key(&mut request).expect("key should be generated");
+
+        assert!(uuid::Uuid::parse_str(&key).is_ok());
+        assert_eq!(request["idempotency_key"], key);
+    }
+
+    #[test]
+    fn preserves_supplied_completion_idempotency_key() {
+        let mut request = json!({"idempotency_key": "customer-key"});
+
+        assert_eq!(
+            ensure_completion_idempotency_key(&mut request).expect("key should be valid"),
+            "customer-key"
         );
     }
-    Ok(Duration::from_secs(seconds))
+
+    #[test]
+    fn rejects_blank_completion_idempotency_key() {
+        let mut request = json!({"idempotency_key": "  "});
+
+        assert!(ensure_completion_idempotency_key(&mut request).is_err());
+    }
+
+    #[test]
+    fn requires_exactly_one_selected_payment_instrument() {
+        assert!(
+            require_selected_payment_instrument(&json!({
+                "payment": {"instruments": [{"selected": true}]}
+            }))
+            .is_ok()
+        );
+        assert!(
+            require_selected_payment_instrument(&json!({
+                "payment": {"instruments": []}
+            }))
+            .is_err()
+        );
+        assert!(
+            require_selected_payment_instrument(&json!({
+                "payment": {"instruments": [{"selected": true}, {"selected": true}]}
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn validates_wait_timeout_range() {
+        assert_eq!(
+            wait_duration(None).expect("default"),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            wait_duration(Some(1)).expect("lower bound"),
+            Duration::from_secs(1)
+        );
+        assert!(wait_duration(Some(0)).is_err());
+    }
 }
