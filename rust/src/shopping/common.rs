@@ -227,15 +227,10 @@ fn insert_optional_nonblank(
 
 pub(crate) fn currency_code(value: &str) -> std::result::Result<String, String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() == 3
-        && normalized
-            .chars()
-            .all(|character| character.is_ascii_alphabetic())
-    {
-        Ok(normalized)
-    } else {
-        Err("currency must be a three-letter ISO 4217 code".to_owned())
-    }
+    iso_currency::Currency::from_code(&normalized)
+        .is_some()
+        .then_some(normalized)
+        .ok_or_else(|| "currency must be a valid ISO 4217 code".to_owned())
 }
 
 pub(crate) fn merge_context_currency(request: &mut Value, currency: Option<&str>) -> Result<()> {

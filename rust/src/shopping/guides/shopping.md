@@ -1,3 +1,7 @@
+---
+summary: Browse products, place orders, and retrieve purchase details.
+---
+
 # Shopping API
 
 `gddy shopping` integrates with the Shopping API.
@@ -22,8 +26,9 @@ gddy auth login \
   --scope shopping.order:read
 ```
 
-Shopping requests use the selected environment's standard API front door. Use OAuth
-for Shopping commands.
+Shopping requests use the selected environment's standard API front door. OAuth requests the
+complete lifecycle scope bundle above in one consent flow. PAT support requires those Shopping
+scopes to be available on the Developer Portal and is tracked separately.
 
 ## Environment
 
@@ -31,7 +36,7 @@ Commands below use the active environment. To run them against another configure
 environment, add `--env <environment>` before `shopping`:
 
 ```bash
-gddy --env <environment> shopping catalog search --body '{}'
+gddy --env <environment> shopping catalog search
 ```
 
 ## Request documents and output
@@ -48,45 +53,59 @@ concise terminal presentation, or `--output json` to make the default explicit. 
 
 ## Discover products
 
-Search the catalog with an optional ISO 4217 presentment-currency preference:
+Search the catalog without a request body. Use `--query`, repeatable `--category`, `--cursor`,
+`--limit`, `--currency`, and `--country` to refine a search:
 
 ```bash
-gddy shopping catalog search --currency GBP --limit 3 --body '{}'
+gddy shopping catalog search \
+  --query email \
+  --category email \
+  --currency GBP \
+  --country GB \
+  --limit 3
 ```
 
-`--currency` writes `context.currency` into the request. You can instead place it in
-the JSON document. Supplying both with different values fails. The API response price
-currency is authoritative; a requested currency is a preference, not a guarantee. The
-current Shopping service applies the preference to catalog search; catalog lookup and
-product retrieval currently accept the context but can return their default USD prices.
+`--currency` writes `context.currency` into the request. The API response price currency
+is authoritative; a requested currency is a preference, not a guarantee. The current
+Shopping service applies the preference to catalog search; catalog lookup and product
+retrieval currently accept the context but can return their default USD prices. Use
+`--body` or `--file` for advanced filters and extensions. A raw `filters.price` request
+must include `context.currency`, because its bounds are currency-specific minor units.
 
 `catalog search` displays products as numbered sections. Each section shows its product
 ID, then purchasable variants and prices. `--limit` controls **products**, not variants.
 Use a **product ID** with `catalog get` or `catalog lookup`; use a **variant ID** in
-`checkout create` line items.
+`checkout create` line items. A variant is already term-specific—select the variant whose
+returned **Term** column matches the desired term.
 
 ```bash
 gddy shopping catalog lookup \
-  --body '{"ids":["nes-wsb-vnext-tier1"]}' --currency GBP
+  --id nes-wsb-vnext-tier1 \
+  --currency GBP
 
 gddy shopping catalog get \
-  --body '{"id":"nes-wsb-vnext-tier1"}' --currency GBP
+  --id nes-wsb-vnext-tier1 \
+  --currency GBP
 ```
 
 To receive the full catalog response as valid JSON:
 
 ```bash
-gddy --output json shopping catalog search --body '{}' --limit 3
+gddy --output json shopping catalog search --limit 3
 ```
 
-Shopping API cursor pagination belongs in the request body's `pagination` object.
-Preserve all original search criteria—including `context.currency`—retain the original
-`pagination.limit`, and replace only the opaque `pagination.cursor`:
+Use the opaque response cursor with the same search criteria:
 
 ```bash
 gddy shopping catalog search \
-  --body '{"context":{"currency":"GBP"},"pagination":{"limit":3,"cursor":"<cursor from previous response>"}}'
+  --query email \
+  --currency GBP \
+  --limit 3 \
+  --cursor '<cursor from previous response>'
 ```
+
+For advanced filters or extensions not represented by command flags, continue using a JSON
+request through `--body` or `--file`.
 
 ## Create a checkout ready to complete
 

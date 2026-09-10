@@ -1,7 +1,7 @@
 use serde_json::Value;
 
-/// Shopping currently returns integer price amounts in hundredths for every observed currency.
-/// The service does not yet apply ISO 4217 currency-specific minor-unit exponents.
+/// Shopping amounts are ISO-4217 minor units. Their decimal scale derives from the returned
+/// currency code, not a fixed cents assumption.
 pub(crate) fn format_value(value: Option<&Value>) -> Option<String> {
     let amount = value?.get("amount")?.as_i64()?;
     let currency = value?.get("currency")?.as_str()?;
@@ -11,14 +11,24 @@ pub(crate) fn format_value(value: Option<&Value>) -> Option<String> {
 pub(crate) fn format_amount(amount: i64, currency: &str) -> String {
     let sign = if amount < 0 { "-" } else { "" };
     let absolute = amount.unsigned_abs();
-    let whole = absolute / 100;
-    let fractional = absolute % 100;
-    let whole = grouped_integer(whole);
-    if fractional == 0 && uses_zero_decimal_display(currency) {
+    let decimals = currency_decimals(currency);
+    let scale = 10u64.pow(decimals);
+    let whole = grouped_integer(absolute / scale);
+    if decimals == 0 {
         format!("{currency} {sign}{whole}")
     } else {
-        format!("{currency} {sign}{whole}.{fractional:02}")
+        format!(
+            "{currency} {sign}{whole}.{:0width$}",
+            absolute % scale,
+            width = decimals as usize
+        )
     }
+}
+
+fn currency_decimals(currency: &str) -> u32 {
+    iso_currency::Currency::from_code(&currency.to_ascii_uppercase())
+        .and_then(|currency| currency.exponent())
+        .map_or(2, u32::from)
 }
 
 fn grouped_integer(value: u64) -> String {
@@ -37,22 +47,22 @@ fn grouped_integer(value: u64) -> String {
     output
 }
 
-fn uses_zero_decimal_display(currency: &str) -> bool {
-    matches!(currency, "JPY")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn formats_observed_usd_and_jpy_amounts() {
+    fn formats_iso4217_minor_units() {
         assert_eq!(format_amount(7188, "USD"), "USD 71.88");
-        assert_eq!(format_amount(1_198_800, "JPY"), "JPY 11,988");
+        assert_eq!(format_amount(5988, "GBP"), "GBP 59.88");
+        assert_eq!(format_amount(11_988, "JPY"), "JPY 11,988");
+        assert_eq!(format_amount(1_234, "KWD"), "KWD 1.234");
+        assert_eq!(format_amount(12_345_678, "CLF"), "CLF 1,234.5678");
     }
 
     #[test]
-    fn retains_fractional_amounts_for_zero_decimal_display_currencies() {
-        assert_eq!(format_amount(1_198_801, "JPY"), "JPY 11,988.01");
+    fn formats_negative_and_unknown_currency_amounts() {
+        assert_eq!(format_amount(-500, "USD"), "USD -5.00");
+        assert_eq!(format_amount(1_234, "ZZZ"), "ZZZ 12.34");
     }
 }
