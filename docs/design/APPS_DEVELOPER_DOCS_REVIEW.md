@@ -9,7 +9,7 @@
 ## Table of Contents
 
 1. [Security Issues](#1-security-issues)
-2. [Authorization & Access Control Issues](#2-authorization--access-control-issues)
+2. [Authorization & Access Control (pointers only)](#2-authorization--access-control-issues)
 3. [Cryptographic & Signature Issues](#3-cryptographic--signature-issues)
 4. [Code Example Defects](#4-code-example-defects)
 5. [Architecture & Design Gaps](#5-architecture--design-gaps)
@@ -60,18 +60,13 @@ The webhooks guide shows fetching order data from a webhook handler using a PAT 
 
 **Recommendation:** The webhook handler examples should use the installation-scoped OAuth token (retrieved by `installation_id`) rather than a PAT. The installations page already documents storing per-installation tokens — the webhook page should reference this pattern instead of using a PAT.
 
-### SEC-05: No CSRF Protection Documented for OAuth Callback
+### SEC-05: OAuth `state` Guidance Conflicts With AUTHZ Design
 
 **Severity: Medium**
 
-The installation flow encodes `installation_id` in the OAuth `state` parameter and mentions "Verify state parameter matches session value." However, there is no explicit guidance on:
-- How to generate a cryptographically random state nonce
-- How to bind the state to a server-side session to prevent CSRF
-- What happens if the state doesn't match (the docs don't say "reject the request")
+The installations guide treats `state` as both install correlation (`installation_id`) and a CSRF check ("Verify state parameter matches session value") without showing a nonce. The [AUTHZ enablement design](https://godaddy-corp.atlassian.net/wiki/spaces/AUTHZ/pages/4521560066/OAuth+-+Commerce+Store+Enablement+Flow) already settles this: with PKCE (required under RFC 9700 / OAuth 2.1), PKCE is the CSRF control and `state` is for install correlation (`store_id`), not CSRF.
 
-The `state` parameter is used to carry `installation_id` (a functional value), which conflicts with its role as a CSRF token. If `state` is only carrying `installation_id` without an additional random nonce, an attacker who knows the `installation_id` could forge a callback.
-
-**Recommendation:** Show a state parameter that combines `installation_id` with a cryptographic nonce. Document that the nonce must be validated against server-side session state before proceeding.
+**Recommendation:** Update the public docs to match the AUTHZ design — require PKCE, use `state` for store/install correlation, and stop implying `state` alone is the CSRF mechanism.
 
 ### SEC-06: No Rate Limiting Guidance for Webhook Endpoints
 
@@ -96,42 +91,13 @@ The installations page says "Encrypt tokens at rest using AES-256 or equivalent"
 
 ## 2. Authorization & Access Control Issues
 
-### AUTH-01: Account-Centric Model Allows Cross-Store Access
+> **Tracked elsewhere — not duplicated here.** Account-centric OAuth vs store-level enablement, who may `enable` which apps, and consent policy are already covered by:
+>
+> - [OAuth → Commerce Store Enablement Flow](https://godaddy-corp.atlassian.net/wiki/spaces/AUTHZ/pages/4521560066/OAuth+-+Commerce+Store+Enablement+Flow) — design thesis: authorization is user-scoped; installation/enablement is store-scoped; merchant token + `enableStoreApplication`; account-wide access is intentional; store-scoped tokens deferred
+> - [DEVX-1003](https://godaddy-corp.atlassian.net/browse/DEVX-1003) — `gddy platform app enable` can install another org's ACTIVE app on any store you own, with no per-store consent (Cancelled; needs explicit product decision)
+> - [DEVX-1008](https://godaddy-corp.atlassian.net/browse/DEVX-1008) — decide install/consent policy: login-implies-install vs explicit per-store App Center Install (Cancelled; blocking decision)
 
-**Severity: Critical (Design Concern)**
-
-The docs state: "OAuth authorizes a user, and that user can access all their stores." This means an app installed on Store A can use the same OAuth token to access Store B if both stores belong to the same merchant account. The store binding happens "at enablement, not during the OAuth process itself."
-
-This creates a gap: if the app is enabled on Store A but not Store B, there is no documented server-side enforcement preventing the app from using its token to call Commerce APIs for Store B. The docs mention `store_id` in webhook payloads and launch parameters, but never state that the platform enforces store-level access control on API calls.
-
-**Questions the docs should answer but don't:**
-- Does the platform reject API calls to a store where the app is not enabled?
-- If not, is the app honor-bound to only access stores it's enabled on?
-- What happens if an app is disabled on Store A but enabled on Store B — is the token still valid for Store B?
-
-**Recommendation:** Explicitly document whether store-level access control is enforced server-side. If it's not, this is a significant security design issue that apps must self-enforce, and it should be prominently called out.
-
-### AUTH-02: No Scope Downgrade on Disable
-
-**Severity: Medium**
-
-When an app is disabled (`apps.app-registry.app.disabled`), the app is expected to revoke tokens and clean up. But until the app processes this event:
-- The OAuth token may still be valid
-- The app could continue making API calls
-
-The docs instruct apps to revoke their own tokens, but a malicious or buggy app could ignore the disable event and keep using its token until it expires.
-
-**Recommendation:** Document whether the platform revokes tokens server-side when an app is disabled, or if it relies entirely on the app to self-revoke. If the latter, document the maximum window of exposure (token lifetime, typically 1 hour).
-
-### AUTH-03: No Store-Scoped Token Issuance
-
-**Severity: Medium**
-
-Tokens are issued per-user via OAuth, not per-store. The installations page stores tokens keyed by `installation_id` (which maps to a store), but the token itself is account-scoped. This means:
-- Token theft from one installation record grants access to all stores on the account
-- There's no way to revoke access to a single store without revoking the user's entire token
-
-**Recommendation:** Document whether store-scoped tokens are planned or if apps should implement additional store-ID checks on every API call.
+**Docs gap that remains in scope for this review:** public developer docs should either align with the AUTHZ design (state that account-wide token reach is by design, and that store binding is enablement's job) or clearly mark older install/OAuth pages as pre-dating that direction — see the Confluence note that build-apps docs are internally inconsistent.
 
 ---
 
@@ -472,7 +438,6 @@ The App Center listing defaults to US region but there's no guidance on supporti
 
 | ID | Issue | Impact |
 |----|-------|--------|
-| AUTH-01 | Account-centric model may allow cross-store access without server-side enforcement | Data breach across merchant stores |
 | SEC-02 | Config reference allows HTTP URLs | Credential and token interception |
 | SEC-04 | Webhook examples use PAT instead of scoped OAuth tokens | Over-privileged access on compromise |
 
@@ -491,16 +456,22 @@ The App Center listing defaults to US region but there's no guidance on supporti
 
 | ID | Issue | Impact |
 |----|-------|--------|
-| SEC-05 | OAuth state parameter lacks CSRF nonce guidance | CSRF on OAuth callback |
+| SEC-05 | Docs treat OAuth `state` as CSRF; AUTHZ design uses PKCE for CSRF and `state` for install correlation | Docs contradict settled design |
 | SEC-06 | No rate limiting guidance for webhooks | Denial of service |
-| AUTH-02 | No server-side token revocation on disable | Continued access after uninstall |
-| AUTH-03 | No store-scoped tokens | Lateral movement on token theft |
 | CRYPTO-01 | Client secret used for both auth and signing | Single point of compromise |
 | CRYPTO-02 | No replay protection beyond timestamp | Launch URL replay within 5 min |
 | ARCH-02 | No event ordering guarantees documented | Race conditions in event processing |
 | ARCH-03 | No retry schedule documented | Incorrect idempotency TTLs |
 | DOC-01 | Authentication info scattered across 5 pages | Incomplete implementations |
 | INC-01–05 | Cross-page inconsistencies | Developer confusion |
+
+### Out of scope here (see AUTHZ / DEVX)
+
+| Ref | Topic |
+|-----|--------|
+| [AUTHZ enablement flow](https://godaddy-corp.atlassian.net/wiki/spaces/AUTHZ/pages/4521560066/OAuth+-+Commerce+Store+Enablement+Flow) | User-scoped OAuth vs store enablement; intentional account-wide token reach; deferred store-scoped tokens |
+| [DEVX-1003](https://godaddy-corp.atlassian.net/browse/DEVX-1003) | Cross-org `app enable` without per-store consent |
+| [DEVX-1008](https://godaddy-corp.atlassian.net/browse/DEVX-1008) | Install/consent policy decision |
 
 ### Low (Backlog)
 

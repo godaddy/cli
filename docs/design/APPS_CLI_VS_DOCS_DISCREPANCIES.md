@@ -5,6 +5,14 @@
 **Date:** 2026-09-09  
 **Reviewer:** Claude (prompted by Rajkumar TS)
 
+**Out of scope (tracked elsewhere — do not restate here):** OAuth vs store enablement design, install/consent policy, and cross-org `app enable` behavior are covered by:
+
+- [OAuth → Commerce Store Enablement Flow](https://godaddy-corp.atlassian.net/wiki/spaces/AUTHZ/pages/4521560066/OAuth+-+Commerce+Store+Enablement+Flow)
+- [DEVX-1003](https://godaddy-corp.atlassian.net/browse/DEVX-1003) — enable another org's app on any owned store without per-store consent
+- [DEVX-1008](https://godaddy-corp.atlassian.net/browse/DEVX-1008) — decide who may install which apps and what consent is required
+
+This document stays focused on **CLI command/flag/config vs published developer docs** gaps. Related docs-quality / security findings (that are not pure CLI↔docs diffs) live in `APPS_DEVELOPER_DOCS_REVIEW.md`.
+
 ---
 
 ## Table of Contents
