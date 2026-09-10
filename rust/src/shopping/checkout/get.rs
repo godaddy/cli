@@ -38,11 +38,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let ready_for_complete =
                 checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
             let actions = if ready_for_complete {
+                let payment_instrument =
+                    selected_payment_id(&checkout).unwrap_or("<instrument-id>");
                 vec![next_action(
                     command_for_env(
                         &ctx.middleware.env,
                         format!(
-                            "checkout complete {} --file complete-checkout.json",
+                            "checkout complete {} --payment-instrument {payment_instrument}",
                             args.id
                         ),
                     ),
@@ -95,15 +97,7 @@ pub(super) fn human_response(checkout: &Value, actions: &[cli_engine::NextAction
 }
 
 fn selected_payment(checkout: &Value) -> String {
-    let Some(instrument) = checkout
-        .pointer("/payment/instruments")
-        .and_then(Value::as_array)
-        .and_then(|instruments| {
-            instruments.iter().find(|instrument| {
-                instrument.get("selected").and_then(Value::as_bool) == Some(true)
-            })
-        })
-    else {
+    let Some(instrument) = selected_payment_instrument(checkout) else {
         return "No payment method selected".to_owned();
     };
     let description = instrument
@@ -114,6 +108,23 @@ fn selected_payment(checkout: &Value) -> String {
         Some(id) => format!("{description} (ID: {id})"),
         None => description.to_owned(),
     }
+}
+
+fn selected_payment_instrument(checkout: &Value) -> Option<&Value> {
+    checkout
+        .pointer("/payment/instruments")
+        .and_then(Value::as_array)
+        .and_then(|instruments| {
+            instruments.iter().find(|instrument| {
+                instrument.get("selected").and_then(Value::as_bool) == Some(true)
+            })
+        })
+}
+
+fn selected_payment_id(checkout: &Value) -> Option<&str> {
+    selected_payment_instrument(checkout)
+        .and_then(|instrument| instrument.get("id"))?
+        .as_str()
 }
 
 fn render_human(checkout: &Value) -> String {

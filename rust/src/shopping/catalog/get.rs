@@ -91,14 +91,12 @@ fn next_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
     else {
         return Vec::new();
     };
-    let body = json!({
-        "context": {"currency": currency},
-        "line_items": [{"item": {"id": variant_id}, "quantity": 1}]
-    })
-    .to_string();
     vec![
         next_action(
-            command_for_env(env, format!("checkout create --body '{body}'")),
+            command_for_env(
+                env,
+                format!("checkout create --item '{variant_id}' --currency {currency}"),
+            ),
             "Create a checkout with the first available variant",
         )
         .with_param("variant_id", required_value(variant_id)),

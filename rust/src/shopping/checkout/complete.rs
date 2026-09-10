@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use crate::next_action::{next_action, required_value};
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
-    ensure_completion_idempotency_key, has_conflicting_checkout_id, make_client, read_json,
-    require_selected_payment_instrument,
+    CheckoutInput, ensure_completion_idempotency_key, has_conflicting_checkout_id, make_client,
+    read_json, reject_mixed_checkout_input, require_selected_payment_instrument,
 };
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
@@ -15,8 +15,16 @@ struct Args {
     #[arg(value_name = "CHECKOUT_ID")]
     id: String,
 
-    /// Completion request as raw JSON. Omit idempotency_key to let gddy generate one.
-    #[arg(long, value_name = "JSON", required_unless_present = "file")]
+    /// Saved payment instrument ID to use for this purchase.
+    #[arg(long, value_name = "INSTRUMENT_ID")]
+    payment_instrument: Option<String>,
+
+    /// Stable key for this single intended purchase. A UUID is generated when omitted.
+    #[arg(long, value_name = "KEY")]
+    idempotency_key: Option<String>,
+
+    /// Completion request as raw JSON for advanced payment or billing-address fields.
+    #[arg(long, value_name = "JSON")]
     body: Option<String>,
 
     /// Path to a JSON completion request. Takes precedence over --body.
@@ -103,11 +111,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("complete", "Complete a Shopping checkout and place an order")
             .with_long(
-                "Places a real order. Supply the Shopping API completion request through --body or \
-                 --file; it must include a selected saved payment instrument. Supply a non-empty \
-                 idempotency_key to control retries, or omit it to let gddy generate and return one. \
-                 The CLI never retries completion automatically. Read the resulting order with \
-                 `shopping order get <order-id> --wait`.",
+                "Places a real order. Use --payment-instrument for one saved payment instrument, \
+                 or --body/--file for advanced payment or billing-address fields. Use --idempotency-key \
+                 to control retries, or omit it to let gddy generate and return one. The CLI never retries \
+                 completion automatically. Read the resulting order with `shopping order get <order-id> --wait`.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -117,7 +124,28 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .auth_optional()
             .with_view_id(HUMAN_VIEW_ID),
         |ctx, args: Args| async move {
-            let mut body = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
+            let input = CheckoutInput {
+                payment_instrument: args.payment_instrument,
+                ..CheckoutInput::default()
+            };
+            reject_mixed_checkout_input(args.body.as_deref(), args.file.as_deref(), input.is_present())?;
+            if args.idempotency_key.as_deref().is_some_and(|key| key.trim().is_empty()) {
+                return Err(crate::error::GddyError::validation(
+                    "--idempotency-key must be non-empty when supplied",
+                )
+                .into_cli_error());
+            }
+            let mut body = if args.body.is_some() || args.file.is_some() {
+                let mut body = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
+                if let Some(idempotency_key) = args.idempotency_key {
+                    body.as_object_mut()
+                        .expect("read_json validates the completion request is an object")
+                        .insert("idempotency_key".to_owned(), json!(idempotency_key));
+                }
+                body
+            } else {
+                input.completion_body(args.idempotency_key.as_deref())?
+            };
             if has_conflicting_checkout_id(&body, &args.id) {
                 return Err(crate::error::GddyError::validation(
                     "checkout ID in request body conflicts with CHECKOUT_ID",

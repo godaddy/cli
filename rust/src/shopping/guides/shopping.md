@@ -37,9 +37,9 @@ gddy --env <environment> shopping catalog search --body '{}'
 ## Request documents and output
 
 Use `--body` for a small inline JSON request or `--file` for a reusable JSON document.
-`--file` takes precedence over `--body`. The Shopping API uses nested checkout objects,
-so checkout create, update, and complete requests remain JSON documents instead of a
-long list of CLI flags.
+`--file` takes precedence over `--body`. For common checkout workflows, use the checkout
+flags below; use JSON for advanced nested API fields. Do not combine checkout flags with
+`--body` or `--file` in the same command.
 
 JSON is the default output format. For successful non-dry-run requests, the full
 Shopping API response is in the envelope's `data` field. Add `--output human` for a
@@ -96,12 +96,33 @@ is not required before completion when the checkout is already ready. Include bu
 and other supported checkout information when creating a checkout that is ready to complete.
 
 ```bash
-gddy shopping checkout create --body '{
-  "context": {"currency": "USD"},
+gddy shopping checkout create \
+  --item '<available-variant-id>' \
+  --currency USD \
+  --buyer-first-name Jane \
+  --buyer-last-name Doe \
+  --buyer-email jane.doe@example.test \
+  --buyer-phone '+15550100'
+```
+
+Repeat `--item` to create a cart; append `=QUANTITY` to an item, such as
+`--item '<available-variant-id>=2'`. Add `--payment-instrument <saved-payment-instrument-id>`
+to select one stored payment method. It is optional at creation: a ready checkout can expose a
+saved instrument for selection at completion.
+
+A stored payment instrument normally supplies its saved billing address automatically. Use a
+JSON document when you need an address override or other advanced nested fields:
+
+```json
+{
   "line_items": [
     {
-      "item": {"id": "<available-variant-id>"},
-      "quantity": 1
+      "item": {"id": "<catalog-variant-id>"},
+      "quantity": 1,
+      "input": {
+        "type": "<variant-required-input-type>",
+        "references": {"<reference-name>": "<reference-value>"}
+      }
     }
   ],
   "buyer": {
@@ -110,27 +131,37 @@ gddy shopping checkout create --body '{
     "email": "jane.doe@example.test",
     "phone_number": "+15550100"
   },
+  "context": {
+    "currency": "USD"
+  },
   "payment": {
-    "instruments": [
-      {
-        "id": "<saved-payment-instrument-id>",
-        "selected": true,
-        "billing_address": {
-          "street_address": "123 Example Street",
-          "address_locality": "Exampleville",
-          "address_region": "CA",
-          "postal_code": "94043",
-          "address_country": "US"
-        }
+    "instruments": [{
+      "id": "<saved-payment-instrument-id>",
+      "selected": true,
+      "billing_address": {
+        "street_address": "123 Example Street",
+        "extended_address": "Suite 200",
+        "address_locality": "Exampleville",
+        "address_region": "CA",
+        "postal_code": "94043",
+        "address_country": "US",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "phone_number": "+15550100"
       }
-    ]
+    }]
   }
-}'
+}
 ```
 
-`billing_address` on the selected saved payment instrument is optional. You can provide it
-when creating the checkout or in the completion request; omitting it retains the saved
-instrument's existing billing address.
+`line_items` is the only required top-level field for create or update. Each line item requires
+an `item.id` (a catalog variant ID) and a positive integer `quantity`. Include `input` only when
+the selected variant's published input schema requires it. `buyer`, `context`, `signals`,
+`attribution`, `payment`, and `fulfillment` are optional. Do not send response-owned fields such
+as checkout `id`, `status`, `totals`, `currency`, `messages`, `order`, or `ucp`.
+
+Only one payment instrument may be specified for checkout create, update, or complete. Use
+`--file checkout.json` rather than placing address information in shell history.
 
 Use `checkout get <checkout-id>` when you need to inspect an existing open checkout or
 recover its available payment instruments. Its human output shows checkout status, items,
@@ -139,18 +170,34 @@ totals, and the selected masked payment method. Use `--output json` for the full
 ## Optionally update an open checkout
 
 `checkout update` is optional. Use it only to change an existing checkout. It replaces the
-checkout with the supplied document, so include every line item and all retained fields. An empty
-`line_items` array deliberately clears the cart.
+checkout state, so structured updates must include every desired cart item. Use `--clear-items`
+only to deliberately empty the cart.
 
 ```bash
-gddy shopping checkout update <checkout-id> --file update-checkout.json
+gddy shopping checkout update <checkout-id> \
+  --item '<available-variant-id>=2' \
+  --buyer-email jane.doe@example.test
 ```
+
+Use `--file update-checkout.json` for advanced replacement fields, such as fulfillment, product
+input, attribution, signals, or a billing-address override.
 
 ## Complete a checkout
 
-`checkout complete` places a real order. Provide exactly one selected saved payment
-instrument. You can supply a non-empty `idempotency_key`, or omit it to let gddy generate
-one and return it in human output. Preserve the effective key for lost-response recovery.
+`checkout complete` places a real order. Select exactly one saved payment instrument. The
+common form is:
+
+```bash
+gddy shopping checkout complete <checkout-id> \
+  --payment-instrument <saved-payment-instrument-id>
+```
+
+Use `--idempotency-key <optional-stable-key>` to supply a non-empty key, or omit it to let
+gddy generate one and return it in human output. Preserve the effective key for lost-response
+recovery.
+
+Use `--file complete-checkout.json` for an optional billing-address override or another
+advanced payment field. The JSON may specify only one payment instrument:
 
 ```json
 {
@@ -171,11 +218,6 @@ one and return it in human output. Preserve the effective key for lost-response 
   },
   "idempotency_key": "<optional-stable-key>"
 }
-```
-
-```bash
-gddy shopping checkout complete <checkout-id> \
-  --file complete-checkout.json
 ```
 
 Completion returns immediately after the single purchase attempt. A successful response includes

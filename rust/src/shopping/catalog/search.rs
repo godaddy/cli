@@ -198,14 +198,12 @@ fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<cli_engi
             .and_then(|variant| variant.pointer("/price/currency"))
             .and_then(Value::as_str)
             .unwrap_or("USD");
-        let checkout_body = json!({
-            "context": {"currency": currency},
-            "line_items": [{"item": {"id": variant_id}, "quantity": 1}]
-        })
-        .to_string();
         actions.push(
             next_action(
-                command_for_env(env, format!("checkout create --body '{checkout_body}'")),
+                command_for_env(
+                    env,
+                    format!("checkout create --item '{variant_id}' --currency {currency}"),
+                ),
                 "Create a checkout with the first available variant",
             )
             .with_param("variant_id", required_value(variant_id)),
@@ -551,7 +549,7 @@ mod tests {
         let actions = next_actions(&response, &mut request, "test").expect("actions");
 
         assert_eq!(request.pointer("/context/currency"), Some(&json!("jpy")));
-        assert!(actions[1].command.contains("\"currency\":\"USD\""));
+        assert!(actions[1].command.contains("--currency USD"));
         assert!(actions[2].command.contains("\"currency\":\"jpy\""));
     }
 
