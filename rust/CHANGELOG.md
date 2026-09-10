@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.13](https://github.com/godaddy/cli/compare/v0.2.12...v0.2.13) (2026-09-10)
+
+
+### Features
+
+* **dns:** add HTTPS, SVCB, and TLSA record support ([#246](https://github.com/godaddy/cli/issues/246)) ([ba6eace](https://github.com/godaddy/cli/commit/ba6eace045f9944a81c4be103f3bb0a38b68b6d8))
+* **platform:** add store app enablements command ([#251](https://github.com/godaddy/cli/issues/251)) ([b931877](https://github.com/godaddy/cli/commit/b931877db9f44fa93538b371da43908d5433a60a))
+
+
+### Bug Fixes
+
+* **api-catalog:** resync spec drift and support TLSA DNS records ([#244](https://github.com/godaddy/cli/issues/244)) ([fccd2fd](https://github.com/godaddy/cli/commit/fccd2fd24ff253d13475b195f826ce2aaa2db1de))
+* **api-catalog:** resync spec drift and test the whole workspace in CI ([#241](https://github.com/godaddy/cli/issues/241)) ([efe8749](https://github.com/godaddy/cli/commit/efe8749a93f038435820fb63387d038a64c7770b))
+* **email:** Updating to align with productivity panel api ([#245](https://github.com/godaddy/cli/issues/245)) ([d5bb34d](https://github.com/godaddy/cli/commit/d5bb34dbcb978e36acb7a3df1de05eb0564e486e))
+
+
+### Documentation
+
+* Updated the email guide ([#252](https://github.com/godaddy/cli/issues/252)) ([7139908](https://github.com/godaddy/cli/commit/7139908a7a330b2fc677f2bc845eaecb4ff0e4e2))
+
 ## [0.2.12](https://github.com/godaddy/cli/compare/v0.2.11...v0.2.12) (2026-09-01)
 
 
