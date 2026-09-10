@@ -183,6 +183,27 @@ fn is_endpoint_url(endpoint: &str, proxy_url: &str) -> bool {
         .is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
+/// Reduce `full_url` to a path relative to `proxy_url` when they share a
+/// scheme and host; otherwise return `full_url` unchanged
+pub fn relativize_webhook_url(full_url: &str, proxy_url: &str) -> String {
+    let (Ok(full), Ok(base)) = (url::Url::parse(full_url), url::Url::parse(proxy_url)) else {
+        return full_url.to_owned();
+    };
+    if full.scheme() != base.scheme() || full.host_str() != base.host_str() {
+        return full_url.to_owned();
+    }
+    let mut relative = full.path().to_owned();
+    if let Some(query) = full.query() {
+        relative.push('?');
+        relative.push_str(query);
+    }
+    if let Some(fragment) = full.fragment() {
+        relative.push('#');
+        relative.push_str(fragment);
+    }
+    relative
+}
+
 fn validate_action(errors: &mut Vec<String>, path: &str, action: &ActionConfig, proxy_url: &str) {
     require_min_len(errors, &format!("{path}.name"), &action.name, MIN_IDENT_LEN);
     if !is_endpoint_url(&action.url, proxy_url) {
@@ -465,6 +486,47 @@ mod tests {
             extensions: None,
             settings: vec![],
         }
+    }
+
+    #[test]
+    fn relativize_webhook_url_reduces_same_host_url_to_a_path() {
+        assert_eq!(
+            relativize_webhook_url(
+                "https://proxy.example.com/webhooks/orders",
+                "https://proxy.example.com"
+            ),
+            "/webhooks/orders"
+        );
+    }
+
+    #[test]
+    fn relativize_webhook_url_keeps_query_and_fragment() {
+        assert_eq!(
+            relativize_webhook_url(
+                "https://proxy.example.com/webhooks/orders?x=1#frag",
+                "https://proxy.example.com"
+            ),
+            "/webhooks/orders?x=1#frag"
+        );
+    }
+
+    #[test]
+    fn relativize_webhook_url_leaves_cross_host_url_unchanged() {
+        assert_eq!(
+            relativize_webhook_url(
+                "https://elsewhere.example.com/webhooks/orders",
+                "https://proxy.example.com"
+            ),
+            "https://elsewhere.example.com/webhooks/orders"
+        );
+    }
+
+    #[test]
+    fn relativize_webhook_url_leaves_unparsable_url_unchanged() {
+        assert_eq!(
+            relativize_webhook_url("not a url", "https://proxy.example.com"),
+            "not a url"
+        );
     }
 
     #[test]
