@@ -1,7 +1,9 @@
-use cli_engine::{CommandResult, CommandSpec, ModuleContext, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, ModuleContext, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
-use crate::next_action::{next_action, required_value};
+use crate::next_action::{human_next_steps, next_action};
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
     CheckoutInput, ensure_completion_idempotency_key, has_conflicting_checkout_id, make_client,
@@ -50,8 +52,12 @@ fn human_response(
         "status": completion.get("status").and_then(Value::as_str).unwrap_or_default(),
         "order_id": completion.pointer("/order/id").and_then(Value::as_str),
         "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
+        "total": crate::shopping::money::format_total(
+            completion.get("totals"),
+            completion.get("currency").and_then(Value::as_str),
+        ),
         "idempotency_key": idempotency_key,
-        "next_steps": actions.iter().map(|action| json!({"command": action.command, "description": action.description})).collect::<Vec<_>>(),
+        "next_steps": human_next_steps(actions),
     })
 }
 
@@ -93,9 +99,55 @@ fn render_human(completion: &Value) -> String {
     if let Some(permalink) = completion.get("order_permalink").and_then(Value::as_str) {
         output.push_str(&format!("View order: {permalink}\n"));
     }
+    if let Some(total) = completion.get("total").and_then(Value::as_str) {
+        output.push_str(&format!("Total: {total}\n"));
+    }
     output.push_str("\nKeep this idempotency key. Do not retry a completion unless you first confirm its outcome.\n");
     crate::shopping::checkout::get::render_next_steps(&mut output, completion);
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_view_shows_completion_total_only_with_currency() {
+        let output = render_human(&human_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "completed",
+                "currency": "GBP",
+                "totals": [
+                    {"type": "subtotal", "amount": 4788},
+                    {"type": "tax", "amount": 0},
+                    {"type": "total", "amount": 4788}
+                ]
+            }),
+            "idempotency-key",
+            &[],
+        ));
+
+        assert!(output.contains("Total: GBP 47.88"));
+        assert!(!output.contains("Subtotal:"));
+        assert!(!output.contains("Tax:"));
+    }
+
+    #[test]
+    fn human_view_omits_completion_total_without_currency() {
+        let output = render_human(&human_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "completed",
+                "totals": [{"type": "total", "amount": 4788}]
+            }),
+            "idempotency-key",
+            &[],
+        ));
+
+        assert!(!output.contains("Total:"));
+        assert!(!output.contains("4788"));
+    }
 }
 
 fn completion_error(error: ClientError, idempotency_key: &str) -> cli_engine::CliCoreError {
@@ -160,7 +212,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     "id": args.id,
                     "idempotency_key": idempotency_key,
                     "body": body,
-                })));
+                }))
+                .with_dry_run());
             }
 
             let client = make_client(&ctx).await?;
@@ -174,14 +227,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let actions = order_id.map_or_else(Vec::new, |order_id| {
                 vec![
                     next_action(
-                        command_for_env(
-                            &ctx.middleware.env,
-                            format!("order get {order_id} --wait"),
-                        ),
+                        command_for_env(&ctx.middleware.env, "order get <order-id> --wait"),
                         "Read the completed order after it becomes visible",
                     )
-                    .with_param("order_id", required_value(order_id))
-                    .with_param("idempotency_key", required_value(idempotency_key.clone())),
+                    .with_param("order-id", NextActionParam::value(order_id)),
                 ]
             });
             let output = if ctx.middleware.output_format == "human" {

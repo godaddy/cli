@@ -35,7 +35,7 @@ pub(super) fn split_kv(raw: &str) -> Option<(&str, &str)> {
 /// `{name}` placeholder in a path template. Uses `url` (already a
 /// dependency) rather than adding `percent-encoding` directly, since `url`
 /// doesn't re-export it publicly.
-pub(super) fn encode_path_segment(value: &str) -> String {
+pub(crate) fn encode_path_segment(value: &str) -> String {
     let mut url = url::Url::parse("http://x").expect("valid base URL");
     url.path_segments_mut()
         .expect("http URL always has path segments")

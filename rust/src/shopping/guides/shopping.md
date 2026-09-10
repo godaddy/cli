@@ -110,9 +110,11 @@ request through `--body` or `--file`.
 ## Create a checkout ready to complete
 
 Creating a checkout does not place an order. A create response includes the checkout ID,
-priced line items, totals, and available payment instruments, so a separate `checkout get`
-is not required before completion when the checkout is already ready. Include buyer, payment,
-and other supported checkout information when creating a checkout that is ready to complete.
+priced line items, total, and up to five available payment instruments with IDs and
+descriptions, so a separate `checkout get` is not required before completion when the
+checkout is already ready. Add `--show-all-payment-instruments` to show every available
+method. Include buyer, payment, and other supported checkout information when creating a
+checkout that is ready to complete.
 
 ```bash
 gddy shopping checkout create \
@@ -183,8 +185,10 @@ Only one payment instrument may be specified for checkout create, update, or com
 `--file checkout.json` rather than placing address information in shell history.
 
 Use `checkout get <checkout-id>` when you need to inspect an existing open checkout or
-recover its available payment instruments. Its human output shows checkout status, items,
-totals, and the selected masked payment method. Use `--output json` for the full response.
+recover its available payment instruments. Human output shows checkout status, items, the
+selected payment method, and up to five available saved payment methods with their IDs and
+descriptions. Add `--show-all-payment-instruments` to show every available method. Use
+`--output json` for the full response.
 
 ## Optionally update an open checkout
 

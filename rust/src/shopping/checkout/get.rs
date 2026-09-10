@@ -1,7 +1,10 @@
-use cli_engine::{CommandResult, CommandSpec, ModuleContext, Result, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, ModuleContext, NextAction, NextActionParam, Result,
+    RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
-use crate::next_action::next_action;
+use crate::next_action::{human_next_steps, next_action};
 use crate::shopping::common::{client_err, make_client};
 use crate::shopping::money;
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
@@ -19,6 +22,10 @@ struct Args {
     /// Checkout session ID.
     #[arg(value_name = "CHECKOUT_ID")]
     id: String,
+
+    /// Show every available saved payment instrument instead of the first five.
+    #[arg(long)]
+    show_all_payment_instruments: bool,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -40,21 +47,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let actions = if ready_for_complete {
                 let payment_instrument =
                     selected_payment_id(&checkout).unwrap_or("<instrument-id>");
-                vec![next_action(
-                    command_for_env(
-                        &ctx.middleware.env,
-                        format!(
-                            "checkout complete {} --payment-instrument {payment_instrument}",
-                            args.id
+                vec![
+                    next_action(
+                        command_for_env(
+                            &ctx.middleware.env,
+                            "checkout complete <checkout-id> --payment-instrument <payment-instrument>",
                         ),
+                        "Complete this checkout after reviewing its selected payment method",
+                    )
+                    .with_param("checkout-id", NextActionParam::value(args.id))
+                    .with_param(
+                        "payment-instrument",
+                        NextActionParam::value(payment_instrument),
                     ),
-                    "Complete this checkout after reviewing its selected payment method",
-                )]
+                ]
             } else {
                 Vec::new()
             };
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout, &actions)
+                human_response(&checkout, &actions, args.show_all_payment_instruments)
             } else {
                 checkout
             };
@@ -68,7 +79,11 @@ async fn client_response(ctx: &cli_engine::CommandContext, id: &str) -> Result<V
     client.get_checkout(id).await.map_err(client_err)
 }
 
-pub(super) fn human_response(checkout: &Value, actions: &[cli_engine::NextAction]) -> Value {
+pub(super) fn human_response(
+    checkout: &Value,
+    actions: &[NextAction],
+    show_all_payment_instruments: bool,
+) -> Value {
     let line_items = checkout
         .get("line_items")
         .and_then(Value::as_array)
@@ -90,20 +105,61 @@ pub(super) fn human_response(checkout: &Value, actions: &[cli_engine::NextAction
         "status": checkout.get("status").and_then(Value::as_str).unwrap_or_default(),
         "items": line_items,
         "currency": checkout.get("currency").and_then(Value::as_str).unwrap_or_default(),
-        "totals": checkout.get("totals").cloned().unwrap_or_else(|| json!([])),
+        "total": money::format_total(
+            checkout.get("totals"),
+            checkout.get("currency").and_then(Value::as_str),
+        ),
         "selected_payment": selected_payment(checkout),
-        "next_steps": actions.iter().map(|action| json!({"command": action.command, "description": action.description})).collect::<Vec<_>>(),
+        "available_payment_instruments": available_payment_instruments(checkout, show_all_payment_instruments),
+        "has_more_payment_instruments": !show_all_payment_instruments && available_payment_instrument_count(checkout) > PAYMENT_INSTRUMENT_LIMIT,
+        "next_steps": human_next_steps(actions),
     })
+}
+
+const PAYMENT_INSTRUMENT_LIMIT: usize = 5;
+
+fn available_payment_instruments(checkout: &Value, show_all: bool) -> Vec<Value> {
+    checkout
+        .pointer("/payment/instruments")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|instrument| {
+            let id = instrument.get("id").and_then(Value::as_str)?;
+            Some(json!({
+                "id": id,
+                "description": payment_instrument_description(instrument),
+                "selected": instrument.get("selected").and_then(Value::as_bool).unwrap_or(false),
+            }))
+        })
+        .take(if show_all {
+            usize::MAX
+        } else {
+            PAYMENT_INSTRUMENT_LIMIT
+        })
+        .collect()
+}
+
+fn available_payment_instrument_count(checkout: &Value) -> usize {
+    checkout
+        .pointer("/payment/instruments")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn payment_instrument_description(instrument: &Value) -> &str {
+    instrument
+        .get("rich_text_description")
+        .or_else(|| instrument.get("description"))
+        .and_then(Value::as_str)
+        .unwrap_or("Saved payment method")
 }
 
 fn selected_payment(checkout: &Value) -> String {
     let Some(instrument) = selected_payment_instrument(checkout) else {
         return "No payment method selected".to_owned();
     };
-    let description = instrument
-        .get("rich_text_description")
-        .and_then(Value::as_str)
-        .unwrap_or("Selected payment method");
+    let description = payment_instrument_description(instrument);
     match instrument.get("id").and_then(Value::as_str) {
         Some(id) => format!("{description} (ID: {id})"),
         None => description.to_owned(),
@@ -175,44 +231,60 @@ fn render_human(checkout: &Value) -> String {
         }
     }
     output.push_str(&format!(
-        "\nSelected payment: {}\nTotals:\n",
+        "\nSelected payment: {}\n",
         checkout
             .get("selected_payment")
             .and_then(Value::as_str)
             .unwrap_or("No payment method selected"),
     ));
-    let totals = checkout
-        .get("totals")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    if totals.is_empty() {
-        output.push_str("- None\n");
-    }
-    for total in totals {
-        let label = total
-            .get("display_text")
-            .or_else(|| total.get("type"))
-            .and_then(Value::as_str)
-            .unwrap_or("Total");
-        let amount = total
-            .get("amount")
-            .and_then(Value::as_i64)
-            .unwrap_or_default();
-        output.push_str(&format!(
-            "- {label}: {}\n",
-            checkout
-                .get("currency")
-                .and_then(Value::as_str)
-                .map_or_else(
-                    || amount.to_string(),
-                    |currency| money::format_amount(amount, currency)
-                ),
-        ));
+    render_available_payment_instruments(&mut output, checkout);
+    if let Some(total) = checkout.get("total").and_then(Value::as_str) {
+        output.push_str(&format!("\nTotal: {total}\n"));
     }
     output.push_str("\nCompletion places a real order. Review this checkout before continuing.\n");
     render_next_steps(&mut output, checkout);
     output
+}
+
+fn render_available_payment_instruments(output: &mut String, checkout: &Value) {
+    let instruments = checkout
+        .get("available_payment_instruments")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if instruments.is_empty() {
+        return;
+    }
+    output.push_str("\nAvailable payment methods:\n");
+    for instrument in instruments {
+        let selected = if instrument
+            .get("selected")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            " (selected)"
+        } else {
+            ""
+        };
+        output.push_str(&format!(
+            "- {} (ID: {}){selected}\n",
+            instrument
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("Saved payment method"),
+            instrument
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ));
+    }
+    if checkout
+        .get("has_more_payment_instruments")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        output.push_str("Use --show-all-payment-instruments to show every saved payment method.\n");
+    }
 }
 
 pub(super) fn render_next_steps(output: &mut String, response: &Value) {
@@ -243,6 +315,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn payment_instruments_default_to_five_and_can_show_all() {
+        let checkout = json!({
+            "payment": {"instruments": (1..=6)
+                .map(|id| json!({"id": id.to_string(), "description": format!("Card {id}")}))
+                .collect::<Vec<_>>()}
+        });
+
+        let default_instruments = available_payment_instruments(&checkout, false);
+        let all_instruments = available_payment_instruments(&checkout, true);
+
+        assert_eq!(default_instruments.len(), 5);
+        assert_eq!(all_instruments.len(), 6);
+        let output = render_human(&human_response(&checkout, &[], false));
+        assert!(output.contains("--show-all-payment-instruments"));
+    }
+
+    #[test]
     fn human_view_masks_checkout_to_purchase_essentials() {
         let output = render_human(&human_response(
             &json!({
@@ -253,18 +342,23 @@ mod tests {
                     "item": {"title": "Web Hosting Economy"},
                     "included_products": [{"title": "Standard SSL"}]
                 }],
+                "totals": [{"type": "total", "amount": 8388}],
+                "currency": "USD",
                 "payment": {"instruments": [{
+                    "id": "payment-1",
                     "selected": true,
                     "rich_text_description": "CREDIT_CARD/VISA 1111",
                     "billing_address": {"street_address": "do not render"}
-                }]},
-                "totals": [{"display_text": "Total", "amount": 8388}]
+                }]}
             }),
             &[],
+            false,
         ));
 
         assert!(output.contains("Web Hosting Economy"));
         assert!(output.contains("CREDIT_CARD/VISA 1111"));
+        assert!(output.contains("Available payment methods:"));
+        assert!(output.contains("Total: USD 83.88"));
         assert!(output.contains("Completion places a real order"));
         assert!(!output.contains("do not render"));
     }

@@ -1,7 +1,7 @@
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::Value;
 
-use crate::next_action::{next_action, required_value};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::checkout::get::{HUMAN_VIEW_ID, human_response};
 use crate::shopping::common::{
@@ -52,6 +52,10 @@ struct Args {
     #[arg(long, value_name = "INSTRUMENT_ID")]
     payment_instrument: Option<String>,
 
+    /// Show every available saved payment instrument instead of the first five.
+    #[arg(long)]
+    show_all_payment_instruments: bool,
+
     /// Checkout-create request as raw JSON for advanced Shopping API fields.
     #[arg(long, value_name = "JSON")]
     body: Option<String>,
@@ -100,7 +104,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 return Ok(CommandResult::new(serde_json::json!({
                     "action": "dry-run: would create checkout",
                     "body": body,
-                })));
+                }))
+                .with_dry_run());
             }
             let client = make_client(&ctx).await?;
             let checkout = client.create_checkout(body).await.map_err(client_err)?;
@@ -135,15 +140,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     next_action(
                         command_for_env(
                             &ctx.middleware.env,
-                            format!("checkout complete {checkout_id} --payment-instrument {payment_instrument}"),
+                            "checkout complete <checkout-id> --payment-instrument <payment-instrument>",
                         ),
                         "Complete this checkout with a selected saved payment instrument",
                     )
-                    .with_param("checkout_id", required_value(checkout_id)),
+                    .with_param("checkout-id", NextActionParam::value(checkout_id))
+                    .with_param(
+                        "payment-instrument",
+                        NextActionParam::value(payment_instrument),
+                    ),
                 );
             }
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout, &actions)
+                human_response(&checkout, &actions, args.show_all_payment_instruments)
             } else {
                 checkout
             };

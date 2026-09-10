@@ -1,5 +1,5 @@
 pub(super) mod get;
-mod lookup;
+pub(super) mod lookup;
 pub(super) mod search;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};

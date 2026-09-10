@@ -78,7 +78,10 @@ fn human_response(order: &Value) -> Value {
         "id": order.get("id").and_then(Value::as_str).unwrap_or_default(),
         "permalink_url": order.get("permalink_url").and_then(Value::as_str),
         "line_items": order.get("line_items").cloned().unwrap_or_else(|| json!([])),
-        "totals": order.get("totals").cloned().unwrap_or_else(|| json!([])),
+        "total": money::format_total(
+            order.get("totals"),
+            order.get("currency").and_then(Value::as_str),
+        ),
         "currency": order.get("currency").and_then(Value::as_str),
         "fulfillment": order.get("fulfillment").cloned().unwrap_or_else(|| json!({})),
     })
@@ -117,40 +120,11 @@ fn render_human(order: &Value) -> String {
             .unwrap_or("unknown");
         output.push_str(&format!("- {quantity} × {title} · {status}\n"));
     }
-    if order.get("currency").and_then(Value::as_str).is_some() {
-        output.push_str("\nTotals:\n");
-        render_totals(&mut output, order.get("totals"), order.get("currency"));
+    if let Some(total) = order.get("total").and_then(Value::as_str) {
+        output.push_str(&format!("\nTotal: {total}\n"));
     }
     render_fulfillment(&mut output, order.get("fulfillment"));
     output
-}
-
-fn render_totals(output: &mut String, totals: Option<&Value>, currency: Option<&Value>) {
-    let Some(currency) = currency.and_then(Value::as_str) else {
-        return;
-    };
-    let totals = totals
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    if totals.is_empty() {
-        output.push_str("- None\n");
-    }
-    for total in totals {
-        let label = total
-            .get("display_text")
-            .or_else(|| total.get("type"))
-            .and_then(Value::as_str)
-            .unwrap_or("Total");
-        let amount = total
-            .get("amount")
-            .and_then(Value::as_i64)
-            .unwrap_or_default();
-        output.push_str(&format!(
-            "- {label}: {}\n",
-            money::format_amount(amount, currency)
-        ));
-    }
 }
 
 fn render_fulfillment(output: &mut String, fulfillment: Option<&Value>) {
@@ -185,13 +159,14 @@ mod tests {
             "permalink_url": "https://example.test/order-1",
             "currency": "USD",
             "line_items": [{"item": {"title": "Web Hosting Economy"}, "quantity": {"total": 1}, "status": "fulfilled"}],
-            "totals": [{"display_text": "Total", "amount": 8388}],
+            "totals": [{"type": "total", "display_text": "Total", "amount": 8388}],
             "ucp": {"do_not_render": true}
         })));
 
         assert!(output.contains("Order: order-1"));
         assert!(output.contains("Web Hosting Economy · fulfilled"));
-        assert!(output.contains("USD 83.88"));
+        assert!(output.contains("Total: USD 83.88"));
+        assert!(!output.contains("Subtotal:"));
         assert!(!output.contains("Checkout:"));
         assert!(!output.contains("do_not_render"));
     }

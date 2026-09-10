@@ -3,6 +3,7 @@ use std::time::Duration;
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
+use crate::api_explorer::http::encode_path_segment;
 use crate::application::client::make_http_client;
 
 const BASE_PATH: &str = "/v1/shopping";
@@ -144,28 +145,31 @@ impl ShoppingClient {
     }
 
     pub async fn get_checkout(&self, id: &str) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, &format!("/checkout-sessions/{id}"), None)
+        self.send_json(Method::GET, &checkout_path(id, ""), None)
             .await
     }
 
     pub async fn update_checkout(&self, id: &str, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::PUT, &format!("/checkout-sessions/{id}"), Some(body))
+        self.send_json(Method::PUT, &checkout_path(id, ""), Some(body))
             .await
     }
 
     pub async fn complete_checkout(&self, id: &str, body: Value) -> Result<Value, ClientError> {
-        self.send_json(
-            Method::POST,
-            &format!("/checkout-sessions/{id}/complete"),
-            Some(body),
-        )
-        .await
+        self.send_json(Method::POST, &checkout_path(id, "/complete"), Some(body))
+            .await
     }
 
     pub async fn get_order(&self, id: &str) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, &format!("/orders/{id}"), None)
-            .await
+        self.send_json(Method::GET, &order_path(id), None).await
     }
+}
+
+fn checkout_path(id: &str, suffix: &str) -> String {
+    format!("/checkout-sessions/{}{suffix}", encode_path_segment(id))
+}
+
+fn order_path(id: &str) -> String {
+    format!("/orders/{}", encode_path_segment(id))
 }
 
 #[cfg(test)]
@@ -185,6 +189,15 @@ mod tests {
             client("https://api.test-godaddy.com").url("/catalog/search"),
             "https://api.test-godaddy.com/v1/shopping/catalog/search"
         );
+    }
+
+    #[test]
+    fn encodes_dynamic_ids_as_path_segments() {
+        assert_eq!(
+            checkout_path("session/a?b#c%d", "/complete"),
+            "/checkout-sessions/session%2Fa%3Fb%23c%25d/complete"
+        );
+        assert_eq!(order_path("order/a?b#c%d"), "/orders/order%2Fa%3Fb%23c%25d");
     }
 
     #[tokio::test]

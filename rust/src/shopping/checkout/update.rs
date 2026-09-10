@@ -99,7 +99,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     "action": "dry-run: would update checkout",
                     "id": args.id,
                     "body": body,
-                })));
+                }))
+                .with_dry_run());
             }
             let client = make_client(&ctx).await?;
             let checkout = client
@@ -115,7 +116,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .into_iter()
             .collect::<Vec<_>>();
             let output = if ctx.middleware.output_format == "human" {
-                crate::shopping::checkout::get::human_response(&checkout, &actions)
+                crate::shopping::checkout::get::human_response(&checkout, &actions, false)
             } else {
                 checkout
             };

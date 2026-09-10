@@ -1,7 +1,9 @@
-use cli_engine::{CommandResult, CommandSpec, ModuleContext, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, ModuleContext, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
-use crate::next_action::{next_action, required_value};
+use crate::next_action::{human_next_steps, next_action};
 use crate::output_schema::output_schema;
 use crate::shopping::common::{
     client_err, currency_code, make_client, merge_context_currency, read_json,
@@ -118,11 +120,12 @@ fn next_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
         next_action(
             command_for_env(
                 env,
-                format!("checkout create --item '{variant_id}' --currency {currency}"),
+                "checkout create --item <variant-id> --currency <currency>",
             ),
             "Create a checkout with the first available variant",
         )
-        .with_param("variant_id", required_value(variant_id)),
+        .with_param("variant-id", NextActionParam::value(variant_id))
+        .with_param("currency", NextActionParam::value(currency)),
     ]
 }
 
@@ -135,7 +138,7 @@ fn human_response(response: &Value, actions: &[cli_engine::NextAction]) -> Value
         "categories": product.get("categories").and_then(Value::as_array).map(|categories| categories.iter().filter_map(|category| category.get("value").and_then(Value::as_str)).collect::<Vec<_>>()).unwrap_or_default(),
         "price_range": product.get("price_range").cloned(),
         "variants": product.get("variants").cloned().unwrap_or_else(|| json!([])),
-        "next_steps": actions.iter().map(|action| json!({"command": action.command, "description": action.description})).collect::<Vec<_>>(),
+        "next_steps": human_next_steps(actions),
     })
 }
 

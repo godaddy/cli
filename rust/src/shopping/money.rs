@@ -8,6 +8,17 @@ pub(crate) fn format_value(value: Option<&Value>) -> Option<String> {
     Some(format_amount(amount, currency))
 }
 
+pub(crate) fn format_total(totals: Option<&Value>, currency: Option<&str>) -> Option<String> {
+    let currency = currency?;
+    let amount = totals?
+        .as_array()?
+        .iter()
+        .find(|total| total.get("type").and_then(Value::as_str) == Some("total"))?
+        .get("amount")?
+        .as_i64()?;
+    Some(format_amount(amount, currency))
+}
+
 pub(crate) fn format_amount(amount: i64, currency: &str) -> String {
     let sign = if amount < 0 { "-" } else { "" };
     let absolute = amount.unsigned_abs();
@@ -58,6 +69,34 @@ mod tests {
         assert_eq!(format_amount(11_988, "JPY"), "JPY 11,988");
         assert_eq!(format_amount(1_234, "KWD"), "KWD 1.234");
         assert_eq!(format_amount(12_345_678, "CLF"), "CLF 1,234.5678");
+    }
+
+    #[test]
+    fn formats_total_only_when_currency_and_total_are_present() {
+        assert_eq!(
+            format_total(
+                Some(&serde_json::json!([
+                    {"type": "subtotal", "amount": 7188},
+                    {"type": "total", "amount": 7988}
+                ])),
+                Some("USD")
+            ),
+            Some("USD 79.88".to_owned())
+        );
+        assert_eq!(
+            format_total(
+                Some(&serde_json::json!([{"type": "total", "amount": 7988}])),
+                None
+            ),
+            None
+        );
+        assert_eq!(
+            format_total(
+                Some(&serde_json::json!([{"type": "subtotal", "amount": 7188}])),
+                Some("USD")
+            ),
+            None
+        );
     }
 
     #[test]
