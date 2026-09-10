@@ -409,7 +409,7 @@ async fn sync_secrets_sends_body() {
     let mock = server
         .mock_async(|when, then| {
             when.method(POST)
-                .path("/v1/hosting/apps/app-1/secrets/sync")
+                .path("/v1/hosting/apps/app-1/sync-secrets")
                 .json_body(body.clone());
             then.status(200).json_body(json!({ "items": [] }));
         })

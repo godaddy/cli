@@ -58,6 +58,8 @@ output_schema!(HostingApplication {
     "urls": "object";
     "createdAt": "string";
     "updatedAt": "string";
+    "source": "string", optional;
+    "sourceDetails": "object", optional;
 });
 
 output_schema!(HostingAppOperation {

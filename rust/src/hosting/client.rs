@@ -399,7 +399,7 @@ impl HostingClient {
     pub async fn sync_secrets(&self, app_id: &str, body: Value) -> Result<Value, ClientError> {
         self.send_json(
             Method::POST,
-            &format!("/apps/{app_id}/secrets/sync"),
+            &format!("/apps/{app_id}/sync-secrets"),
             &[],
             Some(body),
         )
