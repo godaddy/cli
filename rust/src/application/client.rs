@@ -240,7 +240,7 @@ impl ApplicationClient {
 
     pub async fn get_application_with_releases(&self, name: &str) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt } } } } }",
+            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
             "variables": { "name": name }
         }))
         .await
@@ -594,6 +594,55 @@ mod tests {
         assert!(
             matches!(err, ClientError::Http { status: 401, ref body } if body.contains("unauthorized")),
             "expected Http error variant, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_application_with_releases_selects_client_id_and_subscriptions() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("ApplicationWithLatestRelease")
+                            && body.contains("clientId")
+                            && body.contains("subscriptions { name url events }")
+                    });
+                then.status(200).json_body(json!({
+                    "data": {
+                        "application": {
+                            "id": "app-1",
+                            "clientId": "client-1",
+                            "releases": {
+                                "edges": [{
+                                    "node": {
+                                        "id": "rel-1",
+                                        "subscriptions": [{
+                                            "name": "order-notifications",
+                                            "url": "https://proxy.example.com/webhooks/orders",
+                                            "events": ["commerce.order.created"]
+                                        }]
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }));
+            })
+            .await;
+
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .get_application_with_releases("test-app")
+            .await
+            .expect("get application with releases");
+
+        mock.assert_async().await;
+        assert_eq!(data["application"]["clientId"], "client-1");
+        assert_eq!(
+            data["application"]["releases"]["edges"][0]["node"]["subscriptions"][0]["name"],
+            "order-notifications"
         );
     }
 
