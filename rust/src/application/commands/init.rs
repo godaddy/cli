@@ -3,7 +3,7 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::schemas::ApplicationInit;
 use crate::next_action::{next_action, required_value};
@@ -43,6 +43,195 @@ struct InitArgs {
     /// is still pending (required for non-TTY).
     #[arg(long)]
     accept_agreements: bool,
+
+    /// Fetch an already-registered application's remote config and its
+    /// latest release's webhook subscriptions instead of creating a new
+    /// application. --description, --url, --proxy-url, and --scopes
+    /// override the corresponding fetched value if also provided.
+    #[arg(long, value_name = "NAME", conflicts_with = "accept_agreements")]
+    from_existing: Option<String>,
+}
+
+/// The `releases(first: 1, orderBy: { createdAt: DESC })` node selected by
+/// `ApplicationClient::get_application_with_releases` e.g. the
+/// application's latest release, if it has one.
+fn latest_release(app: &Value) -> Option<&Value> {
+    app["releases"]["edges"]
+        .as_array()?
+        .first()
+        .map(|edge| &edge["node"])
+}
+
+/// Maps the latest release's `subscriptions` into local `SubscriptionConfig`
+/// entries, relativizing each webhook URL against `proxy_url` so it matches
+/// the `/webhooks/...` shape hand-authored entries use.
+fn subscriptions_from_latest_release(
+    app: &Value,
+    proxy_url: &str,
+) -> Vec<crate::config::SubscriptionConfig> {
+    latest_release(app)
+        .and_then(|node| node["subscriptions"].as_array())
+        .map(|subs| {
+            subs.iter()
+                .map(|sub| crate::config::SubscriptionConfig {
+                    name: sub["name"].as_str().unwrap_or("").to_owned(),
+                    events: sub["events"]
+                        .as_array()
+                        .map(|events| {
+                            events
+                                .iter()
+                                .filter_map(|e| e.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    url: crate::config::relativize_webhook_url(
+                        sub["url"].as_str().unwrap_or(""),
+                        proxy_url,
+                    ),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `init --from-existing <name>`: pull a registered application's remote
+/// config and its latest release's webhook subscriptions into a local
+/// godaddy.toml, instead of registering a new application. Read-only against
+/// the API (no `createApplication` mutation, no `.env` write so it's safe
+/// to re-run to re-sync subscriptions after a new release.
+async fn handle_from_existing(
+    ctx: &cli_engine::CommandContext,
+    config_path: &std::path::Path,
+    name: String,
+    args: InitArgs,
+) -> cli_engine::Result<CommandResult> {
+    let client = super::make_client(ctx).await?;
+    let data = client
+        .get_application_with_releases(&name)
+        .await
+        .map_err(super::client_err)?;
+    let app = &data["application"];
+    if app.is_null() {
+        return Err(
+            crate::error::GddyError::not_found(format!("application '{name}' not found"))
+                .into_cli_error(),
+        );
+    }
+
+    let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
+    let description = args
+        .description
+        .or_else(|| app["description"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let url = args
+        .url
+        .or_else(|| app["url"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let proxy_url = args
+        .proxy_url
+        .or_else(|| app["proxyUrl"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let scopes: Vec<String> = args
+        .scopes
+        .map(|s| {
+            s.split(',')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            app["authorizationScopes"]
+                .as_array()
+                .map(|scopes| {
+                    scopes
+                        .iter()
+                        .filter_map(|s| s.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+
+    let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
+
+    // Preserve locally-authored fields the API doesn't track (actions,
+    // dependencies, extensions, settings), if a godaddy.toml already exists;
+    // this command only syncs identity, version, and webhook subscriptions,
+    // not the whole manifest.
+    let existing = crate::config::read_config(config_path).ok();
+    // Get latest release version from app; fall back to the local manifest's
+    // version (e.g. an app with no release yet), then to a fresh-manifest default.
+    let version = latest_release(app)
+        .and_then(|node| node["version"].as_str())
+        .map(str::to_owned)
+        .or_else(|| existing.as_ref().map(|c| c.version.clone()))
+        .unwrap_or_else(|| "0.0.0".to_owned());
+    let actions = existing
+        .as_ref()
+        .map(|c| c.actions.clone())
+        .unwrap_or_default();
+    let dependencies = existing
+        .as_ref()
+        .map(|c| c.dependencies.clone())
+        .unwrap_or_default();
+    let settings = existing
+        .as_ref()
+        .map(|c| c.settings.clone())
+        .unwrap_or_default();
+    let extensions = existing.and_then(|c| c.extensions);
+
+    let config = crate::config::Config {
+        name: name.clone(),
+        client_id,
+        description: Some(description),
+        version,
+        url: url.clone(),
+        proxy_url: proxy_url.clone(),
+        authorization_scopes: scopes.clone(),
+        actions,
+        subscriptions: Some(crate::config::SubscriptionsConfig {
+            webhook: webhook_subscriptions.clone(),
+        }),
+        dependencies,
+        extensions,
+        settings,
+    };
+
+    crate::config::write_config(config_path, &config).map_err(|e| {
+        crate::error::GddyError::config(format!("failed to write config: {e}")).into_cli_error()
+    })?;
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let subscriptions_json: Vec<_> = webhook_subscriptions
+        .iter()
+        .map(|s| json!({ "name": s.name, "url": s.url, "events": s.events }))
+        .collect();
+
+    Ok(CommandResult::new(json!({
+        "id": app["id"].as_str().unwrap_or("").to_owned(),
+        "name": name,
+        "status": app["status"].as_str().unwrap_or("").to_owned(),
+        "clientId": config.client_id,
+        "url": url,
+        "proxyUrl": proxy_url,
+        "authorizationScopes": scopes,
+        "subscriptions": subscriptions_json,
+        "filesWritten": {
+            "config": cwd.join(config_path).display().to_string(),
+        },
+    }))
+    .with_next_actions(vec![
+        next_action(
+            "platform app validate <name>",
+            "Validate the remote application state",
+        )
+        .with_param("name", required_value(&name)),
+        next_action(
+            "platform app info --name <name>",
+            "Inspect application details",
+        )
+        .with_param("name", required_value(&name)),
+    ]))
 }
 
 /// `filesWritten` is a small path-by-kind object (`config`/`env`), so it
@@ -84,6 +273,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: InitArgs| async move {
             let env = ctx.middleware.env.clone();
             let config_path = crate::config::config_path(Some(&env));
+
+            if let Some(name) = args.from_existing.clone() {
+                return handle_from_existing(&ctx, &config_path, name, args).await;
+            }
+
             let accept_agreements = args.accept_agreements;
 
             // Seed defaults only from an explicit --config; a bad/missing --config is fatal.
@@ -284,7 +478,74 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use serde_json::json;
 
-    use super::init_view_columns;
+    use super::{init_view_columns, latest_release, subscriptions_from_latest_release};
+
+    fn init_clap_command() -> clap::Command {
+        super::command().spec.clap_command()
+    }
+
+    #[test]
+    fn from_existing_is_accepted_standalone_without_creation_flags() {
+        init_clap_command()
+            .try_get_matches_from(["init", "--from-existing", "my-app"])
+            .expect("--from-existing should not require --name/--url/etc.");
+    }
+
+    #[test]
+    fn from_existing_conflicts_with_accept_agreements() {
+        let err = init_clap_command()
+            .try_get_matches_from(["init", "--from-existing", "my-app", "--accept-agreements"])
+            .expect_err("--from-existing and --accept-agreements should conflict");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn subscriptions_from_latest_release_relativizes_urls() {
+        let app = json!({
+            "releases": {
+                "edges": [{
+                    "node": {
+                        "subscriptions": [{
+                            "name": "order-notifications",
+                            "url": "https://proxy.example.com/webhooks/orders",
+                            "events": ["commerce.order.created", "commerce.order.updated"],
+                        }]
+                    }
+                }]
+            }
+        });
+        let subs = subscriptions_from_latest_release(&app, "https://proxy.example.com");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].name, "order-notifications");
+        assert_eq!(subs[0].url, "/webhooks/orders");
+        assert_eq!(
+            subs[0].events,
+            vec!["commerce.order.created", "commerce.order.updated"]
+        );
+    }
+
+    #[test]
+    fn subscriptions_from_latest_release_is_empty_without_releases() {
+        let app = json!({ "releases": { "edges": [] } });
+        assert!(subscriptions_from_latest_release(&app, "https://proxy.example.com").is_empty());
+    }
+
+    #[test]
+    fn latest_release_exposes_the_release_version() {
+        let app = json!({
+            "releases": { "edges": [{ "node": { "version": "1.4.2" } }] }
+        });
+        assert_eq!(
+            latest_release(&app).and_then(|node| node["version"].as_str()),
+            Some("1.4.2")
+        );
+    }
+
+    #[test]
+    fn latest_release_is_none_without_releases() {
+        let app = json!({ "releases": { "edges": [] } });
+        assert!(latest_release(&app).is_none());
+    }
 
     /// Proves `init_view_columns()` renders a `filesWritten` shaped like what
     /// the `init` handler actually builds (`config`/`env` paths, confirmed by
