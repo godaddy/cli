@@ -84,7 +84,6 @@ impl ShoppingClient {
             request = request.json(&body);
         }
         let request = request.build()?;
-        cli_engine::transport::debug_log_reqwest_request(&request);
         let response = self.client.execute(request).await?;
         let status = response.status();
         let headers = response.headers().clone();
@@ -94,7 +93,6 @@ impl ShoppingClient {
             .and_then(|value| value.parse::<u64>().ok())
             .map(Duration::from_secs);
         let bytes = response.bytes().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
 
         let status = status.as_u16();
         if status == 204 || bytes.is_empty() {
