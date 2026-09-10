@@ -165,10 +165,7 @@ mod tests {
     #[test]
     fn flatten_enablements_null_release_version_when_missing() {
         let input = json!([{ "id": "app-1", "name": "my-app", "status": "ACTIVE" }]);
-        assert_eq!(
-            flatten_enablements(input)[0]["releaseVersion"],
-            json!(null)
-        );
+        assert_eq!(flatten_enablements(input)[0]["releaseVersion"], json!(null));
     }
 
     #[test]
