@@ -22,7 +22,7 @@ struct Args {
     #[arg(long, value_name = "PATH")]
     file: Option<String>,
 
-    /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or JPY).
+    /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or GBP).
     #[arg(long, value_name = "CODE", value_parser = currency_code)]
     currency: Option<String>,
 }

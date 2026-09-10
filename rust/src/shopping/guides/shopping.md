@@ -25,6 +25,15 @@ gddy auth login \
 Shopping requests use the selected environment's standard API front door. Use OAuth
 for Shopping commands.
 
+## Environment
+
+Commands below use the active environment. To run them against another configured
+environment, add `--env <environment>` before `shopping`:
+
+```bash
+gddy --env <environment> shopping catalog search --body '{}'
+```
+
 ## Request documents and output
 
 Use `--body` for a small inline JSON request or `--file` for a reusable JSON document.
@@ -32,16 +41,17 @@ Use `--body` for a small inline JSON request or `--file` for a reusable JSON doc
 so checkout create, update, and complete requests remain JSON documents instead of a
 long list of CLI flags.
 
-For successful non-dry-run requests, `--output json` keeps the full Shopping API
-response in the envelope's `data` field. Human output is a concise presentation of
-that response. Use `gddy shopping <command> --help` for command-specific requirements.
+JSON is the default output format. For successful non-dry-run requests, the full
+Shopping API response is in the envelope's `data` field. Add `--output human` for a
+concise terminal presentation, or `--output json` to make the default explicit. Use
+`gddy shopping <command> --help` for command-specific requirements.
 
 ## Discover products
 
 Search the catalog with an optional ISO 4217 presentment-currency preference:
 
 ```bash
-gddy --env test shopping catalog search --currency JPY --limit 3 --body '{}'
+gddy shopping catalog search --currency GBP --limit 3 --body '{}'
 ```
 
 `--currency` writes `context.currency` into the request. You can instead place it in
@@ -56,17 +66,17 @@ Use a **product ID** with `catalog get` or `catalog lookup`; use a **variant ID*
 `checkout create` line items.
 
 ```bash
-gddy --env test shopping catalog lookup \
-  --body '{"ids":["nes-wsb-vnext-tier1"]}' --currency JPY
+gddy shopping catalog lookup \
+  --body '{"ids":["nes-wsb-vnext-tier1"]}' --currency GBP
 
-gddy --env test shopping catalog get \
-  --body '{"id":"nes-wsb-vnext-tier1"}' --currency JPY
+gddy shopping catalog get \
+  --body '{"id":"nes-wsb-vnext-tier1"}' --currency GBP
 ```
 
 To receive the full catalog response as valid JSON:
 
 ```bash
-gddy --env test --output json shopping catalog search --body '{}' --limit 3
+gddy --output json shopping catalog search --body '{}' --limit 3
 ```
 
 Shopping API cursor pagination belongs in the request body's `pagination` object.
@@ -74,8 +84,8 @@ Preserve all original search criteria—including `context.currency`—retain th
 `pagination.limit`, and replace only the opaque `pagination.cursor`:
 
 ```bash
-gddy --env test shopping catalog search \
-  --body '{"context":{"currency":"JPY"},"pagination":{"limit":3,"cursor":"<cursor from previous response>"}}'
+gddy shopping catalog search \
+  --body '{"context":{"currency":"GBP"},"pagination":{"limit":3,"cursor":"<cursor from previous response>"}}'
 ```
 
 ## Create a checkout ready to complete
@@ -86,7 +96,7 @@ is not required before completion when the checkout is already ready. Include bu
 and other supported checkout information when creating a checkout that is ready to complete.
 
 ```bash
-gddy --env test shopping checkout create --body '{
+gddy shopping checkout create --body '{
   "context": {"currency": "USD"},
   "line_items": [
     {
@@ -102,11 +112,25 @@ gddy --env test shopping checkout create --body '{
   },
   "payment": {
     "instruments": [
-      {"id": "<saved-payment-instrument-id>", "selected": true}
+      {
+        "id": "<saved-payment-instrument-id>",
+        "selected": true,
+        "billing_address": {
+          "street_address": "123 Example Street",
+          "address_locality": "Exampleville",
+          "address_region": "CA",
+          "postal_code": "94043",
+          "address_country": "US"
+        }
+      }
     ]
   }
 }'
 ```
+
+`billing_address` on the selected saved payment instrument is optional. You can provide it
+when creating the checkout or in the completion request; omitting it retains the saved
+instrument's existing billing address.
 
 Use `checkout get <checkout-id>` when you need to inspect an existing open checkout or
 recover its available payment instruments. Its human output shows checkout status, items,
@@ -114,12 +138,12 @@ totals, and the selected masked payment method. Use `--output json` for the full
 
 ## Optionally update an open checkout
 
-`checkout update` is optional. Use it only to change an existing checkout. It performs a
-full-replacement `PUT`: include every line item and all retained fields in the document.
-An empty `line_items` array deliberately clears the cart. PATCH is not exposed by this CLI.
+`checkout update` is optional. Use it only to change an existing checkout. It replaces the
+checkout with the supplied document, so include every line item and all retained fields. An empty
+`line_items` array deliberately clears the cart.
 
 ```bash
-gddy --env test shopping checkout update <checkout-id> --file update-checkout.json
+gddy shopping checkout update <checkout-id> --file update-checkout.json
 ```
 
 ## Complete a checkout
@@ -134,7 +158,14 @@ one and return it in human output. Preserve the effective key for lost-response 
     "instruments": [
       {
         "id": "<saved-payment-instrument-id>",
-        "selected": true
+        "selected": true,
+        "billing_address": {
+          "street_address": "123 Example Street",
+          "address_locality": "Exampleville",
+          "address_region": "CA",
+          "postal_code": "94043",
+          "address_country": "US"
+        }
       }
     ]
   },
@@ -143,11 +174,12 @@ one and return it in human output. Preserve the effective key for lost-response 
 ```
 
 ```bash
-gddy --env test shopping checkout complete <checkout-id> \
+gddy shopping checkout complete <checkout-id> \
   --file complete-checkout.json
 ```
 
-Completion returns immediately after the single purchase attempt. It never automatically
+Completion returns immediately after the single purchase attempt. A successful response includes
+the order ID and a **View order** permalink for the customer's account. It never automatically
 retries. If the result is uncertain, first confirm the outcome; only then reuse the same
 effective idempotency key for the same intended purchase.
 
@@ -155,13 +187,13 @@ New orders normally become available 3–10 seconds after completion. Retrieve t
 separately, optionally polling for up to 15 seconds by default:
 
 ```bash
-gddy --env test shopping order get <order-id> --wait --wait-timeout 15
+gddy shopping order get <order-id> --wait --wait-timeout 15
 ```
 
 The engine-wide `--timeout` remains independent of order visibility waiting:
 
 ```bash
-gddy --env test --timeout 30s shopping order get <order-id> \
+gddy --timeout 30s shopping order get <order-id> \
   --wait --wait-timeout 15
 ```
 

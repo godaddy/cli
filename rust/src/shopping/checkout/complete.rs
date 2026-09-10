@@ -37,6 +37,7 @@ fn human_response(completion: &Value, idempotency_key: &str) -> Value {
         "checkout_id": completion.get("id").and_then(Value::as_str).unwrap_or_default(),
         "status": completion.get("status").and_then(Value::as_str).unwrap_or_default(),
         "order_id": completion.pointer("/order/id").and_then(Value::as_str),
+        "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
         "idempotency_key": idempotency_key,
     })
 }
@@ -75,6 +76,9 @@ fn render_human(completion: &Value) -> String {
     );
     if let Some(order_id) = completion.get("order_id").and_then(Value::as_str) {
         output.push_str(&format!("Order: {order_id}\n"));
+    }
+    if let Some(permalink) = completion.get("order_permalink").and_then(Value::as_str) {
+        output.push_str(&format!("View order: {permalink}\n"));
     }
     output.push_str("\nKeep this idempotency key. Do not retry a completion unless you first confirm its outcome.\n");
     output
