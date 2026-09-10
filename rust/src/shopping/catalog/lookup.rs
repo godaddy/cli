@@ -142,38 +142,6 @@ fn price_range(product: &Value) -> Option<String> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn human_view_shows_lookup_essentials_without_ucp_metadata() {
-        let output = render_human(&human_response(&json!({
-            "products": [{
-                "id": "product-1",
-                "title": "Product",
-                "categories": [{"value": "email"}],
-                "price_range": {
-                    "min": {"amount": 7188, "currency": "USD"},
-                    "max": {"amount": 7188, "currency": "USD"}
-                },
-                "variants": [{
-                    "id": "product-1:1yr",
-                    "title": "One year",
-                    "availability": {"available": true},
-                    "price": {"amount": 7188, "currency": "USD"},
-                    "list_price": {"amount": 11988, "currency": "USD"}
-                }]
-            }],
-            "ucp": {"do_not_render": true}
-        })));
-
-        assert!(output.contains("Product (ID: product-1)"));
-        assert!(output.contains("USD 71.88"));
-        assert!(!output.contains("do_not_render"));
-    }
-}
-
 fn render_human(response: &Value) -> String {
     let products = response
         .get("products")
@@ -254,4 +222,36 @@ fn render_human(response: &Value) -> String {
         }
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_view_shows_lookup_essentials_without_ucp_metadata() {
+        let output = render_human(&human_response(&json!({
+            "products": [{
+                "id": "product-1",
+                "title": "Product",
+                "categories": [{"value": "email"}],
+                "price_range": {
+                    "min": {"amount": 7188, "currency": "USD"},
+                    "max": {"amount": 7188, "currency": "USD"}
+                },
+                "variants": [{
+                    "id": "product-1:1yr",
+                    "title": "One year",
+                    "availability": {"available": true},
+                    "price": {"amount": 7188, "currency": "USD"},
+                    "list_price": {"amount": 11988, "currency": "USD"}
+                }]
+            }],
+            "ucp": {"do_not_render": true}
+        })));
+
+        assert!(output.contains("Product (ID: product-1)"));
+        assert!(output.contains("USD 71.88"));
+        assert!(!output.contains("do_not_render"));
+    }
 }

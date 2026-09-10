@@ -176,11 +176,35 @@ fn order_path(id: &str) -> String {
 mod tests {
     use httpmock::prelude::*;
     use serde_json::json;
+    use std::result::Result as TestResult;
 
     use super::*;
 
     fn client(base_url: &str) -> ShoppingClient {
         ShoppingClient::new(base_url, "test-token")
+    }
+
+    fn assert_http_error(
+        error: ClientError,
+        expected_status: u16,
+        expected_body: &str,
+        expected_retry_after: Option<Duration>,
+    ) -> TestResult<(), String> {
+        match error {
+            ClientError::Http {
+                status,
+                body,
+                retry_after,
+            } => {
+                assert_eq!(status, expected_status);
+                assert_eq!(body, expected_body);
+                assert_eq!(retry_after, expected_retry_after);
+                Ok(())
+            }
+            ClientError::Network(error) => Err(format!(
+                "expected HTTP error, received network error: {error}"
+            )),
+        }
     }
 
     #[test]
@@ -201,7 +225,266 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn surfaces_order_not_found_as_retryable() {
+    async fn catalog_operations_send_expected_requests() {
+        let server = MockServer::start_async().await;
+        let search_request = json!({"query": "hosting"});
+        let lookup_request = json!({"ids": ["web-hosting"]});
+        let product_request = json!({"id": "web-hosting"});
+        let search = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/catalog/search")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(search_request.clone());
+                then.status(200).json_body(json!({"operation": "search"}));
+            })
+            .await;
+        let lookup = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/catalog/lookup")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(lookup_request.clone());
+                then.status(200).json_body(json!({"operation": "lookup"}));
+            })
+            .await;
+        let product = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/catalog/product")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(product_request.clone());
+                then.status(200).json_body(json!({"operation": "product"}));
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        assert_eq!(
+            shopping
+                .catalog_search(search_request)
+                .await
+                .expect("search")["operation"],
+            "search"
+        );
+        assert_eq!(
+            shopping
+                .catalog_lookup(lookup_request)
+                .await
+                .expect("lookup")["operation"],
+            "lookup"
+        );
+        assert_eq!(
+            shopping
+                .catalog_product(product_request)
+                .await
+                .expect("product")["operation"],
+            "product"
+        );
+
+        search.assert_async().await;
+        lookup.assert_async().await;
+        product.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn checkout_lifecycle_uses_expected_methods_paths_and_bodies() {
+        let server = MockServer::start_async().await;
+        let checkout_request = json!({
+            "line_items": [{"item": {"id": "variant-1"}, "quantity": 1}],
+            "payment": {"instruments": [{"id": "instrument-1", "selected": true}]}
+        });
+        let completion_request =
+            json!({"payment": {"instruments": [{"id": "instrument-1", "selected": true}]}});
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/checkout-sessions")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(checkout_request.clone());
+                then.status(201)
+                    .json_body(json!({"id": "checkout-123", "operation": "create"}));
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/checkout-sessions/checkout-123")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id");
+                then.status(200)
+                    .json_body(json!({"id": "checkout-123", "operation": "get"}));
+            })
+            .await;
+        let update = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v1/shopping/checkout-sessions/checkout-123")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(checkout_request.clone());
+                then.status(200)
+                    .json_body(json!({"id": "checkout-123", "operation": "update"}));
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/checkout-sessions/checkout-123/complete")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id")
+                    .json_body(completion_request.clone());
+                then.status(200)
+                    .json_body(json!({"id": "checkout-123", "operation": "complete"}));
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        assert_eq!(
+            shopping
+                .create_checkout(checkout_request.clone())
+                .await
+                .expect("create")["operation"],
+            "create"
+        );
+        assert_eq!(
+            shopping.get_checkout("checkout-123").await.expect("get")["operation"],
+            "get"
+        );
+        assert_eq!(
+            shopping
+                .update_checkout("checkout-123", checkout_request)
+                .await
+                .expect("update")["operation"],
+            "update"
+        );
+        assert_eq!(
+            shopping
+                .complete_checkout("checkout-123", completion_request)
+                .await
+                .expect("complete")["operation"],
+            "complete"
+        );
+
+        create.assert_async().await;
+        get.assert_async().await;
+        update.assert_async().await;
+        complete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn order_read_sends_expected_request() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/orders/order-123")
+                    .header("authorization", "Bearer test-token")
+                    .header_exists("x-request-id");
+                then.status(200).json_body(json!({"id": "order-123"}));
+            })
+            .await;
+
+        let order = client(&server.base_url())
+            .get_order("order-123")
+            .await
+            .expect("get order");
+
+        mock.assert_async().await;
+        assert_eq!(order["id"], "order-123");
+    }
+
+    #[tokio::test]
+    async fn accepts_empty_success_responses() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/shopping/checkout-sessions");
+                then.status(202).body("");
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/checkout-sessions/checkout-123/complete");
+                then.status(204);
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        assert_eq!(
+            shopping
+                .create_checkout(json!({}))
+                .await
+                .expect("empty create"),
+            Value::Null
+        );
+        assert_eq!(
+            shopping
+                .complete_checkout("checkout-123", json!({}))
+                .await
+                .expect("empty completion"),
+            Value::Null
+        );
+
+        create.assert_async().await;
+        complete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn encodes_dynamic_checkout_ids_on_the_wire() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/checkout-sessions/session%2Fa%3Fb%23c%25d")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).json_body(json!({"id": "encoded"}));
+            })
+            .await;
+
+        let checkout = client(&server.base_url())
+            .get_checkout("session/a?b#c%d")
+            .await
+            .expect("get encoded checkout");
+
+        mock.assert_async().await;
+        assert_eq!(checkout["id"], "encoded");
+    }
+
+    #[tokio::test]
+    async fn preserves_rate_limit_error_details_for_order_reads() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/shopping/orders/order-123");
+                then.status(429)
+                    .header("retry-after", "7")
+                    .body(r#"{"error":"rate_limited"}"#);
+            })
+            .await;
+
+        let error = client(&server.base_url())
+            .get_order("order-123")
+            .await
+            .expect_err("429 is an error");
+
+        mock.assert_async().await;
+        assert!(error.is_retryable_order_read());
+        assert_http_error(
+            error,
+            429,
+            r#"{"error":"rate_limited"}"#,
+            Some(Duration::from_secs(7)),
+        )
+        .expect("expected rate-limit HTTP error");
+    }
+
+    #[tokio::test]
+    async fn preserves_order_not_found_as_retryable() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -218,5 +501,86 @@ mod tests {
 
         mock.assert_async().await;
         assert!(error.is_retryable_order_read());
+        assert_http_error(error, 404, r#"{"error":"order_not_found"}"#, None)
+            .expect("expected not-found HTTP error");
+    }
+
+    #[tokio::test]
+    async fn preserves_non_retryable_http_errors() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v1/shopping/checkout-sessions/checkout-123");
+                then.status(400).body(r#"{"error":"invalid_checkout"}"#);
+            })
+            .await;
+
+        let error = client(&server.base_url())
+            .update_checkout("checkout-123", json!({}))
+            .await
+            .expect_err("400 is an error");
+
+        mock.assert_async().await;
+        assert!(!error.is_retryable_order_read());
+        assert_http_error(error, 400, r#"{"error":"invalid_checkout"}"#, None)
+            .expect("expected validation HTTP error");
+    }
+
+    #[tokio::test]
+    async fn preserves_empty_server_errors_and_retry_after() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/shopping/orders/order-123");
+                then.status(503).header("retry-after", "3");
+            })
+            .await;
+
+        let error = client(&server.base_url())
+            .get_order("order-123")
+            .await
+            .expect_err("503 is an error");
+
+        mock.assert_async().await;
+        assert!(error.is_retryable_order_read());
+        assert_http_error(error, 503, "", Some(Duration::from_secs(3)))
+            .expect("expected server HTTP error");
+    }
+
+    #[tokio::test]
+    async fn reports_malformed_success_json() -> TestResult<(), String> {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/shopping/catalog/search");
+                then.status(200).body("not-json");
+            })
+            .await;
+
+        let error = client(&server.base_url())
+            .catalog_search(json!({}))
+            .await
+            .expect_err("malformed JSON is an error");
+
+        mock.assert_async().await;
+        match error {
+            ClientError::Http {
+                status,
+                body,
+                retry_after,
+            } => {
+                assert_eq!(status, 200);
+                assert!(body.contains("invalid JSON response"));
+                assert!(body.contains("not-json"));
+                assert_eq!(retry_after, None);
+            }
+            ClientError::Network(error) => {
+                return Err(format!(
+                    "expected HTTP error, received network error: {error}"
+                ));
+            }
+        }
+        Ok(())
     }
 }

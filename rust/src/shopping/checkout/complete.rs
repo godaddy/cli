@@ -107,49 +107,6 @@ fn render_human(completion: &Value) -> String {
     output
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn human_view_shows_completion_total_only_with_currency() {
-        let output = render_human(&human_response(
-            &json!({
-                "id": "checkout-1",
-                "status": "completed",
-                "currency": "GBP",
-                "totals": [
-                    {"type": "subtotal", "amount": 4788},
-                    {"type": "tax", "amount": 0},
-                    {"type": "total", "amount": 4788}
-                ]
-            }),
-            "idempotency-key",
-            &[],
-        ));
-
-        assert!(output.contains("Total: GBP 47.88"));
-        assert!(!output.contains("Subtotal:"));
-        assert!(!output.contains("Tax:"));
-    }
-
-    #[test]
-    fn human_view_omits_completion_total_without_currency() {
-        let output = render_human(&human_response(
-            &json!({
-                "id": "checkout-1",
-                "status": "completed",
-                "totals": [{"type": "total", "amount": 4788}]
-            }),
-            "idempotency-key",
-            &[],
-        ));
-
-        assert!(!output.contains("Total:"));
-        assert!(!output.contains("4788"));
-    }
-}
-
 fn completion_error(error: ClientError, idempotency_key: &str) -> cli_engine::CliCoreError {
     crate::error::GddyError::from(error)
         .with_fix(format!(
@@ -241,4 +198,47 @@ pub(super) fn command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_view_shows_completion_total_only_with_currency() {
+        let output = render_human(&human_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "completed",
+                "currency": "GBP",
+                "totals": [
+                    {"type": "subtotal", "amount": 4788},
+                    {"type": "tax", "amount": 0},
+                    {"type": "total", "amount": 4788}
+                ]
+            }),
+            "idempotency-key",
+            &[],
+        ));
+
+        assert!(output.contains("Total: GBP 47.88"));
+        assert!(!output.contains("Subtotal:"));
+        assert!(!output.contains("Tax:"));
+    }
+
+    #[test]
+    fn human_view_omits_completion_total_without_currency() {
+        let output = render_human(&human_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "completed",
+                "totals": [{"type": "total", "amount": 4788}]
+            }),
+            "idempotency-key",
+            &[],
+        ));
+
+        assert!(!output.contains("Total:"));
+        assert!(!output.contains("4788"));
+    }
 }
