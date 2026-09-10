@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
+use crate::shopping::checkout::get::{HUMAN_VIEW_ID, human_response};
 use crate::shopping::common::{client_err, make_client, read_json};
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
@@ -44,7 +45,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
-            .with_output_schema::<CheckoutOutput>(),
+            .with_output_schema::<CheckoutOutput>()
+            .with_view_id(HUMAN_VIEW_ID),
         |ctx, args: Args| async move {
             let body = read_json(args.body.as_deref(), args.file.as_deref(), "object")?;
             if ctx.dry_run() {
@@ -62,9 +64,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned();
-            let mut result = CommandResult::new(checkout);
-            if ready_for_complete {
-                result = result.with_next_actions(vec![
+            let actions = if ready_for_complete {
+                vec![
                     next_action(
                         command_for_env(
                             &ctx.middleware.env,
@@ -73,9 +74,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         "Complete this checkout with a selected saved payment instrument",
                     )
                     .with_param("checkout_id", required_value(checkout_id)),
-                ]);
-            }
-            Ok(result)
+                ]
+            } else {
+                Vec::new()
+            };
+            let output = if ctx.middleware.output_format == "human" {
+                human_response(&checkout, &actions)
+            } else {
+                checkout
+            };
+            Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
 }

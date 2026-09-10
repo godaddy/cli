@@ -32,13 +32,18 @@ pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
         .register_func(HUMAN_VIEW_ID, render_human);
 }
 
-fn human_response(completion: &Value, idempotency_key: &str) -> Value {
+fn human_response(
+    completion: &Value,
+    idempotency_key: &str,
+    actions: &[cli_engine::NextAction],
+) -> Value {
     json!({
         "checkout_id": completion.get("id").and_then(Value::as_str).unwrap_or_default(),
         "status": completion.get("status").and_then(Value::as_str).unwrap_or_default(),
         "order_id": completion.pointer("/order/id").and_then(Value::as_str),
         "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
         "idempotency_key": idempotency_key,
+        "next_steps": actions.iter().map(|action| json!({"command": action.command, "description": action.description})).collect::<Vec<_>>(),
     })
 }
 
@@ -81,6 +86,7 @@ fn render_human(completion: &Value) -> String {
         output.push_str(&format!("View order: {permalink}\n"));
     }
     output.push_str("\nKeep this idempotency key. Do not retry a completion unless you first confirm its outcome.\n");
+    crate::shopping::checkout::get::render_next_steps(&mut output, completion);
     output
 }
 
@@ -137,13 +143,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .pointer("/order/id")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
-            let mut result = CommandResult::new(if ctx.middleware.output_format == "human" {
-                human_response(&completion, &idempotency_key)
-            } else {
-                completion
-            });
-            if let Some(order_id) = order_id {
-                result = result.with_next_actions(vec![
+            let actions = order_id.map_or_else(Vec::new, |order_id| {
+                vec![
                     next_action(
                         command_for_env(
                             &ctx.middleware.env,
@@ -152,10 +153,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         "Read the completed order after it becomes visible",
                     )
                     .with_param("order_id", required_value(order_id))
-                    .with_param("idempotency_key", required_value(idempotency_key)),
-                ]);
-            }
-            Ok(result)
+                    .with_param("idempotency_key", required_value(idempotency_key.clone())),
+                ]
+            });
+            let output = if ctx.middleware.output_format == "human" {
+                human_response(&completion, &idempotency_key, &actions)
+            } else {
+                completion
+            };
+            Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
 }

@@ -1,4 +1,4 @@
-mod get;
+pub(super) mod get;
 mod lookup;
 pub(super) mod search;
 

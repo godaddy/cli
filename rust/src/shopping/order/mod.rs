@@ -1,4 +1,4 @@
-mod get;
+pub(super) mod get;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 

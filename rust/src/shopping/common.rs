@@ -151,6 +151,7 @@ pub(crate) async fn wait_for_order(
     client: &ShoppingClient,
     order_id: &str,
     timeout: Duration,
+    env: &str,
 ) -> Result<(Value, usize)> {
     let started = Instant::now();
     let mut attempts = 0;
@@ -179,7 +180,10 @@ pub(crate) async fn wait_for_order(
                     "order {order_id:?} was not visible after {attempts} attempts over {} seconds",
                     timeout.as_secs_f32()
                 ))
-                .with_fix(format!("Run: gddy shopping order get {order_id} --wait"))
+                .with_fix(format!(
+                    "Run: gddy {}",
+                    crate::shopping::command_for_env(env, format!("order get {order_id} --wait"))
+                ))
                 .into_cli_error());
             }
             Err(error) => return Err(client_err(error)),
@@ -189,7 +193,10 @@ pub(crate) async fn wait_for_order(
         "order {order_id:?} was not visible after {attempts} attempts over {} seconds",
         timeout.as_secs_f32()
     ))
-    .with_fix(format!("Run: gddy shopping order get {order_id} --wait"))
+    .with_fix(format!(
+        "Run: gddy {}",
+        crate::shopping::command_for_env(env, format!("order get {order_id} --wait"))
+    ))
     .into_cli_error())
 }
 
@@ -210,6 +217,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::shopping::command_for_env;
 
     #[test]
     fn generates_and_inserts_missing_completion_idempotency_key() {
@@ -256,6 +264,14 @@ mod tests {
                 "payment": {"instruments": [{"selected": true}, {"selected": true}]}
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn preserves_named_environment_in_order_wait_recovery_command() {
+        assert_eq!(
+            command_for_env("test", "order get order-1 --wait"),
+            "--env test shopping order get order-1 --wait"
         );
     }
 

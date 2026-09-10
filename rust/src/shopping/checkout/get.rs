@@ -37,14 +37,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let checkout = client_response(&ctx, &args.id).await?;
             let ready_for_complete =
                 checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
-            let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout)
-            } else {
-                checkout
-            };
-            let mut result = CommandResult::new(output);
-            if ready_for_complete {
-                result = result.with_next_actions(vec![next_action(
+            let actions = if ready_for_complete {
+                vec![next_action(
                     command_for_env(
                         &ctx.middleware.env,
                         format!(
@@ -53,9 +47,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         ),
                     ),
                     "Complete this checkout after reviewing its selected payment method",
-                )]);
-            }
-            Ok(result)
+                )]
+            } else {
+                Vec::new()
+            };
+            let output = if ctx.middleware.output_format == "human" {
+                human_response(&checkout, &actions)
+            } else {
+                checkout
+            };
+            Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
 }
@@ -65,7 +66,7 @@ async fn client_response(ctx: &cli_engine::CommandContext, id: &str) -> Result<V
     client.get_checkout(id).await.map_err(client_err)
 }
 
-pub(super) fn human_response(checkout: &Value) -> Value {
+pub(super) fn human_response(checkout: &Value, actions: &[cli_engine::NextAction]) -> Value {
     let line_items = checkout
         .get("line_items")
         .and_then(Value::as_array)
@@ -89,6 +90,7 @@ pub(super) fn human_response(checkout: &Value) -> Value {
         "currency": checkout.get("currency").and_then(Value::as_str).unwrap_or_default(),
         "totals": checkout.get("totals").cloned().unwrap_or_else(|| json!([])),
         "selected_payment": selected_payment(checkout),
+        "next_steps": actions.iter().map(|action| json!({"command": action.command, "description": action.description})).collect::<Vec<_>>(),
     })
 }
 
@@ -115,6 +117,13 @@ fn selected_payment(checkout: &Value) -> String {
 }
 
 fn render_human(checkout: &Value) -> String {
+    if let Some(action) = checkout.get("action").and_then(Value::as_str) {
+        let body = checkout.get("body").cloned().unwrap_or(Value::Null);
+        return format!(
+            "{action}\nRequest:\n{}\n",
+            serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string()),
+        );
+    }
     let mut output = format!(
         "Checkout: {}\nStatus: {}\n",
         checkout
@@ -191,7 +200,31 @@ fn render_human(checkout: &Value) -> String {
         ));
     }
     output.push_str("\nCompletion places a real order. Review this checkout before continuing.\n");
+    render_next_steps(&mut output, checkout);
     output
+}
+
+pub(super) fn render_next_steps(output: &mut String, response: &Value) {
+    let steps = response
+        .get("next_steps")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if steps.is_empty() {
+        return;
+    }
+    output.push_str("\nNext steps:\n");
+    for step in steps {
+        output.push_str(&format!(
+            "  {}\n    {}\n",
+            step.get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            step.get("description")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -200,21 +233,24 @@ mod tests {
 
     #[test]
     fn human_view_masks_checkout_to_purchase_essentials() {
-        let output = render_human(&human_response(&json!({
-            "id": "checkout-1",
-            "status": "ready_for_complete",
-            "line_items": [{
-                "quantity": 1,
-                "item": {"title": "Web Hosting Economy"},
-                "included_products": [{"title": "Standard SSL"}]
-            }],
-            "payment": {"instruments": [{
-                "selected": true,
-                "rich_text_description": "CREDIT_CARD/VISA 1111",
-                "billing_address": {"street_address": "do not render"}
-            }]},
-            "totals": [{"display_text": "Total", "amount": 8388}]
-        })));
+        let output = render_human(&human_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "ready_for_complete",
+                "line_items": [{
+                    "quantity": 1,
+                    "item": {"title": "Web Hosting Economy"},
+                    "included_products": [{"title": "Standard SSL"}]
+                }],
+                "payment": {"instruments": [{
+                    "selected": true,
+                    "rich_text_description": "CREDIT_CARD/VISA 1111",
+                    "billing_address": {"street_address": "do not render"}
+                }]},
+                "totals": [{"display_text": "Total", "amount": 8388}]
+            }),
+            &[],
+        ));
 
         assert!(output.contains("Web Hosting Economy"));
         assert!(output.contains("CREDIT_CARD/VISA 1111"));
