@@ -1,5 +1,8 @@
 //! `gddy domain list` — list the domains in the account (v3).
 
+// Interactive status recovery prompts write user-facing feedback to stderr.
+#![allow(clippy::print_stderr)]
+
 use cli_engine::{
     CliCoreError, CommandResult, CommandSpec, NextActionParam, PaginationConfig, Result,
     RuntimeCommandSpec, Tier,
@@ -81,6 +84,34 @@ fn parse_statuses(raw: &[String]) -> Result<Vec<String>> {
 /// filter or asked to see hidden domains via `--show-hidden`.
 fn wants_visible_only(statuses: &[String], show_hidden: bool) -> bool {
     statuses.is_empty() && !show_hidden
+}
+
+/// Prompt until the user enters a valid `--status` value or cancels.
+fn prompt_validated_status() -> Result<Vec<String>> {
+    use dialoguer::Input;
+
+    let input: String = Input::new()
+        .with_prompt("Domain status filter (e.g. ACTIVE)")
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            parse_statuses(std::slice::from_ref(input))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .interact_text()
+        .map_err(|e| CliCoreError::message(format!("prompt cancelled: {e}")))?;
+    parse_statuses(&[input])
+}
+
+/// Validate `--status` values, re-prompting interactively when invalid.
+fn resolve_statuses(ctx: &cli_engine::CommandContext, raw: Vec<String>) -> Result<Vec<String>> {
+    match parse_statuses(&raw) {
+        Ok(statuses) => Ok(statuses),
+        Err(e) if ctx.is_interactive() && !raw.is_empty() => {
+            eprintln!("  {e}");
+            prompt_validated_status()
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -254,7 +285,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }),
         |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
-            let statuses = parse_statuses(&args.status)?;
+            let statuses = resolve_statuses(&ctx, args.status)?;
             let show_hidden = args.show_hidden;
             let visible_only = wants_visible_only(&statuses, show_hidden);
             let client = make_client(&ctx).await?;

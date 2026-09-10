@@ -366,10 +366,10 @@ fn validate_field(field: &SettingsFormV1Field, errors: &mut Vec<String>, path: &
     }
     match field {
         SettingsFormV1Field::Select { options, .. }
-        | SettingsFormV1Field::MultiSelect { options, .. } => {
-            if options.is_empty() {
-                errors.push(format!("{path}.options must contain at least one option"));
-            }
+        | SettingsFormV1Field::MultiSelect { options, .. }
+            if options.is_empty() =>
+        {
+            errors.push(format!("{path}.options must contain at least one option"));
         }
         SettingsFormV1Field::ListGroup { item, .. } => {
             if !is_field_name(&item.id_field) {
