@@ -1,4 +1,5 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use serde_json::{Value, json};
 
 use crate::hosting::nodejs::{HostingAppSummary, client_err, make_client};
 use crate::next_action::next_action;
@@ -16,7 +17,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx| async move {
             let client = make_client(&ctx, &[APPS_READ]).await?;
             let data = client.list_apps().await.map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
+            let items: Vec<Value> = data
+                .get("apps")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            Ok(CommandResult::new(json!(items)).with_next_actions(vec![
                 next_action(
                     "hosting nodejs app get --app-id <app-id>",
                     "Get details for an application",
