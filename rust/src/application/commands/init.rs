@@ -50,6 +50,12 @@ struct InitArgs {
     /// override the corresponding fetched value if also provided.
     #[arg(long, value_name = "NAME", conflicts_with = "accept_agreements")]
     from_existing: Option<String>,
+
+    /// With --from-existing, skip the confirmation/abort when the local
+    /// godaddy.toml has webhook subscriptions not present in the
+    /// application's latest published release
+    #[arg(long, requires = "from_existing")]
+    force: bool,
 }
 
 /// The `releases(first: 1, orderBy: { createdAt: DESC })` node selected by
@@ -92,6 +98,60 @@ fn subscriptions_from_latest_release(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// A subscription's `(name, url, events)` reduced to a comparable signature,
+/// with `events` order-normalized. So two lists that differ only in
+/// subscription/event ordering aren't reported as diverging.
+fn subscription_signature(sub: &crate::config::SubscriptionConfig) -> String {
+    let mut events = sub.events.clone();
+    events.sort();
+    format!("{}\u{0}{}\u{0}{}", sub.name, sub.url, events.join(","))
+}
+
+/// Names of `local` subscriptions with no identical counterpart in `remote`
+/// e.g. local edits (via `add subscription`) that were never published
+/// with `release`, and that a `--from-existing` pull is about to discard by
+/// replacing `subscriptions.webhook` with the latest release's list.
+fn subscriptions_at_risk(
+    local: &[crate::config::SubscriptionConfig],
+    remote: &[crate::config::SubscriptionConfig],
+) -> Vec<String> {
+    let remote_signatures: std::collections::BTreeSet<String> =
+        remote.iter().map(subscription_signature).collect();
+    local
+        .iter()
+        .filter(|sub| !remote_signatures.contains(&subscription_signature(sub)))
+        .map(|sub| sub.name.clone())
+        .collect()
+}
+
+/// Gate for overwriting local webhook subscriptions that aren't in the
+/// application's latest published release.
+fn confirm_overwrite_or_abort(
+    ctx: &cli_engine::CommandContext,
+    name: &str,
+    at_risk: &[String],
+) -> cli_engine::Result<()> {
+    let subscriptions = at_risk.join(", ");
+    if ctx.is_interactive() {
+        let message = format!(
+            "Local subscriptions.webhook has unpublished changes not present in \
+             '{name}''s latest release and will be lost: {subscriptions}. Overwrite \
+             local godaddy.toml anyway?"
+        );
+        if cli_engine::prompt::prompt_confirm(&message, false)? {
+            return Ok(());
+        }
+        return Err(cli_engine::CliCoreError::message(
+            "aborted: local webhook subscription changes were not overwritten",
+        ));
+    }
+    Err(cli_engine::CliCoreError::message(format!(
+        "local subscriptions.webhook has unpublished changes not present in '{name}''s \
+         latest release and would be overwritten: {subscriptions}. Run `gddy platform app \
+         release` first to publish them, or re-run with --force to discard them."
+    )))
 }
 
 /// `init --from-existing <name>`: pull a registered application's remote
@@ -159,6 +219,19 @@ async fn handle_from_existing(
     // this command only syncs identity, version, and webhook subscriptions,
     // not the whole manifest.
     let existing = crate::config::read_config(config_path).ok();
+
+    if let Some(existing_cfg) = &existing {
+        let local_webhooks = existing_cfg
+            .subscriptions
+            .as_ref()
+            .map(|s| s.webhook.as_slice())
+            .unwrap_or_default();
+        let at_risk = subscriptions_at_risk(local_webhooks, &webhook_subscriptions);
+        if !at_risk.is_empty() && !args.force {
+            confirm_overwrite_or_abort(ctx, &name, &at_risk)?;
+        }
+    }
+
     // Get latest release version from app; fall back to the local manifest's
     // version (e.g. an app with no release yet), then to a fresh-manifest default.
     let version = latest_release(app)
@@ -478,10 +551,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use serde_json::json;
 
-    use super::{init_view_columns, latest_release, subscriptions_from_latest_release};
+    use super::{
+        init_view_columns, latest_release, subscriptions_at_risk, subscriptions_from_latest_release,
+    };
+    use crate::config::SubscriptionConfig;
 
     fn init_clap_command() -> clap::Command {
         super::command().spec.clap_command()
+    }
+
+    fn sub(name: &str, url: &str, events: &[&str]) -> SubscriptionConfig {
+        SubscriptionConfig {
+            name: name.to_owned(),
+            url: url.to_owned(),
+            events: events.iter().map(|e| (*e).to_owned()).collect(),
+        }
     }
 
     #[test]
@@ -497,6 +581,52 @@ mod tests {
             .try_get_matches_from(["init", "--from-existing", "my-app", "--accept-agreements"])
             .expect_err("--from-existing and --accept-agreements should conflict");
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn force_requires_from_existing() {
+        let err = init_clap_command()
+            .try_get_matches_from(["init", "--force"])
+            .expect_err("--force without --from-existing should be rejected");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn force_is_accepted_alongside_from_existing() {
+        init_clap_command()
+            .try_get_matches_from(["init", "--from-existing", "my-app", "--force"])
+            .expect("--force should be accepted with --from-existing");
+    }
+
+    #[test]
+    fn subscriptions_at_risk_is_empty_when_lists_match_ignoring_order() {
+        let local = vec![
+            sub("a", "/a", &["evt.a", "evt.b"]),
+            sub("b", "/b", &["evt.c"]),
+        ];
+        // Same content, different subscription order and different event order.
+        let remote = vec![
+            sub("b", "/b", &["evt.c"]),
+            sub("a", "/a", &["evt.b", "evt.a"]),
+        ];
+        assert!(subscriptions_at_risk(&local, &remote).is_empty());
+    }
+
+    #[test]
+    fn subscriptions_at_risk_flags_local_only_entries() {
+        let local = vec![
+            sub("a", "/a", &["evt.a"]),
+            sub("unpublished", "/u", &["evt.z"]),
+        ];
+        let remote = vec![sub("a", "/a", &["evt.a"])];
+        assert_eq!(subscriptions_at_risk(&local, &remote), vec!["unpublished"]);
+    }
+
+    #[test]
+    fn subscriptions_at_risk_flags_a_modified_entry() {
+        let local = vec![sub("a", "/a-new", &["evt.a"])];
+        let remote = vec![sub("a", "/a-old", &["evt.a"])];
+        assert_eq!(subscriptions_at_risk(&local, &remote), vec!["a"]);
     }
 
     #[test]
