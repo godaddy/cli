@@ -634,6 +634,7 @@ Monorepo consolidation is **out of scope** / non-goal.
 ## Related documents
 
 - [API Spec SSOT Architect One-Pager](./API_SPEC_SSOT_ARCHITECT_ONEPAGER.md) — shareable summary for architecture review
+- [CLI work breakdown (Domains pilot)](./API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md) — `godaddy/cli` + Domains `*-specification` tasks
 - [API Spec SSOT + Downstream Sync (design)](./API_SPEC_SSOT_DOWNSTREAM_SYNC.md) — architecture; federated `*-specification` SSOT + notify/pin sync
 - [API Spec SSOT Implementation Walkthrough](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md) — publish → notify → pin PR; workflows per spec repo
 - Upstream: [api-specification-template](https://github.com/gdcorp-platform/api-specification-template) (bootstrap)

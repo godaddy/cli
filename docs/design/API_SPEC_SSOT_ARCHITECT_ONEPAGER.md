@@ -92,6 +92,7 @@ docs/CLI — prioritize portal-backed APIs; not a big-bang on day one.
 
 - [API_SPEC_SSOT_DOWNSTREAM_SYNC.md](./API_SPEC_SSOT_DOWNSTREAM_SYNC.md) — architecture + WBS  
 - [API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md](./API_SPEC_SSOT_IMPLEMENTATION_WALKTHROUGH.md) — end-to-end flow  
+- [API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md](./API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md) — CLI + Domains pilot tasks  
 - [API_SPEC_REPO_ANALYSIS_SSOT.md](./API_SPEC_REPO_ANALYSIS_SSOT.md) — live repo mapping  
 
 **One line:** Capability teams own OpenAPI in their `*-specification` repo; releases notify the developer portal and CLI; those repos pin and sync through automation — never hand-copied contracts, never two sources for one API.

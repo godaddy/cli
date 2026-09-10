@@ -6,6 +6,9 @@
 
 GoDaddy's developer platform API specifications currently flow through multiple repositories and organizations.
 
+> **CLI work breakdown (Domains pilot first):**  
+> [API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md](./API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md).
+>
 > **Architect one-pager:** shareable summary (problem, solution, why, timeline) in
 > [API_SPEC_SSOT_ARCHITECT_ONEPAGER.md](./API_SPEC_SSOT_ARCHITECT_ONEPAGER.md).
 >

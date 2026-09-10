@@ -920,6 +920,7 @@ From
 ## 12. Related documents
 
 - [Architect one-pager](./API_SPEC_SSOT_ARCHITECT_ONEPAGER.md)
+- [CLI work breakdown (Domains pilot)](./API_SPEC_SSOT_CLI_WORK_BREAKDOWN.md)
 - [API Spec SSOT + Downstream Sync (design)](./API_SPEC_SSOT_DOWNSTREAM_SYNC.md)
 - [API Spec Repo Analysis](./API_SPEC_REPO_ANALYSIS_SSOT.md)
 
