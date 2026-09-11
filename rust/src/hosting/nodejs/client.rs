@@ -168,6 +168,19 @@ impl HostingClient {
         .await
     }
 
+    /// Mint a short-lived agent token for the app and return the agent's
+    /// assigned URL alongside it. Response shape: `{ agentUrl, token, expires? }`.
+    /// Requires the same `hosting.paas.deploy:execute` scope as `publish_app`.
+    pub async fn get_agent_token(&self, app_id: &str) -> Result<Value, ClientError> {
+        self.send_json(
+            Method::POST,
+            &format!("/apps/{app_id}/agent-token"),
+            &[],
+            Some(json!({})),
+        )
+        .await
+    }
+
     pub async fn get_app_status(&self, app_id: &str) -> Result<Value, ClientError> {
         self.send_json(Method::GET, &format!("/apps/{app_id}/status"), &[], None)
             .await
@@ -548,6 +561,32 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(body["deploymentId"], "dep-1");
+    }
+
+    #[tokio::test]
+    async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/hosting/nodejs/apps/app-1/agent-token")
+                    .header("authorization", "Bearer test-token")
+                    .json_body(json!({}));
+                then.status(200).json_body(json!({
+                    "agentUrl": "https://app-1.agent.example",
+                    "token": "minted-agent-jwt"
+                }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .get_agent_token("app-1")
+            .await
+            .expect("get agent token");
+
+        mock.assert_async().await;
+        assert_eq!(body["agentUrl"], "https://app-1.agent.example");
+        assert_eq!(body["token"], "minted-agent-jwt");
     }
 
     #[tokio::test]
