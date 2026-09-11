@@ -48,7 +48,11 @@ struct InitArgs {
     /// latest release's webhook subscriptions instead of creating a new
     /// application. --description, --url, --proxy-url, and --scopes
     /// override the corresponding fetched value if also provided.
-    #[arg(long, value_name = "NAME", conflicts_with = "accept_agreements")]
+    #[arg(
+        long,
+        value_name = "NAME",
+        conflicts_with_all = ["accept_agreements", "name", "config"]
+    )]
     from_existing: Option<String>,
 
     /// With --from-existing, skip the confirmation/abort when the local
@@ -137,7 +141,7 @@ fn confirm_overwrite_or_abort(
     if ctx.is_interactive() {
         let message = format!(
             "Local subscriptions.webhook has unpublished changes not present in \
-             '{name}''s latest release and will be lost: {subscriptions}. Overwrite \
+             {name}'s latest release and will be lost: {subscriptions}. Overwrite \
              local godaddy.toml anyway?"
         );
         if cli_engine::prompt::prompt_confirm(&message, false)? {
@@ -148,7 +152,7 @@ fn confirm_overwrite_or_abort(
         ));
     }
     Err(cli_engine::CliCoreError::message(format!(
-        "local subscriptions.webhook has unpublished changes not present in '{name}''s \
+        "local subscriptions.webhook has unpublished changes not present in {name}'s \
          latest release and would be overwritten: {subscriptions}. Run `gddy platform app \
          release` first to publish them, or re-run with --force to discard them."
     )))
@@ -211,6 +215,15 @@ async fn handle_from_existing(
                 })
                 .unwrap_or_default()
         });
+
+    for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
+        if !crate::application::public_url::is_public_routable_url(u) {
+            return Err(cli_engine::CliCoreError::message(format!(
+                "Invalid application configuration: {field} must be a publicly-resolvable \
+                 http(s) URL (localhost, loopback, and private IPs are not allowed)"
+            )));
+        }
+    }
 
     let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
 

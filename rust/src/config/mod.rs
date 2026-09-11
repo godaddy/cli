@@ -184,12 +184,15 @@ fn is_endpoint_url(endpoint: &str, proxy_url: &str) -> bool {
 }
 
 /// Reduce `full_url` to a path relative to `proxy_url` when they share a
-/// scheme and host; otherwise return `full_url` unchanged
+/// scheme, host, and port; otherwise return `full_url` unchanged
 pub fn relativize_webhook_url(full_url: &str, proxy_url: &str) -> String {
     let (Ok(full), Ok(base)) = (url::Url::parse(full_url), url::Url::parse(proxy_url)) else {
         return full_url.to_owned();
     };
-    if full.scheme() != base.scheme() || full.host_str() != base.host_str() {
+    if full.scheme() != base.scheme()
+        || full.host_str() != base.host_str()
+        || full.port_or_known_default() != base.port_or_known_default()
+    {
         return full_url.to_owned();
     }
     let mut relative = full.path().to_owned();
