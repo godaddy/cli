@@ -86,7 +86,8 @@ declare_scopes! {
     /// at login by default (it's a rare operation for most customers); the
     /// app-registry mutation commands (`platform app init/update/enable/disable/
     /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
-    /// requests it on demand (OAuth step-up).
+    /// requests it on demand (OAuth step-up). Read commands such as
+    /// `platform app enablements` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
