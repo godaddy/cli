@@ -6,11 +6,8 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("catalog", "Browse and resolve Shopping catalog products").with_long(
-            "Search the live Shopping catalog, resolve known product IDs, and retrieve product details. \
-             Every command requests the complete Shopping OAuth scope bundle so a catalog-to-checkout \
-             workflow needs only one consent flow.",
-        ),
+        GroupSpec::new("catalog", "Explore GoDaddy's product catalog")
+            .with_long("Search GoDaddy's product catalog and retrieve product details."),
     )
     .with_command(search::command())
     .with_command(lookup::command())

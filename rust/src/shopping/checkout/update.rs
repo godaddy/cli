@@ -57,11 +57,10 @@ struct Args {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("update", "Optionally update a Shopping checkout")
+        CommandSpec::from_args::<Args>("update", "Optionally update a cart")
             .with_long(
-                "Optionally replace an open checkout before completion. Use --item and optional \
-                 buyer/payment flags for common changes, or --clear-items to deliberately empty the \
-                 cart. Updates replace checkout state; use --body or --file for advanced fields.",
+                "Optionally replace an open cart before placing an order. Use --item and buyer or \
+                 payment-method flags for common changes, or --clear-items to deliberately empty it.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -108,15 +107,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             let env = crate::environments::resolve(&ctx.middleware.env)?;
-            let actions = no_saved_payment_method_action(
-                &checkout,
-                &ctx.middleware.env,
-                &env.account_url,
-            )
+            let actions = no_saved_payment_method_action(&checkout, &env.account_url)
             .into_iter()
             .collect::<Vec<_>>();
             let output = if ctx.middleware.output_format == "human" {
-                crate::shopping::checkout::get::human_response(&checkout, &actions, false)
+                crate::shopping::checkout::get::human_response(&checkout, false)
             } else {
                 checkout
             };

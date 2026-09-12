@@ -1,10 +1,10 @@
 use cli_engine::{
-    CommandResult, CommandSpec, ModuleContext, NextAction, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    Alignment, CommandResult, CommandSpec, HumanViewDef, ModuleContext, NextAction,
+    NextActionParam, Result, RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
-use crate::next_action::{human_next_steps, next_action};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::common::{
     client_err, currency_code, make_client, merge_context_currency, read_json,
@@ -24,8 +24,8 @@ struct Args {
     #[arg(long, value_name = "TEXT")]
     query: Option<String>,
 
-    /// Product category to include. Repeat to include multiple categories.
-    #[arg(long, value_name = "CATEGORY")]
+    /// Product category to include. Supported values: email, pointOfSale, sslCertificate, webHosting, websiteBuilder. Repeat to include multiple categories.
+    #[arg(long, value_name = "CATEGORY", value_parser = category_value)]
     category: Vec<String>,
 
     /// Opaque cursor from the preceding catalog-search response.
@@ -40,10 +40,6 @@ struct Args {
     #[arg(long, value_name = "CODE", value_parser = currency_code)]
     currency: Option<String>,
 
-    /// Buyer country used for catalog eligibility and pricing.
-    #[arg(long, value_name = "ISO_COUNTRY_CODE")]
-    country: Option<String>,
-
     /// Search request as raw JSON for advanced Shopping API filters and extensions.
     #[arg(long, value_name = "JSON")]
     body: Option<String>,
@@ -57,11 +53,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("search", "Search the Shopping catalog")
             .with_long(
-                "Search the Shopping catalog. Omit filters to browse all products. Use --query, \
-                 repeatable --category, --cursor, --limit, --currency, and --country for common \
-                 search criteria. Human output groups purchasable variants under each product; \
-                 --output json returns the unmodified Shopping API response. Use --body or --file \
-                 only for advanced API filters and extensions.",
+                "Explore GoDaddy products. Omit filters to browse the catalog. Use --query, repeatable \
+                 --category, --cursor, --limit, and --currency to refine the results. Use \
+                 --output json for the complete API response.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -79,7 +73,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 args.query.as_deref(),
                 &args.category,
                 args.cursor.as_deref(),
-                args.country.as_deref(),
             )?;
             merge_context_currency(&mut request, args.currency.as_deref())?;
             merge_pagination(&mut request, args.limit)?;
@@ -101,55 +94,60 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 const HUMAN_VIEW_ID: &str = "shopping-catalog-search";
+const CATEGORIES: &[&str] = &[
+    "email",
+    "pointOfSale",
+    "sslCertificate",
+    "webHosting",
+    "websiteBuilder",
+];
 
-pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
-    ctx.middleware_mut()
-        .human_views
-        .register_func(HUMAN_VIEW_ID, render_human);
+fn category_value(value: &str) -> std::result::Result<String, String> {
+    CATEGORIES
+        .contains(&value)
+        .then(|| value.to_owned())
+        .ok_or_else(|| format!("category must be one of: {}", CATEGORIES.join(", ")))
 }
 
-fn human_response(response: &Value, actions: &[NextAction]) -> Value {
-    let products = response
-        .get("products")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    let variant_count = products
-        .iter()
-        .map(|product| purchasable_variants(product).len())
-        .sum::<usize>();
-    let total = response
-        .pointer("/pagination/total_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(products.len() as u64);
-    json!({
-        "summary": format!(
-            "Showing {} of {total} products · {variant_count} purchasable variants",
-            products.len()
-        ),
-        "products": products
-            .iter()
-            .enumerate()
-            .map(|(index, product)| json!({
-                "number": index + 1,
-                "id": product.get("id").and_then(Value::as_str).unwrap_or_default(),
-                "title": product.get("title").and_then(Value::as_str).unwrap_or("Untitled product"),
-                "variants": purchasable_variants(product)
-                    .iter()
-                    .map(|variant| json!({
-                        "id": variant.get("id").and_then(Value::as_str).unwrap_or_default(),
-                        "title": variant.get("title").and_then(Value::as_str).unwrap_or_default(),
+pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
+    ctx.middleware_mut().human_views.register(HumanViewDef::new(
+        HUMAN_VIEW_ID,
+        vec![
+            TableColumn::new("product", "Product"),
+            TableColumn::new("variant", "Variant"),
+            TableColumn::new("variant_id", "Variant ID").no_truncate(true),
+            TableColumn::new("category", "Category"),
+            TableColumn::new("price", "Your Price").align(Alignment::Right),
+            TableColumn::new("list_price", "List Price").align(Alignment::Right),
+            TableColumn::new("term", "Term"),
+            TableColumn::new("availability", "Availability"),
+        ],
+    ));
+}
+
+fn human_response(response: &Value, _actions: &[NextAction]) -> Value {
+    Value::Array(
+        response
+            .get("products")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|product| {
+                purchasable_variants(product).into_iter().map(move |variant| {
+                    json!({
+                        "product": product.get("title").and_then(Value::as_str).unwrap_or("Untitled product"),
+                        "variant": variant.get("title").and_then(Value::as_str).unwrap_or("Untitled variant"),
+                        "variant_id": variant.get("id").and_then(Value::as_str).unwrap_or_default(),
                         "category": category(product),
                         "price": money(variant.get("price")),
                         "list_price": money(variant.get("list_price")),
                         "term": term(variant),
                         "availability": availability(variant),
-                    }))
-                    .collect::<Vec<_>>(),
-            }))
-            .collect::<Vec<_>>(),
-        "next_steps": human_next_steps(actions),
-    })
+                    })
+                })
+            })
+            .collect(),
+    )
 }
 
 fn merge_search_args(
@@ -157,7 +155,6 @@ fn merge_search_args(
     query: Option<&str>,
     categories: &[String],
     cursor: Option<&str>,
-    country: Option<&str>,
 ) -> Result<()> {
     let object = request
         .as_object_mut()
@@ -184,13 +181,6 @@ fn merge_search_args(
             crate::error::GddyError::validation("pagination must be a JSON object").into_cli_error()
         })?;
         merge_string(pagination, "cursor", cursor, "--cursor")?;
-    }
-    if let Some(country) = country {
-        let context = object.entry("context").or_insert_with(|| json!({}));
-        let context = context.as_object_mut().ok_or_else(|| {
-            crate::error::GddyError::validation("context must be a JSON object").into_cli_error()
-        })?;
-        merge_string(context, "address_country", country, "--country")?;
     }
     Ok(())
 }
@@ -274,7 +264,7 @@ fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<NextActi
     let currency = request.pointer("/context/currency").and_then(Value::as_str);
     let mut get_action = next_action(
         command_for_env(env, "catalog get --id <product-id>"),
-        "View the selected product's complete record",
+        "View the selected product's details",
     )
     .with_param("product-id", NextActionParam::value(product_id));
     if let Some(currency) = currency {
@@ -300,7 +290,7 @@ fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<NextActi
                     env,
                     "checkout create --item <variant-id> --currency <currency>",
                 ),
-                "Create a checkout with the first available variant",
+                "Add the first available variant to a cart",
             )
             .with_param("variant-id", NextActionParam::value(variant_id))
             .with_param("currency", NextActionParam::value(currency)),
@@ -390,12 +380,6 @@ fn search_action(request: &serde_json::Map<String, Value>, env: &str) -> Result<
         "currency",
         context.and_then(|context| context.get("currency")),
     );
-    append_search_param(
-        &mut command,
-        &mut params,
-        "country",
-        context.and_then(|context| context.get("address_country")),
-    );
     Ok(params.into_iter().fold(
         next_action(command_for_env(env, command), "Fetch the next catalog page"),
         |action, (name, value)| action.with_param(name, NextActionParam::value(value)),
@@ -433,63 +417,7 @@ fn is_simple_search_request(request: &serde_json::Map<String, Value>) -> bool {
         && request
             .get("context")
             .and_then(Value::as_object)
-            .is_none_or(|context| {
-                context
-                    .keys()
-                    .all(|key| key == "currency" || key == "address_country")
-            })
-}
-
-fn render_human(response: &Value) -> String {
-    let mut output = response
-        .get("summary")
-        .and_then(Value::as_str)
-        .map_or_else(String::new, |summary| format!("{summary}\n"));
-    for product in response
-        .get("products")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        output.push('\n');
-        output.push_str(&format!(
-            "{}. {} (ID: {})\n{}\n",
-            product
-                .get("number")
-                .and_then(Value::as_u64)
-                .unwrap_or_default(),
-            product
-                .get("title")
-                .and_then(Value::as_str)
-                .unwrap_or("Untitled product"),
-            product
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            "─".repeat(72)
-        ));
-        output.push_str(&render_variants_table(product));
-    }
-    let next_steps = response
-        .get("next_steps")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    if !next_steps.is_empty() {
-        output.push_str("\nNext steps:\n");
-        for step in next_steps {
-            let command = step
-                .get("command")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let description = step
-                .get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            output.push_str(&format!("  {command}\n    {description}\n"));
-        }
-    }
-    output
+            .is_none_or(|context| context.keys().all(|key| key == "currency"))
 }
 
 fn term(variant: &Value) -> String {
@@ -505,114 +433,6 @@ fn term(variant: &Value) -> String {
         .and_then(Value::as_str)
         .map(str::to_owned)
         .unwrap_or_default()
-}
-
-fn render_variants_table(product: &Value) -> String {
-    let rows = product
-        .get("variants")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|variant| {
-            vec![
-                variant
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("title")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("category")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("price")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("list_price")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("term")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                variant
-                    .get("availability")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-            ]
-        })
-        .collect::<Vec<_>>();
-    render_table(
-        &[
-            "ID",
-            "Description",
-            "Category",
-            "Your Price",
-            "List Price",
-            "Term",
-            "Availability",
-        ],
-        &rows,
-        &[false, false, false, true, true, false, false],
-    )
-}
-
-fn render_table(headers: &[&str], rows: &[Vec<String>], right_aligned: &[bool]) -> String {
-    if rows.is_empty() {
-        return "No purchasable variants returned.\n".to_owned();
-    }
-    let widths = headers
-        .iter()
-        .enumerate()
-        .map(|(index, header)| {
-            rows.iter()
-                .filter_map(|row| row.get(index))
-                .map(String::len)
-                .max()
-                .unwrap_or_default()
-                .max(header.len())
-        })
-        .collect::<Vec<_>>();
-    let mut output = format_row(
-        headers.iter().map(|header| (*header).to_owned()).collect(),
-        &widths,
-        right_aligned,
-    );
-    output.push_str(&format_row(
-        widths.iter().map(|width| "-".repeat(*width)).collect(),
-        &widths,
-        right_aligned,
-    ));
-    for row in rows {
-        output.push_str(&format_row(row.clone(), &widths, right_aligned));
-    }
-    output
-}
-
-fn format_row(values: Vec<String>, widths: &[usize], right_aligned: &[bool]) -> String {
-    let cells = values
-        .iter()
-        .enumerate()
-        .map(|(index, value)| {
-            if right_aligned.get(index).copied().unwrap_or(false) {
-                format!("{value:>width$}", width = widths[index])
-            } else {
-                format!("{value:<width$}", width = widths[index])
-            }
-        })
-        .collect::<Vec<_>>();
-    format!("{}\n", cells.join("  "))
 }
 
 fn purchasable_variants(product: &Value) -> Vec<&Value> {
@@ -660,10 +480,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        human_response, merge_pagination, merge_search_args, next_actions, render_human,
+        category_value, human_response, merge_pagination, merge_search_args, next_actions,
         search_action, validate_price_filter_currency,
     };
-    use crate::shopping::command_for_env;
     use crate::shopping::common::{currency_code, merge_context_currency};
 
     fn response() -> serde_json::Value {
@@ -693,7 +512,6 @@ mod tests {
             Some("email"),
             &["email".to_owned(), "hosting".to_owned()],
             Some("cursor-1"),
-            Some("GB"),
         )
         .expect("flags should merge");
         merge_context_currency(&mut request, Some("GBP")).expect("currency should merge");
@@ -705,7 +523,7 @@ mod tests {
                 "query": "email",
                 "filters": {"categories": ["email", "hosting"]},
                 "pagination": {"cursor": "cursor-1", "limit": 3},
-                "context": {"address_country": "GB", "currency": "GBP"}
+                "context": {"currency": "GBP"}
             })
         );
     }
@@ -743,11 +561,11 @@ mod tests {
         assert!(
             actions
                 .iter()
-                .all(|action| action.command.contains("gddy --env test"))
+                .all(|action| action.command.starts_with("gddy shopping"))
         );
         assert_eq!(
             actions[0].command,
-            "gddy --env test shopping catalog get --id <product-id>"
+            "gddy shopping catalog get --id <product-id>"
         );
         assert_eq!(
             actions[0].params["product-id"].value.as_deref(),
@@ -755,7 +573,7 @@ mod tests {
         );
         assert_eq!(
             actions[1].command,
-            "gddy --env test shopping checkout create --item <variant-id> --currency <currency>"
+            "gddy shopping checkout create --item <variant-id> --currency <currency>"
         );
         assert_eq!(
             actions[1].params["variant-id"].value.as_deref(),
@@ -764,7 +582,7 @@ mod tests {
         assert_eq!(actions[2].params["cursor"].value.as_deref(), Some("next"));
         assert_eq!(
             actions[2].command,
-            "gddy --env test shopping catalog search --cursor <cursor> --limit 3"
+            "gddy shopping catalog search --cursor <cursor> --limit 3"
         );
     }
 
@@ -803,10 +621,7 @@ mod tests {
         )
         .expect("action");
 
-        assert_eq!(
-            action.command,
-            "gddy --env test shopping catalog search --body <body>"
-        );
+        assert_eq!(action.command, "gddy shopping catalog search --body <body>");
         assert_eq!(
             action.params["body"].value.as_deref(),
             Some(r#"{"signals":{"value":"O'Reilly"}}"#)
@@ -817,36 +632,12 @@ mod tests {
     fn human_output_groups_variants_by_product_with_summary() {
         let response = response();
         let actions = next_actions(&response, &mut json!({}), "test").expect("actions");
-        let rendered = render_human(&human_response(&response, &actions));
-        assert!(rendered.contains("Showing 1 of 14 products · 1 purchasable variants"));
-        assert!(
-            rendered.contains("1. Product (ID: product-1)"),
-            "{rendered}"
-        );
-        assert!(!rendered.contains("PRODUCT ID"));
-        assert!(
-            rendered.contains("ID             Description"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("USD 71.88"));
-        assert!(rendered.contains("Available"));
-        assert!(rendered.contains("Next steps:"), "{rendered}");
-        assert!(
-            rendered.contains("gddy --env test shopping catalog get"),
-            "{rendered}"
-        );
-    }
-
-    #[test]
-    fn product_commands_preserve_non_production_environment() {
-        assert_eq!(
-            command_for_env("prod", "catalog search"),
-            "shopping catalog search"
-        );
-        assert_eq!(
-            command_for_env("test", "catalog search"),
-            "--env test shopping catalog search"
-        );
+        let rows = human_response(&response, &actions);
+        assert_eq!(rows.as_array().map(Vec::len), Some(1));
+        assert_eq!(rows[0]["product"], "Product");
+        assert_eq!(rows[0]["variant_id"], "product-1:1yr");
+        assert_eq!(rows[0]["price"], "USD 71.88");
+        assert_eq!(rows[0]["availability"], "Available");
     }
 
     #[test]
@@ -865,6 +656,12 @@ mod tests {
     fn rejects_conflicting_currency_in_request_body() {
         let mut request = json!({"context": {"currency": "USD"}});
         assert!(merge_context_currency(&mut request, Some("JPY")).is_err());
+    }
+
+    #[test]
+    fn validates_api_derived_non_domain_categories() {
+        assert_eq!(category_value("webHosting"), Ok("webHosting".to_owned()));
+        assert!(category_value("domain").is_err());
     }
 
     #[test]

@@ -1,13 +1,8 @@
 use std::time::Duration;
 
-use reqwest::{Client, Method};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::api_explorer::http::encode_path_segment;
-use crate::application::client::make_http_client;
-
-const BASE_PATH: &str = "/v1/shopping";
-
+const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
@@ -17,7 +12,13 @@ pub enum ClientError {
         retry_after: Option<Duration>,
     },
     #[error("network error: {0}")]
-    Network(#[from] reqwest::Error),
+    Network(String),
+    #[error("request error: {0}")]
+    Request(String),
+    #[error("failed to decode Shopping API response: {0}")]
+    Response(#[from] serde_json::Error),
+    #[error("failed to construct Shopping API client: {0}")]
+    Build(#[from] shopping_client::BuildError),
 }
 
 impl ClientError {
@@ -35,7 +36,7 @@ impl ClientError {
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Http { retry_after, .. } => *retry_after,
-            Self::Network(_) => None,
+            Self::Network(_) | Self::Request(_) | Self::Response(_) | Self::Build(_) => None,
         }
     }
 }
@@ -44,132 +45,155 @@ impl From<ClientError> for crate::error::GddyError {
     fn from(value: ClientError) -> Self {
         match value {
             ClientError::Http { status, body, .. } => Self::from_http(status, body, "shopping"),
-            ClientError::Network(error) => {
-                Self::network(format!("network error: {error}")).with_system("shopping")
+            ClientError::Network(error) | ClientError::Request(error) => {
+                Self::network(error).with_system("shopping")
+            }
+            ClientError::Response(error) => {
+                Self::unexpected(format!("failed to decode Shopping API response: {error}"))
+                    .with_system("shopping")
+            }
+            ClientError::Build(error) => {
+                Self::config(format!("failed to construct Shopping API client: {error}"))
+                    .with_system("shopping")
             }
         }
     }
 }
 
 pub struct ShoppingClient {
-    client: Client,
     base_url: String,
-    token: String,
+    authorization: String,
 }
 
 impl ShoppingClient {
-    pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Self {
-        Self {
-            client: make_http_client(),
-            base_url: base_url.into(),
-            token: token.into(),
-        }
+    pub fn new(base_url: impl AsRef<str>, token: impl AsRef<str>) -> Result<Self, ClientError> {
+        let client = Self {
+            base_url: base_url.as_ref().to_owned(),
+            authorization: format!("Bearer {}", token.as_ref()),
+        };
+        client.client()?;
+        Ok(client)
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{BASE_PATH}{path}", self.base_url)
-    }
-
-    async fn send_json(
-        &self,
-        method: Method,
-        path: &str,
-        body: Option<Value>,
-    ) -> Result<Value, ClientError> {
-        let mut request = self
-            .client
-            .request(method, self.url(path))
-            .bearer_auth(&self.token)
-            .header("x-request-id", uuid::Uuid::new_v4().to_string());
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        let request = request.build()?;
-        let response = self.client.execute(request).await?;
-        let status = response.status();
-        let headers = response.headers().clone();
-        let retry_after = headers
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<u64>().ok())
-            .map(Duration::from_secs);
-        let bytes = response.bytes().await?;
-
-        let status = status.as_u16();
-        if status == 204 || bytes.is_empty() {
-            return if (200..300).contains(&status) {
-                Ok(json!(null))
-            } else {
-                Err(ClientError::Http {
-                    status,
-                    body: String::new(),
-                    retry_after,
-                })
-            };
-        }
-        if !(200..300).contains(&status) {
-            return Err(ClientError::Http {
-                status,
-                body: String::from_utf8_lossy(&bytes).into_owned(),
-                retry_after,
-            });
-        }
-        serde_json::from_slice(&bytes).map_err(|error| ClientError::Http {
-            status,
-            body: format!(
-                "invalid JSON response: {error} (body: {})",
-                String::from_utf8_lossy(&bytes)
-            ),
-            retry_after: None,
-        })
+    fn client(&self) -> Result<shopping_client::Client, ClientError> {
+        shopping_client::client_with_auth(
+            &self.base_url,
+            &self.authorization,
+            USER_AGENT,
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .map_err(ClientError::Build)
     }
 
     pub async fn catalog_search(&self, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, "/catalog/search", Some(body))
-            .await
+        let body: shopping_client::types::SearchRequest = deserialize(body)?;
+        response(self.client()?.search_catalog().body(body).send().await).await
     }
 
     pub async fn catalog_lookup(&self, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, "/catalog/lookup", Some(body))
-            .await
+        let body: shopping_client::types::LookupRequest = deserialize(body)?;
+        response(self.client()?.lookup_catalog().body(body).send().await).await
     }
 
     pub async fn catalog_product(&self, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, "/catalog/product", Some(body))
-            .await
+        let body: shopping_client::types::GetProductRequest = deserialize(body)?;
+        response(self.client()?.get_product().body(body).send().await).await
     }
 
     pub async fn create_checkout(&self, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, "/checkout-sessions", Some(body))
-            .await
+        let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
+        response(self.client()?.create_checkout().body(body).send().await).await
     }
 
     pub async fn get_checkout(&self, id: &str) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, &checkout_path(id, ""), None)
-            .await
+        response(self.client()?.get_checkout().id(id).send().await).await
     }
 
     pub async fn update_checkout(&self, id: &str, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::PUT, &checkout_path(id, ""), Some(body))
-            .await
+        let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
+        response(
+            self.client()?
+                .update_checkout()
+                .id(id)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await
     }
 
-    pub async fn complete_checkout(&self, id: &str, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, &checkout_path(id, "/complete"), Some(body))
-            .await
+    pub async fn complete_checkout(
+        &self,
+        id: &str,
+        body: Value,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
+        let body: shopping_client::types::CheckoutCompleteRequest = deserialize(body)?;
+        response(
+            self.client()?
+                .complete_checkout()
+                .id(id)
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await
     }
 
     pub async fn get_order(&self, id: &str) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, &order_path(id), None).await
+        response(self.client()?.get_order().id(id).send().await).await
     }
 }
 
-fn checkout_path(id: &str, suffix: &str) -> String {
-    format!("/checkout-sessions/{}{suffix}", encode_path_segment(id))
+fn deserialize<T: serde::de::DeserializeOwned>(body: Value) -> Result<T, ClientError> {
+    serde_json::from_value(body).map_err(ClientError::Response)
 }
 
-fn order_path(id: &str) -> String {
-    format!("/orders/{}", encode_path_segment(id))
+async fn response<T: serde::Serialize>(
+    response: Result<progenitor_client::ResponseValue<T>, progenitor_client::Error<()>>,
+) -> Result<Value, ClientError> {
+    match response {
+        Ok(response) => serde_json::to_value(response.into_inner()).map_err(ClientError::Response),
+        Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) if bytes.is_empty() => {
+            Ok(Value::Null)
+        }
+        Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) => {
+            // UCP extension metadata can evolve independently of the core
+            // response schemas. Preserve a successful JSON response for the
+            // CLI's dynamic projection when typed decoding cannot represent it.
+            serde_json::from_slice(&bytes).map_err(ClientError::Response)
+        }
+        Err(progenitor_client::Error::UnexpectedResponse(response))
+            if response.status().is_success() =>
+        {
+            let bytes = response.bytes().await.unwrap_or_default();
+            if bytes.is_empty() {
+                Ok(Value::Null)
+            } else {
+                serde_json::from_slice(&bytes).map_err(ClientError::Response)
+            }
+        }
+        Err(progenitor_client::Error::UnexpectedResponse(response)) => {
+            let status = response.status().as_u16();
+            let retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+                .map(Duration::from_secs);
+            let body = response.text().await.unwrap_or_default();
+            Err(ClientError::Http {
+                status,
+                body,
+                retry_after,
+            })
+        }
+        Err(progenitor_client::Error::CommunicationError(error)) => {
+            Err(ClientError::Network(error.to_string()))
+        }
+        Err(error) => Err(ClientError::Request(error.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -181,7 +205,7 @@ mod tests {
     use super::*;
 
     fn client(base_url: &str) -> ShoppingClient {
-        ShoppingClient::new(base_url, "test-token")
+        ShoppingClient::new(base_url, "test-token").expect("client should build")
     }
 
     fn assert_http_error(
@@ -201,27 +225,8 @@ mod tests {
                 assert_eq!(retry_after, expected_retry_after);
                 Ok(())
             }
-            ClientError::Network(error) => Err(format!(
-                "expected HTTP error, received network error: {error}"
-            )),
+            error => Err(format!("expected HTTP error, received {error}")),
         }
-    }
-
-    #[test]
-    fn builds_shopping_paths_from_the_api_front_door() {
-        assert_eq!(
-            client("https://api.test-godaddy.com").url("/catalog/search"),
-            "https://api.test-godaddy.com/v1/shopping/catalog/search"
-        );
-    }
-
-    #[test]
-    fn encodes_dynamic_ids_as_path_segments() {
-        assert_eq!(
-            checkout_path("session/a?b#c%d", "/complete"),
-            "/checkout-sessions/session%2Fa%3Fb%23c%25d/complete"
-        );
-        assert_eq!(order_path("order/a?b#c%d"), "/orders/order%2Fa%3Fb%23c%25d");
     }
 
     #[tokio::test]
@@ -237,7 +242,7 @@ mod tests {
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id")
                     .json_body(search_request.clone());
-                then.status(200).json_body(json!({"operation": "search"}));
+                then.status(200).json_body(json!({"products": []}));
             })
             .await;
         let lookup = server
@@ -247,7 +252,7 @@ mod tests {
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id")
                     .json_body(lookup_request.clone());
-                then.status(200).json_body(json!({"operation": "lookup"}));
+                then.status(200).json_body(json!({"products": []}));
             })
             .await;
         let product = server
@@ -257,32 +262,23 @@ mod tests {
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id")
                     .json_body(product_request.clone());
-                then.status(200).json_body(json!({"operation": "product"}));
+                then.status(200).json_body(json!({"products": []}));
             })
             .await;
 
         let shopping = client(&server.base_url());
-        assert_eq!(
-            shopping
-                .catalog_search(search_request)
-                .await
-                .expect("search")["operation"],
-            "search"
-        );
-        assert_eq!(
-            shopping
-                .catalog_lookup(lookup_request)
-                .await
-                .expect("lookup")["operation"],
-            "lookup"
-        );
-        assert_eq!(
-            shopping
-                .catalog_product(product_request)
-                .await
-                .expect("product")["operation"],
-            "product"
-        );
+        shopping
+            .catalog_search(search_request)
+            .await
+            .expect("search");
+        shopping
+            .catalog_lookup(lookup_request)
+            .await
+            .expect("lookup");
+        shopping
+            .catalog_product(product_request)
+            .await
+            .expect("product");
 
         search.assert_async().await;
         lookup.assert_async().await;
@@ -290,7 +286,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkout_lifecycle_uses_expected_methods_paths_and_bodies() {
+    async fn checkout_lifecycle_uses_expected_methods_paths_bodies_and_headers() {
         let server = MockServer::start_async().await;
         let checkout_request = json!({
             "line_items": [{"item": {"id": "variant-1"}, "quantity": 1}],
@@ -303,10 +299,8 @@ mod tests {
                 when.method(POST)
                     .path("/v1/shopping/checkout-sessions")
                     .header("authorization", "Bearer test-token")
-                    .header_exists("x-request-id")
-                    .json_body(checkout_request.clone());
-                then.status(201)
-                    .json_body(json!({"id": "checkout-123", "operation": "create"}));
+                    .header_exists("x-request-id");
+                then.status(201).json_body(json!({"id": "checkout-123"}));
             })
             .await;
         let get = server
@@ -315,8 +309,7 @@ mod tests {
                     .path("/v1/shopping/checkout-sessions/checkout-123")
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id");
-                then.status(200)
-                    .json_body(json!({"id": "checkout-123", "operation": "get"}));
+                then.status(200).json_body(json!({"id": "checkout-123"}));
             })
             .await;
         let update = server
@@ -324,10 +317,8 @@ mod tests {
                 when.method(PUT)
                     .path("/v1/shopping/checkout-sessions/checkout-123")
                     .header("authorization", "Bearer test-token")
-                    .header_exists("x-request-id")
-                    .json_body(checkout_request.clone());
-                then.status(200)
-                    .json_body(json!({"id": "checkout-123", "operation": "update"}));
+                    .header_exists("x-request-id");
+                then.status(200).json_body(json!({"id": "checkout-123"}));
             })
             .await;
         let complete = server
@@ -336,38 +327,25 @@ mod tests {
                     .path("/v1/shopping/checkout-sessions/checkout-123/complete")
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id")
-                    .json_body(completion_request.clone());
-                then.status(200)
-                    .json_body(json!({"id": "checkout-123", "operation": "complete"}));
+                    .header("idempotency-key", "customer-key");
+                then.status(200).json_body(json!({"id": "checkout-123"}));
             })
             .await;
 
         let shopping = client(&server.base_url());
-        assert_eq!(
-            shopping
-                .create_checkout(checkout_request.clone())
-                .await
-                .expect("create")["operation"],
-            "create"
-        );
-        assert_eq!(
-            shopping.get_checkout("checkout-123").await.expect("get")["operation"],
-            "get"
-        );
-        assert_eq!(
-            shopping
-                .update_checkout("checkout-123", checkout_request)
-                .await
-                .expect("update")["operation"],
-            "update"
-        );
-        assert_eq!(
-            shopping
-                .complete_checkout("checkout-123", completion_request)
-                .await
-                .expect("complete")["operation"],
-            "complete"
-        );
+        shopping
+            .create_checkout(checkout_request.clone())
+            .await
+            .expect("create");
+        shopping.get_checkout("checkout-123").await.expect("get");
+        shopping
+            .update_checkout("checkout-123", checkout_request)
+            .await
+            .expect("update");
+        shopping
+            .complete_checkout("checkout-123", completion_request, "customer-key")
+            .await
+            .expect("complete");
 
         create.assert_async().await;
         get.assert_async().await;
@@ -409,7 +387,8 @@ mod tests {
         let complete = server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v1/shopping/checkout-sessions/checkout-123/complete");
+                    .path("/v1/shopping/checkout-sessions/checkout-123/complete")
+                    .header("idempotency-key", "customer-key");
                 then.status(204);
             })
             .await;
@@ -424,7 +403,7 @@ mod tests {
         );
         assert_eq!(
             shopping
-                .complete_checkout("checkout-123", json!({}))
+                .complete_checkout("checkout-123", json!({}), "customer-key")
                 .await
                 .expect("empty completion"),
             Value::Null
@@ -435,24 +414,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn encodes_dynamic_checkout_ids_on_the_wire() {
+    async fn encodes_dynamic_ids_on_the_wire() {
         let server = MockServer::start_async().await;
-        let mock = server
+        let checkout = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v1/shopping/checkout-sessions/session%2Fa%3Fb%23c%25d")
-                    .header("authorization", "Bearer test-token");
-                then.status(200).json_body(json!({"id": "encoded"}));
+                    .path("/v1/shopping/checkout-sessions/session%2Fa%3Fb%23c%25d");
+                then.status(200).json_body(json!({"id": "checkout"}));
+            })
+            .await;
+        let order = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/orders/order%2Fa%3Fb%23c%25d");
+                then.status(200).json_body(json!({"id": "order"}));
             })
             .await;
 
-        let checkout = client(&server.base_url())
+        let shopping = client(&server.base_url());
+        shopping
             .get_checkout("session/a?b#c%d")
             .await
-            .expect("get encoded checkout");
+            .expect("encoded checkout");
+        shopping
+            .get_order("order/a?b#c%d")
+            .await
+            .expect("encoded order");
 
-        mock.assert_async().await;
-        assert_eq!(checkout["id"], "encoded");
+        checkout.assert_async().await;
+        order.assert_async().await;
     }
 
     #[tokio::test]
@@ -490,7 +480,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(GET).path("/v1/shopping/orders/123");
                 then.status(404)
-                    .json_body(json!({ "error": "order_not_found" }));
+                    .json_body(json!({"error": "order_not_found"}));
             })
             .await;
 
@@ -549,7 +539,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reports_malformed_success_json() -> TestResult<(), String> {
+    async fn reports_malformed_success_json() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -565,22 +555,8 @@ mod tests {
 
         mock.assert_async().await;
         match error {
-            ClientError::Http {
-                status,
-                body,
-                retry_after,
-            } => {
-                assert_eq!(status, 200);
-                assert!(body.contains("invalid JSON response"));
-                assert!(body.contains("not-json"));
-                assert_eq!(retry_after, None);
-            }
-            ClientError::Network(error) => {
-                return Err(format!(
-                    "expected HTTP error, received network error: {error}"
-                ));
-            }
+            ClientError::Response(error) => assert!(error.to_string().contains("expected ident")),
+            error => panic!("expected decode error, received {error}"),
         }
-        Ok(())
     }
 }

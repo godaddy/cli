@@ -3,12 +3,12 @@ use serde_json::Value;
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::checkout::get::{HUMAN_VIEW_ID, human_response};
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     read_json, reject_mixed_checkout_input, reject_multiple_payment_instruments,
 };
-use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
 output_schema!(CheckoutOutput {
     "ucp": "object";
@@ -67,12 +67,11 @@ struct Args {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("create", "Create a Shopping checkout session")
+        CommandSpec::from_args::<Args>("create", "Create a cart")
             .with_long(
-                "Create a checkout with --item and optional buyer/payment flags. Repeat --item for \
-                 multiple variants and append =QUANTITY when needed. Use --body or --file for \
-                 advanced Shopping API fields such as item input, fulfillment, or billing addresses. \
-                 This creates a checkout but does not place an order; complete it only after review.",
+                "Add one or more product variants to a cart. Repeat --item for multiple variants and \
+                 append =QUANTITY when needed. Creating a cart does not place an order; review its \
+                 payment methods and links before placing one.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -117,11 +116,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .unwrap_or_default()
                 .to_owned();
             let env = crate::environments::resolve(&ctx.middleware.env)?;
-            let mut actions = no_saved_payment_method_action(
-                &checkout,
-                &ctx.middleware.env,
-                &env.account_url,
-            )
+            let mut actions = no_saved_payment_method_action(&checkout, &env.account_url)
             .into_iter()
             .collect::<Vec<_>>();
             if ready_for_complete {
@@ -138,11 +133,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .unwrap_or("<instrument-id>");
                 actions.push(
                     next_action(
-                        command_for_env(
-                            &ctx.middleware.env,
-                            "checkout complete <checkout-id> --payment-instrument <payment-instrument>",
-                        ),
-                        "Complete this checkout with a selected saved payment instrument",
+                        "shopping checkout complete <checkout-id> --payment-instrument <payment-instrument> --agree",
+                        "Place an order after reviewing the cart and its terms",
                     )
                     .with_param("checkout-id", NextActionParam::value(checkout_id))
                     .with_param(
@@ -152,7 +144,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout, &actions, args.show_all_payment_instruments)
+                human_response(&checkout, args.show_all_payment_instruments)
             } else {
                 checkout
             };

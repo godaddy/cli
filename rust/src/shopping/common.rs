@@ -15,7 +15,7 @@ pub(crate) async fn make_client(ctx: &CommandContext) -> Result<ShoppingClient> 
         .collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
-    Ok(ShoppingClient::new(base_url, token))
+    ShoppingClient::new(base_url, token).map_err(client_err)
 }
 
 pub(crate) fn client_err(error: ClientError) -> CliCoreError {
@@ -110,7 +110,7 @@ impl CheckoutInput {
         self.body(true)
     }
 
-    pub(crate) fn completion_body(&self, idempotency_key: Option<&str>) -> Result<Value> {
+    pub(crate) fn completion_body(&self) -> Result<Value> {
         if !self.items.is_empty()
             || self.clear_items
             || self.currency.is_some()
@@ -120,7 +120,7 @@ impl CheckoutInput {
             || self.buyer_phone.is_some()
         {
             return Err(GddyError::validation(
-                "checkout complete only supports --payment-instrument and --idempotency-key in structured mode",
+                "checkout complete only supports --payment-instrument in structured mode",
             )
             .into_cli_error());
         }
@@ -128,15 +128,9 @@ impl CheckoutInput {
             self.payment_instrument.as_deref(),
             "--payment-instrument must be non-empty",
         )?;
-        let mut body = json!({
+        Ok(json!({
             "payment": {"instruments": [{"id": payment_instrument, "selected": true}]}
-        });
-        if let Some(idempotency_key) = idempotency_key {
-            body.as_object_mut()
-                .expect("completion body is an object")
-                .insert("idempotency_key".to_owned(), json!(idempotency_key));
-        }
-        Ok(body)
+        }))
     }
 
     fn body(&self, allow_empty_items: bool) -> Result<Value> {
@@ -314,7 +308,6 @@ pub(crate) fn reject_mixed_checkout_input(
 
 pub(crate) fn no_saved_payment_method_action(
     checkout: &Value,
-    env: &str,
     account_url: &str,
 ) -> Option<cli_engine::NextAction> {
     checkout
@@ -322,38 +315,13 @@ pub(crate) fn no_saved_payment_method_action(
         .and_then(Value::as_array)
         .is_some_and(Vec::is_empty)
         .then(|| {
-            let command = if matches!(env, "prod" | "production") {
-                "payment-methods add".to_owned()
-            } else {
-                format!("--env {env} payment-methods add")
-            };
             next_action(
-                command,
+                "payment-methods add",
                 format!(
                     "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout again."
                 ),
             )
         })
-}
-
-/// Returns a supplied non-empty key, or inserts a new UUID for this one request.
-pub(crate) fn ensure_completion_idempotency_key(body: &mut Value) -> Result<String> {
-    let object = body
-        .as_object_mut()
-        .expect("read_json validates the completion request is an object");
-    match object.get("idempotency_key") {
-        None => {
-            let key = uuid::Uuid::new_v4().to_string();
-            object.insert("idempotency_key".to_owned(), Value::String(key.clone()));
-            Ok(key)
-        }
-        Some(Value::String(key)) if !key.trim().is_empty() => Ok(key.clone()),
-        Some(_) => Err(GddyError::validation(
-            "idempotency_key must be a non-empty string when supplied",
-        )
-        .with_fix("Supply a non-empty idempotency_key, or omit it to let gddy generate one.")
-        .into_cli_error()),
-    }
 }
 
 pub(crate) async fn wait_for_order(
@@ -446,32 +414,6 @@ mod tests {
     use crate::shopping::command_for_env;
 
     #[test]
-    fn generates_and_inserts_missing_completion_idempotency_key() {
-        let mut request = json!({});
-        let key = ensure_completion_idempotency_key(&mut request).expect("key should be generated");
-
-        assert!(uuid::Uuid::parse_str(&key).is_ok());
-        assert_eq!(request["idempotency_key"], key);
-    }
-
-    #[test]
-    fn preserves_supplied_completion_idempotency_key() {
-        let mut request = json!({"idempotency_key": "customer-key"});
-
-        assert_eq!(
-            ensure_completion_idempotency_key(&mut request).expect("key should be valid"),
-            "customer-key"
-        );
-    }
-
-    #[test]
-    fn rejects_blank_completion_idempotency_key() {
-        let mut request = json!({"idempotency_key": "  "});
-
-        assert!(ensure_completion_idempotency_key(&mut request).is_err());
-    }
-
-    #[test]
     fn builds_structured_checkout_body() {
         let body = CheckoutInput {
             items: vec!["product-a=2".to_owned(), "product-b".to_owned()],
@@ -554,14 +496,13 @@ mod tests {
             payment_instrument: Some("payment-1".to_owned()),
             ..CheckoutInput::default()
         }
-        .completion_body(Some("customer-key"))
+        .completion_body()
         .expect("completion body should build");
 
         assert_eq!(
             body,
             json!({
-                "payment": {"instruments": [{"id": "payment-1", "selected": true}]},
-                "idempotency_key": "customer-key"
+                "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
             })
         );
     }
@@ -576,26 +517,14 @@ mod tests {
     #[test]
     fn adds_payment_method_actions_for_resolved_environment_urls() {
         let empty_instruments = json!({"payment": {"instruments": []}});
-        for (env, account_url, command) in [
-            (
-                "prod",
-                "https://account.godaddy.com",
-                "gddy payment-methods add",
-            ),
-            (
-                "test",
-                "https://account.test-godaddy.com",
-                "gddy --env test payment-methods add",
-            ),
-            (
-                "dev",
-                "https://account.dev-godaddy.com",
-                "gddy --env dev payment-methods add",
-            ),
+        for account_url in [
+            "https://account.godaddy.com",
+            "https://account.test-godaddy.com",
+            "https://account.dev-godaddy.com",
         ] {
-            let action = no_saved_payment_method_action(&empty_instruments, env, account_url)
+            let action = no_saved_payment_method_action(&empty_instruments, account_url)
                 .expect("empty list should require a payment method");
-            assert_eq!(action.command, command);
+            assert_eq!(action.command, "gddy payment-methods add");
             assert!(
                 action
                     .description
@@ -603,12 +532,8 @@ mod tests {
             );
         }
         assert!(
-            no_saved_payment_method_action(
-                &json!({"payment": {}}),
-                "prod",
-                "https://account.godaddy.com",
-            )
-            .is_none()
+            no_saved_payment_method_action(&json!({"payment": {}}), "https://account.godaddy.com")
+                .is_none()
         );
     }
 
@@ -638,10 +563,10 @@ mod tests {
     }
 
     #[test]
-    fn preserves_named_environment_in_order_wait_recovery_command() {
+    fn follow_up_commands_rely_on_the_selected_environment() {
         assert_eq!(
             command_for_env("test", "order get order-1 --wait"),
-            "--env test shopping order get order-1 --wait"
+            "shopping order get order-1 --wait"
         );
     }
 

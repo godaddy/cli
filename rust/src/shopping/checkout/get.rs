@@ -1,13 +1,12 @@
 use cli_engine::{
-    CommandResult, CommandSpec, ModuleContext, NextAction, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    CommandResult, CommandSpec, ModuleContext, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::{Value, json};
 
-use crate::next_action::{human_next_steps, next_action};
+use crate::next_action::next_action;
+use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{client_err, make_client};
 use crate::shopping::money;
-use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
 pub(super) const HUMAN_VIEW_ID: &str = "shopping-checkout-get";
 
@@ -19,22 +18,21 @@ pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
-    /// Checkout session ID.
+    /// Cart ID.
     #[arg(value_name = "CHECKOUT_ID")]
     id: String,
 
-    /// Show every available saved payment instrument instead of the first five.
+    /// Show every available saved payment method instead of the first five.
     #[arg(long)]
     show_all_payment_instruments: bool,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("get", "Get an open Shopping checkout session")
+        CommandSpec::from_args::<Args>("get", "Review an open cart")
             .with_long(
-                "Get an open checkout session. Do not use after completion: completed checkouts \
-                 cannot be retrieved through this command. Use `shopping order get` with the order \
-                 ID returned by completion instead.",
+                "Review an open cart, including its items, available payment methods, and important links. \
+                 Use the order ID returned after placing an order to review a completed purchase.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -45,15 +43,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let ready_for_complete =
                 checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
             let actions = if ready_for_complete {
-                let payment_instrument =
-                    selected_payment_id(&checkout).unwrap_or("<instrument-id>");
+                let payment_instrument = selected_payment_id(&checkout).unwrap_or("<payment-instrument>");
                 vec![
                     next_action(
-                        command_for_env(
-                            &ctx.middleware.env,
-                            "checkout complete <checkout-id> --payment-instrument <payment-instrument>",
-                        ),
-                        "Complete this checkout after reviewing its selected payment method",
+                        "shopping checkout complete <checkout-id> --payment-instrument <payment-instrument> --agree",
+                        "Place an order after reviewing the cart and its terms",
                     )
                     .with_param("checkout-id", NextActionParam::value(args.id))
                     .with_param(
@@ -65,7 +59,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Vec::new()
             };
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout, &actions, args.show_all_payment_instruments)
+                human_response(&checkout, args.show_all_payment_instruments)
             } else {
                 checkout
             };
@@ -74,16 +68,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-async fn client_response(ctx: &cli_engine::CommandContext, id: &str) -> Result<Value> {
+pub(super) async fn client_response(ctx: &cli_engine::CommandContext, id: &str) -> Result<Value> {
     let client = make_client(ctx).await?;
     client.get_checkout(id).await.map_err(client_err)
 }
 
-pub(super) fn human_response(
-    checkout: &Value,
-    actions: &[NextAction],
-    show_all_payment_instruments: bool,
-) -> Value {
+pub(super) fn human_response(checkout: &Value, show_all_payment_instruments: bool) -> Value {
     let line_items = checkout
         .get("line_items")
         .and_then(Value::as_array)
@@ -104,7 +94,6 @@ pub(super) fn human_response(
         "id": checkout.get("id").and_then(Value::as_str).unwrap_or_default(),
         "status": checkout.get("status").and_then(Value::as_str).unwrap_or_default(),
         "items": line_items,
-        "currency": checkout.get("currency").and_then(Value::as_str).unwrap_or_default(),
         "total": money::format_total(
             checkout.get("totals"),
             checkout.get("currency").and_then(Value::as_str),
@@ -112,7 +101,7 @@ pub(super) fn human_response(
         "selected_payment": selected_payment(checkout),
         "available_payment_instruments": available_payment_instruments(checkout, show_all_payment_instruments),
         "has_more_payment_instruments": !show_all_payment_instruments && available_payment_instrument_count(checkout) > PAYMENT_INSTRUMENT_LIMIT,
-        "next_steps": human_next_steps(actions),
+        "links": checkout_links(checkout),
     })
 }
 
@@ -177,33 +166,48 @@ fn selected_payment_instrument(checkout: &Value) -> Option<&Value> {
         })
 }
 
-fn selected_payment_id(checkout: &Value) -> Option<&str> {
+pub(super) fn selected_payment_id(checkout: &Value) -> Option<&str> {
     selected_payment_instrument(checkout)
         .and_then(|instrument| instrument.get("id"))?
         .as_str()
 }
 
-fn render_human(checkout: &Value) -> String {
-    if let Some(action) = checkout.get("action").and_then(Value::as_str) {
-        let body = checkout.get("body").cloned().unwrap_or(Value::Null);
+fn checkout_links(checkout: &Value) -> Vec<Value> {
+    checkout
+        .get("links")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|link| {
+            let url = link.get("url").and_then(Value::as_str)?;
+            let link_type = link.get("type").and_then(Value::as_str).unwrap_or("link");
+            let title = link
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| link_type.replace('_', " "));
+            Some(json!({"title": title, "url": url, "type": link_type}))
+        })
+        .collect()
+}
+
+fn render_human(cart: &Value) -> String {
+    if let Some(action) = cart.get("action").and_then(Value::as_str) {
+        let body = cart.get("body").cloned().unwrap_or(Value::Null);
         return format!(
             "{action}\nRequest:\n{}\n",
             serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string()),
         );
     }
     let mut output = format!(
-        "Checkout: {}\nStatus: {}\n",
-        checkout
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        checkout
-            .get("status")
+        "Cart: {}\nStatus: {}\n",
+        cart.get("id").and_then(Value::as_str).unwrap_or_default(),
+        cart.get("status")
             .and_then(Value::as_str)
             .unwrap_or_default(),
     );
     output.push_str("\nItems:\n");
-    let items = checkout
+    let items = cart
         .get("items")
         .and_then(Value::as_array)
         .map(Vec::as_slice)
@@ -232,22 +236,21 @@ fn render_human(checkout: &Value) -> String {
     }
     output.push_str(&format!(
         "\nSelected payment: {}\n",
-        checkout
-            .get("selected_payment")
+        cart.get("selected_payment")
             .and_then(Value::as_str)
             .unwrap_or("No payment method selected"),
     ));
-    render_available_payment_instruments(&mut output, checkout);
-    if let Some(total) = checkout.get("total").and_then(Value::as_str) {
+    render_available_payment_instruments(&mut output, cart);
+    if let Some(total) = cart.get("total").and_then(Value::as_str) {
         output.push_str(&format!("\nTotal: {total}\n"));
     }
-    output.push_str("\nCompletion places a real order. Review this checkout before continuing.\n");
-    render_next_steps(&mut output, checkout);
+    render_links(&mut output, cart);
+    output.push_str("\nReview this cart and its links before placing an order.\n");
     output
 }
 
-fn render_available_payment_instruments(output: &mut String, checkout: &Value) {
-    let instruments = checkout
+fn render_available_payment_instruments(output: &mut String, cart: &Value) {
+    let instruments = cart
         .get("available_payment_instruments")
         .and_then(Value::as_array)
         .map(Vec::as_slice)
@@ -278,7 +281,7 @@ fn render_available_payment_instruments(output: &mut String, checkout: &Value) {
                 .unwrap_or_default(),
         ));
     }
-    if checkout
+    if cart
         .get("has_more_payment_instruments")
         .and_then(Value::as_bool)
         .unwrap_or(false)
@@ -287,25 +290,21 @@ fn render_available_payment_instruments(output: &mut String, checkout: &Value) {
     }
 }
 
-pub(super) fn render_next_steps(output: &mut String, response: &Value) {
-    let steps = response
-        .get("next_steps")
+fn render_links(output: &mut String, cart: &Value) {
+    let links = cart
+        .get("links")
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default();
-    if steps.is_empty() {
+    if links.is_empty() {
         return;
     }
-    output.push_str("\nNext steps:\n");
-    for step in steps {
+    output.push_str("\nImportant links:\n");
+    for link in links {
         output.push_str(&format!(
-            "  {}\n    {}\n",
-            step.get("command")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            step.get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
+            "- {}: {}\n",
+            link.get("title").and_then(Value::as_str).unwrap_or("Link"),
+            link.get("url").and_then(Value::as_str).unwrap_or_default(),
         ));
     }
 }
@@ -327,12 +326,12 @@ mod tests {
 
         assert_eq!(default_instruments.len(), 5);
         assert_eq!(all_instruments.len(), 6);
-        let output = render_human(&human_response(&checkout, &[], false));
+        let output = render_human(&human_response(&checkout, false));
         assert!(output.contains("--show-all-payment-instruments"));
     }
 
     #[test]
-    fn human_view_masks_checkout_to_purchase_essentials() {
+    fn human_view_shows_cart_essentials_and_all_links() {
         let output = render_human(&human_response(
             &json!({
                 "id": "checkout-1",
@@ -344,6 +343,10 @@ mod tests {
                 }],
                 "totals": [{"type": "total", "amount": 8388}],
                 "currency": "USD",
+                "links": [
+                    {"type": "terms_of_service", "url": "https://example.test/terms"},
+                    {"type": "faq", "title": "Help centre", "url": "https://example.test/help"}
+                ],
                 "payment": {"instruments": [{
                     "id": "payment-1",
                     "selected": true,
@@ -351,15 +354,16 @@ mod tests {
                     "billing_address": {"street_address": "do not render"}
                 }]}
             }),
-            &[],
             false,
         ));
 
+        assert!(output.contains("Cart: checkout-1"));
         assert!(output.contains("Web Hosting Economy"));
         assert!(output.contains("CREDIT_CARD/VISA 1111"));
         assert!(output.contains("Available payment methods:"));
         assert!(output.contains("Total: USD 83.88"));
-        assert!(output.contains("Completion places a real order"));
+        assert!(output.contains("terms of service: https://example.test/terms"));
+        assert!(output.contains("Help centre: https://example.test/help"));
         assert!(!output.contains("do not render"));
     }
 }

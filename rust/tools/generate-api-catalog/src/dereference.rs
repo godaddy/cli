@@ -75,22 +75,22 @@ fn derive_defs_key_for_path(ref_str: &str) -> String {
     };
     let base_key = sanitize_defs_key(stem);
 
-    // A `#/properties/<name>` fragment (optionally nested, e.g. `#/properties/a/properties/b`)
-    // selects one property's schema out of the file, not the file's root schema — fold the
-    // property path into the key so two refs into the same file for different properties
-    // don't collide under one bare file-stem key. Each segment has its literal `_` doubled
-    // before joining on a single `_`, so a property literally named `a_b` can't collide with
-    // nested segments `a` + `b` (both would otherwise sanitize to the same `a_b` suffix).
-    match frag.and_then(|f| f.strip_prefix("#/properties/")) {
-        Some(rest) => {
-            let suffix = rest
-                .split("/properties/")
-                .map(|seg| seg.replace('_', "__"))
-                .collect::<Vec<_>>()
-                .join("_");
-            sanitize_defs_key(&format!("{base_key}_{suffix}"))
-        }
-        None => base_key,
+    // A fragment selecting one schema from a multi-schema document needs its
+    // own key. Without it, every UCP ref through `ucp-refs.schema.json` would
+    // collide under one definition and silently produce incorrect generated types.
+    match frag.and_then(|f| f.strip_prefix("#/$defs/")) {
+        Some(name) => sanitize_defs_key(&format!("{base_key}_{name}")),
+        None => match frag.and_then(|f| f.strip_prefix("#/properties/")) {
+            Some(rest) => {
+                let suffix = rest
+                    .split("/properties/")
+                    .map(|seg| seg.replace('_', "__"))
+                    .collect::<Vec<_>>()
+                    .join("_");
+                sanitize_defs_key(&format!("{base_key}_{suffix}"))
+            }
+            None => base_key,
+        },
     }
 }
 
@@ -182,6 +182,10 @@ fn resolve_ref(
         return resolve_local_ref(root, ref_str).cloned();
     }
 
+    if ref_str == "https://json-schema.org/draft/2020-12/schema" {
+        return Some(serde_json::json!(true));
+    }
+
     if ref_str.starts_with("https://schemas.api.godaddy.com/") {
         let ct_dir = common_types_dir?;
         let url_path = ref_str
@@ -195,6 +199,22 @@ fn resolve_ref(
             );
         let local_path = ct_dir.join(url_path.trim_start_matches('/'));
         return load_external_ref(&local_path, common_types_dir, defs, depth);
+    }
+
+    if let Some(url_path) = ref_str.strip_prefix("https://godaddy.com/ucp/schemas/") {
+        let (file_part, fragment) = split_external_ref(url_path);
+        let local_path = specification_root(spec_dir)?
+            .join("schemas")
+            .join(file_part);
+        return resolve_external_fragment(&local_path, fragment, common_types_dir, defs, depth);
+    }
+
+    if let Some(url_path) = ref_str.strip_prefix("https://ucp.dev/schemas/shopping/") {
+        let (file_part, fragment) = split_external_ref(url_path);
+        let local_path = specification_root(spec_dir)?
+            .join("schemas/ucp/shopping")
+            .join(file_part);
+        return resolve_external_fragment(&local_path, fragment, common_types_dir, defs, depth);
     }
 
     // Relative file reference — strip fragment
@@ -225,6 +245,37 @@ fn resolve_ref(
         return resolve_local_ref(&external_root, frag).cloned();
     }
     Some(external_root)
+}
+
+fn split_external_ref(reference: &str) -> (&str, Option<&str>) {
+    match reference.find('#') {
+        Some(index) => (&reference[..index], Some(&reference[index..])),
+        None => (reference, None),
+    }
+}
+
+fn resolve_external_fragment(
+    path: &Path,
+    fragment: Option<&str>,
+    common_types_dir: Option<&Path>,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Option<Value> {
+    let root = load_external_ref(path, common_types_dir, defs, depth)?;
+    fragment.map_or(Some(root.clone()), |fragment| {
+        resolve_local_ref(&root, fragment).cloned()
+    })
+}
+
+fn specification_root(spec_dir: &Path) -> Option<&Path> {
+    let mut current = Some(spec_dir);
+    while let Some(path) = current {
+        if path.join("schemas").is_dir() {
+            return Some(path);
+        }
+        current = path.parent();
+    }
+    None
 }
 
 fn load_external_ref(

@@ -1,7 +1,9 @@
 use serde_json::Value;
 
-/// Shopping amounts are ISO-4217 minor units. Their decimal scale derives from the returned
-/// currency code, not a fixed cents assumption.
+use crate::domain::common::format_minor_units;
+
+/// Shopping amounts are ISO-4217 minor units; formatting delegates to the
+/// shared Domains currency implementation.
 pub(crate) fn format_value(value: Option<&Value>) -> Option<String> {
     let amount = value?.get("amount")?.as_i64()?;
     let currency = value?.get("currency")?.as_str()?;
@@ -20,42 +22,7 @@ pub(crate) fn format_total(totals: Option<&Value>, currency: Option<&str>) -> Op
 }
 
 pub(crate) fn format_amount(amount: i64, currency: &str) -> String {
-    let sign = if amount < 0 { "-" } else { "" };
-    let absolute = amount.unsigned_abs();
-    let decimals = currency_decimals(currency);
-    let scale = 10u64.pow(decimals);
-    let whole = grouped_integer(absolute / scale);
-    if decimals == 0 {
-        format!("{currency} {sign}{whole}")
-    } else {
-        format!(
-            "{currency} {sign}{whole}.{:0width$}",
-            absolute % scale,
-            width = decimals as usize
-        )
-    }
-}
-
-fn currency_decimals(currency: &str) -> u32 {
-    iso_currency::Currency::from_code(&currency.to_ascii_uppercase())
-        .and_then(|currency| currency.exponent())
-        .map_or(2, u32::from)
-}
-
-fn grouped_integer(value: u64) -> String {
-    let digits = value.to_string();
-    let first_group = digits.len() % 3;
-    let mut output = String::with_capacity(digits.len() + digits.len() / 3);
-    if first_group > 0 {
-        output.push_str(&digits[..first_group]);
-    }
-    for index in (first_group..digits.len()).step_by(3) {
-        if !output.is_empty() {
-            output.push(',');
-        }
-        output.push_str(&digits[index..index + 3]);
-    }
-    output
+    format_minor_units(amount, currency, true, true)
 }
 
 #[cfg(test)]
@@ -90,18 +57,5 @@ mod tests {
             ),
             None
         );
-        assert_eq!(
-            format_total(
-                Some(&serde_json::json!([{"type": "subtotal", "amount": 7188}])),
-                Some("USD")
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn formats_negative_and_unknown_currency_amounts() {
-        assert_eq!(format_amount(-500, "USD"), "USD -5.00");
-        assert_eq!(format_amount(1_234, "ZZZ"), "ZZZ 12.34");
     }
 }

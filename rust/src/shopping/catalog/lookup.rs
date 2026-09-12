@@ -42,11 +42,10 @@ pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("lookup", "Resolve known Shopping catalog IDs")
+        CommandSpec::from_args::<Args>("lookup", "Find products by ID")
             .with_long(
-                "Resolve one or more known product or variant IDs with repeatable --id. Unknown IDs \
-                 are reported in the response messages rather than failing the whole request. Use \
-                 --body or --file only for advanced Shopping API fields.",
+                "Find one or more products or variants by ID. Unknown IDs are reported in the response \
+                 without preventing matches for the other IDs.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)

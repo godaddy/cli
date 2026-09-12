@@ -3,7 +3,7 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::next_action::{human_next_steps, next_action};
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::common::{
     client_err, currency_code, make_client, merge_context_currency, read_json,
@@ -45,10 +45,9 @@ pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("get", "Get one Shopping catalog product")
+        CommandSpec::from_args::<Args>("get", "View product details")
             .with_long(
-                "Get one product or variant with --id. Use --body or --file only for advanced \
-                 Shopping API selections and preferences.",
+                "View one product or variant with --id, including available options and prices.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -78,7 +77,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let response = client.catalog_product(body).await.map_err(client_err)?;
             let actions = next_actions(&response, &ctx.middleware.env);
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&response, &actions)
+                human_response(&response)
             } else {
                 response
             };
@@ -122,14 +121,14 @@ fn next_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
                 env,
                 "checkout create --item <variant-id> --currency <currency>",
             ),
-            "Create a checkout with the first available variant",
+            "Add the first available variant to a cart",
         )
         .with_param("variant-id", NextActionParam::value(variant_id))
         .with_param("currency", NextActionParam::value(currency)),
     ]
 }
 
-fn human_response(response: &Value, actions: &[cli_engine::NextAction]) -> Value {
+fn human_response(response: &Value) -> Value {
     let product = response.get("product").cloned().unwrap_or(Value::Null);
     json!({
         "id": product.get("id").and_then(Value::as_str).unwrap_or_default(),
@@ -138,7 +137,6 @@ fn human_response(response: &Value, actions: &[cli_engine::NextAction]) -> Value
         "categories": product.get("categories").and_then(Value::as_array).map(|categories| categories.iter().filter_map(|category| category.get("value").and_then(Value::as_str)).collect::<Vec<_>>()).unwrap_or_default(),
         "price_range": product.get("price_range").cloned(),
         "variants": product.get("variants").cloned().unwrap_or_else(|| json!([])),
-        "next_steps": human_next_steps(actions),
     })
 }
 
@@ -216,31 +214,7 @@ fn render_human(product: &Value) -> String {
             money(variant.get("list_price")).unwrap_or_else(|| "Unavailable".to_owned()),
         ));
     }
-    render_next_steps(&mut output, product);
     output
-}
-
-fn render_next_steps(output: &mut String, response: &Value) {
-    let steps = response
-        .get("next_steps")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    if steps.is_empty() {
-        return;
-    }
-    output.push_str("\nNext steps:\n");
-    for step in steps {
-        output.push_str(&format!(
-            "  {}\n    {}\n",
-            step.get("command")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            step.get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-        ));
-    }
 }
 
 fn money(value: Option<&Value>) -> Option<String> {
@@ -264,11 +238,16 @@ mod tests {
             },
             "ucp": {"do_not_render": true}
         });
-        let output = render_human(&human_response(&response, &next_actions(&response, "test")));
+        let output = render_human(&human_response(&response));
+        let actions = next_actions(&response, "test");
 
         assert!(output.contains("Product (ID: product-1)"));
         assert!(output.contains("USD 71.88"));
-        assert!(output.contains("checkout create"));
+        assert_eq!(
+            actions[0].description,
+            "Add the first available variant to a cart"
+        );
+        assert!(actions[0].command.contains("checkout create"));
         assert!(!output.contains("do_not_render"));
     }
 }
