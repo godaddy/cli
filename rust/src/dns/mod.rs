@@ -72,7 +72,7 @@ mod tests {
                     .with_module(module()),
             )
         };
-        let cases: [(&[&str], &str); 4] = [
+        let cases: [(&[&str], &str); 6] = [
             (
                 &[
                     "gddy",
@@ -123,6 +123,39 @@ mod tests {
                     "1",
                 ],
                 "--data",
+            ),
+            // A lower-case --type must require the same fields as an upper-case
+            // one. clap compares `required_if_eq` against the raw argument, so
+            // these two only hold while `--type` sets `ignore_case`.
+            (
+                &[
+                    "gddy",
+                    "dns",
+                    "add",
+                    "example.com",
+                    "--type",
+                    "tlsa",
+                    "--name",
+                    "www",
+                    "--data",
+                    "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971",
+                ],
+                "--usage",
+            ),
+            (
+                &[
+                    "gddy",
+                    "dns",
+                    "set",
+                    "example.com",
+                    "--type",
+                    "caa",
+                    "--name",
+                    "@",
+                    "--data",
+                    "letsencrypt.org",
+                ],
+                "--tag",
             ),
         ];
         for (args, needle) in cases {
