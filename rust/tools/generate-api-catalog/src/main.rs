@@ -5,6 +5,7 @@ mod graphql;
 mod hosting_spec;
 mod manifest;
 mod openapi;
+mod shopping_merge;
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -107,6 +108,14 @@ fn main() -> Result<()> {
         )
         .context("failed to refresh domains-client codegen spec")?;
     }
+    if let Some(shopping_source) = sources.iter().find(|s| s.domain == "shopping") {
+        shopping_merge::refresh(
+            &shopping_source.spec_file,
+            common_types,
+            &shopping_merge::shopping_client_oas3_path(),
+        )
+        .context("failed to refresh shopping-client codegen spec")?;
+    }
 
     sources.extend(local_spec_sources(&source_manifest)?);
 
@@ -121,7 +130,7 @@ fn main() -> Result<()> {
     let mut active_files: HashSet<String> = HashSet::new();
     let mut total_endpoints = 0usize;
 
-    for source in &sources {
+    for source in sources.iter().filter(|source| source.catalog) {
         eprintln!(
             "Processing {} ({}/{})...",
             source.domain, source.repo_name, source.spec_version

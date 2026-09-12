@@ -66,6 +66,11 @@
       "repository": "commerce.shipping-specification"
     },
     {
+      "domain": "shopping",
+      "repository": "shopping.ucp-specification",
+      "catalog": false
+    },
+    {
       "domain": "stores",
       "repository": "commerce.stores-specification"
     },

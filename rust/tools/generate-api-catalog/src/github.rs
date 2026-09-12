@@ -34,6 +34,7 @@ pub(crate) struct SpecSource {
     pub(crate) spec_file: PathBuf,
     pub(crate) spec_version: String,
     pub(crate) graphql_only: bool,
+    pub(crate) catalog: bool,
 }
 
 fn github_client() -> Result<reqwest::blocking::Client> {
@@ -138,9 +139,11 @@ fn find_latest_spec_file(repo_dir: &Path) -> Option<(String, PathBuf, bool)> {
 
     for (_, version) in candidates.iter().rev() {
         for name in &["openapi.yaml", "openapi.yml", "openapi.json"] {
-            let p = repo_dir.join(version).join("schemas").join(name);
-            if p.exists() {
-                return Some((version.clone(), p, false));
+            for relative_path in [Path::new("schemas").join(name), PathBuf::from(name)] {
+                let p = repo_dir.join(version).join(relative_path);
+                if p.exists() {
+                    return Some((version.clone(), p, false));
+                }
             }
         }
         for name in &["graphql/schema.graphql", "schema.graphql"] {
@@ -333,6 +336,7 @@ pub(crate) fn discover_spec_sources(
             spec_file,
             spec_version: version,
             graphql_only,
+            catalog: source.catalog,
         });
     }
 
@@ -367,6 +371,7 @@ pub(crate) fn local_spec_sources(manifest: &CatalogSourceManifest) -> Result<Vec
             spec_file,
             spec_version,
             graphql_only: false,
+            catalog: true,
         });
     }
     Ok(sources)

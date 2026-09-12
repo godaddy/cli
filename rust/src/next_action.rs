@@ -1,9 +1,7 @@
-//! Helper so every suggested next-step command reads exactly as the user would
-//! type it (e.g. `gddy domain quote <domain>`, not `domain quote <domain>`).
+//! Helpers for app-specific next-action construction.
 //!
-//! `cli_engine::NextAction` is a generic, app-agnostic type with no concept of a
-//! binary name, so the `gddy` prefix is applied here in the main repo rather than
-//! in the (separately versioned) `cli-engine` crate.
+//! `cli_engine::NextAction` owns structured parameters and all human rendering;
+//! this module only adds the application binary name to command templates.
 
 use cli_engine::{NextAction, NextActionParam};
 
@@ -16,7 +14,7 @@ pub(crate) fn next_action(
     NextAction::new(format!("{APP_ID} {}", command.into()), description)
 }
 
-/// Prefill a required next-action param (value + `required: true`).
+/// Prefill a required next-action parameter.
 pub(crate) fn required_value(value: impl Into<String>) -> NextActionParam {
     NextActionParam {
         value: Some(value.into()),
