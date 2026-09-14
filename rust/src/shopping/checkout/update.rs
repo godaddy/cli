@@ -2,8 +2,7 @@ use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
-    CheckoutInput, client_err, currency_code, has_conflicting_checkout_id, make_client,
-    no_saved_payment_method_action, read_json, reject_mixed_checkout_input,
+    CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments,
 };
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
@@ -14,11 +13,11 @@ struct Args {
     #[arg(value_name = "CHECKOUT_ID")]
     id: String,
 
-    /// Variant ID to include. Repeat for multiple items; append `=QUANTITY` to set a quantity.
-    #[arg(long, value_name = "VARIANT_ID[=QUANTITY]")]
+    /// Purchase option ID to include. Repeat for multiple items; append `=QUANTITY` to set a quantity.
+    #[arg(long, value_name = "PURCHASE_OPTION_ID[=QUANTITY]")]
     item: Vec<String>,
 
-    /// Deliberately replace the cart with no items.
+    /// Deliberately replace the checkout session with no items.
     #[arg(long)]
     clear_items: bool,
 
@@ -45,22 +44,15 @@ struct Args {
     /// Select one saved payment instrument by ID.
     #[arg(long, value_name = "INSTRUMENT_ID")]
     payment_instrument: Option<String>,
-
-    /// Full checkout replacement as raw JSON for advanced Shopping API fields.
-    #[arg(long, value_name = "JSON")]
-    body: Option<String>,
-
-    /// Path to a JSON checkout replacement. Takes precedence over --body.
-    #[arg(long, value_name = "PATH")]
-    file: Option<String>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("update", "Optionally update a cart")
+        CommandSpec::from_args::<Args>("update", "Optionally update a checkout session")
             .with_long(
-                "Optionally replace an open cart before placing an order. Use --item and buyer or \
-                 payment-method flags for common changes, or --clear-items to deliberately empty it.",
+                "Optionally replace an open checkout session before placing an order. Use --item and \
+                 buyer or payment-method flags for common changes, or --clear-items to deliberately \
+                 empty the checkout session.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -80,18 +72,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 buyer_phone: args.buyer_phone,
                 payment_instrument: args.payment_instrument,
             };
-            reject_mixed_checkout_input(args.body.as_deref(), args.file.as_deref(), input.is_present())?;
-            let body = if args.body.is_some() || args.file.is_some() {
-                read_json(args.body.as_deref(), args.file.as_deref(), "object")?
-            } else {
-                input.update_body()?
-            };
-            if has_conflicting_checkout_id(&body, &args.id) {
-                return Err(crate::error::GddyError::validation(
-                    "checkout ID in request body conflicts with CHECKOUT_ID",
-                )
-                .into_cli_error());
-            }
+            let body = input.update_body()?;
             reject_multiple_payment_instruments(&body)?;
             if ctx.dry_run() {
                 return Ok(CommandResult::new(serde_json::json!({

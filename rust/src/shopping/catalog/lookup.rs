@@ -3,9 +3,7 @@ use serde_json::json;
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{
-    client_err, currency_code, make_client, merge_context_currency, read_json,
-};
+use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
 use crate::shopping::human::{CATALOG_LOOKUP_VIEW_ID, catalog_lookup_response};
 
 output_schema!(CatalogLookupOutput {
@@ -16,29 +14,21 @@ output_schema!(CatalogLookupOutput {
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
-    /// Product or variant ID to resolve. Repeat to resolve multiple IDs.
-    #[arg(value_name = "ID", required_unless_present_any = ["body", "file"])]
+    /// Product or purchase option ID to resolve. Repeat to resolve multiple IDs.
+    #[arg(value_name = "ID", required = true)]
     id: Vec<String>,
 
     /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or GBP).
     #[arg(long, value_name = "CODE", value_parser = currency_code)]
     currency: Option<String>,
-
-    /// Lookup request as raw JSON for advanced Shopping API filters and extensions.
-    #[arg(long, value_name = "JSON")]
-    body: Option<String>,
-
-    /// Path to a JSON lookup request. Takes precedence over --body.
-    #[arg(long, value_name = "PATH")]
-    file: Option<String>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("lookup", "Find products by ID")
             .with_long(
-                "Find one or more products or variants by ID. Unknown IDs are reported in the response \
-                 without preventing matches for the other IDs.",
+                "Find one or more products or purchase options by ID. Unknown IDs are reported in the \
+                 response without preventing matches for the other IDs.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -46,23 +36,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<CatalogLookupOutput>()
             .with_view_id(CATALOG_LOOKUP_VIEW_ID),
         |ctx, args: Args| async move {
-            let mut body = if args.body.is_some() || args.file.is_some() {
-                read_json(args.body.as_deref(), args.file.as_deref(), "object")?
-            } else {
-                json!({})
-            };
-            if !args.id.is_empty() {
-                let object = body
-                    .as_object_mut()
-                    .expect("catalog lookup request is an object");
-                if object.contains_key("ids") {
-                    return Err(crate::error::GddyError::validation(
-                        "--id conflicts with ids in the request body",
-                    )
-                    .into_cli_error());
-                }
-                object.insert("ids".to_owned(), json!(args.id));
-            }
+            let mut body = json!({"ids": args.id});
+
             merge_context_currency(&mut body, args.currency.as_deref())?;
             let client = make_client(&ctx).await?;
             let response = client.catalog_lookup(body).await.map_err(client_err)?;

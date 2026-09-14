@@ -292,8 +292,23 @@ mod tests {
             "line_items": [{"item": {"id": "variant-1"}, "quantity": 1}],
             "payment": {"instruments": [{"id": "instrument-1", "selected": true}]}
         });
-        let completion_request =
-            json!({"payment": {"instruments": [{"id": "instrument-1", "selected": true}]}});
+        let completion_request = json!({
+            "payment": {"instruments": [{
+                "id": "instrument-1",
+                "selected": true,
+                "billing_address": {
+                    "street_address": "123 Main St",
+                    "address_locality": "Mountain View",
+                    "address_country": "US"
+                }
+            }]}
+        });
+        let encoded_completion: shopping_client::types::CheckoutCompleteRequest =
+            deserialize(completion_request.clone()).expect("valid completion request");
+        assert_eq!(
+            serde_json::to_value(encoded_completion).expect("serialize completion request"),
+            completion_request
+        );
         let create = server
             .mock_async(|when, then| {
                 when.method(POST)

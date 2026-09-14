@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{client_err, make_client};
-use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response, selected_payment_id};
+use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
@@ -19,10 +19,11 @@ struct Args {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("get", "Review an open cart")
+        CommandSpec::from_args::<Args>("get", "Review an open checkout session")
             .with_long(
-                "Review an open cart, including its items, available payment methods, and important links. \
-                 Use the order ID returned after placing an order to review a completed purchase.",
+                "Review an open checkout session, including its items, available payment methods, and \
+                 important links. Use the order ID returned after placing an order to review a completed \
+                 purchase.",
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
@@ -33,17 +34,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let ready_for_complete =
                 checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
             let actions = if ready_for_complete {
-                let payment_instrument = selected_payment_id(&checkout).unwrap_or("<payment-instrument>");
                 vec![
                     next_action(
-                        "shopping checkout complete <checkout-id> --payment-instrument <payment-instrument> --agree",
-                        "Place an order after reviewing the cart and its terms",
+                        "shopping checkout complete <checkout-id> --agree",
+                        "Place an order after reviewing the checkout session and its terms",
                     )
-                    .with_param("checkout-id", NextActionParam::value(args.id))
-                    .with_param(
-                        "payment-instrument",
-                        NextActionParam::value(payment_instrument),
-                    ),
+                    .with_param("checkout-id", NextActionParam::value(args.id)),
                 ]
             } else {
                 Vec::new()

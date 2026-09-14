@@ -54,6 +54,7 @@ fn project_catalog_product(product: &Value) -> Value {
         "title": product.get("title").and_then(Value::as_str).unwrap_or("Untitled product"),
         "description": product.pointer("/description/plain").and_then(Value::as_str),
         "categories": catalog_categories(product),
+        "highlights": catalog_highlights(product),
         "price_range": catalog_price_range(product),
         "variants": product.get("variants").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default().iter().filter_map(project_catalog_variant).collect::<Vec<_>>(),
     })
@@ -63,10 +64,13 @@ fn project_catalog_variant(variant: &Value) -> Option<Value> {
     let id = variant.get("id").and_then(Value::as_str)?;
     Some(json!({
         "id": id,
-        "title": variant.get("title").and_then(Value::as_str).unwrap_or("Untitled variant"),
+        "title": variant.get("title").and_then(Value::as_str).unwrap_or("Untitled purchase option"),
+        "description": variant.pointer("/description/plain").and_then(Value::as_str),
+        "options": catalog_options(variant),
+        "highlights": catalog_highlights(variant),
         "price": money::format_value(variant.get("price")),
+        "renewal_price": money::format_value(variant.get("renewal_price")),
         "list_price": money::format_value(variant.get("list_price")),
-        "term": catalog_term(variant),
         "available": variant.pointer("/availability/available").and_then(Value::as_bool).unwrap_or(false),
     }))
 }
@@ -92,19 +96,31 @@ fn catalog_price_range(product: &Value) -> Option<String> {
     })
 }
 
-fn catalog_term(variant: &Value) -> String {
+const HIGHLIGHT_LIMIT: usize = 4;
+
+fn catalog_highlights(value: &Value) -> Vec<String> {
+    value
+        .get("tags")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn catalog_options(variant: &Value) -> Vec<String> {
     variant
         .get("options")
         .and_then(Value::as_array)
-        .and_then(|options| {
-            options
-                .iter()
-                .find(|option| option.get("name").and_then(Value::as_str) == Some("Term"))
+        .into_iter()
+        .flatten()
+        .filter_map(|option| {
+            let name = option.get("name").and_then(Value::as_str)?;
+            let label = option.get("label").and_then(Value::as_str)?;
+            Some(format!("{name}: {label}"))
         })
-        .and_then(|option| option.get("label"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_default()
+        .collect()
 }
 
 fn render_catalog_search(response: &Value) -> String {
@@ -139,7 +155,7 @@ fn render_catalog_search(response: &Value) -> String {
 fn render_catalog_search_product(product: &Value) -> String {
     let mut output = String::new();
     render_catalog_product_summary(&mut output, product);
-    output.push_str("\nVariants:\n");
+    output.push_str("\nPurchase Options:\n");
     let variants = product
         .get("variants")
         .and_then(Value::as_array)
@@ -151,7 +167,7 @@ fn render_catalog_search_product(product: &Value) -> String {
     for variant in variants {
         output.push_str(&format!(
             "- {}\n  ID: {}\n  Your price: {}\n  List price: {}\n",
-            text(variant, "title", "Untitled variant"),
+            text(variant, "title", "Untitled purchase option"),
             text(variant, "id", ""),
             optional_text(variant, "price", "Unavailable"),
             optional_text(variant, "list_price", "Unavailable"),
@@ -163,7 +179,8 @@ fn render_catalog_search_product(product: &Value) -> String {
 fn render_catalog_product(product: &Value) -> String {
     let mut output = String::new();
     render_catalog_product_summary(&mut output, product);
-    output.push_str("Variants:\n");
+    render_highlights(&mut output, product);
+    output.push_str("Purchase Options:\n");
     let variants = product
         .get("variants")
         .and_then(Value::as_array)
@@ -173,27 +190,23 @@ fn render_catalog_product(product: &Value) -> String {
         output.push_str("- None\n");
     }
     for variant in variants {
-        let availability = if variant
-            .get("available")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-        {
-            "Available"
-        } else {
-            "Unavailable"
-        };
-        let term = optional_text(variant, "term", "");
-        let term = (!term.is_empty()).then(|| format!(" · {term}"));
-        output.push_str(&format!(
-            "- {} (ID: {})\n  Price: {} · List price: {} · {availability}{}\n",
-            text(variant, "title", "Untitled variant"),
-            text(variant, "id", ""),
-            optional_text(variant, "price", "Unavailable"),
-            optional_text(variant, "list_price", "Unavailable"),
-            term.unwrap_or_default(),
-        ));
+        render_catalog_variant_detail(&mut output, variant);
     }
     output
+}
+
+fn render_catalog_variant_detail(output: &mut String, variant: &Value) {
+    output.push_str(&format!(
+        "- {} (ID: {})\n  {}\n",
+        text(variant, "title", "Untitled purchase option"),
+        text(variant, "id", ""),
+        catalog_pricing(variant),
+    ));
+    if let Some(description) = variant.get("description").and_then(Value::as_str) {
+        output.push_str(&format!("  {description}\n"));
+    }
+    render_options(output, variant, "  ");
+    render_highlights_with_indent(output, variant, "  ");
 }
 
 fn render_catalog_products(response: &Value) -> String {
@@ -237,6 +250,73 @@ fn render_catalog_product_summary(output: &mut String, product: &Value) {
     if let Some(price_range) = product.get("price_range").and_then(Value::as_str) {
         output.push_str(&format!("Price range: {price_range}\n"));
     }
+}
+
+fn catalog_pricing(variant: &Value) -> String {
+    let price = optional_text(variant, "price", "Unavailable");
+    let renewal_price = variant.get("renewal_price").and_then(Value::as_str);
+    let list_price = variant.get("list_price").and_then(Value::as_str);
+    let mut values = vec![format!("Your price: {price}")];
+    if renewal_price.is_some_and(|renewal| renewal != price) {
+        values.push(format!("Renews: {}", renewal_price.unwrap_or_default()));
+    }
+    if list_price.is_some_and(|list| list != price && Some(list) != renewal_price) {
+        values.push(format!("List price: {}", list_price.unwrap_or_default()));
+    }
+    if variant
+        .get("available")
+        .and_then(Value::as_bool)
+        .is_some_and(|available| !available)
+    {
+        values.push("Unavailable".to_owned());
+    }
+    values.join(" · ")
+}
+
+fn render_options(output: &mut String, value: &Value, indent: &str) {
+    let options = value
+        .get("options")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if !options.is_empty() {
+        output.push_str(&format!(
+            "{indent}{}\n",
+            options
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" · ")
+        ));
+    }
+}
+
+fn render_highlights(output: &mut String, value: &Value) {
+    render_highlights_with_indent(output, value, "");
+}
+
+fn render_highlights_with_indent(output: &mut String, value: &Value, indent: &str) {
+    let highlights = value
+        .get("highlights")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    if highlights.is_empty() {
+        return;
+    }
+    let shown = highlights
+        .iter()
+        .take(HIGHLIGHT_LIMIT)
+        .copied()
+        .collect::<Vec<_>>();
+    output.push_str(&format!("{indent}Highlights: {}", shown.join(" · ")));
+    if highlights.len() > HIGHLIGHT_LIMIT {
+        output.push_str(&format!(" · +{} more", highlights.len() - HIGHLIGHT_LIMIT));
+    }
+    output.push('\n');
 }
 
 fn render_messages(output: &mut String, response: &Value) {
@@ -376,7 +456,7 @@ fn render_checkout(cart: &Value) -> String {
         );
     }
     let mut output = format!(
-        "Cart: {}\nStatus: {}\n",
+        "Checkout session: {}\nStatus: {}\n",
         text(cart, "id", ""),
         text(cart, "status", ""),
     );
@@ -415,7 +495,7 @@ fn render_checkout(cart: &Value) -> String {
         output.push_str(&format!("\nTotal: {total}\n"));
     }
     render_links(&mut output, cart);
-    output.push_str("\nReview this cart and its links before placing an order.\n");
+    output.push_str("\nReview this checkout session and its links before placing an order.\n");
     output
 }
 
@@ -435,7 +515,7 @@ fn render_available_payment_instruments(output: &mut String, cart: &Value) {
             .and_then(Value::as_bool)
             .unwrap_or(false)
         {
-            " (selected)"
+            " (Currently selected)"
         } else {
             ""
         };
@@ -488,7 +568,7 @@ fn render_checkout_completion(completion: &Value) -> String {
         return format!("{action}\nCart: {}\n", text(completion, "id", ""));
     }
     let mut output = format!(
-        "Cart: {}\nStatus: {}\n",
+        "Checkout session: {}\nStatus: {}\n",
         text(completion, "cart_id", ""),
         text(completion, "status", "")
     );
@@ -595,12 +675,16 @@ mod tests {
                 "id": "product-1",
                 "title": "Product",
                 "categories": [{"value": "email"}],
+                "tags": ["Mailbox: 50 GB", "Apps: Office web apps"],
                 "variants": [{
                     "id": "product-1:1yr",
                     "title": "One year",
-                    "options": [{"name": "Term", "label": "1 year"}],
+                    "description": {"plain": "Annual email plan."},
+                    "options": [{"name": "Term", "label": "1 year"}, {"name": "Mailbox", "label": "50 GB"}],
+                    "tags": ["Includes Office web apps"],
                     "availability": {"available": true},
                     "price": {"amount": 7188, "currency": "USD"},
+                    "renewal_price": {"amount": 11988, "currency": "USD"},
                     "list_price": {"amount": 11988, "currency": "USD"}
                 }]
             }]
@@ -628,8 +712,20 @@ mod tests {
         let response = json!({"product": catalog_response()["products"][0].clone(), "ucp": {"do_not_render": true}});
         let output = render_catalog_product(&catalog_product_response(&response));
 
-        assert!(output.contains("USD 71.88"));
-        assert!(output.contains("Available"));
+        assert!(output.contains("Your price: USD 71.88"));
+        assert!(output.contains("Renews: USD 119.88"));
+        assert!(output.contains("Term: 1 year · Mailbox: 50 GB"));
+        assert!(output.contains("Annual email plan."));
+        assert!(output.contains("Highlights: Includes Office web apps"));
         assert!(!output.contains("do_not_render"));
+    }
+
+    #[test]
+    fn catalog_lookup_uses_the_detailed_variant_renderer() {
+        let output = render_catalog_products(&catalog_lookup_response(&catalog_response()));
+
+        assert!(output.contains("Annual email plan."));
+        assert!(output.contains("Term: 1 year · Mailbox: 50 GB"));
+        assert!(output.contains("Highlights: Includes Office web apps"));
     }
 }

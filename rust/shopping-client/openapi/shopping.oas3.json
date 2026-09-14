@@ -3243,6 +3243,10 @@
           {},
           {
             "properties": {
+              "billing_address": {
+                "additionalProperties": true,
+                "type": "object"
+              },
               "id": {
                 "type": "string"
               },

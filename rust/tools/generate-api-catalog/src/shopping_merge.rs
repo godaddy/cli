@@ -60,7 +60,7 @@ pub(crate) fn refresh(
     retain_2xx_responses(&mut spec);
     relax_response_schemas(&mut spec);
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
-    preserve_payment_instrument_id(&mut spec)?;
+    preserve_payment_instrument_fields(&mut spec)?;
     add_completion_idempotency_key(&mut spec)?;
 
     let json = serde_json::to_string_pretty(&spec).context("serialize Shopping codegen spec")?;
@@ -210,7 +210,7 @@ fn preserve_dynamic_ucp_response_metadata(spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
-fn preserve_payment_instrument_id(spec: &mut Value) -> Result<()> {
+fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
     let properties = spec
         .get_mut("components")
         .and_then(|components| components.get_mut("schemas"))
@@ -222,8 +222,13 @@ fn preserve_payment_instrument_id(spec: &mut Value) -> Result<()> {
         .and_then(Value::as_object_mut)
         .context("Shopping selected payment instrument properties are missing")?;
     // The contract's dynamic instrument reference cannot be represented by
-    // Progenitor. Keep the selected instrument ID required by deployed APIs.
+    // Progenitor. Retain the fields required by deployed APIs, including the
+    // standard postal address used by the completion billing-address input.
     properties.insert("id".to_owned(), serde_json::json!({"type": "string"}));
+    properties.insert(
+        "billing_address".to_owned(),
+        serde_json::json!({"type": "object", "additionalProperties": true}),
+    );
     Ok(())
 }
 

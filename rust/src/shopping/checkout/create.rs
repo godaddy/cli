@@ -6,7 +6,7 @@ use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
-    read_json, reject_mixed_checkout_input, reject_multiple_payment_instruments,
+    reject_multiple_payment_instruments,
 };
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
@@ -24,8 +24,8 @@ output_schema!(CheckoutOutput {
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
-    /// Variant ID to add to the checkout. Repeat for multiple items; append `=QUANTITY` to set a quantity.
-    #[arg(long, value_name = "VARIANT_ID[=QUANTITY]")]
+    /// Purchase option ID to add to the checkout session. Repeat for multiple items; append `=QUANTITY` to set a quantity.
+    #[arg(long, value_name = "PURCHASE_OPTION_ID[=QUANTITY]")]
     item: Vec<String>,
 
     /// Preferred ISO 4217 currency for checkout prices (for example, USD or GBP).
@@ -55,23 +55,15 @@ struct Args {
     /// Show every available saved payment instrument instead of the first five.
     #[arg(long)]
     show_all_payment_instruments: bool,
-
-    /// Checkout-create request as raw JSON for advanced Shopping API fields.
-    #[arg(long, value_name = "JSON")]
-    body: Option<String>,
-
-    /// Path to a JSON checkout-create request. Takes precedence over --body.
-    #[arg(long, value_name = "PATH")]
-    file: Option<String>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("create", "Create a cart")
+        CommandSpec::from_args::<Args>("create", "Create a checkout session")
             .with_long(
-                "Add one or more product variants to a cart. Repeat --item for multiple variants and \
-                 append =QUANTITY when needed. Creating a cart does not place an order; review its \
-                 payment methods and links before placing one.",
+                "Add one or more purchase options to a checkout session. Repeat --item for multiple \
+                 purchase options and append =QUANTITY when needed. Creating a checkout session does not \
+                 place an order; review its payment methods and links before placing one.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -92,12 +84,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 payment_instrument: args.payment_instrument,
                 ..CheckoutInput::default()
             };
-            reject_mixed_checkout_input(args.body.as_deref(), args.file.as_deref(), input.is_present())?;
-            let body = if args.body.is_some() || args.file.is_some() {
-                read_json(args.body.as_deref(), args.file.as_deref(), "object")?
-            } else {
-                input.create_body()?
-            };
+            let body = input.create_body()?;
             reject_multiple_payment_instruments(&body)?;
             if ctx.dry_run() {
                 return Ok(CommandResult::new(serde_json::json!({
@@ -120,27 +107,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .into_iter()
             .collect::<Vec<_>>();
             if ready_for_complete {
-                let payment_instrument = checkout
-                    .pointer("/payment/instruments")
-                    .and_then(Value::as_array)
-                    .and_then(|instruments| {
-                        instruments.iter().find(|instrument| {
-                            instrument.get("selected").and_then(Value::as_bool) == Some(true)
-                        })
-                    })
-                    .and_then(|instrument| instrument.get("id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("<instrument-id>");
                 actions.push(
                     next_action(
-                        "shopping checkout complete <checkout-id> --payment-instrument <payment-instrument> --agree",
-                        "Place an order after reviewing the cart and its terms",
+                        "shopping checkout complete <checkout-id> --agree",
+                        "Place an order after reviewing the checkout session and its terms",
                     )
-                    .with_param("checkout-id", NextActionParam::value(checkout_id))
-                    .with_param(
-                        "payment-instrument",
-                        NextActionParam::value(payment_instrument),
-                    ),
+                    .with_param("checkout-id", NextActionParam::value(checkout_id)),
                 );
             }
             let output = if ctx.middleware.output_format == "human" {

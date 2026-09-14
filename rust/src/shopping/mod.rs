@@ -30,8 +30,9 @@ pub fn module() -> Module {
                 "Explore GoDaddy products, place orders, and review purchases",
             )
             .with_long(
-                "Find GoDaddy products, add them to a cart, place an order, and review your purchases. \
-                 Use `gddy guide shopping` for a step-by-step purchase flow.",
+                "Find GoDaddy products, add selected purchase options to a checkout session, place an \
+                 order, and review your purchases. A checkout session is your cart. Use `gddy guide \
+                 shopping` for a step-by-step purchase flow.",
             ),
         )
         .with_group(catalog::group())

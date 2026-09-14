@@ -22,44 +22,6 @@ pub(crate) fn client_err(error: ClientError) -> CliCoreError {
     GddyError::from(error).into_cli_error()
 }
 
-pub(crate) fn read_json(
-    body: Option<&str>,
-    file: Option<&str>,
-    expected: &'static str,
-) -> Result<Value> {
-    let raw = if let Some(path) = file {
-        std::fs::read_to_string(path).map_err(|error| {
-            GddyError::validation(format!("failed to read JSON file {path:?}: {error}"))
-                .into_cli_error()
-        })?
-    } else {
-        body.unwrap_or_default().to_owned()
-    };
-    let value: Value = serde_json::from_str(&raw).map_err(|error| {
-        GddyError::validation(format!("invalid JSON request body: {error}")).into_cli_error()
-    })?;
-    let valid = match expected {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        _ => false,
-    };
-    if valid {
-        Ok(value)
-    } else {
-        Err(
-            GddyError::validation(format!("request body must be a JSON {expected}"))
-                .into_cli_error(),
-        )
-    }
-}
-
-pub(crate) fn has_conflicting_checkout_id(body: &Value, id: &str) -> bool {
-    ["id", "checkout_id"]
-        .iter()
-        .filter_map(|key| body.get(*key).and_then(Value::as_str))
-        .any(|body_id| body_id != id)
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CheckoutInput {
     pub(crate) items: Vec<String>,
@@ -73,23 +35,12 @@ pub(crate) struct CheckoutInput {
 }
 
 impl CheckoutInput {
-    pub(crate) fn is_present(&self) -> bool {
-        !self.items.is_empty()
-            || self.clear_items
-            || self.currency.is_some()
-            || self.buyer_first_name.is_some()
-            || self.buyer_last_name.is_some()
-            || self.buyer_email.is_some()
-            || self.buyer_phone.is_some()
-            || self.payment_instrument.is_some()
-    }
-
     pub(crate) fn create_body(&self) -> Result<Value> {
         if self.items.is_empty() {
-            return Err(GddyError::validation(
-                "checkout create requires at least one --item or a JSON request through --body or --file",
-            )
-            .into_cli_error());
+            return Err(
+                GddyError::validation("checkout create requires at least one --item")
+                    .into_cli_error(),
+            );
         }
         self.body(false)
     }
@@ -103,7 +54,7 @@ impl CheckoutInput {
         }
         if self.items.is_empty() && !self.clear_items {
             return Err(GddyError::validation(
-                "checkout update requires at least one --item or --clear-items when not using --body or --file",
+                "checkout update requires at least one --item or --clear-items",
             )
             .into_cli_error());
         }
@@ -233,19 +184,11 @@ pub(crate) fn merge_context_currency(request: &mut Value, currency: Option<&str>
     };
     let object = request
         .as_object_mut()
-        .expect("read_json validates the request is an object");
+        .expect("checkout request is an object");
     let context = object.entry("context").or_insert_with(|| json!({}));
     let context = context
         .as_object_mut()
         .ok_or_else(|| GddyError::validation("context must be a JSON object").into_cli_error())?;
-    if let Some(existing) = context.get("currency").and_then(Value::as_str)
-        && !existing.eq_ignore_ascii_case(currency)
-    {
-        return Err(GddyError::validation(
-            "--currency conflicts with context.currency in the request body",
-        )
-        .into_cli_error());
-    }
     context.insert("currency".to_owned(), Value::String(currency.to_owned()));
     Ok(())
 }
@@ -259,7 +202,7 @@ pub(crate) fn reject_multiple_payment_instruments(body: &Value) -> Result<()> {
     })?;
     if instruments.len() > 1 {
         return Err(GddyError::validation(
-            "only one payment instrument may be specified for a Shopping checkout",
+            "only one payment instrument may be specified for a checkout session",
         )
         .with_fix(
             "Specify one saved payment instrument, or omit payment until checkout completion.",
@@ -291,21 +234,6 @@ pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
     }
 }
 
-pub(crate) fn reject_mixed_checkout_input(
-    body: Option<&str>,
-    file: Option<&str>,
-    structured_input: bool,
-) -> Result<()> {
-    if structured_input && (body.is_some() || file.is_some()) {
-        Err(GddyError::validation(
-            "use either checkout flags or a JSON request through --body or --file, not both",
-        )
-        .into_cli_error())
-    } else {
-        Ok(())
-    }
-}
-
 pub(crate) fn no_saved_payment_method_action(
     checkout: &Value,
     account_url: &str,
@@ -318,7 +246,7 @@ pub(crate) fn no_saved_payment_method_action(
             next_action(
                 "payment-methods add",
                 format!(
-                    "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout again."
+                    "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout session again."
                 ),
             )
         })
@@ -505,13 +433,6 @@ mod tests {
                 "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
             })
         );
-    }
-
-    #[test]
-    fn rejects_mixed_checkout_input_sources() {
-        assert!(reject_mixed_checkout_input(Some("{}"), None, true).is_err());
-        assert!(reject_mixed_checkout_input(None, Some("request.json"), true).is_err());
-        assert!(reject_mixed_checkout_input(Some("{}"), Some("request.json"), false).is_ok());
     }
 
     #[test]
