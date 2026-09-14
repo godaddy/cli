@@ -7,7 +7,10 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_money, make_client, period_label, validate_domain_name};
+use super::common::{
+    api_error, format_money, make_client, period_label, period_price_map, periods_from_prices,
+    resolve_domain_name, term_for_period,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -115,7 +118,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
         |ctx, args: AvailableArgs| async move {
-            let domain = validate_domain_name(&args.domain)?;
+            let domain = resolve_domain_name(
+                &ctx,
+                &args.domain,
+                "Domain name to check (e.g. example.com)",
+            )?;
             // --check-type fast|full → v3 optimizeFor SPEED|ACCURACY.
             let optimize_for = match args.check_type.as_deref() {
                 Some("fast") => Some(types::OptimizationTarget::Speed),
@@ -159,14 +166,33 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
+                // If interactive, offer to continue directly into registration.
+                let price_1yr = term_for_period(&prices, 1)
+                    .and_then(|t| t.price.as_ref())
+                    .and_then(format_money);
+                let currency_str = shared_currency(&prices);
+                match super::register::bridge::offer_registration_from_available(
+                    &ctx,
+                    &resolved_domain,
+                    price_1yr,
+                    currency_str,
+                    periods_from_prices(&prices),
+                    period_price_map(&prices),
+                )
+                .await?
+                {
+                    super::register::BridgeHandoff::Replace(wizard_result) => {
+                        return Ok(wizard_result);
+                    }
+                    super::register::BridgeHandoff::ShowHostOutput => {}
+                }
+
                 Ok(cmd.with_next_actions(vec![
                     next_action("domain quote <domain>", "Price a registration")
                         .with_param("domain", NextActionParam::value(resolved_domain)),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![
-                    // `domain suggest` accepts a seed domain, so the domain just
-                    // checked as taken is a valid query to copy/paste directly.
                     next_action("domain suggest <query>", "Find alternatives")
                         .with_param("query", NextActionParam::value(resolved_domain)),
                 ]))

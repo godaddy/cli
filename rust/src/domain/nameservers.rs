@@ -8,7 +8,7 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, make_client, validate_domain_name, validate_nameserver_hosts};
+use super::common::{api_error, make_client, resolve_domain_name, resolve_nameserver_hosts};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
@@ -55,8 +55,16 @@ pub(super) fn group() -> RuntimeGroupSpec {
             .with_output_schema::<NameserversResult>()
             .with_scopes(&[DOMAINS_NAMESERVER_UPDATE]),
         |ctx, args: NameserversSetArgs| async move {
-            let domain = validate_domain_name(&args.domain)?;
-            let hosts = validate_nameserver_hosts(args.nameserver)?;
+            let domain = resolve_domain_name(
+                &ctx,
+                &args.domain,
+                "Domain whose nameservers to replace (e.g. example.com)",
+            )?;
+            let hosts = resolve_nameserver_hosts(
+                &ctx,
+                args.nameserver,
+                "Nameserver host (e.g. ns1.example.com)",
+            )?;
             let debug = !ctx.middleware.debug.is_empty();
 
             let client = make_client(&ctx).await?;
