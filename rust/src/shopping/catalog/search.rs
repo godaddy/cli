@@ -21,8 +21,8 @@ struct Args {
     #[arg(long, value_name = "TEXT")]
     query: Option<String>,
 
-    /// Product category to include. Supported values: email, pointOfSale, sslCertificate, webHosting, websiteBuilder. Repeat to include multiple categories.
-    #[arg(long, value_name = "CATEGORY", value_parser = category_value)]
+    /// Product category to include. Run `shopping catalog categories` to list supported values. Repeat to include multiple categories.
+    #[arg(long, value_name = "CATEGORY")]
     category: Vec<String>,
 
     /// Opaque cursor from the preceding catalog-search response.
@@ -75,21 +75,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(output).with_next_actions(next_actions))
         },
     )
-}
-
-const CATEGORIES: &[&str] = &[
-    "email",
-    "pointOfSale",
-    "sslCertificate",
-    "webHosting",
-    "websiteBuilder",
-];
-
-fn category_value(value: &str) -> std::result::Result<String, String> {
-    CATEGORIES
-        .contains(&value)
-        .then(|| value.to_owned())
-        .ok_or_else(|| format!("category must be one of: {}", CATEGORIES.join(", ")))
 }
 
 fn merge_search_args(
@@ -300,7 +285,7 @@ fn is_available(variant: &Value) -> bool {
 mod tests {
     use serde_json::json;
 
-    use super::{category_value, merge_pagination, merge_search_args, next_actions};
+    use super::{merge_pagination, merge_search_args, next_actions};
     use crate::shopping::common::{currency_code, merge_context_currency};
     use crate::shopping::human::catalog_search_response;
 
@@ -437,12 +422,6 @@ mod tests {
         assert_eq!(request.pointer("/context/currency"), Some(&json!("jpy")));
         assert_eq!(actions[1].params["currency"].value.as_deref(), Some("USD"));
         assert_eq!(actions[2].params["currency"].value.as_deref(), Some("jpy"));
-    }
-
-    #[test]
-    fn validates_api_derived_non_domain_categories() {
-        assert_eq!(category_value("webHosting"), Ok("webHosting".to_owned()));
-        assert!(category_value("domain").is_err());
     }
 
     #[test]

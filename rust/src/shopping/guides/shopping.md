@@ -16,6 +16,14 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 
 ## Find a product
 
+List the currently supported product categories:
+
+```bash
+gddy shopping catalog categories
+# Fetch current categories instead of using the six-hour cache:
+gddy shopping catalog categories --refresh
+```
+
 Search all available products or use a text query:
 
 ```bash

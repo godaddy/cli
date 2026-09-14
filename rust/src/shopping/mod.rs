@@ -7,7 +7,7 @@ mod human;
 mod money;
 mod order;
 
-use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
+use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 
 use crate::scopes::{SHOPPING_CATALOG_READ, SHOPPING_CHECKOUT_EXECUTE, SHOPPING_ORDER_READ};
 
@@ -43,4 +43,5 @@ pub fn module() -> Module {
         "shopping.md",
         include_bytes!("guides/shopping.md").as_slice(),
     )])
+    .with_feature_flag("shopping", Stage::Beta)
 }

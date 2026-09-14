@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use crate::shopping::money;
 
 pub(crate) const CATALOG_SEARCH_VIEW_ID: &str = "shopping-catalog-search";
+pub(crate) const CATALOG_CATEGORIES_VIEW_ID: &str = "shopping-catalog-categories";
 pub(crate) const CATALOG_GET_VIEW_ID: &str = "shopping-catalog-get";
 pub(crate) const CATALOG_LOOKUP_VIEW_ID: &str = "shopping-catalog-lookup";
 pub(crate) const CHECKOUT_VIEW_ID: &str = "shopping-checkout-get";
@@ -13,6 +14,7 @@ pub(crate) const ORDER_VIEW_ID: &str = "shopping-order-get";
 pub(crate) fn register_human_views(ctx: &mut ModuleContext<'_>) {
     let views = &mut ctx.middleware_mut().human_views;
     views.register_func(CATALOG_SEARCH_VIEW_ID, render_catalog_search);
+    views.register_func(CATALOG_CATEGORIES_VIEW_ID, render_catalog_categories);
     views.register_func(CATALOG_GET_VIEW_ID, render_catalog_product);
     views.register_func(CATALOG_LOOKUP_VIEW_ID, render_catalog_products);
     views.register_func(CHECKOUT_VIEW_ID, render_checkout);
@@ -121,6 +123,26 @@ fn catalog_options(variant: &Value) -> Vec<String> {
             Some(format!("{name}: {label}"))
         })
         .collect()
+}
+
+fn render_catalog_categories(response: &Value) -> String {
+    let categories = response
+        .get("categories")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if categories.is_empty() {
+        return "No supported product categories found.\n".to_owned();
+    }
+    format!(
+        "Supported product categories:\n{}\n",
+        categories
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|category| format!("- {category}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 fn render_catalog_search(response: &Value) -> String {
