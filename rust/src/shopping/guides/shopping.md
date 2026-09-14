@@ -69,7 +69,7 @@ Repeat `--item` to add purchase options. Append `=QUANTITY` when you need more t
 gddy shopping checkout create --item <purchase-option-id>=2
 ```
 
-The response shows checkout-session items, its selected and available payment methods, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
+The response shows buyer details, checkout-session items, its selected and available payment methods, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
 
 If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
 
@@ -81,15 +81,21 @@ gddy payment-methods add
 gddy shopping checkout get <checkout-id> --show-all-payment-instruments
 ```
 
-To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected.
+To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected. Use `--show-all-payment-instruments` with `checkout get` or `checkout update` to see every eligible method. If the requested method is not selected after an update, the CLI reports it as ineligible.
+
+```bash
+gddy shopping checkout update <checkout-id> \
+  --payment-instrument <payment-instrument-id> \
+  --show-all-payment-instruments
+```
+
+Updating a checkout session is optional. The CLI preserves the current writable checkout state and applies only the changes you provide. Use `--item` to replace all items. A currency change can make a selected payment method ineligible; if that happens, select another eligible method with `--payment-instrument`.
 
 ```bash
 gddy shopping checkout update <checkout-id> \
   --item <purchase-option-id> \
-  --payment-instrument <payment-instrument-id>
+  --buyer-email jane.doe@example.com
 ```
-
-Updating a checkout session is optional. It replaces the checkout session's writable contents, so include every item you want to keep. Use `--clear-items` only when you intend to empty the checkout session.
 
 ## Place an order
 

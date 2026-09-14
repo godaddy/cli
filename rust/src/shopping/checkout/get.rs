@@ -97,6 +97,7 @@ mod tests {
             &json!({
                 "id": "checkout-1",
                 "status": "ready_for_complete",
+                "buyer": {"first_name": "Jane", "email": "jane@example.test"},
                 "line_items": [{
                     "quantity": 1,
                     "item": {"title": "Web Hosting Economy"},
@@ -125,6 +126,8 @@ mod tests {
             "CREDIT_CARD/VISA 1111 (ID: payment-1)"
         );
         assert_eq!(response["total"], "USD 83.88");
+        assert_eq!(response["buyer"]["first_name"], "Jane");
+        assert_eq!(response["buyer"]["email"], "jane@example.test");
         assert_eq!(response["links"][0]["title"], "terms of service");
         assert_eq!(response["links"][1]["title"], "Help centre");
         assert!(!response.to_string().contains("do not render"));

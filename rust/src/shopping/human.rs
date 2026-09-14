@@ -376,6 +376,7 @@ pub(crate) fn checkout_response(checkout: &Value, show_all_payment_instruments: 
         "status": checkout.get("status").and_then(Value::as_str).unwrap_or_default(),
         "items": line_items,
         "total": money::format_total(checkout.get("totals"), checkout.get("currency").and_then(Value::as_str)),
+        "buyer": checkout_buyer(checkout),
         "selected_payment": selected_payment(checkout),
         "available_payment_instruments": available_payment_instruments(checkout, show_all_payment_instruments),
         "has_more_payment_instruments": !show_all_payment_instruments && available_payment_instrument_count(checkout) > PAYMENT_INSTRUMENT_LIMIT,
@@ -384,6 +385,16 @@ pub(crate) fn checkout_response(checkout: &Value, show_all_payment_instruments: 
 }
 
 const PAYMENT_INSTRUMENT_LIMIT: usize = 5;
+
+fn checkout_buyer(checkout: &Value) -> Value {
+    let buyer = checkout.get("buyer").and_then(Value::as_object);
+    json!({
+        "first_name": buyer.and_then(|buyer| buyer.get("first_name")).and_then(Value::as_str),
+        "last_name": buyer.and_then(|buyer| buyer.get("last_name")).and_then(Value::as_str),
+        "email": buyer.and_then(|buyer| buyer.get("email")).and_then(Value::as_str),
+        "phone_number": buyer.and_then(|buyer| buyer.get("phone_number")).and_then(Value::as_str),
+    })
+}
 
 fn available_payment_instruments(checkout: &Value, show_all: bool) -> Vec<Value> {
     checkout
@@ -482,6 +493,7 @@ fn render_checkout(cart: &Value) -> String {
         text(cart, "id", ""),
         text(cart, "status", ""),
     );
+    render_buyer(&mut output, cart);
     output.push_str("\nItems:\n");
     let items = cart
         .get("items")
@@ -519,6 +531,30 @@ fn render_checkout(cart: &Value) -> String {
     render_links(&mut output, cart);
     output.push_str("\nReview this checkout session and its links before placing an order.\n");
     output
+}
+
+fn render_buyer(output: &mut String, checkout: &Value) {
+    let Some(buyer) = checkout.get("buyer").and_then(Value::as_object) else {
+        return;
+    };
+    let fields = [
+        ("First name", "first_name"),
+        ("Last name", "last_name"),
+        ("Email", "email"),
+        ("Phone", "phone_number"),
+    ];
+    let details = fields
+        .iter()
+        .filter_map(|(label, key)| {
+            buyer
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(|value| format!("{label}: {value}"))
+        })
+        .collect::<Vec<_>>();
+    if !details.is_empty() {
+        output.push_str(&format!("Buyer: {}\n", details.join(" · ")));
+    }
 }
 
 fn render_available_payment_instruments(output: &mut String, cart: &Value) {

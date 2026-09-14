@@ -63,7 +63,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Add one or more purchase options to a checkout session. Repeat --item for multiple \
                  purchase options and append =QUANTITY when needed. Creating a checkout session does not \
-                 place an order; review its payment methods and links before placing one.",
+                 place an order. Its response shows the currently selected and eligible saved payment methods \
+                 (the first five by default; use --show-all-payment-instruments for all) and important links \
+                 to review before placing an order.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -82,7 +84,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 buyer_email: args.buyer_email,
                 buyer_phone: args.buyer_phone,
                 payment_instrument: args.payment_instrument,
-                ..CheckoutInput::default()
             };
             let body = input.create_body()?;
             reject_multiple_payment_instruments(&body)?;
