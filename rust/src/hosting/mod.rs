@@ -58,4 +58,8 @@ pub fn module() -> Module {
         })
     })
     .with_feature_flag("hosting", Stage::Beta)
+    .with_guides_from_markdown([(
+        "hosting.md",
+        include_bytes!("guides/hosting.md").as_slice(),
+    )])
 }

@@ -68,6 +68,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
                 .sum();
 
+            let attachable: Vec<String> = all_items
+                .iter()
+                .filter(|item| {
+                    item.get("availableSlots")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+                        > 0
+                })
+                .filter_map(|item| {
+                    item.get("subscriptionId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned)
+                })
+                .collect();
+
+            let mut subscription_id = NextActionParam::required();
+            subscription_id.r#enum = attachable;
+            subscription_id.description = Some(
+                "Hosting plan with availableSlots > 0. Confirm with the customer before \
+                 attach, even if this enum has a single id; an app attaches to one plan."
+                    .to_owned(),
+            );
+
             Ok(CommandResult::new(json!({
                 "items": all_items,
                 "totalAvailableSlots": total_available_slots,
@@ -78,7 +101,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     "Attach an application to a hosting plan",
                 )
                 .with_param("app-id", NextActionParam::required())
-                .with_param("subscription-id", NextActionParam::required()),
+                .with_param("subscription-id", subscription_id),
             ]))
         },
     )

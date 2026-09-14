@@ -18,7 +18,11 @@ struct DomainGetArgs {
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<DomainGetArgs, _, _, _>(
         CommandSpec::from_args::<DomainGetArgs>("get", "Get an attached domain")
-            .with_long("Get the details and status of a domain attached to a hosting application.")
+            .with_long(
+                "Get the details and status of a domain attached to a hosting application. \
+                 CUSTOM domains managed outside GoDaddy need DNS from this payload: \
+                 `_acme-challenge` CNAME → certificateValidationCname, A record → anycastIp.",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[DOMAIN_READ])
