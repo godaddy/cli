@@ -1,5 +1,6 @@
 pub mod client;
 mod commands;
+pub(crate) mod native_app_client;
 pub mod public_url;
 
 use cli_engine::RuntimeGroupSpec;

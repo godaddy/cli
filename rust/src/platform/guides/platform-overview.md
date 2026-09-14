@@ -14,14 +14,16 @@ gddy platform app init --name my-app --url https://example.com --proxy-url https
 
 This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url`/`proxy-url` must be publicly resolvable HTTP(S) — localhost, loopback, and private IPs are rejected. Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Requires the `applications.*:read`/`write` scopes (`--scope` on `gddy auth login`, or a PAT with the same scopes).
 
-## 2. Configure it locally
+## 2. Configure it
 
-`gddy platform app add <subcommand>` appends to `godaddy.toml` without any network call:
+Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`:
 
 - `add action --name <name> --url <url>` — an HTTP endpoint the platform calls on the app's behalf.
 - `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook events` to see valid event types.
 - `add extension <embed|checkout|blocks> ...` — a UI extension bundle (see that subcommand's own `--help`).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form or link. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
+
+`add native-extension --support-contact <email> --android-package-name <package> [--name <name>]` is the exception: it authenticates, looks up the manifest application by name, and immediately creates or updates its DevX Core native-app draft before writing `[native_extension]` locally. It requires App Registry read/write scopes. If the remote draft succeeds but the local write fails, fix the local file problem and rerun the same command; the remote upsert is idempotent.
 
 Run `gddy platform app config validate` any time to check the manifest against every rule the API would otherwise enforce (required fields, URL/UUID/semver shapes, settings placement rules) without a network call — it reports every violation found, not just the first.
 

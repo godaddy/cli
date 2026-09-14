@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+mod native_extension;
 mod settings;
 pub(crate) mod settings_form;
 
@@ -124,7 +125,7 @@ impl Config {
         }
 
         if let Some(native) = &self.native_extension {
-            validate_native_extension(
+            native_extension::validate(
                 &mut errors,
                 "native_extension",
                 &native.support_contact,
@@ -254,20 +255,6 @@ fn validate_named_extension(
             &target.target,
         );
     }
-}
-
-fn validate_native_extension(
-    errors: &mut Vec<String>,
-    path: &str,
-    support_contact: &str,
-    android_package_name: &str,
-) {
-    require_non_empty(errors, &format!("{path}.support_contact"), support_contact);
-    require_non_empty(
-        errors,
-        &format!("{path}.android_package_name"),
-        android_package_name,
-    );
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

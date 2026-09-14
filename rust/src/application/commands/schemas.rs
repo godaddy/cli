@@ -93,6 +93,8 @@ output_schema!(ConfigSetting {
 });
 
 output_schema!(ConfigNativeExtension {
+    "applicationId": "string";
+    "operation": "string";
     "name": "string", optional;
     "supportContact": "string";
     "androidPackageName": "string";
