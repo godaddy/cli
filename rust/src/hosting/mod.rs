@@ -5,7 +5,6 @@ pub mod client;
 pub mod common;
 mod deployment;
 mod domain;
-mod github;
 mod log;
 mod operation;
 mod runtime;
@@ -24,7 +23,6 @@ pub fn module() -> Module {
                  • app          — Hosting applications (create, inspect, update, delete, restart)\n\
                  • deployment   — Build and deploy application source\n\
                  • source       — Import source code\n\
-                 • github       — GitHub connection, repositories, branches\n\
                  • secrets      — Application secrets (create, update, delete, list)\n\
                  • log          — Application log entries\n\
                  • runtime      — Application runtime configuration\n\
@@ -47,7 +45,6 @@ pub fn module() -> Module {
         .with_group(app::group())
         .with_group(deployment::group())
         .with_group(source::group())
-        .with_group(github::group())
         .with_group(secrets::group())
         .with_group(log::group())
         .with_group(runtime::group())

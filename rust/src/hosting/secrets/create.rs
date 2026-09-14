@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
+use super::common::add_secret_op;
 use crate::hosting::common::{HostingSecretSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SECRET_WRITE as SECRET_WRITE;
@@ -38,15 +39,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<HostingSecretSummary>(),
         |ctx, args: SecretCreateArgs| async move {
             let app_id = args.app_id.clone();
-            let body = json!({
-                "variant": args.variant,
-                "operations": {
-                    "additions": [{ "name": args.name, "value": args.value }]
-                }
-            });
+            let patch = json!([add_secret_op(&args.name, &args.value)]);
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .sync_secrets(&app_id, body)
+                .patch_secrets(&app_id, Some(&args.variant), patch)
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![

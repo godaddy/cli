@@ -35,8 +35,7 @@ Choose one approach.
 gddy hosting source upload --app-id <app-id> --file ./app.zip
 ```
 
-**From a GitHub branch** (account must be connected at godaddy.com — check with
-`gddy hosting github status`):
+**From a GitHub branch** (connect GitHub at godaddy.com first):
 
 ```sh
 gddy hosting source github --app-id <app-id> --repo owner/repo --branch main
@@ -104,7 +103,6 @@ again (step 5). Skip steps 1 and 4.
 | `hosting secrets create/update/delete/list` | Manage per-environment secrets |
 | `hosting domain attach/detach/list` | Manage custom domains |
 | `hosting runtime get` | View the Node.js runtime version |
-| `hosting github repos/branches` | Browse repositories accessible via your GitHub connection |
 
 ## See also
 

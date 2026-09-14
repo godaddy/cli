@@ -136,8 +136,6 @@ declare_scopes! {
     HOSTING_SOURCE_READ => "hosting.source:read",
     /// Create a source import (`hosting import create`).
     HOSTING_SOURCE_WRITE => "hosting.source:write",
-    /// Read the GitHub connection and browse repositories (`hosting github status/repos/branches`).
-    HOSTING_GITHUB_READ => "hosting.github:read",
     /// Read application secrets (`hosting secrets list`).
     HOSTING_SECRET_READ => "hosting.secret:read",
     /// Write application secrets (`hosting secrets create/update/delete/sync`).
@@ -284,11 +282,6 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_SOURCE_WRITE,
         description: "Create source imports for hosting applications",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_GITHUB_READ,
-        description: "Read the GitHub connection and browse repositories and branches",
         default: false,
     },
     ScopeInfo {

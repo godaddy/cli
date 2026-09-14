@@ -29,6 +29,10 @@ output_schema!(HostingDomainSummary {
     "hostname": "string";
     "role": "string";
     "verificationStatus": "string";
+    "domainType": "string";
+    "certificateValidationCname": "string", optional;
+    "anycastIp": "string", optional;
+    "cdnStatus": "string", optional;
 });
 
 output_schema!(HostingSubscriptionList {
@@ -78,7 +82,7 @@ output_schema!(HostingApplicationStatus {
 });
 
 output_schema!(HostingSourceImport {
-    "id": "string";
+    "importId": "string";
     "importType": "string";
     "status": "string";
     "gitHash": "string", optional;
@@ -87,34 +91,15 @@ output_schema!(HostingSourceImport {
 });
 
 output_schema!(HostingDomain {
-    "id": "string";
+    "domainId": "string";
     "hostname": "string";
     "role": "string";
     "verificationStatus": "string";
+    "domainType": "string";
+    "certificateValidationCname": "string", optional;
+    "anycastIp": "string", optional;
+    "cdnStatus": "string", optional;
     "links": "array";
-});
-
-output_schema!(HostingGitHubProfile {
-    "connected": "boolean";
-    "appInstalled": "boolean", optional;
-    "repositorySelection": "string", optional;
-    "appInstallUrl": "string", optional;
-    "error": "string", optional;
-});
-
-output_schema!(HostingRepository {
-    "id": "number";
-    "name": "string";
-    "fullName": "string";
-    "private": "boolean";
-    "defaultBranch": "string";
-    "url": "string";
-});
-
-output_schema!(HostingBranch {
-    "name": "string";
-    "protected": "boolean";
-    "commit": "object";
 });
 
 output_schema!(HostingRuntime {
@@ -198,7 +183,7 @@ mod tests {
             "items": [],
             "links": [
                 { "rel": "self", "href": "https://api.godaddy.com/v1/hosting/apps?appType=NODEJS" },
-                { "rel": "next", "href": "https://api.godaddy.com/v1/hosting/apps?appType=NODEJS&pageToken=tok-2&limit=10" }
+                { "rel": "next", "href": "https://api.godaddy.com/v1/hosting/apps?appType=NODEJS&pageToken=tok-2&pageSize=10" }
             ]
         });
         assert_eq!(next_page_token(&response).as_deref(), Some("tok-2"));

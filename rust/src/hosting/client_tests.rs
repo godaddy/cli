@@ -39,7 +39,7 @@ async fn list_apps_sends_page_token_and_limit() {
                 .path("/v1/hosting/apps")
                 .query_param("appType", "NODEJS")
                 .query_param("pageToken", "tok-1")
-                .query_param("limit", "5");
+                .query_param("pageSize", "5");
             then.status(200)
                 .json_body(json!({ "items": [], "links": [] }));
         })
@@ -320,66 +320,6 @@ async fn create_import_zip_sends_multipart_to_imports_path() {
 }
 
 #[tokio::test]
-async fn get_github_connection_hits_correct_path() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(GET)
-                .path("/v1/hosting/settings/github/connection");
-            then.status(200).json_body(json!({ "connected": true }));
-        })
-        .await;
-
-    let body = client(&server.base_url())
-        .get_github_connection()
-        .await
-        .expect("get github connection");
-
-    mock.assert_async().await;
-    assert_eq!(body["connected"], true);
-}
-
-#[tokio::test]
-async fn list_github_repos_hits_correct_path() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(GET)
-                .path("/v1/hosting/settings/github/repositories");
-            then.status(200)
-                .json_body(json!({ "items": [], "links": [] }));
-        })
-        .await;
-
-    client(&server.base_url())
-        .list_github_repos(None, None)
-        .await
-        .expect("list github repos");
-
-    mock.assert_async().await;
-}
-
-#[tokio::test]
-async fn list_github_branches_hits_correct_path() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(GET)
-                .path("/v1/hosting/settings/github/repositories/acme/my-app/branches");
-            then.status(200)
-                .json_body(json!({ "items": [], "links": [] }));
-        })
-        .await;
-
-    client(&server.base_url())
-        .list_github_branches("acme", "my-app", None, None)
-        .await
-        .expect("list github branches");
-
-    mock.assert_async().await;
-}
-
-#[tokio::test]
 async fn list_secrets_sends_variant_query_param() {
     let server = MockServer::start_async().await;
     let mock = server
@@ -400,25 +340,24 @@ async fn list_secrets_sends_variant_query_param() {
 }
 
 #[tokio::test]
-async fn sync_secrets_sends_body() {
+async fn patch_secrets_sends_json_patch() {
     let server = MockServer::start_async().await;
-    let body = json!({
-        "variant": "PREVIEW",
-        "operations": { "additions": [{ "name": "MY_SECRET", "value": "val" }] }
-    });
+    let patch = json!([{ "op": "add", "path": "/MY_SECRET", "value": "val" }]);
     let mock = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/hosting/apps/app-1/sync-secrets")
-                .json_body(body.clone());
+            when.method(PATCH)
+                .path("/v1/hosting/apps/app-1/secrets")
+                .query_param("variant", "PREVIEW")
+                .header("content-type", "application/json-patch+json")
+                .json_body(patch.clone());
             then.status(200).json_body(json!({ "items": [] }));
         })
         .await;
 
     client(&server.base_url())
-        .sync_secrets("app-1", body)
+        .patch_secrets("app-1", Some("PREVIEW"), patch)
         .await
-        .expect("sync secrets");
+        .expect("patch secrets");
 
     mock.assert_async().await;
 }

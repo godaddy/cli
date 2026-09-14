@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use super::common::operations_from_sync_flags;
 use crate::hosting::common::{HostingSecretSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SECRET_WRITE as SECRET_WRITE;
@@ -62,33 +63,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let additions = parse_json_array(args.additions, "additions")?;
             let updates = parse_json_array(args.updates, "updates")?;
             let deletions = parse_json_array(args.deletions, "deletions")?;
-
-            if additions.is_none() && updates.is_none() && deletions.is_none() {
-                return Err(crate::error::GddyError::validation(
-                    "at least one of --additions, --updates, or --deletions is required",
-                )
-                .into_cli_error());
-            }
-
-            let mut operations = serde_json::Map::new();
-            if let Some(v) = additions {
-                operations.insert("additions".to_owned(), v);
-            }
-            if let Some(v) = updates {
-                operations.insert("updates".to_owned(), v);
-            }
-            if let Some(v) = deletions {
-                operations.insert("deletions".to_owned(), v);
-            }
-
-            let body = json!({
-                "variant": args.variant,
-                "operations": Value::Object(operations),
-            });
+            let ops = operations_from_sync_flags(additions, updates, deletions)?;
 
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .sync_secrets(&app_id, body)
+                .patch_secrets(&app_id, Some(&args.variant), Value::Array(ops))
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
