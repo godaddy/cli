@@ -1,12 +1,12 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::checkout::get::HUMAN_VIEW_ID;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, has_conflicting_checkout_id, make_client,
     no_saved_payment_method_action, read_json, reject_mixed_checkout_input,
     reject_multiple_payment_instruments,
 };
+use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
@@ -68,7 +68,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
-            .with_view_id(HUMAN_VIEW_ID),
+            .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {
             let input = CheckoutInput {
                 items: args.item,
@@ -111,7 +111,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .into_iter()
             .collect::<Vec<_>>();
             let output = if ctx.middleware.output_format == "human" {
-                crate::shopping::checkout::get::human_response(&checkout, false)
+                checkout_response(&checkout, false)
             } else {
                 checkout
             };

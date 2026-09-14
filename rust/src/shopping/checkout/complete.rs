@@ -1,6 +1,4 @@
-use cli_engine::{
-    CommandResult, CommandSpec, ModuleContext, NextActionParam, RuntimeCommandSpec, Tier,
-};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::next_action::next_action;
@@ -10,6 +8,7 @@ use crate::shopping::common::{
     CheckoutInput, has_conflicting_checkout_id, make_client, read_json,
     reject_mixed_checkout_input, require_selected_payment_instrument,
 };
+use crate::shopping::human::{CHECKOUT_COMPLETE_VIEW_ID, checkout_completion_response};
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
@@ -32,61 +31,6 @@ struct Args {
     /// Path to a JSON completion request. Takes precedence over --body.
     #[arg(long, value_name = "PATH")]
     file: Option<String>,
-}
-
-const HUMAN_VIEW_ID: &str = "shopping-checkout-complete";
-
-pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
-    ctx.middleware_mut()
-        .human_views
-        .register_func(HUMAN_VIEW_ID, render_human);
-}
-
-// The transport key is an implementation detail, not customer-facing output.
-fn human_response(completion: &Value) -> Value {
-    json!({
-        "cart_id": completion.get("id").and_then(Value::as_str).unwrap_or_default(),
-        "status": completion.get("status").and_then(Value::as_str).unwrap_or_default(),
-        "order_id": completion.pointer("/order/id").and_then(Value::as_str),
-        "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
-        "total": crate::shopping::money::format_total(
-            completion.get("totals"),
-            completion.get("currency").and_then(Value::as_str),
-        ),
-    })
-}
-
-fn render_human(completion: &Value) -> String {
-    if let Some(action) = completion.get("action").and_then(Value::as_str) {
-        return format!(
-            "{action}\nCart: {}\n",
-            completion
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-        );
-    }
-    let mut output = format!(
-        "Cart: {}\nStatus: {}\n",
-        completion
-            .get("cart_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        completion
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-    );
-    if let Some(order_id) = completion.get("order_id").and_then(Value::as_str) {
-        output.push_str(&format!("Order: {order_id}\n"));
-    }
-    if let Some(permalink) = completion.get("order_permalink").and_then(Value::as_str) {
-        output.push_str(&format!("View order: {permalink}\n"));
-    }
-    if let Some(total) = completion.get("total").and_then(Value::as_str) {
-        output.push_str(&format!("Total: {total}\n"));
-    }
-    output
 }
 
 fn completion_error(error: ClientError) -> cli_engine::CliCoreError {
@@ -127,7 +71,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
-            .with_view_id(HUMAN_VIEW_ID),
+            .with_view_id(CHECKOUT_COMPLETE_VIEW_ID),
         |ctx, args: Args| async move {
             agreement_gate(args.agree)?;
             let payment_instrument = args.payment_instrument;
@@ -180,7 +124,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ]
             });
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&completion)
+                checkout_completion_response(&completion)
             } else {
                 completion
             };
@@ -201,8 +145,8 @@ mod tests {
     }
 
     #[test]
-    fn human_view_shows_completion_total_only_with_currency() {
-        let output = render_human(&human_response(&json!({
+    fn human_response_shows_completion_total_only_with_currency() {
+        let response = checkout_completion_response(&json!({
             "id": "checkout-1",
             "status": "completed",
             "currency": "GBP",
@@ -211,22 +155,22 @@ mod tests {
                 {"type": "tax", "amount": 0},
                 {"type": "total", "amount": 4788}
             ]
-        })));
+        }));
 
-        assert!(output.contains("Total: GBP 47.88"));
-        assert!(!output.contains("Subtotal:"));
-        assert!(!output.contains("Tax:"));
+        assert_eq!(response["total"], "GBP 47.88");
+        assert!(!response.to_string().contains("subtotal"));
+        assert!(!response.to_string().contains("tax"));
     }
 
     #[test]
-    fn human_view_omits_completion_total_without_currency() {
-        let output = render_human(&human_response(&json!({
+    fn human_response_omits_completion_total_without_currency() {
+        let response = checkout_completion_response(&json!({
             "id": "checkout-1",
             "status": "completed",
             "totals": [{"type": "total", "amount": 4788}]
-        })));
+        }));
 
-        assert!(!output.contains("Total:"));
-        assert!(!output.contains("4788"));
+        assert!(response.get("total").is_some_and(Value::is_null));
+        assert!(!response.to_string().contains("4788"));
     }
 }

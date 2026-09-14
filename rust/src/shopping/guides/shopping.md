@@ -32,8 +32,8 @@ gddy shopping catalog search --category webHosting --category email
 `--limit` controls the number of products, not the number of variants. Use a product ID with `catalog get` or `catalog lookup`; use a variant ID when creating a cart. A requested currency is a preference—the currency returned with the price is authoritative.
 
 ```bash
-gddy shopping catalog get --id <product-id> --currency GBP
-gddy shopping catalog lookup --id <product-id> --currency GBP
+gddy shopping catalog get <product-id> --currency GBP
+gddy shopping catalog lookup <product-id> --currency GBP
 ```
 
 Use `--output json` when you need the complete command output:

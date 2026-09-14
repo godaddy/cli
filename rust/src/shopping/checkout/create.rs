@@ -4,11 +4,11 @@ use serde_json::Value;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::checkout::get::{HUMAN_VIEW_ID, human_response};
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     read_json, reject_mixed_checkout_input, reject_multiple_payment_instruments,
 };
+use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
 output_schema!(CheckoutOutput {
     "ucp": "object";
@@ -80,7 +80,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
             .with_output_schema::<CheckoutOutput>()
-            .with_view_id(HUMAN_VIEW_ID),
+            .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {
             let input = CheckoutInput {
                 items: args.item,
@@ -144,7 +144,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&checkout, args.show_all_payment_instruments)
+                checkout_response(&checkout, args.show_all_payment_instruments)
             } else {
                 checkout
             };
