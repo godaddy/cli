@@ -6,6 +6,7 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 `gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app slot,
 upload source code, test on a staging URL, attach a billing plan, and publish to production.
+Do not use `gddy hosting nodejs`; that is the previous API.
 
 Every application has two environments: **PREVIEW** (staging) and **PUBLISH** (production). Source
 uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to

@@ -18,7 +18,8 @@ pub fn module() -> Module {
     Module::new("Hosting", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
-                "Work with GoDaddy hosting APIs.\n\
+                "Work with GoDaddy hosting APIs. Do not use `gddy hosting nodejs`; \
+                 that is the previous API.\n\
                  \n\
                  • app          — Hosting applications (create, inspect, update, delete, restart)\n\
                  • deployment   — Build and deploy application source\n\

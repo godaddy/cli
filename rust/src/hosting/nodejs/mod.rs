@@ -62,12 +62,12 @@ struct AppIdArgs {
 
 pub fn nodejs_group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("nodejs", "Manage Node.js hosting applications").with_long(
-            "Work with Node.js PaaS applications on GoDaddy hosting.\n\
+        GroupSpec::new("nodejs", "Legacy Node.js PaaS. Use `gddy hosting` instead.").with_long(
+            "This is the previous Node.js hosting API. Do not use it for new work — \
+             use `gddy hosting` (and `gddy guide hosting`).\n\
              \n\
-             Create apps, upload source, publish deployments, manage secrets, and \
-             read logs. Async operations return job IDs — use the matching status \
-             commands to poll until complete.",
+             Create → `hosting app create`. Upload → `hosting source upload`. \
+             Publish → `hosting deployment publish`.",
         ),
     )
     .with_group(app::group())
