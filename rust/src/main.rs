@@ -21,6 +21,7 @@ mod platform;
 mod quote_cache;
 mod scopes;
 mod scopes_cmd;
+mod shopping;
 mod summary;
 mod truncation;
 mod update;
@@ -47,6 +48,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         pat::module(),
         payment_methods::module(),
         platform::module(),
+        shopping::module(),
         update::module(),
     ]
 }
@@ -157,6 +159,13 @@ mod tests {
             "email should stay hidden at the Ga default: {}",
             output.rendered
         );
+
+        let output = cli.run(["gddy", "shopping", "--help"]).await;
+        assert_ne!(
+            output.exit_code, 0,
+            "shopping should stay hidden at the Ga default: {}",
+            output.rendered
+        );
     }
 
     #[tokio::test]
@@ -204,6 +213,13 @@ mod tests {
         assert_eq!(
             output.exit_code, 0,
             "email should be revealed under an Experimental-min_stage environment: {}",
+            output.rendered
+        );
+
+        let output = cli.run(["gddy", "shopping", "--help"]).await;
+        assert_eq!(
+            output.exit_code, 0,
+            "shopping should be revealed under an Experimental-min_stage environment: {}",
             output.rendered
         );
     }

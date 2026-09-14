@@ -6,7 +6,7 @@ mod call;
 mod catalog;
 mod domain_cmd;
 mod graphql;
-mod http;
+pub(crate) mod http;
 mod operation;
 mod parameter;
 mod response;

@@ -13,6 +13,12 @@ const SOURCE_MANIFEST_JSON: &str = include_str!("../../../api-catalog-sources.js
 pub(crate) struct RemoteCatalogSource {
     pub(crate) domain: String,
     pub(crate) repository: String,
+    #[serde(default = "default_catalog")]
+    pub(crate) catalog: bool,
+}
+
+const fn default_catalog() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +40,7 @@ impl CatalogSourceManifest {
         let mut domains: Vec<String> = self
             .remote
             .iter()
+            .filter(|source| source.catalog)
             .map(|source| source.domain.clone())
             .chain(self.local.iter().map(|source| source.domain.clone()))
             .collect();
@@ -71,7 +78,15 @@ mod tests {
         let expected = manifest.expected_domains();
 
         assert_eq!(expected.len(), 22);
-        assert_eq!(manifest.remote.len(), 21);
+        assert_eq!(manifest.remote.len(), 22);
+        assert_eq!(
+            manifest
+                .remote
+                .iter()
+                .filter(|source| !source.catalog)
+                .count(),
+            1
+        );
         assert_eq!(
             manifest
                 .local
