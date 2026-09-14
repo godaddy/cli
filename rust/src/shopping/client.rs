@@ -554,9 +554,9 @@ mod tests {
             .expect_err("malformed JSON is an error");
 
         mock.assert_async().await;
-        match error {
-            ClientError::Response(error) => assert!(error.to_string().contains("expected ident")),
-            error => panic!("expected decode error, received {error}"),
-        }
+        assert!(
+            matches!(error, ClientError::Response(ref error) if error.to_string().contains("expected ident")),
+            "expected decode error, received {error}",
+        );
     }
 }
