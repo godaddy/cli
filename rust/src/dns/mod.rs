@@ -72,7 +72,7 @@ mod tests {
                     .with_module(module()),
             )
         };
-        let cases: [(&[&str], &str); 3] = [
+        let cases: [(&[&str], &str); 4] = [
             (
                 &[
                     "gddy",
@@ -104,6 +104,25 @@ mod tests {
             (
                 &["gddy", "dns", "list", "example.com", "--name", "www"],
                 "--type",
+            ),
+            (
+                &[
+                    "gddy",
+                    "dns",
+                    "add",
+                    "example.com",
+                    "--type",
+                    "TLSA",
+                    "--name",
+                    "www",
+                    "--usage",
+                    "3",
+                    "--selector",
+                    "1",
+                    "--matching-type",
+                    "1",
+                ],
+                "--data",
             ),
         ];
         for (args, needle) in cases {

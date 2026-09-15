@@ -52,6 +52,7 @@ impl EmailClient {
         method: Method,
         path: &str,
         query: &[(&str, String)],
+        headers: &[(&str, String)],
         body: Option<Value>,
     ) -> Result<Value, ClientError> {
         let mut req = self
@@ -61,6 +62,9 @@ impl EmailClient {
             .header("x-request-id", Self::new_request_id());
         for (key, value) in query {
             req = req.query(&[(key, value)]);
+        }
+        for (key, value) in headers {
+            req = req.header(*key, value);
         }
         if let Some(body) = body {
             req = req.json(&body);
@@ -97,24 +101,39 @@ impl EmailClient {
     }
 
     pub async fn list_mailboxes(&self, query: &[(&str, String)]) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, "/mailboxes", query, None).await
+        self.send_json(Method::GET, "/mailboxes", query, &[], None)
+            .await
     }
 
     pub async fn get_mailbox(&self, mailbox_id: &str) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, &format!("/mailbox/{mailbox_id}"), &[], None)
-            .await
+        self.send_json(
+            Method::GET,
+            &format!("/mailboxes/{mailbox_id}"),
+            &[],
+            &[],
+            None,
+        )
+        .await
     }
 
     pub async fn create_mailbox(&self, body: Value) -> Result<Value, ClientError> {
-        self.send_json(Method::POST, "/mailboxes", &[], Some(body))
-            .await
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
+        self.send_json(
+            Method::POST,
+            "/mailboxes",
+            &[],
+            &[("Idempotency-Key", idempotency_key)],
+            Some(body),
+        )
+        .await
     }
 
     pub async fn check_eligibility(&self, email: &str) -> Result<Value, ClientError> {
         self.send_json(
             Method::GET,
-            "/check-eligibility",
+            "/check-mailbox-eligibility",
             &[("email", email.to_owned())],
+            &[],
             None,
         )
         .await
@@ -161,10 +180,10 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v1/email/mailbox/mbx-456")
+                    .path("/v1/email/mailboxes/mbx-456")
                     .header("authorization", "Bearer test-token");
                 then.status(200)
-                    .json_body(json!({ "mailboxId": "mbx-456", "status": "ACTIVE" }));
+                    .json_body(json!({ "mailboxId": "mbx-456", "status": "CONFIRMED" }));
             })
             .await;
 
@@ -185,19 +204,19 @@ mod tests {
                 when.method(POST)
                     .path("/v1/email/mailboxes")
                     .header("authorization", "Bearer test-token")
-                    .json_body(json!({ "email": "someone@example.com" }));
-                then.status(200)
-                    .json_body(json!({ "mailboxId": "mbx-456", "status": "PROVISIONING" }));
+                    .json_body(json!({ "emailAddress": "someone@example.com" }));
+                then.status(202)
+                    .json_body(json!({ "mailboxId": "mbx-456", "status": "EXECUTING" }));
             })
             .await;
 
         let body = client(&server.base_url())
-            .create_mailbox(json!({ "email": "someone@example.com" }))
+            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
             .await
             .expect("create mailbox");
 
         mock.assert_async().await;
-        assert_eq!(body["status"], "PROVISIONING");
+        assert_eq!(body["status"], "EXECUTING");
     }
 
     #[tokio::test]
@@ -206,7 +225,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/v1/email/check-eligibility")
+                    .path("/v1/email/check-mailbox-eligibility")
                     .header("authorization", "Bearer test-token")
                     .query_param("email", "someone@example.com");
                 then.status(200).json_body(json!({ "isEligible": true }));
@@ -220,6 +239,27 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(body["isEligible"], true);
+    }
+
+    #[tokio::test]
+    async fn create_mailbox_sends_an_idempotency_key_header() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/email/mailboxes")
+                    .header_exists("idempotency-key");
+                then.status(202)
+                    .json_body(json!({ "mailboxId": "mbx-456", "status": "EXECUTING" }));
+            })
+            .await;
+
+        client(&server.base_url())
+            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
+            .await
+            .expect("create mailbox");
+
+        mock.assert_async().await;
     }
 
     #[tokio::test]
@@ -238,7 +278,7 @@ mod tests {
             .await;
 
         let err = client(&server.base_url())
-            .create_mailbox(json!({ "email": "someone@example.com" }))
+            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
             .await
             .expect_err("business-rule failure should surface as an error");
 

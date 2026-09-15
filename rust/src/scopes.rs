@@ -86,7 +86,8 @@ declare_scopes! {
     /// at login by default (it's a rare operation for most customers); the
     /// app-registry mutation commands (`platform app init/update/enable/disable/
     /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
-    /// requests it on demand (OAuth step-up).
+    /// requests it on demand (OAuth step-up). Read commands such as
+    /// `platform app enablements` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
@@ -133,7 +134,7 @@ declare_scopes! {
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
     EMAIL_READ => "email.mailbox:read",
     /// Create a mailbox (`email create`).
-    EMAIL_CREATE => "email.mailbox:write",
+    EMAIL_CREATE => "email.mailbox:create",
 }
 
 /// A requestable scope, its human description, and whether it is requested at
