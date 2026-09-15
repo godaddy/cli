@@ -206,7 +206,11 @@ mod tests {
     #[test]
     fn dry_run_set_preview_matches_the_plan_it_would_execute() {
         let plan = plan_set(
-            &["r1".to_string(), "r2".to_string(), "r3".to_string()],
+            &[
+                ("r1".to_string(), "1.1.1.1".to_string()),
+                ("r2".to_string(), "2.2.2.2".to_string()),
+                ("r3".to_string(), "3.3.3.3".to_string()),
+            ],
             &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
         );
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
@@ -225,7 +229,10 @@ mod tests {
     /// catch, since it never goes through the projection).
     #[test]
     fn dry_run_set_preview_survives_default_field_projection() {
-        let plan = plan_set(&["r1".to_string()], &["9.9.9.9".to_string()]);
+        let plan = plan_set(
+            &[("r1".to_string(), "1.1.1.1".to_string())],
+            &["9.9.9.9".to_string()],
+        );
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
         let default_fields = "domain,type,name,replaced,created,deleted,action,plan";
         let projected = cli_engine::output::filter_fields(&preview, default_fields);
@@ -245,7 +252,7 @@ mod tests {
     #[test]
     fn dry_run_set_preview_renders_plan_as_a_nested_table() {
         let plan = plan_set(
-            &["r1".to_string()],
+            &[("r1".to_string(), "1.1.1.1".to_string())],
             &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
         );
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
