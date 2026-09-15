@@ -4,12 +4,9 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 # `gddy hosting` — deploying a Node.js application
 
-`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app slot,
-upload source code, test on a staging URL, attach a billing plan, and publish to production.
-Do not use `gddy hosting nodejs`; that is the previous API.
+`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app slot, upload source code, test on a staging URL, attach a billing plan, and publish to production. Do not use `gddy hosting nodejs`; that is the previous API.
 
-Every application has two variants: **PREVIEW** (staging) and **PUBLISH** (production). Source uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to
-PUBLISH.
+Every application has two variants: **PREVIEW** (staging) and **PUBLISH** (production). Source uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to PUBLISH.
 
 ## 1. Create an application
 
@@ -55,12 +52,7 @@ A hosting plan subscription is required before publishing. Check whether one is 
 gddy hosting subscription get --app-id <app-id>
 ```
 
-If none is attached yet, list available plans. Only plans with `availableSlots > 0` can take
-a new app. An app attaches to **one** plan. Before `hosting subscription attach`, ask the
-customer to confirm the plan even when only one has slots (show label, tier, slots left).
-If several have slots, let them pick. Do not attach the first row, and do not attach the
-only open plan without confirmation. The list response's `next_actions` includes those
-subscription IDs as an `enum` on `--subscription-id`.
+If none is attached yet, list available plans. Only plans with `availableSlots > 0` can take a new app. An app attaches to **one** plan. Before `hosting subscription attach`, ask the customer to confirm the plan even when only one has slots (show label, tier, slots left). If several have slots, let them pick. Do not attach the first row, and do not attach the only open plan without confirmation. The list response's `next_actions` includes those subscription IDs as an `enum` on `--subscription-id`.
 
 ```sh
 gddy hosting subscription list
@@ -94,21 +86,18 @@ gddy hosting domain get --app-id <app-id> --domain-id <domain-id>
 
 `domainType` on list/get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
 
-For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` and apply records
-at the external DNS host as fields become non-null:
+For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
 
 | When | Record | Target |
 |---|---|---|
 | `certificateValidationCname` is set | CNAME `_acme-challenge` | that hostname (proves ownership / issues TLS) |
 | `anycastIp` is set | A for the attached hostname | that IPv4 address (traffic to hosting) |
 
-Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning
-(`INIT` → `PENDING` → `ACTIVE`).
+Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning (`INIT` → `PENDING` → `ACTIVE`).
 
 ## Redeploying
 
-Upload source again (step 2), wait for the import to complete, then run `deployment publish`
-again (step 5). Skip steps 1 and 4.
+Upload source again (step 2), wait for the import to complete, then run `deployment publish` again (step 5). Skip steps 1 and 4.
 
 ## Other commands
 
