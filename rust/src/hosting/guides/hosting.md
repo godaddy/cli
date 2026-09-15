@@ -52,7 +52,7 @@ A hosting plan subscription is required before publishing. Check whether one is 
 gddy hosting subscription get --app-id <app-id>
 ```
 
-If none is attached yet, list available plans. Only plans with `availableSlots > 0` can take a new app. An app attaches to **one** plan. Before `hosting subscription attach`, ask the customer to confirm the plan even when only one has slots (show label, tier, slots left). If several have slots, let them pick. Do not attach the first row, and do not attach the only open plan without confirmation. The list response's `next_actions` includes those subscription IDs as an `enum` on `--subscription-id`.
+If none is attached yet, list available plans and attach to one with open slots (`availableSlots > 0`). Each app uses a single plan. Choose which plan to use before attaching, even if only one has slots.
 
 ```sh
 gddy hosting subscription list
