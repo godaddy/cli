@@ -8,8 +8,7 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 upload source code, test on a staging URL, attach a billing plan, and publish to production.
 Do not use `gddy hosting nodejs`; that is the previous API.
 
-Every application has two variants: **PREVIEW** (staging) and **PUBLISH** (production). Source
-uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to
+Every application has two variants: **PREVIEW** (staging) and **PUBLISH** (production). Source uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to
 PUBLISH.
 
 ## 1. Create an application
@@ -28,21 +27,11 @@ gddy hosting operation get --operation-id <operation-id>
 
 ## 2. Upload source code
 
-Choose one approach.
-
-**From a local zip archive:**
-
 ```sh
 gddy hosting source upload --app-id <app-id> --file ./app.zip
 ```
 
-**From a GitHub branch** (connect GitHub at godaddy.com first):
-
-```sh
-gddy hosting source github --app-id <app-id> --repo owner/repo --branch main
-```
-
-In either case, poll the import until COMPLETED:
+Poll the import until COMPLETED:
 
 ```sh
 gddy hosting source status --app-id <app-id> --import-id <import-id>
@@ -131,6 +120,7 @@ again (step 5). Skip steps 1 and 4.
 | `hosting secrets create/update/delete/list` | Manage per-environment secrets |
 | `hosting domain attach/get/detach/list` | Custom domains; get returns DNS targets for external DNS |
 | `hosting runtime get` | View the Node.js runtime version |
+| `hosting source github` | Deploy code from a repo already linked in the hosting UI (`source` is GitHub on `app get`) |
 
 ## See also
 

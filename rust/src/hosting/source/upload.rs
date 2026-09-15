@@ -32,7 +32,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "Upload a local zip archive as source code for an existing app. \
-             Use `hosting source github` instead to import from a GitHub repository. \
              Returns immediately — poll `hosting source status` until status is \
              COMPLETED or FAILED. Once the upload finishes, the new code is live on \
              the PREVIEW URL from `hosting app get`. Try it there before running \

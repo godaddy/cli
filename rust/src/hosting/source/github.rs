@@ -23,15 +23,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SourceGithubArgs, _, _, _>(
         CommandSpec::from_args::<SourceGithubArgs>(
             "github",
-            "Import source from a GitHub repository",
+            "Re-import source from a linked GitHub repository",
         )
         .with_long(
-            "Upload source from a GitHub repository branch. \
-                 Use `hosting source upload` instead when you have a local zip archive. \
-                 Returns immediately — poll `hosting source status` until status is \
-                 COMPLETED or FAILED. Once the upload finishes, the new code is live on \
-                 the PREVIEW URL from `hosting app get`. Try it there before running \
-                 `hosting deployment publish` to promote it to PUBLISH.",
+            "Re-import source from the GitHub repository already linked to this app. \
+             Works only when `hosting app get` shows `source` as GitHub; that connection \
+             is created in the Node.js Hosting UI, not in this CLI. Use `hosting source \
+             upload` for a local zip. Returns immediately — poll `hosting source status` \
+             until status is COMPLETED or FAILED. Once the import finishes, the new code \
+             is live on the PREVIEW URL from `hosting app get`. Try it there before \
+             running `hosting deployment publish` to promote it to PUBLISH.",
         )
         .with_system("hosting")
         .with_tier(Tier::Mutate)

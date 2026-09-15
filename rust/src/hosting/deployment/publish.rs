@@ -9,7 +9,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<AppIdArgs>("publish", "Trigger a deployment")
             .with_long(
                 "Promote the current PREVIEW build to PUBLISH. Hosting uses a two-stage model: \
-                 `hosting source upload` (or `hosting source github`) refreshes PREVIEW, \
+                 `hosting source upload` refreshes PREVIEW (or `hosting source github` \
+                 if the app is already GitHub-linked in the UI), \
                  and `hosting deployment publish` builds that source and rolls it out to PUBLISH — \
                  which is why there is no --variant flag here. Requires a subscription on the app; \
                  first time only, run `hosting subscription list` then `hosting subscription attach`. \

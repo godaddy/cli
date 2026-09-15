@@ -7,9 +7,10 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("source", "Manage application source code").with_long(
-            "Upload source code from a local zip archive or import from GitHub, \
-             then check import status. After a successful import, use \
-             `hosting deployment publish` to deploy.",
+            "Upload source from a local zip (`hosting source upload`), then check \
+             import status. `hosting source github` re-imports from a repo already \
+             linked in the Node.js Hosting UI (`source` is GitHub on `app get`). \
+             After a successful import, use `hosting deployment publish` to deploy.",
         ),
     )
     .with_command(upload::command())
