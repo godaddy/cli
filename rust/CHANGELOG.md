@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.14](https://github.com/godaddy/cli/compare/v0.2.13...v0.2.14) (2026-09-15)
+
+
+### Features
+
+* **platform:** add init from-existing flag to sync app config into godaddy.toml ([#254](https://github.com/godaddy/cli/issues/254)) ([4715518](https://github.com/godaddy/cli/commit/4715518e8fd859b8ab19d9b6e45e55103aa7039f))
+
 ## [0.2.13](https://github.com/godaddy/cli/compare/v0.2.12...v0.2.13) (2026-09-10)
 
 
