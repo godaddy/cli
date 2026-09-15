@@ -103,8 +103,7 @@ gddy hosting domain attach --app-id <app-id> --hostname www.example.com
 gddy hosting domain get --app-id <app-id> --domain-id <domain-id>
 ```
 
-`domainType` is `PREFIX` (platform subdomain) or `CUSTOM` (customer hostname). PREFIX needs no
-DNS work from the customer.
+`domainType` on list/get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
 
 For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` and apply records
 at the external DNS host as fields become non-null:
@@ -115,8 +114,7 @@ at the external DNS host as fields become non-null:
 | `anycastIp` is set | A for the attached hostname | that IPv4 address (traffic to hosting) |
 
 Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning
-(`INIT` → `PENDING` → `ACTIVE`). If DNS is already on GoDaddy, use `gddy dns` instead of the
-registrar's UI.
+(`INIT` → `PENDING` → `ACTIVE`).
 
 ## Redeploying
 
