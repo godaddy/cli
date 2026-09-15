@@ -4,9 +4,17 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 # `gddy hosting` — deploying a Node.js application
 
-`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app slot, upload source code, test on a staging URL, attach a billing plan, and publish to production. Do not use `gddy hosting nodejs`; that is the previous API.
+`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production. Do not use `gddy hosting nodejs`. That is the previous API.
 
-Every application has two variants: **PREVIEW** (staging) and **PUBLISH** (production). Source uploads always land on PREVIEW first; `deployment publish` promotes the current PREVIEW build to PUBLISH.
+## Concepts
+
+**App** — the hosted Node.js application. Create it first. Later commands take `--app-id`.
+
+**Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
+
+**Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish. One app, one subscription.
+
+**Slots** — how many more apps that subscription can take (`availableSlots`). Not a separate object. Attach only to a subscription with a free slot.
 
 ## 1. Create an application
 
@@ -23,6 +31,8 @@ gddy hosting operation get --operation-id <operation-id>
 ```
 
 ## 2. Upload source code
+
+You can upload again later to the same app. Each upload replaces PREVIEW.
 
 ```sh
 gddy hosting source upload --app-id <app-id> --file ./app.zip
@@ -42,28 +52,26 @@ Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 gddy hosting app get --app-id <app-id>
 ```
 
-The `urls` field shows the reachable address for each environment.
+The `urls` field shows the address for each environment.
 
 ## 4. Attach a subscription (first deploy only)
 
-A hosting plan subscription is required before publishing. Check whether one is already attached:
+Check whether the app is already on a subscription:
 
 ```sh
 gddy hosting subscription get --app-id <app-id>
 ```
 
-If none is attached yet, list available plans and attach to one with open slots (`availableSlots > 0`). Each app uses a single plan. Choose which plan to use before attaching, even if only one has slots.
+If not, list subscriptions and attach the app to one with open slots (`availableSlots > 0`). Choose which subscription first, even if only one has a slot.
 
 ```sh
 gddy hosting subscription list
 gddy hosting subscription attach --app-id <app-id> --subscription-id <subscription-id>
 ```
 
-The subscription stays attached — skip this step on subsequent deploys.
+Skip this on later deploys.
 
 ## 5. Publish to production
-
-Promote the current PREVIEW build to PUBLISH:
 
 ```sh
 gddy hosting deployment publish --app-id <app-id>
@@ -107,7 +115,7 @@ Upload source again (step 2), wait for the import to complete, then run `deploym
 | `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment |
 | `hosting log list` | Fetch log entries (filter by `--variant`, `--level`, `--since`) |
 | `hosting secrets create/update/delete/list` | Manage per-environment secrets |
-| `hosting domain attach/get/detach/list` | Custom domains; get returns DNS targets for external DNS |
+| `hosting domain attach/get/detach/list` | Custom domains. Get returns DNS targets for external DNS |
 | `hosting runtime get` | View the Node.js runtime version |
 | `hosting source github` | Deploy code from a repo already linked in the hosting UI (`source` is GitHub on `app get`) |
 
