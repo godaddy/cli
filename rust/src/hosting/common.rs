@@ -128,10 +128,17 @@ pub struct AppIdArgs {
     pub app_id: String,
 }
 
-pub fn parse_app_type(s: &str) -> Result<String, String> {
-    match s.to_uppercase().as_str() {
-        "NODEJS" | "MHWP" => Ok(s.to_uppercase()),
-        _ => Err(format!("unknown app type {s:?} — expected NODEJS")),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum HostingAppType {
+    #[value(name = "NODEJS")]
+    Nodejs,
+}
+
+impl HostingAppType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Nodejs => "NODEJS",
+        }
     }
 }
 
@@ -162,19 +169,26 @@ fn extract_query_param(url: &str, param: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::ValueEnum;
     use serde_json::json;
 
     #[test]
-    fn parse_app_type_accepts_known_types_case_insensitive() {
-        assert_eq!(parse_app_type("NODEJS").expect("NODEJS"), "NODEJS");
-        assert_eq!(parse_app_type("nodejs").expect("nodejs"), "NODEJS");
-        assert_eq!(parse_app_type("MHWP").expect("MHWP"), "MHWP");
+    fn hosting_app_type_parses_nodejs_case_insensitive() {
+        assert_eq!(
+            HostingAppType::from_str("NODEJS", true).expect("NODEJS"),
+            HostingAppType::Nodejs
+        );
+        assert_eq!(
+            HostingAppType::from_str("nodejs", true).expect("nodejs"),
+            HostingAppType::Nodejs
+        );
+        assert_eq!(HostingAppType::Nodejs.as_str(), "NODEJS");
     }
 
     #[test]
-    fn parse_app_type_rejects_unknown() {
-        assert!(parse_app_type("UNKNOWN").is_err());
-        assert!(parse_app_type("").is_err());
+    fn hosting_app_type_rejects_unknown() {
+        assert!(HostingAppType::from_str("UNKNOWN", true).is_err());
+        assert!(HostingAppType::from_str("", true).is_err());
     }
 
     #[test]

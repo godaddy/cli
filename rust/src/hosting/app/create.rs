@@ -1,15 +1,15 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
-use crate::hosting::common::{HostingAppOperation, client_err, make_client, parse_app_type};
+use crate::hosting::common::{HostingAppOperation, HostingAppType, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
 
 #[derive(Debug, Clone, clap::Args)]
 struct AppCreateArgs {
-    /// Application type (NODEJS).
-    #[arg(long = "app-type", value_name = "TYPE", value_parser = parse_app_type)]
-    app_type: String,
+    /// Hosting product.
+    #[arg(long = "app-type", value_name = "TYPE", ignore_case = true)]
+    app_type: HostingAppType,
 
     /// Human-readable display name (1–200 characters).
     #[arg(long, value_name = "NAME")]
@@ -37,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let name = args.name;
             let client = make_client(&ctx, &[APP_CREATE]).await?;
             let data = client
-                .create_app(&app_type, json!({ "name": name }))
+                .create_app(app_type.as_str(), json!({ "name": name }))
                 .await
                 .map_err(client_err)?;
 

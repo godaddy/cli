@@ -2,16 +2,16 @@ use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec
 use serde_json::{Value, json};
 
 use crate::hosting::common::{
-    HostingAppSummary, client_err, make_client, next_page_token, parse_app_type,
+    HostingAppSummary, HostingAppType, client_err, make_client, next_page_token,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
 #[derive(Debug, Clone, clap::Args)]
 struct AppListArgs {
-    /// Application type (NODEJS).
-    #[arg(long = "app-type", value_name = "TYPE", value_parser = parse_app_type)]
-    app_type: String,
+    /// Hosting product.
+    #[arg(long = "app-type", value_name = "TYPE", ignore_case = true)]
+    app_type: HostingAppType,
 
     /// Maximum number of applications to return. Omit to return all.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
@@ -47,7 +47,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 });
 
                 let response = client
-                    .list_apps(&app_type, page_token.as_deref(), page_limit)
+                    .list_apps(app_type.as_str(), page_token.as_deref(), page_limit)
                     .await
                     .map_err(client_err)?;
 
