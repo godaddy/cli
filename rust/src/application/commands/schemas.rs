@@ -17,11 +17,12 @@ output_schema!(ApplicationInit {
     "name": "string";
     "status": "string";
     "clientId": "string";
-    "orgId": "string";
+    "orgId": "string", optional;
     "url": "string";
     "proxyUrl": "string";
     "authorizationScopes": "[]string";
-    "oauthGrantTypes": "[]string";
+    "oauthGrantTypes": "[]string", optional;
+    "subscriptions": "[]object", optional;
     "filesWritten": "object";
 });
 
