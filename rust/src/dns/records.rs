@@ -109,8 +109,13 @@ pub(super) struct RecordWriteArgs {
     #[arg(value_name = "DOMAIN")]
     pub(super) domain: String,
 
+    // `ignore_case` is load-bearing, not cosmetic. The `required_if_eq` predicates
+    // below compare against the *raw* `--type` value, not the `parse_write_type_arg`
+    // output — so without it `--type tlsa` (accepted, and canonicalized to `TLSA`)
+    // never trips the `--usage`/`--selector`/`--matching-type` requirement, and
+    // `--type caa` never trips `--tag`.
     /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
-    #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
+    #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg, ignore_case = true)]
     pub(super) record_type: String,
 
     /// Record name relative to the domain (e.g. www, @ for the apex).
@@ -152,9 +157,10 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255))]
     pub(super) flag: Option<i64>,
 
-    // A CAA record needs a tag; enforce it at parse time (before auth). The
-    // reverse guard — flag/tag only valid for CAA — lives in the handler
-    // (`validate_caa_fields`), which clap can't express.
+    // A CAA record needs a tag; enforce it at parse time (before auth) — which
+    // holds for `--type caa` as well as `--type CAA` only because `record_type`
+    // sets `ignore_case`. The reverse guard — flag/tag only valid for CAA —
+    // lives in the handler (`validate_caa_fields`), which clap can't express.
     /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
     #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
     pub(super) tag: Option<String>,
@@ -203,9 +209,10 @@ pub(super) fn validate_caa_fields(record_type: &str, opts: &RecordOptions) -> Re
 
 /// Validate the TLSA-specific fields against the record type. `--usage`/
 /// `--selector`/`--matching-type` being present when `record_type` is TLSA is
-/// already enforced by clap (`required_if_eq`); this only guards the reverse —
-/// they're meaningless for other types. Pure so it's unit-testable and runs
-/// before any network call.
+/// enforced by clap (`required_if_eq`, which covers a lower-case `--type` only
+/// because the arg sets `ignore_case`); this only guards the reverse — they're
+/// meaningless for other types. Pure so it's unit-testable and runs before any
+/// network call.
 pub(super) fn validate_tlsa_fields(record_type: &str, opts: &RecordOptions) -> Result<(), String> {
     if record_type != "TLSA"
         && (opts.usage.is_some() || opts.selector.is_some() || opts.matching_type.is_some())
