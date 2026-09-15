@@ -1,5 +1,3 @@
-pub mod nodejs;
-
 mod app;
 pub mod client;
 pub mod common;
@@ -18,8 +16,7 @@ pub fn module() -> Module {
     Module::new("Hosting", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
-                "Work with GoDaddy hosting APIs. Do not use `gddy hosting nodejs`; \
-                 that is the previous API.\n\
+                "Work with GoDaddy hosting APIs.\n\
                  \n\
                  • app          — Hosting applications (create, inspect, update, delete, restart)\n\
                  • deployment   — Build and deploy application source\n\
@@ -52,11 +49,6 @@ pub fn module() -> Module {
         .with_group(domain::group())
         .with_group(subscription::group())
         .with_group(operation::group())
-        .with_group({
-            let mut g = nodejs::nodejs_group();
-            g.group = g.group.hidden(true);
-            g
-        })
     })
     .with_feature_flag("hosting", Stage::Beta)
     .with_guides_from_markdown([(

@@ -101,27 +101,6 @@ declare_scopes! {
     /// Replace a domain's nameservers (`domain nameservers set`).
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
 
-    /// Read Node.js Hosting apps (`hosting nodejs app list/get`).
-    HOSTING_APPS_READ => "hosting.paas.apps:read",
-    /// Create a Node.js Hosting app (`hosting nodejs app create`).
-    HOSTING_APPS_CREATE => "hosting.paas.apps:create",
-    /// Update a Node.js Hosting app (`hosting nodejs app update`).
-    HOSTING_APPS_UPDATE => "hosting.paas.apps:update",
-    /// Delete a Node.js Hosting app (`hosting nodejs app delete`).
-    HOSTING_APPS_DELETE => "hosting.paas.apps:delete",
-    /// Upload code to a Node.js Hosting app (`hosting nodejs source upload`).
-    HOSTING_CODE_WRITE => "hosting.paas.code:write",
-    /// Poll a git import job (`hosting nodejs source git-status`).
-    HOSTING_CODE_READ => "hosting.paas.code:read",
-    /// Trigger a Node.js Hosting deploy (`hosting nodejs deployment publish`).
-    HOSTING_DEPLOY_EXECUTE => "hosting.paas.deploy:execute",
-    /// Manage GitHub connections and browse repos/branches (`hosting nodejs github *`).
-    HOSTING_GITHUB_EXECUTE => "hosting.paas.github:execute",
-    /// Write Node.js Hosting app secrets (`hosting nodejs secret set/delete`).
-    HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
-    /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
-    HOSTING_LOGS_READ => "hosting.paas.logs:read",
-
     /// Read hosting applications (`hosting app list/get/status`).
     HOSTING_APPLICATION_READ => "hosting.application:read",
     /// Create a hosting application (`hosting app create`).
@@ -205,51 +184,6 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         default: false,
     },
     ScopeInfo {
-        scope: HOSTING_APPS_READ,
-        description: "Read Node.js Hosting apps",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_APPS_CREATE,
-        description: "Create a Node.js Hosting app",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_APPS_UPDATE,
-        description: "Update a Node.js Hosting app",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_APPS_DELETE,
-        description: "Delete a Node.js Hosting app",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_CODE_WRITE,
-        description: "Upload code to a Node.js Hosting app",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_CODE_READ,
-        description: "View source files, database contents, and git history for your Node.js Hosting apps",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_DEPLOY_EXECUTE,
-        description: "Trigger a Node.js Hosting deploy",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_SECRETS_WRITE,
-        description: "Write Node.js Hosting app secrets",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_LOGS_READ,
-        description: "Read Node.js Hosting app logs",
-        default: false,
-    },
-    ScopeInfo {
         scope: HOSTING_APPLICATION_READ,
         description: "Read hosting applications",
         default: false,
@@ -317,11 +251,6 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_SUBSCRIPTION_WRITE,
         description: "Attach a hosting subscription to an application",
-        default: false,
-    },
-    ScopeInfo {
-        scope: HOSTING_GITHUB_EXECUTE,
-        description: "Connect GitHub and import code for your Node.js Hosting apps",
         default: false,
     },
     ScopeInfo {
