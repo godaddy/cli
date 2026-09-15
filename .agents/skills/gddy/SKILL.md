@@ -64,6 +64,10 @@ gddy dns delete example.com --type A --name www
 
 `gddy payment-methods add` opens the browser to the account's payment-methods page — no card data is ever handled by the CLI itself. Purchases fail (403/422) without a valid payment method or sufficient account balance; check the error's `code` field, not just the HTTP status, to tell that apart from other failures.
 
+## Hosting
+
+Use the `hosting app restart` command after creating, updating or deleting an application's secrets. 
+
 ## Global flags
 
 Use the `--debug` flag for verbose output, including the full HTTP request/response. Use `--dry-run` to see what would happen without making any changes. Humans see human-formatted output; use `--human` to see what they see in an interactive TTY. Non-TTY output uses `--json` formatting by default. Use `--toon` if you understand that format to save tokens. Use `--env` to override the default `prod` environment, or set it permanently with `gddy env set <env>`.
