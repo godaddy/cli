@@ -43,6 +43,11 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
   - No `println!`/`eprintln!` — use `tracing` or `cli-engine` event streams
 - Keep functions focused; avoid premature abstractions.
 
+## Shopping post-purchase actions
+
+- `rust/src/shopping/product_actions.rs` maps Shopping line-item categories to post-purchase CLI guidance.
+- When adding a product purchasable through `shopping` that has a follow-up CLI flow, add its category-to-guide action there and cover it with a unit test. Keep the action list limited to product-specific next steps.
+
 ## Command Patterns (Required)
 
 - Commands are `RuntimeCommandSpec` (or `RuntimeGroupSpec` for groups).

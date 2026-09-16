@@ -20,7 +20,7 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 mod agreements;
 mod available;
-mod common;
+pub(crate) mod common;
 mod contacts;
 mod get;
 mod list;
