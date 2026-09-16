@@ -21,8 +21,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("get", "Review an open checkout session")
             .with_long(
-                "Review an open checkout session, including its items, available payment methods, and \
-                 important links. Use the order ID returned after placing an order to review a completed \
+                "Review an open checkout session, including its items, available payment methods, required \
+                 agreements, and important links. Use the order ID returned after placing an order to review a completed \
                  purchase.",
             )
             .with_system("shopping")
@@ -37,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 vec![
                     next_action(
                         "shopping checkout complete <checkout-id> --agree",
-                        "Place an order after reviewing the checkout session and its terms",
+                        "Place an order after reviewing the checkout session and its required agreements",
                     )
                     .with_param("checkout-id", NextActionParam::value(args.id)),
                 ]

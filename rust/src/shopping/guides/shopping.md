@@ -11,6 +11,7 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 - A **product** can have multiple **purchase options**. Choose the purchase option with the features, term, and price you want.
 - A **checkout session** is your cart. It holds the purchase options you intend to purchase, and the `shopping checkout` commands manage it.
 - A checkout session can show eligible saved **payment methods**. Their availability can depend on the checkout session, including its currency.
+- A checkout session can include required agreements. Review every agreement and its link before placing an order.
 - A checkout session includes important links, such as terms, privacy, refund, shipping, or help information. Review every listed link before placing an order.
 - Complete a checkout session to place an **order**.
 
@@ -69,7 +70,7 @@ Repeat `--item` to add purchase options. Append `=QUANTITY` when you need more t
 gddy shopping checkout create --item <purchase-option-id>=2
 ```
 
-The response shows buyer details, checkout-session items, its selected and available payment methods, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
+The response shows buyer details, checkout-session items, selected and available payment methods, required agreements, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
 
 If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
 
@@ -99,7 +100,7 @@ gddy shopping checkout update <checkout-id> \
 
 ## Place an order
 
-Review the checkout session, its payment method, and every important link first. Then place the order with `--agree` to acknowledge the links:
+Review the checkout session, its payment method, required agreements, and every important link first. Then use `--agree` to accept all listed required agreements and place the order:
 
 ```bash
 gddy shopping checkout complete <checkout-id> --agree

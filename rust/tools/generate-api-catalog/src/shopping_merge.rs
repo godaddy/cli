@@ -61,7 +61,8 @@ pub(crate) fn refresh(
     relax_response_schemas(&mut spec);
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
     preserve_payment_instrument_fields(&mut spec)?;
-    add_completion_idempotency_key(&mut spec)?;
+    add_completion_consent(&mut spec)?;
+    add_idempotency_headers(&mut spec)?;
 
     let json = serde_json::to_string_pretty(&spec).context("serialize Shopping codegen spec")?;
     if let Some(parent) = out_path.parent() {
@@ -232,31 +233,90 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
-fn add_completion_idempotency_key(spec: &mut Value) -> Result<()> {
-    let object = spec
-        .as_object_mut()
-        .context("Shopping spec is not an object")?;
-    let paths = object
+fn add_completion_consent(spec: &mut Value) -> Result<()> {
+    let schemas = spec
+        .get_mut("components")
+        .and_then(|components| components.get_mut("schemas"))
+        .and_then(Value::as_object_mut)
+        .context("Shopping component schemas are missing")?;
+
+    schemas.insert(
+        "shopping_consent_acceptance".to_owned(),
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "agreement_types": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "agreed_at": {"type": "string"}
+            }
+        }),
+    );
+    schemas.insert(
+        "shopping_required_agreement".to_owned(),
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "title": {"type": "string"},
+                "url": {"type": "string"},
+                "content": {"type": "string"},
+                "required": {"type": "boolean"}
+            }
+        }),
+    );
+
+    let completion_properties = schemas
+        .get_mut("checkout-complete-request_schema")
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+        .context("Shopping completion request properties are missing")?;
+    completion_properties.insert(
+        "consent".to_owned(),
+        serde_json::json!({"$ref": "#/components/schemas/shopping_consent_acceptance"}),
+    );
+
+    let checkout_properties = schemas
+        .get_mut("checkout")
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+        .context("Shopping checkout response properties are missing")?;
+    checkout_properties.insert(
+        "required_agreements".to_owned(),
+        serde_json::json!({
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/shopping_required_agreement"}
+        }),
+    );
+    Ok(())
+}
+
+fn add_idempotency_headers(spec: &mut Value) -> Result<()> {
+    let paths = spec
         .get_mut("paths")
         .and_then(Value::as_object_mut)
         .context("Shopping spec has no paths")?;
-    let operation = paths
-        .get_mut("/v1/shopping/checkout-sessions/{id}/complete")
-        .and_then(|path| path.get_mut("post"))
-        .and_then(Value::as_object_mut)
-        .context("Shopping completion operation is missing")?;
-    let parameters = operation
-        .entry("parameters")
-        .or_insert_with(|| Value::Array(Vec::new()))
-        .as_array_mut()
-        .context("Shopping completion parameters are not an array")?;
-    if !parameters
-        .iter()
-        .any(|parameter| parameter.get("name").and_then(Value::as_str) == Some("Idempotency-Key"))
-    {
-        // The API contract already defines this transport header, but current
-        // backend deployments still require the matching body field below.
-        // Retain the header so clients are compatible when that gap is closed.
+    for (path, method) in [
+        ("/v1/shopping/checkout-sessions", "post"),
+        ("/v1/shopping/checkout-sessions/{id}", "put"),
+        ("/v1/shopping/checkout-sessions/{id}/complete", "post"),
+    ] {
+        let operation = paths
+            .get_mut(path)
+            .and_then(|path| path.get_mut(method))
+            .and_then(Value::as_object_mut)
+            .with_context(|| format!("Shopping {method} {path} operation is missing"))?;
+        let parameters = operation
+            .entry("parameters")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .with_context(|| format!("Shopping {method} {path} parameters are not an array"))?;
+        if parameters.iter().any(|parameter| {
+            parameter.get("name").and_then(Value::as_str) == Some("Idempotency-Key")
+        }) {
+            continue;
+        }
         parameters.push(serde_json::json!({
             "name": "Idempotency-Key",
             "in": "header",
@@ -264,21 +324,6 @@ fn add_completion_idempotency_key(spec: &mut Value) -> Result<()> {
             "schema": {"type": "string"}
         }));
     }
-
-    let properties = object
-        .get_mut("components")
-        .and_then(|components| components.get_mut("schemas"))
-        .and_then(|schemas| schemas.get_mut("checkout-complete-request_schema"))
-        .and_then(|schema| schema.get_mut("properties"))
-        .and_then(Value::as_object_mut)
-        .context("Shopping completion request properties are missing")?;
-    // Temporary compatibility shim: the current backend accepts the key only
-    // in the completion body. Remove this field when it accepts the standard
-    // Idempotency-Key header without a duplicate body value.
-    properties.insert(
-        "idempotency_key".to_owned(),
-        serde_json::json!({"type": "string"}),
-    );
     Ok(())
 }
 

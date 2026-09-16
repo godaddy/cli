@@ -146,7 +146,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
             update_response(
                 client
-                    .update_checkout(&args.id, body)
+                    .update_checkout(&args.id, body, &uuid::Uuid::new_v4().to_string())
                     .await
                     .map_err(client_err)?,
             )?;

@@ -380,6 +380,7 @@ pub(crate) fn checkout_response(checkout: &Value, show_all_payment_instruments: 
         "selected_payment": selected_payment(checkout),
         "available_payment_instruments": available_payment_instruments(checkout, show_all_payment_instruments),
         "has_more_payment_instruments": !show_all_payment_instruments && available_payment_instrument_count(checkout) > PAYMENT_INSTRUMENT_LIMIT,
+        "required_agreements": required_agreements(checkout),
         "links": checkout_links(checkout),
     })
 }
@@ -461,6 +462,25 @@ pub(crate) fn selected_payment_id(checkout: &Value) -> Option<&str> {
         .as_str()
 }
 
+fn required_agreements(checkout: &Value) -> Vec<Value> {
+    checkout
+        .get("required_agreements")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|agreement| {
+            let key = agreement.get("key").and_then(Value::as_str)?;
+            Some(json!({
+                "key": key,
+                "title": agreement.get("title").and_then(Value::as_str).unwrap_or(key),
+                "url": agreement.get("url").and_then(Value::as_str),
+                "content": agreement.get("content").and_then(Value::as_str),
+                "required": agreement.get("required").and_then(Value::as_bool).unwrap_or(false),
+            }))
+        })
+        .collect()
+}
+
 fn checkout_links(checkout: &Value) -> Vec<Value> {
     checkout
         .get("links")
@@ -528,6 +548,7 @@ fn render_checkout(cart: &Value) -> String {
     if let Some(total) = cart.get("total").and_then(Value::as_str) {
         output.push_str(&format!("\nTotal: {total}\n"));
     }
+    render_required_agreements(&mut output, cart);
     render_links(&mut output, cart);
     output.push_str("\nReview this checkout session and its links before placing an order.\n");
     output
@@ -589,6 +610,39 @@ fn render_available_payment_instruments(output: &mut String, cart: &Value) {
         .unwrap_or(false)
     {
         output.push_str("Use --show-all-payment-instruments to show every saved payment method.\n");
+    }
+}
+
+fn render_required_agreements(output: &mut String, cart: &Value) {
+    let agreements = cart
+        .get("required_agreements")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if agreements.is_empty() {
+        return;
+    }
+    output.push_str("\nRequired agreements:\n");
+    for agreement in agreements {
+        let required = if agreement
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            " (Required)"
+        } else {
+            ""
+        };
+        output.push_str(&format!(
+            "- {} ({}): {}{required}\n",
+            text(agreement, "title", "Agreement"),
+            text(agreement, "key", ""),
+            agreement
+                .get("url")
+                .and_then(Value::as_str)
+                .or_else(|| agreement.get("content").and_then(Value::as_str))
+                .unwrap_or("No link provided"),
+        ));
     }
 }
 
@@ -785,5 +839,27 @@ mod tests {
         assert!(output.contains("Annual email plan."));
         assert!(output.contains("Term: 1 year · Mailbox: 50 GB"));
         assert!(output.contains("Highlights: Includes Office web apps"));
+    }
+
+    #[test]
+    fn checkout_response_and_human_view_include_required_agreements() {
+        let response = checkout_response(
+            &json!({
+                "id": "checkout-1",
+                "status": "ready_for_complete",
+                "required_agreements": [{
+                    "key": "terms",
+                    "title": "Terms of Service",
+                    "url": "https://example.test/terms",
+                    "required": true
+                }]
+            }),
+            false,
+        );
+        let output = render_checkout(&response);
+
+        assert_eq!(response["required_agreements"][0]["key"], "terms");
+        assert!(output.contains("Required agreements:"));
+        assert!(output.contains("Terms of Service (terms): https://example.test/terms (Required)"));
     }
 }

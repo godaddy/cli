@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
@@ -21,7 +23,7 @@ struct Args {
     #[arg(long, value_name = "INSTRUMENT_ID")]
     payment_instrument: Option<String>,
 
-    /// Acknowledge the checkout session's terms and other important links.
+    /// Accept every required agreement shown for the checkout session.
     #[arg(long)]
     agree: bool,
 
@@ -32,14 +34,6 @@ struct Args {
 
 fn completion_error(error: ClientError) -> cli_engine::CliCoreError {
     crate::error::GddyError::from(error).into_cli_error()
-}
-
-fn public_completion_body(body: &Value) -> Value {
-    let mut body = body.clone();
-    body.as_object_mut()
-        .expect("completion body is an object")
-        .remove("idempotency_key");
-    body
 }
 
 fn selected_payment_body(checkout: &Value) -> cli_engine::Result<Value> {
@@ -101,17 +95,72 @@ fn billing_address(input: Option<&str>) -> cli_engine::Result<Option<Value>> {
     Ok(Some(Value::Object(address.clone())))
 }
 
-fn agreement_gate(agree: bool) -> cli_engine::Result<()> {
+fn required_agreements(checkout: &Value) -> Vec<(&str, &str, Option<&str>)> {
+    checkout
+        .get("required_agreements")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|agreement| agreement.get("required").and_then(Value::as_bool) == Some(true))
+        .filter_map(|agreement| {
+            let key = agreement.get("key").and_then(Value::as_str)?;
+            if key.trim().is_empty() {
+                return None;
+            }
+            let title = agreement
+                .get("title")
+                .and_then(Value::as_str)
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or(key);
+            Some((key, title, agreement.get("url").and_then(Value::as_str)))
+        })
+        .fold(BTreeMap::new(), |mut agreements, (key, title, url)| {
+            agreements.entry(key).or_insert((title, url));
+            agreements
+        })
+        .into_iter()
+        .map(|(key, (title, url))| (key, title, url))
+        .collect()
+}
+
+fn agreement_gate(checkout: &Value, agree: bool) -> cli_engine::Result<()> {
     if agree {
         return Ok(());
     }
-    Err(crate::error::GddyError::validation(
-        "placing an order requires acknowledging the checkout session's terms and important links",
-    )
-    .with_fix(
-        "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree.",
-    )
-    .into_cli_error())
+    let agreements = required_agreements(checkout);
+    let details = agreements
+        .iter()
+        .map(|(key, title, url)| match url {
+            Some(url) => format!("  - {title} ({key}): {url}"),
+            None => format!("  - {title} ({key})"),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let message = if details.is_empty() {
+        "placing an order requires acknowledging the checkout session's terms and important links"
+            .to_owned()
+    } else {
+        format!("placing an order requires accepting these checkout session agreements:\n{details}")
+    };
+    Err(crate::error::GddyError::validation(message)
+        .with_fix(
+            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree.",
+        )
+        .into_cli_error())
+}
+
+fn completion_consent(checkout: &Value) -> Option<Value> {
+    let agreement_types = required_agreements(checkout)
+        .into_iter()
+        .map(|(key, _, _)| Value::String(key.to_owned()))
+        .collect::<Vec<_>>();
+    if agreement_types.is_empty() {
+        return None;
+    }
+    Some(json!({
+        "agreement_types": agreement_types,
+        "agreed_at": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    }))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -119,8 +168,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<Args>("complete", "Place an order from a checkout session")
             .with_long(
                 "Place an order with the checkout session's selected saved payment method, or use \
-                 --payment-instrument to select one. Review the checkout session and its links first, \
-                 then use --agree to acknowledge them.",
+                 --payment-instrument to select one. Review its required agreements and important links \
+                 first, then use --agree to accept every required agreement.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -130,7 +179,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .auth_optional()
             .with_view_id(CHECKOUT_COMPLETE_VIEW_ID),
         |ctx, args: Args| async move {
-            agreement_gate(args.agree)?;
+            let client = make_client(&ctx).await?;
+            let checkout = client
+                .get_checkout(&args.id)
+                .await
+                .map_err(client_err)?;
+            agreement_gate(&checkout, args.agree)?;
             let billing_address = billing_address(args.billing_address.as_deref())?;
             let mut body = if let Some(payment_instrument) = args.payment_instrument {
                 CheckoutInput {
@@ -139,34 +193,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
                 .completion_body()?
             } else {
-                let checkout = make_client(&ctx)
-                    .await?
-                    .get_checkout(&args.id)
-                    .await
-                    .map_err(client_err)?;
                 selected_payment_body(&checkout)?
             };
+            if let Some(consent) = completion_consent(&checkout) {
+                body["consent"] = consent;
+            }
             if let Some(billing_address) = billing_address {
                 body["payment"]["instruments"][0]["billing_address"] = billing_address;
             }
             require_selected_payment_instrument(&body)?;
             let idempotency_key = uuid::Uuid::new_v4().to_string();
-            body.as_object_mut()
-                .expect("completion body is an object")
-                .insert(
-                    "idempotency_key".to_owned(),
-                    Value::String(idempotency_key.clone()),
-                );
             if ctx.dry_run() {
                 return Ok(CommandResult::new(json!({
                     "action": "dry-run: would place order",
                     "id": args.id,
-                    "body": public_completion_body(&body),
+                    "body": body,
                 }))
                 .with_dry_run());
             }
 
-            let client = make_client(&ctx).await?;
             let completion = client
                 .complete_checkout(&args.id, body, &idempotency_key)
                 .await
@@ -197,9 +242,45 @@ mod tests {
 
     #[test]
     fn agreement_gate_requires_agree() {
-        let error = agreement_gate(false).expect_err("must require --agree");
-        assert!(error.to_string().contains("acknowledging"));
-        assert!(agreement_gate(true).is_ok());
+        let checkout = json!({
+            "required_agreements": [{
+                "key": "universal_terms_and_conditions",
+                "title": "Universal Terms of Service Agreement",
+                "url": "https://www.godaddy.com/legal/agreements/universal-terms-of-service-agreement",
+                "required": true
+            }]
+        });
+        let error = agreement_gate(&checkout, false).expect_err("must require --agree");
+        assert!(
+            error
+                .to_string()
+                .contains("Universal Terms of Service Agreement")
+        );
+        assert!(error.to_string().contains("universal_terms_and_conditions"));
+        assert!(agreement_gate(&checkout, true).is_ok());
+    }
+
+    #[test]
+    fn completion_consent_includes_every_required_agreement() {
+        let checkout = json!({
+            "required_agreements": [
+                {"key": "terms", "required": true},
+                {"key": "optional_marketing", "required": false},
+                {"key": "ssl", "required": true}
+            ]
+        });
+        let consent = completion_consent(&checkout).expect("required consent");
+
+        assert_eq!(consent["agreement_types"], json!(["ssl", "terms"]));
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(consent["agreed_at"].as_str().expect("timestamp"))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn completion_consent_is_omitted_without_required_agreements() {
+        assert!(completion_consent(&json!({"required_agreements": []})).is_none());
     }
 
     #[test]
