@@ -37,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             e,
                             "No active email plans available. \
                              Run: gddy shopping catalog search --query titan \
-                             to see available email plans. Always list them for the customer to choose from.",
+                             to see available email plans, then select one to continue.",
                         )
                     }
                     _ => client_err(e),
