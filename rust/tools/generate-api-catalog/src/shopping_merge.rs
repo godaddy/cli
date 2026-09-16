@@ -63,6 +63,8 @@ pub(crate) fn refresh(
     preserve_payment_instrument_fields(&mut spec)?;
     add_completion_consent(&mut spec)?;
     add_idempotency_headers(&mut spec)?;
+    prune_documentation_fields(&mut spec);
+    add_required_response_descriptions(&mut spec);
 
     let json = serde_json::to_string_pretty(&spec).context("serialize Shopping codegen spec")?;
     if let Some(parent) = out_path.parent() {
@@ -327,6 +329,58 @@ fn add_idempotency_headers(spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
+/// Removes source-contract prose and verbose object examples that are irrelevant
+/// to typed Rust client generation. Restore generic required response descriptions
+/// afterward, and retain protocol metadata plus string-array examples.
+fn prune_documentation_fields(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("description");
+            map.remove("summary");
+            map.remove("example");
+            map.remove("externalDocs");
+            if !map
+                .get("examples")
+                .is_some_and(|examples| matches!(examples, Value::Array(values) if values.iter().all(Value::is_string)))
+            {
+                map.remove("examples");
+            }
+            for child in map.values_mut() {
+                prune_documentation_fields(child);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                prune_documentation_fields(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn add_required_response_descriptions(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(responses) = map.get_mut("responses").and_then(Value::as_object_mut) {
+                for response in responses.values_mut().filter_map(Value::as_object_mut) {
+                    response
+                        .entry("description")
+                        .or_insert_with(|| Value::String("Response".to_owned()));
+                }
+            }
+            for child in map.values_mut() {
+                add_required_response_descriptions(child);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                add_required_response_descriptions(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn retain_2xx_responses(spec: &mut Value) {
     let Some(paths) = spec.pointer_mut("/paths").and_then(Value::as_object_mut) else {
         return;
@@ -388,5 +442,63 @@ fn relax(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::prune_documentation_fields;
+
+    #[test]
+    fn pruning_removes_documentation_and_examples_recursively() {
+        let mut spec = json!({
+            "summary": "operation summary",
+            "description": "operation description",
+            "externalDocs": {"url": "https://example.test"},
+            "paths": {
+                "/things": {
+                    "get": {
+                        "description": "get things",
+                        "responses": {
+                            "200": {
+                                "description": "response description",
+                                "content": {
+                                    "application/json": {
+                                        "examples": {"one": {"value": {"id": "1"}}},
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {"type": "string", "examples": ["1", "2"]}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "title": "Shopping API",
+            "servers": [{"url": "https://api.godaddy.com"}]
+        });
+
+        prune_documentation_fields(&mut spec);
+
+        assert_eq!(spec["title"], "Shopping API");
+        assert_eq!(spec["servers"][0]["url"], "https://api.godaddy.com");
+        assert!(
+            spec.pointer("/paths/~1things/get/responses/200/description")
+                .is_none()
+        );
+        assert!(spec.pointer("/paths/~1things/get/description").is_none());
+        assert!(!spec.to_string().contains("summary"));
+        assert_eq!(
+            spec.pointer("/paths/~1things/get/responses/200/content/application~1json/schema/properties/id/examples"),
+            Some(&json!(["1", "2"]))
+        );
+        assert!(!spec.to_string().contains("example\":"));
+        assert!(!spec.to_string().contains("externalDocs"));
     }
 }
