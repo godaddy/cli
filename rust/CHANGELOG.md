@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/godaddy/cli/compare/v0.2.14...v0.2.15) (2026-09-16)
+
+
+### Features
+
+* Add CLI command groups for Hosting API ([#248](https://github.com/godaddy/cli/issues/248)) ([0c5cea0](https://github.com/godaddy/cli/commit/0c5cea0dc58124238f6343b2ecf7efa207c4a5e6))
+
 ## [0.2.14](https://github.com/godaddy/cli/compare/v0.2.13...v0.2.14) (2026-09-15)
 
 
