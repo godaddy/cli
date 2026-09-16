@@ -55,6 +55,15 @@ struct ApiErrorDetail {
     description: Option<String>,
 }
 
+/// Returns `true` if the parsed error body's `details` array contains an entry
+/// whose `issue` field matches `issue`. Used to pick targeted fix hints for
+/// specific API error codes.
+pub(crate) fn body_has_issue(body: &str, issue: &str) -> bool {
+    serde_json::from_str::<ApiErrorBody>(body)
+        .map(|b| b.details.iter().any(|d| d.issue.as_deref() == Some(issue)))
+        .unwrap_or(false)
+}
+
 fn format_api_error_body(body: &str) -> String {
     let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
         return body.to_owned();
