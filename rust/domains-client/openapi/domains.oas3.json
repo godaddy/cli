@@ -1580,7 +1580,6 @@
             "items": {
               "$ref": "#/components/schemas/link-description"
             },
-            "nullable": true,
             "readOnly": true,
             "type": "array"
           },
@@ -1599,7 +1598,6 @@
               "$ref": "#/components/schemas/NameserverHostname"
             },
             "maxItems": 13,
-            "nullable": true,
             "type": "array"
           },
           "preferences": {
@@ -1611,7 +1609,6 @@
             "items": {
               "$ref": "#/components/schemas/RegistrationPreference"
             },
-            "nullable": true,
             "type": "array",
             "uniqueItems": true
           },
@@ -1637,11 +1634,13 @@
               "type": "string"
             },
             "minItems": 1,
-            "nullable": true,
             "type": "array",
             "writeOnly": true
           }
         },
+        "required": [
+          "contacts"
+        ],
         "title": "Registration Profile",
         "type": "object",
         "x-sensitivity": "confidential"
@@ -1808,7 +1807,6 @@
             "items": {
               "$ref": "#/components/schemas/link-description"
             },
-            "nullable": true,
             "readOnly": true,
             "type": "array"
           },
@@ -1894,6 +1892,10 @@
             ]
           }
         },
+        "required": [
+          "domain",
+          "consent"
+        ],
         "title": "Renewal",
         "type": "object"
       },
@@ -1924,6 +1926,9 @@
             ]
           }
         },
+        "required": [
+          "agreedAt"
+        ],
         "title": "Renewal Consent",
         "type": "object"
       },

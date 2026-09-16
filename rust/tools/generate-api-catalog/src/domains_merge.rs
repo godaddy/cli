@@ -50,6 +50,9 @@ const STRICT_V3: &[&str] = &[
     "DNSRecord",
     "NameServers",
     "NameserverHostname",
+    "RegistrationProfile",
+    "Renewal",
+    "RenewalConsent",
 ];
 
 /// The only v1 operation v3 does not yet serve: legal agreements for a TLD.
@@ -353,6 +356,24 @@ fn merge(v3: &mut Value, mut v1: Value) -> Result<()> {
     // response deserialization fail. Mark just that field optional.
     if let Some(required) = v3
         .pointer_mut("/components/schemas/Registration/required")
+        .and_then(Value::as_array_mut)
+    {
+        required.retain(|f| f.as_str() != Some("quoteToken"));
+    }
+
+    // Same dual-use shape as `Registration` above: `RegistrationProfile.tlds`
+    // is writeOnly (supplied on create, never echoed on read), and
+    // `Renewal.quoteToken` is writeOnly (consumed on execute, never returned).
+    // Keep the rest of each request's `required` list intact and drop just
+    // the field that would break response deserialization.
+    if let Some(required) = v3
+        .pointer_mut("/components/schemas/RegistrationProfile/required")
+        .and_then(Value::as_array_mut)
+    {
+        required.retain(|f| f.as_str() != Some("tlds"));
+    }
+    if let Some(required) = v3
+        .pointer_mut("/components/schemas/Renewal/required")
         .and_then(Value::as_array_mut)
     {
         required.retain(|f| f.as_str() != Some("quoteToken"));
