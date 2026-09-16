@@ -57,12 +57,45 @@ impl HostingClient {
         uuid::Uuid::new_v4().to_string()
     }
 
+    /// Marker written to the `--debug transport` trace in place of a response
+    /// body that carries a secret, so a minted token can never reach the debug
+    /// output. The request breadcrumb and the response status/headers still log.
+    const REDACTED_RESPONSE_BODY: &'static [u8] =
+        b"<redacted: response body withheld (contains a credential)>";
+
     async fn send_json(
         &self,
         method: Method,
         path: &str,
         query: &[(&str, String)],
         body: Option<Value>,
+    ) -> Result<Value, ClientError> {
+        self.send_json_inner(method, path, query, body, true).await
+    }
+
+    /// Like [`send_json`](Self::send_json), but the response body is withheld
+    /// from the `--debug transport` trace. Use for endpoints whose response
+    /// carries a secret — e.g. the agent-token mint, whose body is a bearer
+    /// token. cli-engine redacts sensitive *headers* but prints bodies verbatim
+    /// and offers no body-redaction hook, so the suppression happens here, at
+    /// the one call site that needs it.
+    async fn send_json_secret_response(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<Value>,
+    ) -> Result<Value, ClientError> {
+        self.send_json_inner(method, path, query, body, false).await
+    }
+
+    async fn send_json_inner(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<Value>,
+        log_response_body: bool,
     ) -> Result<Value, ClientError> {
         let mut req = self
             .client
@@ -85,7 +118,19 @@ impl HostingClient {
         let status = resp.status();
         let headers = resp.headers().clone();
         let bytes = resp.bytes().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+        // Under `--debug transport` cli-engine prints response bodies verbatim
+        // (only sensitive headers are redacted). For a secret-bearing response
+        // hand the logger a fixed marker instead of the real bytes, so a minted
+        // token cannot leak into the trace; status and headers still log.
+        cli_engine::transport::debug_log_reqwest_response(
+            status,
+            &headers,
+            if log_response_body {
+                bytes.as_ref()
+            } else {
+                Self::REDACTED_RESPONSE_BODY
+            },
+        );
 
         let status = status.as_u16();
         if status == 204 {
@@ -172,7 +217,9 @@ impl HostingClient {
     /// assigned URL alongside it. Response shape: `{ agentUrl, token, expires? }`.
     /// Requires the same `hosting.paas.deploy:execute` scope as `publish_app`.
     pub async fn get_agent_token(&self, app_id: &str) -> Result<Value, ClientError> {
-        self.send_json(
+        // Secret response: the body is a minted bearer token, so it must never
+        // reach the `--debug transport` trace (cli-engine would print it in full).
+        self.send_json_secret_response(
             Method::POST,
             &format!("/apps/{app_id}/agent-token"),
             &[],

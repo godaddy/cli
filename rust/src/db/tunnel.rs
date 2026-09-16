@@ -67,6 +67,13 @@ struct TunnelArgs {
     /// Local interface to bind. Defaults to loopback.
     #[arg(long = "listen-host", value_name = "HOST", default_value = "127.0.0.1")]
     listen_host: String,
+
+    /// Allow binding a non-loopback interface (e.g. `0.0.0.0`). The local port
+    /// speaks straight to the app's live database with no authentication of its
+    /// own, so binding beyond loopback exposes that database to other hosts on
+    /// the network. Off by default; the default loopback bind needs no flag.
+    #[arg(long = "allow-non-loopback")]
+    allow_non_loopback: bool,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -138,6 +145,23 @@ async fn run_tunnel(
         return Err(fail(sender, e.into_cli_error()).await);
     }
 
+    // Refuse to expose the tunnel beyond loopback unless the operator opts in.
+    // The local port relays straight to the app's live database with no local
+    // authentication, so a non-loopback bind (e.g. 0.0.0.0) would put that
+    // database on the network. Fail closed and require an explicit flag; check
+    // before minting a token so the refusal is immediate.
+    if !is_loopback_host(&args.listen_host) && !args.allow_non_loopback {
+        let err = GddyError::validation(format!(
+            "refusing to bind non-loopback interface '{}': the local port exposes the app's live database with no authentication of its own",
+            args.listen_host
+        ))
+        .with_fix(
+            "Bind loopback (the default --listen-host 127.0.0.1), or pass --allow-non-loopback to expose it deliberately.",
+        )
+        .into_cli_error();
+        return Err(fail(sender, err).await);
+    }
+
     // Mint an agent token (and learn the agent's URL) before binding a port, so
     // an auth or lookup failure fails fast with a single terminal error line.
     sender
@@ -179,6 +203,28 @@ async fn run_tunnel(
             "appId": args.app_id,
         }))
         .await;
+    // Make the blast radius explicit before any client connects: this is the
+    // app's real database, not a sandboxed copy — writes take effect at once.
+    sender
+        .send(json!({
+            "type": "warning",
+            "message": "This tunnel connects to the app's LIVE database. Queries run directly against production data; there is no staging copy and no undo.",
+        }))
+        .await;
+    // Reaching here on a non-loopback host means the operator passed
+    // --allow-non-loopback (otherwise the guard above would have failed the
+    // run), so call out that the database is now reachable off this machine.
+    if !is_loopback_host(&args.listen_host) {
+        sender
+            .send(json!({
+                "type": "warning",
+                "message": format!(
+                    "Bound non-loopback interface '{}': other hosts on this network can reach the database through this port, which performs no authentication of its own.",
+                    args.listen_host
+                ),
+            }))
+            .await;
+    }
     sender
         .send(json!({
             "type": "hint",
@@ -461,6 +507,18 @@ fn validate_app_id(app_id: &str) -> Result<(), GddyError> {
     Ok(())
 }
 
+/// Whether `host` is a loopback bind target. `localhost` (case-insensitively)
+/// and any loopback IP literal (127.0.0.0/8, `::1`) qualify. Anything we cannot
+/// prove is loopback — including a hostname we would have to resolve to know —
+/// is treated as non-loopback so the bind guard fails closed.
+fn is_loopback_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
 /// Turn an agent base URL + app id into the WebSocket tunnel URL, mapping
 /// `http`→`ws` and `https`→`wss` and replacing the path with the tunnel route.
 fn build_tunnel_ws_url(agent_url: &str, app_id: &str) -> Result<String, GddyError> {
@@ -585,6 +643,26 @@ mod tests {
             assert!(
                 build_tunnel_ws_url("http://host:3306", bad).is_err(),
                 "expected {bad:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn loopback_hosts_are_recognized() {
+        for host in ["127.0.0.1", "127.0.0.5", "::1", "localhost", "LocalHost"] {
+            assert!(super::is_loopback_host(host), "{host} should be loopback");
+        }
+    }
+
+    #[test]
+    fn non_loopback_and_unresolvable_hosts_fail_closed() {
+        // 0.0.0.0 / :: and a LAN literal are clearly off-loopback; a bare
+        // hostname we will not resolve must fail closed rather than be assumed
+        // safe, and so must an empty string.
+        for host in ["0.0.0.0", "::", "192.168.1.10", "db.internal.example", ""] {
+            assert!(
+                !super::is_loopback_host(host),
+                "{host:?} should not count as loopback"
             );
         }
     }

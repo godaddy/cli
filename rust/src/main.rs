@@ -406,7 +406,12 @@ mod tests {
         );
         let output = revealed.run(["gddy", "db", "tunnel", "--help"]).await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
-        for flag in ["--app-id", "--port", "--listen-host"] {
+        for flag in [
+            "--app-id",
+            "--port",
+            "--listen-host",
+            "--allow-non-loopback",
+        ] {
             assert!(
                 output.rendered.contains(flag),
                 "db tunnel help should list {flag:?}: {}",
