@@ -86,10 +86,5 @@
       "repository": "domains.domain-lifecycle-specification"
     }
   ],
-  "local": [
-    {
-      "domain": "hosting-nodejs",
-      "path": "schemas/openapi/hosting-nodejs-public-v1.yaml"
-    }
-  ]
+  "local": []
 }

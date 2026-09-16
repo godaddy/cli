@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.15](https://github.com/godaddy/cli/compare/v0.2.14...v0.2.15) (2026-09-16)
+
+
+### Features
+
+* Add CLI command groups for Hosting API ([#248](https://github.com/godaddy/cli/issues/248)) ([0c5cea0](https://github.com/godaddy/cli/commit/0c5cea0dc58124238f6343b2ecf7efa207c4a5e6))
+
+## [0.2.14](https://github.com/godaddy/cli/compare/v0.2.13...v0.2.14) (2026-09-15)
+
+
+### Features
+
+* **platform:** add init from-existing flag to sync app config into godaddy.toml ([#254](https://github.com/godaddy/cli/issues/254)) ([4715518](https://github.com/godaddy/cli/commit/4715518e8fd859b8ab19d9b6e45e55103aa7039f))
+
+
+### Bug Fixes
+
+* **deps:** update rustls to patch TLS 1.3 handshake advisory ([#258](https://github.com/godaddy/cli/issues/258)) ([9124112](https://github.com/godaddy/cli/commit/9124112a33cb8319e4776feaf647866d5dd07414))
+* **dns:** enforce TLSA/CAA required fields for lower-case --type ([#256](https://github.com/godaddy/cli/issues/256)) ([bc308dc](https://github.com/godaddy/cli/commit/bc308dc3927ad14eeab4ca5ae8730120f4969031))
+
 ## [0.2.13](https://github.com/godaddy/cli/compare/v0.2.12...v0.2.13) (2026-09-10)
 
 

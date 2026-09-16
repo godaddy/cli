@@ -1,8 +1,7 @@
 //! `gddy domain purchase` — register a domain by accepting a cached quote (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, Credential, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
@@ -26,37 +25,6 @@ output_schema!(DomainPurchaseResult {
 /// trailing `Z` (e.g. `2026-06-30T22:34:43Z`), sub-second digits dropped.
 fn iso_datetime(now: chrono::DateTime<chrono::Utc>) -> String {
     now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
-/// Validate the OAuth token is a customer identity (`customer:<uuid>`), so a
-/// non-customer subject is rejected with a clear local error *before* the paid
-/// call and before the cached quote is consumed. `agreedBy` is server-derived
-/// from the request's auth context (the API no longer accepts a caller-supplied
-/// consent principal), so the returned id isn't sent anywhere — this is purely a
-/// fail-fast check.
-fn consent_principal(cred: &Credential) -> Result<String> {
-    let id = cred
-        .sub
-        .strip_prefix("customer:")
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| {
-            CliCoreError::message(format!(
-                "the OAuth token's subject ({:?}) is not a customer identity; `domain purchase` \
-                 needs a customer-scoped token",
-                cred.sub
-            ))
-        })?;
-    // Validate it's a customer UUID up front so a malformed
-    // `customer:<not-a-uuid>` subject fails fast with a clear message rather
-    // than as an opaque server-side rejection.
-    if uuid::Uuid::parse_str(id).is_err() {
-        return Err(CliCoreError::message(format!(
-            "the OAuth token's customer subject ({:?}) is not a valid UUID; `domain purchase` \
-             needs a customer-scoped token",
-            cred.sub
-        )));
-    }
-    Ok(id.to_owned())
 }
 
 /// Description for the `domain get <domain>` next-action, tailored to whether
@@ -184,14 +152,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let confirm = args.confirm;
             let debug = !ctx.middleware.debug.is_empty();
 
-            // Resolve auth *before* consuming the cached quote, so a token that
-            // isn't customer-scoped fails locally rather than after the cache
-            // entry (and the ~10-minute quote window) is spent. The register
-            // endpoint derives `agreedBy` server-side, so only the validation
-            // (the early return on error) is needed here — the customer id
-            // itself is intentionally discarded.
+            // Resolve auth *before* consuming the cached quote, so an auth
+            // failure fails locally rather than after the cache entry (and the
+            // ~10-minute quote window) is spent.
             let cred = ctx.credential().await?;
-            let _customer_id = consent_principal(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
@@ -422,8 +386,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{consent_principal, iso_datetime, next_action_description, purchase_consent_types};
-    use cli_engine::Credential;
+    use super::{iso_datetime, next_action_description, purchase_consent_types};
     use domains_client::types;
 
     #[test]
@@ -502,31 +465,6 @@ mod tests {
                 "status {status:?} must not claim the domain is registered: {desc}"
             );
         }
-    }
-
-    #[test]
-    fn consent_principal_strips_customer_urn_prefix() {
-        let cred = Credential {
-            sub: "customer:56fd82e4-1c45-4596-865d-317235015b2f".to_string(),
-            ..Default::default()
-        };
-        assert_eq!(
-            consent_principal(&cred).expect("customer subject"),
-            "56fd82e4-1c45-4596-865d-317235015b2f"
-        );
-        let shopper = Credential {
-            sub: "shopper:12345".to_string(),
-            ..Default::default()
-        };
-        assert!(consent_principal(&shopper).is_err());
-
-        // A customer subject that isn't a UUID must fail fast before the paid call.
-        let not_uuid = Credential {
-            sub: "customer:12345".to_string(),
-            ..Default::default()
-        };
-        let err = consent_principal(&not_uuid).expect_err("non-uuid customer subject");
-        assert!(err.to_string().contains("not a valid UUID"), "{err}");
     }
 
     #[test]
