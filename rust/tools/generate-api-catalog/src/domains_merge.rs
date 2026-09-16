@@ -780,4 +780,106 @@ mod tests {
         assert!(dns_item.get("get").is_some(), "{dns_item:?}");
         assert!(dns_item.get("delete").is_some(), "{dns_item:?}");
     }
+
+    /// Regression test for the schema-drift bug a Copilot review caught on
+    /// this PR: a new v3 request schema not added to `STRICT_V3` silently
+    /// loses its `required` list in the merge, so the generated
+    /// `domains-client` builder can construct a request missing fields the
+    /// live API actually requires. Exercises `merge` end-to-end (not just the
+    /// `STRICT_V3` list) for `RegistrationProfile` and `Renewal`, both of
+    /// which also carry a `writeOnly` field (`tlds`, `quoteToken`) that must
+    /// drop out of `required` specifically so the same generated type stays
+    /// deserializable as a *response* — mirroring the pre-existing
+    /// `Registration.quoteToken` handling.
+    #[test]
+    fn strict_v3_schemas_keep_required_fields_except_their_writeonly_one() {
+        let mut v3 = serde_json::json!({
+            "paths": {
+                "/registration-profiles": {
+                    "post": {
+                        "operationId": "createRegistrationProfile",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/RegistrationProfile" }
+                                }
+                            }
+                        },
+                        "responses": { "201": { "description": "created" } }
+                    }
+                },
+                "/renewals": {
+                    "post": {
+                        "operationId": "renewDomain",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Renewal" }
+                                }
+                            }
+                        },
+                        "responses": { "201": { "description": "created" } }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "RegistrationProfile": {
+                        "type": "object",
+                        "required": ["tlds", "contacts"],
+                        "properties": {
+                            "tlds": { "type": "array", "items": { "type": "string" }, "writeOnly": true },
+                            "contacts": { "type": "object" }
+                        }
+                    },
+                    "Renewal": {
+                        "type": "object",
+                        "required": ["domain", "quoteToken", "consent"],
+                        "properties": {
+                            "domain": { "type": "string" },
+                            "quoteToken": { "type": "string", "writeOnly": true },
+                            "consent": { "$ref": "#/components/schemas/RenewalConsent" }
+                        }
+                    },
+                    "RenewalConsent": {
+                        "type": "object",
+                        "required": ["agreedAt"],
+                        "properties": {
+                            "agreedAt": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        });
+
+        merge(&mut v3, serde_json::json!({})).expect("merge succeeds on a minimal v3 fixture");
+
+        assert_eq!(
+            v3.pointer("/components/schemas/RegistrationProfile/required"),
+            Some(&serde_json::json!(["contacts"])),
+            "tlds is writeOnly and must drop out of required; contacts must stay required"
+        );
+        assert_eq!(
+            v3.pointer("/components/schemas/Renewal/required"),
+            Some(&serde_json::json!(["domain", "consent"])),
+            "quoteToken is writeOnly and must drop out of required; domain/consent must stay required"
+        );
+        assert_eq!(
+            v3.pointer("/components/schemas/RenewalConsent/required"),
+            Some(&serde_json::json!(["agreedAt"])),
+            "RenewalConsent has no writeOnly fields, so its required list must be untouched"
+        );
+
+        // The writeOnly fields must still be present as properties — dropped
+        // from `required`, not from the type — so the request-side builder
+        // can still set them.
+        assert!(
+            v3.pointer("/components/schemas/RegistrationProfile/properties/tlds")
+                .is_some()
+        );
+        assert!(
+            v3.pointer("/components/schemas/Renewal/properties/quoteToken")
+                .is_some()
+        );
+    }
 }
