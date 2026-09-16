@@ -62,7 +62,7 @@ Check whether the app is already on a subscription:
 gddy hosting subscription get --app-id <app-id>
 ```
 
-If not, list subscriptions and attach the app to one with open slots (`availableSlots > 0`). Choose which subscription first, even if only one has a slot.
+If not, list subscriptions and attach the app to one with open slots (`availableSlots > 0`).
 
 ```sh
 gddy hosting subscription list
