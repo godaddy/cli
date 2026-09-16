@@ -14,7 +14,7 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 **Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish. One app, one subscription.
 
-**Slots** — how many more apps that subscription can take (`availableSlots`). Not a separate object. Attach only to a subscription with a free slot.
+**Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot.
 
 ## 1. Create an application
 
