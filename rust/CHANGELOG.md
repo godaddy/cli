@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.16](https://github.com/godaddy/cli/compare/v0.2.15...v0.2.16) (2026-09-16)
+
+
+### Bug Fixes
+
+* **domain:** unblock domain purchase for PAT-authenticated requests ([#264](https://github.com/godaddy/cli/issues/264)) ([bea9293](https://github.com/godaddy/cli/commit/bea9293a68414e92c4f735d6549a51070786a09b))
+
 ## [0.2.15](https://github.com/godaddy/cli/compare/v0.2.14...v0.2.15) (2026-09-16)
 
 
