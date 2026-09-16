@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.17](https://github.com/godaddy/cli/compare/v0.2.16...v0.2.17) (2026-09-16)
+
+
+### Features
+
+* **shopping:** add Order Management API commands ([#253](https://github.com/godaddy/cli/issues/253)) ([2611a7a](https://github.com/godaddy/cli/commit/2611a7a9aa7dc1c73134b0229848bf545b83f453))
+
 ## [0.2.16](https://github.com/godaddy/cli/compare/v0.2.15...v0.2.16) (2026-09-16)
 
 
