@@ -1,30 +1,24 @@
-mod actions_catalog;
-mod api_explorer;
-mod application;
+mod api;
 mod auth;
 mod config;
-mod contacts;
 mod dns;
 mod domain;
 mod email;
 mod env;
 mod environments;
 mod error;
-mod extension;
 mod hosting;
+mod http;
 mod next_action;
-pub mod onboarding;
 mod output_schema;
 mod pat;
 mod payment_methods;
 mod platform;
-mod quote_cache;
 mod scopes;
 mod scopes_cmd;
 mod summary;
 mod truncation;
 mod update;
-mod webhook;
 
 use std::{io::Write as _, process::ExitCode, sync::Arc};
 
@@ -38,7 +32,7 @@ use crate::next_action::next_action;
 /// [`cli_engine::build_module_group`]), so both draw from exactly one list.
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
-        api_explorer::module(),
+        api::module(),
         dns::module(),
         domain::module(),
         email::module(),

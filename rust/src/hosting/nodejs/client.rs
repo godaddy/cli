@@ -3,7 +3,7 @@ use std::path::Path;
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
-use crate::application::client::make_http_client;
+use crate::http::make_http_client;
 
 const BASE_PATH: &str = "/v1/hosting/nodejs";
 

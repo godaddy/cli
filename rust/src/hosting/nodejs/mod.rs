@@ -14,8 +14,7 @@ use cli_engine::{
 
 use crate::next_action::next_action;
 use crate::{
-    application::client::api_url_for_env, hosting::nodejs::client::HostingClient,
-    output_schema::output_schema,
+    hosting::nodejs::client::HostingClient, http::api_url_for_env, output_schema::output_schema,
 };
 
 use crate::scopes::{HOSTING_APPS_READ as APPS_READ, HOSTING_LOGS_READ as LOGS_READ};
