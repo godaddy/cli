@@ -219,10 +219,11 @@ async fn handle_from_existing(
 
     for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
         if !crate::platform::app::public_url::is_public_routable_url(u) {
-            return Err(cli_engine::CliCoreError::message(format!(
+            return Err(crate::error::GddyError::validation(format!(
                 "Invalid application configuration: {field} must be a publicly-resolvable \
                  http(s) URL (localhost, loopback, and private IPs are not allowed)"
-            )));
+            ))
+            .into_cli_error());
         }
     }
 
@@ -434,10 +435,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
                 if !crate::platform::app::public_url::is_public_routable_url(u) {
-                    return Err(cli_engine::CliCoreError::message(format!(
+                    return Err(crate::error::GddyError::validation(format!(
                         "Invalid application configuration: {field} must be a publicly-resolvable \
                          http(s) URL (localhost, loopback, and private IPs are not allowed)"
-                    )));
+                    ))
+                    .into_cli_error());
                 }
             }
 
