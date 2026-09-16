@@ -1,16 +1,13 @@
 [package]
-name = "domains-client"
-version = "0.2.16"
+name = "shopping-client"
+version = "0.2.12"
 edition = "2024"
 license = "Proprietary"
-description = "Generated GoDaddy Domains API client (domains list + availability + suggest + DNS records), produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
+description = "Generated GoDaddy Shopping API client, produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
 
 [dependencies]
 progenitor-client = "0.14"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
-# Pinned to match cli-engine's schemars so the generated types' derived
-# `JsonSchema` impls satisfy `CommandSpec::with_json_schema::<T>()` (a different
-# schemars major would be a distinct, incompatible trait).
 schemars = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

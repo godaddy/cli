@@ -46,7 +46,7 @@ fn ensure_transport_observer_registered() {
 /// Falls back to 2 for an unrecognized code and for the codes ISO marks with no
 /// minor unit (precious metals `XAU`/`XAG`, the IMF SDR `XDR`, `XXX`, test codes)
 /// — none of which are spendable currencies that could be a domain price.
-fn currency_decimals(code: &str) -> u32 {
+pub(crate) fn currency_decimals(code: &str) -> u32 {
     iso_currency::Currency::from_code(&code.to_ascii_uppercase())
         .and_then(|c| c.exponent())
         .map_or(2, u32::from)
@@ -59,25 +59,64 @@ fn currency_decimals(code: &str) -> u32 {
 /// explicit and `unsigned_abs` avoids `i64::MIN` overflow. `None` when the amount
 /// is absent. Missing currency defaults to 2 decimals.
 pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
-    let value = money.value?;
-    let code = money
-        .currency_code
-        .as_ref()
-        .map(|c| c.as_str())
-        .unwrap_or("");
-    let decimals = currency_decimals(code);
-    let sign = if value < 0 { "-" } else { "" };
-    let abs = value.unsigned_abs();
-    if decimals == 0 {
-        return Some(format!("{sign}{abs}"));
-    }
-    let scale = 10u64.pow(decimals);
-    Some(format!(
-        "{sign}{}.{:0width$}",
-        abs / scale,
-        abs % scale,
-        width = decimals as usize
+    Some(format_minor_units(
+        money.value?,
+        money
+            .currency_code
+            .as_ref()
+            .map(|code| code.as_str())
+            .unwrap_or(""),
+        false,
+        false,
     ))
+}
+
+/// Formats an ISO-4217 minor-unit amount using the shared currency dataset.
+pub(crate) fn format_minor_units(
+    value: i64,
+    currency: &str,
+    include_currency: bool,
+    group_whole: bool,
+) -> String {
+    let decimals = currency_decimals(currency);
+    let sign = if value < 0 { "-" } else { "" };
+    let absolute = value.unsigned_abs();
+    let scale = 10u64.pow(decimals);
+    let whole = if group_whole {
+        grouped_integer(absolute / scale)
+    } else {
+        (absolute / scale).to_string()
+    };
+    let amount = if decimals == 0 {
+        format!("{sign}{whole}")
+    } else {
+        format!(
+            "{sign}{whole}.{:0width$}",
+            absolute % scale,
+            width = decimals as usize
+        )
+    };
+    if include_currency {
+        format!("{currency} {amount}")
+    } else {
+        amount
+    }
+}
+
+fn grouped_integer(value: u64) -> String {
+    let digits = value.to_string();
+    let first_group = digits.len() % 3;
+    let mut output = String::with_capacity(digits.len() + digits.len() / 3);
+    if first_group > 0 {
+        output.push_str(&digits[..first_group]);
+    }
+    for index in (first_group..digits.len()).step_by(3) {
+        if !output.is_empty() {
+            output.push(',');
+        }
+        output.push_str(&digits[index..index + 3]);
+    }
+    output
 }
 
 /// The entry for a specific year-term period (1, 2, …), or `None` when that term

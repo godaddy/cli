@@ -66,7 +66,7 @@ gddy dns delete example.com --type A --name www
 
 ## Hosting
 
-Use the `hosting app restart` command after creating, updating or deleting an application's secrets. 
+Use the `hosting app restart` command after creating, updating or deleting an application's secrets.
 
 ## Global flags
 
