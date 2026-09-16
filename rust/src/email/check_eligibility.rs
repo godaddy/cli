@@ -35,9 +35,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     {
                         client_err_with_fix(
                             e,
-                            "No active email plan found for this domain. \
-                             Run: gddy shopping catalog search --category email \
-                             to see available email plans",
+                            "No active email plans available. \
+                             Run: gddy shopping catalog search --query titan \
+                             to see available email plans. Always list them for the customer to choose from.",
                         )
                     }
                     _ => client_err(e),
