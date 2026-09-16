@@ -12,9 +12,9 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 **Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
 
-**Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish. One app, one subscription.
+**Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish.
 
-**Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot.
+**Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
 ## 1. Create an application
 
