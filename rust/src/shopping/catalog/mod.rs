@@ -1,3 +1,4 @@
+pub(super) mod categories;
 pub(super) mod get;
 pub(super) mod lookup;
 pub(super) mod search;
@@ -9,6 +10,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
         GroupSpec::new("catalog", "Explore GoDaddy's product catalog")
             .with_long("Search GoDaddy's product catalog and retrieve product details."),
     )
+    .with_command(categories::command())
     .with_command(search::command())
     .with_command(lookup::command())
     .with_command(get::command())

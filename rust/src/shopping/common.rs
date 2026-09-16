@@ -22,48 +22,29 @@ pub(crate) fn client_err(error: ClientError) -> CliCoreError {
     GddyError::from(error).into_cli_error()
 }
 
-pub(crate) fn read_json(
-    body: Option<&str>,
-    file: Option<&str>,
-    expected: &'static str,
-) -> Result<Value> {
-    let raw = if let Some(path) = file {
-        std::fs::read_to_string(path).map_err(|error| {
-            GddyError::validation(format!("failed to read JSON file {path:?}: {error}"))
-                .into_cli_error()
-        })?
+pub(crate) fn update_response(checkout: Value) -> Result<Value> {
+    let errors = checkout
+        .get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|message| message.get("type").and_then(Value::as_str) == Some("error"))
+        .filter_map(|message| message.get("content").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    if errors.is_empty() {
+        Ok(checkout)
     } else {
-        body.unwrap_or_default().to_owned()
-    };
-    let value: Value = serde_json::from_str(&raw).map_err(|error| {
-        GddyError::validation(format!("invalid JSON request body: {error}")).into_cli_error()
-    })?;
-    let valid = match expected {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        _ => false,
-    };
-    if valid {
-        Ok(value)
-    } else {
-        Err(
-            GddyError::validation(format!("request body must be a JSON {expected}"))
-                .into_cli_error(),
-        )
+        Err(GddyError::validation(errors.join(" "))
+            .with_fix(
+                "Review the checkout session and update its items, buyer details, currency, or selected payment method before trying again.",
+            )
+            .into_cli_error())
     }
-}
-
-pub(crate) fn has_conflicting_checkout_id(body: &Value, id: &str) -> bool {
-    ["id", "checkout_id"]
-        .iter()
-        .filter_map(|key| body.get(*key).and_then(Value::as_str))
-        .any(|body_id| body_id != id)
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CheckoutInput {
     pub(crate) items: Vec<String>,
-    pub(crate) clear_items: bool,
     pub(crate) currency: Option<String>,
     pub(crate) buyer_first_name: Option<String>,
     pub(crate) buyer_last_name: Option<String>,
@@ -73,46 +54,70 @@ pub(crate) struct CheckoutInput {
 }
 
 impl CheckoutInput {
-    pub(crate) fn is_present(&self) -> bool {
-        !self.items.is_empty()
-            || self.clear_items
-            || self.currency.is_some()
-            || self.buyer_first_name.is_some()
-            || self.buyer_last_name.is_some()
-            || self.buyer_email.is_some()
-            || self.buyer_phone.is_some()
-            || self.payment_instrument.is_some()
-    }
-
     pub(crate) fn create_body(&self) -> Result<Value> {
         if self.items.is_empty() {
-            return Err(GddyError::validation(
-                "checkout create requires at least one --item or a JSON request through --body or --file",
-            )
-            .into_cli_error());
-        }
-        self.body(false)
-    }
-
-    pub(crate) fn update_body(&self) -> Result<Value> {
-        if self.clear_items && !self.items.is_empty() {
             return Err(
-                GddyError::validation("--clear-items cannot be combined with --item")
+                GddyError::validation("checkout create requires at least one --item")
                     .into_cli_error(),
             );
         }
-        if self.items.is_empty() && !self.clear_items {
+        self.body()
+    }
+
+    pub(crate) fn update_body(&self, checkout: &Value) -> Result<Value> {
+        if !self.has_update() {
             return Err(GddyError::validation(
-                "checkout update requires at least one --item or --clear-items when not using --body or --file",
+                "checkout update requires at least one item, buyer, currency, or payment-method change",
             )
             .into_cli_error());
         }
-        self.body(true)
+
+        let mut body = writable_checkout_body(checkout)?;
+        if !self.items.is_empty() {
+            body.insert("line_items".to_owned(), line_items(&self.items)?);
+        }
+        if let Some(currency) = &self.currency {
+            body["context"]["currency"] = Value::String(currency.to_owned());
+        }
+        if self.has_buyer_update() {
+            let buyer = body
+                .entry("buyer".to_owned())
+                .or_insert_with(|| Value::Object(Map::new()))
+                .as_object_mut()
+                .expect("writable checkout buyer is an object");
+            insert_optional_nonblank(buyer, "first_name", self.buyer_first_name.as_deref())?;
+            insert_optional_nonblank(buyer, "last_name", self.buyer_last_name.as_deref())?;
+            insert_optional_nonblank(buyer, "email", self.buyer_email.as_deref())?;
+            insert_optional_nonblank(buyer, "phone_number", self.buyer_phone.as_deref())?;
+        }
+        if let Some(payment_instrument) = &self.payment_instrument {
+            body.insert(
+                "payment".to_owned(),
+                payment_selection_body(nonblank_value(
+                    Some(payment_instrument),
+                    "--payment-instrument must be non-empty",
+                )?),
+            );
+        }
+        Ok(Value::Object(body))
+    }
+
+    fn has_update(&self) -> bool {
+        !self.items.is_empty()
+            || self.currency.is_some()
+            || self.has_buyer_update()
+            || self.payment_instrument.is_some()
+    }
+
+    fn has_buyer_update(&self) -> bool {
+        self.buyer_first_name.is_some()
+            || self.buyer_last_name.is_some()
+            || self.buyer_email.is_some()
+            || self.buyer_phone.is_some()
     }
 
     pub(crate) fn completion_body(&self) -> Result<Value> {
         if !self.items.is_empty()
-            || self.clear_items
             || self.currency.is_some()
             || self.buyer_first_name.is_some()
             || self.buyer_last_name.is_some()
@@ -133,12 +138,10 @@ impl CheckoutInput {
         }))
     }
 
-    fn body(&self, allow_empty_items: bool) -> Result<Value> {
+    fn body(&self) -> Result<Value> {
         let mut body = Map::new();
         if !self.items.is_empty() {
             body.insert("line_items".to_owned(), line_items(&self.items)?);
-        } else if allow_empty_items && self.clear_items {
-            body.insert("line_items".to_owned(), json!([]));
         }
         if let Some(currency) = &self.currency {
             body.insert("context".to_owned(), json!({"currency": currency}));
@@ -159,6 +162,102 @@ impl CheckoutInput {
         }
         Ok(Value::Object(body))
     }
+}
+
+fn writable_checkout_body(checkout: &Value) -> Result<Map<String, Value>> {
+    let line_items = checkout
+        .get("line_items")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            GddyError::unexpected("checkout response did not include line items").into_cli_error()
+        })?
+        .iter()
+        .map(writable_line_item)
+        .collect::<Result<Vec<_>>>()?;
+    let mut body = Map::new();
+    body.insert("line_items".to_owned(), Value::Array(line_items));
+    let mut context = checkout
+        .get("context")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if !context.contains_key("currency")
+        && let Some(currency) = checkout.get("currency").and_then(Value::as_str)
+    {
+        context.insert("currency".to_owned(), Value::String(currency.to_owned()));
+    }
+    body.insert("context".to_owned(), Value::Object(context));
+    if let Some(buyer) = checkout.get("buyer").and_then(Value::as_object) {
+        body.insert("buyer".to_owned(), Value::Object(buyer.clone()));
+    }
+    for key in ["attribution", "fulfillment", "signals"] {
+        if let Some(value) = checkout.get(key) {
+            body.insert(key.to_owned(), value.clone());
+        }
+    }
+    if let Some(payment) = selected_payment(checkout) {
+        body.insert("payment".to_owned(), preserved_payment_body(payment)?);
+    }
+    Ok(body)
+}
+
+fn writable_line_item(line_item: &Value) -> Result<Value> {
+    let item_id = line_item
+        .pointer("/item/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            GddyError::unexpected("checkout response contained a line item without an item ID")
+                .into_cli_error()
+        })?;
+    let quantity = line_item
+        .get("quantity")
+        .and_then(Value::as_u64)
+        .filter(|quantity| *quantity > 0)
+        .ok_or_else(|| {
+            GddyError::unexpected("checkout response contained a line item without a quantity")
+                .into_cli_error()
+        })?;
+    let mut writable = Map::from_iter([
+        ("item".to_owned(), json!({"id": item_id})),
+        ("quantity".to_owned(), json!(quantity)),
+    ]);
+    for key in ["id", "parent_id", "input"] {
+        if let Some(value) = line_item.get(key) {
+            writable.insert(key.to_owned(), value.clone());
+        }
+    }
+    Ok(Value::Object(writable))
+}
+
+fn selected_payment(checkout: &Value) -> Option<&Value> {
+    checkout
+        .pointer("/payment/instruments")
+        .and_then(Value::as_array)
+        .and_then(|instruments| {
+            instruments.iter().find(|instrument| {
+                instrument.get("selected").and_then(Value::as_bool) == Some(true)
+            })
+        })
+}
+
+fn payment_selection_body(instrument_id: &str) -> Value {
+    json!({"instruments": [{"id": instrument_id, "selected": true}]})
+}
+
+fn preserved_payment_body(payment: &Value) -> Result<Value> {
+    let payment_id = payment.get("id").and_then(Value::as_str).ok_or_else(|| {
+        GddyError::unexpected("checkout response contained a selected payment method without an ID")
+            .into_cli_error()
+    })?;
+    let mut instrument = Map::new();
+    for key in ["id", "selected", "handler_id", "type", "billing_address"] {
+        if let Some(value) = payment.get(key) {
+            instrument.insert(key.to_owned(), value.clone());
+        }
+    }
+    instrument.insert("id".to_owned(), Value::String(payment_id.to_owned()));
+    instrument.insert("selected".to_owned(), Value::Bool(true));
+    Ok(json!({"instruments": Value::Array(vec![Value::Object(instrument)])}))
 }
 
 fn line_items(items: &[String]) -> Result<Value> {
@@ -233,19 +332,11 @@ pub(crate) fn merge_context_currency(request: &mut Value, currency: Option<&str>
     };
     let object = request
         .as_object_mut()
-        .expect("read_json validates the request is an object");
+        .expect("checkout request is an object");
     let context = object.entry("context").or_insert_with(|| json!({}));
     let context = context
         .as_object_mut()
         .ok_or_else(|| GddyError::validation("context must be a JSON object").into_cli_error())?;
-    if let Some(existing) = context.get("currency").and_then(Value::as_str)
-        && !existing.eq_ignore_ascii_case(currency)
-    {
-        return Err(GddyError::validation(
-            "--currency conflicts with context.currency in the request body",
-        )
-        .into_cli_error());
-    }
     context.insert("currency".to_owned(), Value::String(currency.to_owned()));
     Ok(())
 }
@@ -259,7 +350,7 @@ pub(crate) fn reject_multiple_payment_instruments(body: &Value) -> Result<()> {
     })?;
     if instruments.len() > 1 {
         return Err(GddyError::validation(
-            "only one payment instrument may be specified for a Shopping checkout",
+            "only one payment instrument may be specified for a checkout session",
         )
         .with_fix(
             "Specify one saved payment instrument, or omit payment until checkout completion.",
@@ -291,21 +382,6 @@ pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
     }
 }
 
-pub(crate) fn reject_mixed_checkout_input(
-    body: Option<&str>,
-    file: Option<&str>,
-    structured_input: bool,
-) -> Result<()> {
-    if structured_input && (body.is_some() || file.is_some()) {
-        Err(GddyError::validation(
-            "use either checkout flags or a JSON request through --body or --file, not both",
-        )
-        .into_cli_error())
-    } else {
-        Ok(())
-    }
-}
-
 pub(crate) fn no_saved_payment_method_action(
     checkout: &Value,
     account_url: &str,
@@ -318,7 +394,7 @@ pub(crate) fn no_saved_payment_method_action(
             next_action(
                 "payment-methods add",
                 format!(
-                    "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout again."
+                    "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout session again."
                 ),
             )
         })
@@ -460,32 +536,88 @@ mod tests {
         );
     }
 
+    fn checkout() -> Value {
+        json!({
+            "line_items": [{
+                "id": "line-1",
+                "item": {"id": "product-1", "title": "Product"},
+                "quantity": 2,
+                "input": {"domain": "example.com"},
+                "included_products": [{"id": "included-product"}],
+                "totals": [{"type": "total", "amount": 100}]
+            }],
+            "context": {"currency": "USD", "language": "en"},
+            "buyer": {"first_name": "Jane", "last_name": "Doe", "email": "jane@example.test"},
+            "payment": {"instruments": [{"id": "payment-1", "selected": true, "description": "Visa"}]}
+        })
+    }
+
     #[test]
-    fn update_requires_cart_intent_and_supports_clear_items() {
+    fn update_rebuilds_full_writable_state_and_merges_explicit_changes() {
+        let body = CheckoutInput {
+            buyer_email: Some("updated@example.test".to_owned()),
+            payment_instrument: Some("payment-2".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("buyer and payment updates should be valid");
+
+        assert_eq!(
+            body,
+            json!({
+                "line_items": [{
+                    "id": "line-1",
+                    "item": {"id": "product-1"},
+                    "quantity": 2,
+                    "input": {"domain": "example.com"}
+                }],
+                "context": {"currency": "USD", "language": "en"},
+                "buyer": {"first_name": "Jane", "last_name": "Doe", "email": "updated@example.test"},
+                "payment": {"instruments": [{"id": "payment-2", "selected": true}]}
+            })
+        );
+    }
+
+    #[test]
+    fn currency_update_preserves_state_and_uses_explicit_payment_selection() {
+        let body = CheckoutInput {
+            currency: Some("GBP".to_owned()),
+            payment_instrument: Some("payment-2".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("currency change with explicit payment should be valid");
+
+        assert_eq!(body["context"]["currency"], "GBP");
+        assert_eq!(body["payment"]["instruments"][0]["id"], "payment-2");
+        assert_eq!(body["line_items"][0]["item"]["id"], "product-1");
+    }
+
+    #[test]
+    fn update_replaces_items_and_retains_other_writable_state() {
+        let body = CheckoutInput {
+            items: vec!["product-2=3".to_owned()],
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("item replacement should be valid");
+        assert_eq!(
+            body["line_items"],
+            json!([{"item": {"id": "product-2"}, "quantity": 3}])
+        );
+        assert_eq!(body["buyer"]["email"], "jane@example.test");
+        assert_eq!(body["payment"]["instruments"][0]["id"], "payment-1");
+    }
+
+    #[test]
+    fn update_rejects_no_changes_or_incomplete_checkout_responses() {
+        assert!(CheckoutInput::default().update_body(&checkout()).is_err());
         assert!(
             CheckoutInput {
                 buyer_email: Some("jane@example.test".to_owned()),
                 ..CheckoutInput::default()
             }
-            .update_body()
-            .is_err()
-        );
-        assert_eq!(
-            CheckoutInput {
-                clear_items: true,
-                ..CheckoutInput::default()
-            }
-            .update_body()
-            .expect("clear-items should be valid"),
-            json!({"line_items": []})
-        );
-        assert!(
-            CheckoutInput {
-                clear_items: true,
-                items: vec!["product".to_owned()],
-                ..CheckoutInput::default()
-            }
-            .update_body()
+            .update_body(&json!({}))
             .is_err()
         );
     }
@@ -508,13 +640,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mixed_checkout_input_sources() {
-        assert!(reject_mixed_checkout_input(Some("{}"), None, true).is_err());
-        assert!(reject_mixed_checkout_input(None, Some("request.json"), true).is_err());
-        assert!(reject_mixed_checkout_input(Some("{}"), Some("request.json"), false).is_ok());
-    }
-
-    #[test]
     fn adds_payment_method_actions_for_resolved_environment_urls() {
         let empty_instruments = json!({"payment": {"instruments": []}});
         for account_url in [
@@ -534,6 +659,18 @@ mod tests {
         assert!(
             no_saved_payment_method_action(&json!({"payment": {}}), "https://account.godaddy.com")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn reports_api_update_errors() {
+        assert!(
+            update_response(json!({
+                "messages": [{"type": "error", "content": "invalid payment"}]
+            }))
+            .expect_err("API error should be reported")
+            .to_string()
+            .contains("invalid payment")
         );
     }
 

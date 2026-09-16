@@ -7,8 +7,10 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("checkout", "Create and manage carts").with_long(
-            "Create and update carts, then place an order after reviewing its payment methods and links. \
+        GroupSpec::new("checkout", "Create and manage checkout sessions").with_long(
+            "A checkout session is your cart. Create or update one, then review its currently selected and \
+             eligible saved payment methods plus important links before placing an order. Checkout responses \
+             show the first five payment methods by default; use --show-all-payment-instruments for all. \
              Use `shopping order get` to review a completed purchase.",
         ),
     )

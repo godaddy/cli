@@ -1,92 +1,33 @@
-use cli_engine::{
-    CommandResult, CommandSpec, ModuleContext, NextActionParam, RuntimeCommandSpec, Tier,
-};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
-    CheckoutInput, has_conflicting_checkout_id, make_client, read_json,
-    reject_mixed_checkout_input, require_selected_payment_instrument,
+    CheckoutInput, client_err, make_client, require_selected_payment_instrument,
+};
+use crate::shopping::human::{
+    CHECKOUT_COMPLETE_VIEW_ID, checkout_completion_response, selected_payment_id,
 };
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
-    /// Cart ID.
+    /// Checkout session ID.
     #[arg(value_name = "CHECKOUT_ID")]
     id: String,
 
-    /// Saved payment method ID to use for this purchase.
+    /// Saved payment method ID to use for this purchase. Omit to use the currently selected method.
     #[arg(long, value_name = "INSTRUMENT_ID")]
     payment_instrument: Option<String>,
 
-    /// Acknowledge the cart's terms and other important links.
+    /// Acknowledge the checkout session's terms and other important links.
     #[arg(long)]
     agree: bool,
 
-    /// Completion request as raw JSON for advanced payment or billing-address fields.
+    /// Billing address as a JSON object. Supported fields: first_name, last_name, phone_number, street_address, extended_address, address_locality, address_region, postal_code, address_country.
     #[arg(long, value_name = "JSON")]
-    body: Option<String>,
-
-    /// Path to a JSON completion request. Takes precedence over --body.
-    #[arg(long, value_name = "PATH")]
-    file: Option<String>,
-}
-
-const HUMAN_VIEW_ID: &str = "shopping-checkout-complete";
-
-pub(crate) fn register_human_view(ctx: &mut ModuleContext<'_>) {
-    ctx.middleware_mut()
-        .human_views
-        .register_func(HUMAN_VIEW_ID, render_human);
-}
-
-// The transport key is an implementation detail, not customer-facing output.
-fn human_response(completion: &Value) -> Value {
-    json!({
-        "cart_id": completion.get("id").and_then(Value::as_str).unwrap_or_default(),
-        "status": completion.get("status").and_then(Value::as_str).unwrap_or_default(),
-        "order_id": completion.pointer("/order/id").and_then(Value::as_str),
-        "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
-        "total": crate::shopping::money::format_total(
-            completion.get("totals"),
-            completion.get("currency").and_then(Value::as_str),
-        ),
-    })
-}
-
-fn render_human(completion: &Value) -> String {
-    if let Some(action) = completion.get("action").and_then(Value::as_str) {
-        return format!(
-            "{action}\nCart: {}\n",
-            completion
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-        );
-    }
-    let mut output = format!(
-        "Cart: {}\nStatus: {}\n",
-        completion
-            .get("cart_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        completion
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-    );
-    if let Some(order_id) = completion.get("order_id").and_then(Value::as_str) {
-        output.push_str(&format!("Order: {order_id}\n"));
-    }
-    if let Some(permalink) = completion.get("order_permalink").and_then(Value::as_str) {
-        output.push_str(&format!("View order: {permalink}\n"));
-    }
-    if let Some(total) = completion.get("total").and_then(Value::as_str) {
-        output.push_str(&format!("Total: {total}\n"));
-    }
-    output
+    billing_address: Option<String>,
 }
 
 fn completion_error(error: ClientError) -> cli_engine::CliCoreError {
@@ -101,25 +42,85 @@ fn public_completion_body(body: &Value) -> Value {
     body
 }
 
+fn selected_payment_body(checkout: &Value) -> cli_engine::Result<Value> {
+    let payment_instrument = selected_payment_id(checkout).ok_or_else(|| {
+        crate::error::GddyError::validation("no payment method is selected for this checkout session")
+            .with_fix(
+                "Select one with `shopping checkout update <checkout-id> --payment-instrument <payment-instrument-id>`.",
+            )
+            .into_cli_error()
+    })?;
+    Ok(json!({"payment": {"instruments": [{"id": payment_instrument, "selected": true}]}}))
+}
+
+const BILLING_ADDRESS_FIELDS: &[&str] = &[
+    "first_name",
+    "last_name",
+    "phone_number",
+    "street_address",
+    "extended_address",
+    "address_locality",
+    "address_region",
+    "postal_code",
+    "address_country",
+];
+
+fn billing_address(input: Option<&str>) -> cli_engine::Result<Option<Value>> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+    let address: Value = serde_json::from_str(input).map_err(|error| {
+        crate::error::GddyError::validation(format!("invalid --billing-address JSON: {error}"))
+            .into_cli_error()
+    })?;
+    let address = address.as_object().ok_or_else(|| {
+        crate::error::GddyError::validation("--billing-address must be a JSON object")
+            .into_cli_error()
+    })?;
+    if address.is_empty() {
+        return Err(crate::error::GddyError::validation(
+            "--billing-address must contain at least one address field",
+        )
+        .into_cli_error());
+    }
+    for (field, value) in address {
+        if !BILLING_ADDRESS_FIELDS.contains(&field.as_str()) {
+            return Err(crate::error::GddyError::validation(format!(
+                "--billing-address does not support field {field:?}"
+            ))
+            .with_fix(format!("Use only: {}.", BILLING_ADDRESS_FIELDS.join(", ")))
+            .into_cli_error());
+        }
+        if !value.is_string() || value.as_str().is_none_or(|value| value.trim().is_empty()) {
+            return Err(crate::error::GddyError::validation(format!(
+                "--billing-address field {field:?} must be a non-empty string"
+            ))
+            .into_cli_error());
+        }
+    }
+    Ok(Some(Value::Object(address.clone())))
+}
+
 fn agreement_gate(agree: bool) -> cli_engine::Result<()> {
     if agree {
         return Ok(());
     }
     Err(crate::error::GddyError::validation(
-        "placing an order requires acknowledging the cart's terms and important links",
+        "placing an order requires acknowledging the checkout session's terms and important links",
     )
     .with_fix(
-        "Review the cart with `shopping checkout get <checkout-id>`, then re-run with --agree.",
+        "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree.",
     )
     .into_cli_error())
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("complete", "Place an order with the contents of your cart")
+        CommandSpec::from_args::<Args>("complete", "Place an order from a checkout session")
             .with_long(
-                "Place an order with a selected saved payment method. Review the cart and its links \
-                 first, then use --agree to acknowledge them.",
+                "Place an order with the checkout session's selected saved payment method, or use \
+                 --payment-instrument to select one. Review the checkout session and its links first, \
+                 then use --agree to acknowledge them.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -127,25 +128,26 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .handles_dry_run(true)
             .with_scopes(SHOPPING_SCOPES)
             .auth_optional()
-            .with_view_id(HUMAN_VIEW_ID),
+            .with_view_id(CHECKOUT_COMPLETE_VIEW_ID),
         |ctx, args: Args| async move {
             agreement_gate(args.agree)?;
-            let payment_instrument = args.payment_instrument;
-            let input = CheckoutInput {
-                payment_instrument,
-                ..CheckoutInput::default()
-            };
-            reject_mixed_checkout_input(args.body.as_deref(), args.file.as_deref(), input.is_present())?;
-            let mut body = if args.body.is_some() || args.file.is_some() {
-                read_json(args.body.as_deref(), args.file.as_deref(), "object")?
+            let billing_address = billing_address(args.billing_address.as_deref())?;
+            let mut body = if let Some(payment_instrument) = args.payment_instrument {
+                CheckoutInput {
+                    payment_instrument: Some(payment_instrument),
+                    ..CheckoutInput::default()
+                }
+                .completion_body()?
             } else {
-                input.completion_body()?
+                let checkout = make_client(&ctx)
+                    .await?
+                    .get_checkout(&args.id)
+                    .await
+                    .map_err(client_err)?;
+                selected_payment_body(&checkout)?
             };
-            if has_conflicting_checkout_id(&body, &args.id) {
-                return Err(crate::error::GddyError::validation(
-                    "cart ID in request body conflicts with CHECKOUT_ID",
-                )
-                .into_cli_error());
+            if let Some(billing_address) = billing_address {
+                body["payment"]["instruments"][0]["billing_address"] = billing_address;
             }
             require_selected_payment_instrument(&body)?;
             let idempotency_key = uuid::Uuid::new_v4().to_string();
@@ -180,7 +182,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ]
             });
             let output = if ctx.middleware.output_format == "human" {
-                human_response(&completion)
+                checkout_completion_response(&completion)
             } else {
                 completion
             };
@@ -201,8 +203,46 @@ mod tests {
     }
 
     #[test]
-    fn human_view_shows_completion_total_only_with_currency() {
-        let output = render_human(&human_response(&json!({
+    fn validates_billing_address() {
+        let address = billing_address(Some(
+            r#"{"street_address":"123 Main St","address_locality":"Mountain View","address_country":"US"}"#,
+        ))
+        .expect("valid billing address")
+        .expect("provided address");
+
+        assert_eq!(address["address_locality"], "Mountain View");
+        assert!(billing_address(Some("[]")).is_err());
+        assert!(billing_address(Some(r#"{"city":"Mountain View"}"#)).is_err());
+        assert!(billing_address(Some(r#"{"street_address":""}"#)).is_err());
+    }
+
+    #[test]
+    fn builds_completion_body_from_currently_selected_payment_method() {
+        let body = selected_payment_body(&json!({
+            "payment": {"instruments": [
+                {"id": "payment-1", "selected": false},
+                {"id": "payment-2", "selected": true}
+            ]}
+        }))
+        .expect("selected payment method should be used");
+
+        assert_eq!(
+            body,
+            json!({"payment": {"instruments": [{"id": "payment-2", "selected": true}]}})
+        );
+    }
+
+    #[test]
+    fn selected_payment_method_is_required_when_completion_omits_one() {
+        let error = selected_payment_body(&json!({"payment": {"instruments": []}}))
+            .expect_err("a selected payment method is required");
+
+        assert!(error.to_string().contains("no payment method is selected"));
+    }
+
+    #[test]
+    fn human_response_shows_completion_total_only_with_currency() {
+        let response = checkout_completion_response(&json!({
             "id": "checkout-1",
             "status": "completed",
             "currency": "GBP",
@@ -211,22 +251,22 @@ mod tests {
                 {"type": "tax", "amount": 0},
                 {"type": "total", "amount": 4788}
             ]
-        })));
+        }));
 
-        assert!(output.contains("Total: GBP 47.88"));
-        assert!(!output.contains("Subtotal:"));
-        assert!(!output.contains("Tax:"));
+        assert_eq!(response["total"], "GBP 47.88");
+        assert!(!response.to_string().contains("subtotal"));
+        assert!(!response.to_string().contains("tax"));
     }
 
     #[test]
-    fn human_view_omits_completion_total_without_currency() {
-        let output = render_human(&human_response(&json!({
+    fn human_response_omits_completion_total_without_currency() {
+        let response = checkout_completion_response(&json!({
             "id": "checkout-1",
             "status": "completed",
             "totals": [{"type": "total", "amount": 4788}]
-        })));
+        }));
 
-        assert!(!output.contains("Total:"));
-        assert!(!output.contains("4788"));
+        assert!(response.get("total").is_some_and(Value::is_null));
+        assert!(!response.to_string().contains("4788"));
     }
 }
