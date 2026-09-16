@@ -19,19 +19,19 @@
     {
       "comment": "TODO: get list of reviewers for DNS",
       "label": "dns",
-      "patterns": ["rust/src/dns/*"],
+      "patterns": ["rust/src/dns/**"],
       "users": []
     },
     {
       "comment": "TODO: get list of reviewers for domains",
       "label": "domains",
-      "patterns": ["rust/domains-client/*", "rust/src/domain/*"],
+      "patterns": ["rust/domains-client/**", "rust/src/domain/**"],
       "users": []
     },
     {
       "comment": "gddy email commands",
       "label": "email",
-      "patterns": ["rust/src/email/*"],
+      "patterns": ["rust/src/email/**"],
       "users": [
         "sgimpel-godaddy",
         "srao-godaddy"
@@ -40,7 +40,7 @@
     {
       "comment": "gddy hosting commands",
       "label": "hosting",
-      "patterns": ["rust/src/hosting/*"],
+      "patterns": ["rust/src/hosting/**"],
       "users": [
         "apetrovic-godaddy",
         "jhenderson1-godaddy"
@@ -50,9 +50,9 @@
       "comment": "gddy payment_methods and shopping commands",
       "label": "ecomm",
       "patterns": [
-        "rust/shopping-client/*",
-        "rust/src/payment_methods/*",
-        "rust/src/shopping/*"
+        "rust/shopping-client/**",
+        "rust/src/payment_methods/**",
+        "rust/src/shopping/**"
       ],
       "users": [
         "jrogers1-godaddy",
@@ -64,7 +64,7 @@
       "comment": "gddy platform commands",
       "label": "platform",
       "patterns": [
-        "rust/src/platform/*"
+        "rust/src/platform/**"
       ],
       "users": [
         "dsingh5-godaddy",

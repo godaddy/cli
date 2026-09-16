@@ -12,7 +12,7 @@ If you are a new developer on this project, read the following to get started:
 
 If you are doing agentic coding and see your agent struggling with following standards correctly, contributions to [`AGENTS.md`](../AGENTS.md) are greatly appreciated.
 
-See the [New product onboarding guide](#new-developer-onboarding) if you're adding a set of commands for a new product/service.
+See the [New product onboarding guide](#new-product-onboarding) if you're adding a set of commands for a new product/service.
 
 ## New product onboarding
 
@@ -50,4 +50,4 @@ The [`CODEOWNERS`](../.github/CODEOWNERS) file is auto-generated. It merges toge
 To update this file:
 
 1. Edit [`reviewers.json`](../.github/scripts/reviewers.json) to add per-product paths, reviewer GitHub usernames, or new per-product config sections. Sort entries alphabetically so it's easy to navigate.
-2. Run `sh .github/scripts/generate-codeowners.sh` to regenerate the file from that configuration.
+2. Run `bash .github/scripts/generate-codeowners.sh` to regenerate the file from that configuration (it uses Bash-only features, so plain `sh` fails on some systems).

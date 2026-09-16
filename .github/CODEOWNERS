@@ -19,23 +19,23 @@
 # Product paths with an assigned team, if one has been assigned yet — infra always requested, plus the product team's owners once its users list is non-empty.
 
 # dns — TODO: get list of reviewers for DNS
-rust/src/dns/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
+rust/src/dns/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
 
 # domains — TODO: get list of reviewers for domains
-rust/domains-client/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
-rust/src/domain/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
+rust/domains-client/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
+rust/src/domain/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
 
 # email — gddy email commands
-rust/src/email/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @sgimpel-godaddy @srao-godaddy
+rust/src/email/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @sgimpel-godaddy @srao-godaddy
 
 # hosting — gddy hosting commands
-rust/src/hosting/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @apetrovic-godaddy @jhenderson1-godaddy
+rust/src/hosting/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @apetrovic-godaddy @jhenderson1-godaddy
 
 # ecomm — gddy payment_methods and shopping commands
-rust/shopping-client/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
-rust/src/payment_methods/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
-rust/src/shopping/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
+rust/shopping-client/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
+rust/src/payment_methods/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
+rust/src/shopping/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
 
 # platform — gddy platform commands
-rust/src/platform/* @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @dsingh5-godaddy @jpearlman-godaddy @nmolham-godaddy @sgopalan-godaddy @smukherjee-godaddy @tmittal-godaddy @wcole1-godaddy
+rust/src/platform/** @axburgess-godaddy @jpage-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @dsingh5-godaddy @jpearlman-godaddy @nmolham-godaddy @sgopalan-godaddy @smukherjee-godaddy @tmittal-godaddy @wcole1-godaddy
 
