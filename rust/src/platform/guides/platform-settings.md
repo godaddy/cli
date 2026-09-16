@@ -28,7 +28,7 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
 
 3. **Release** — `gddy platform app release --application-id <id> --version <version>` resends every setting in `godaddy.toml`, same as it does for actions/subscriptions/extensions. It rejects any settings entry with neither `presentation` nor `presentationFile` (`{"error":{"code":"VALIDATION_ERROR","message":"settings 'godaddy-tax' has no presentation — add a [settings.presentation] block or a presentationFile before releasing"}}`).
 
-4. **Enable/backfill** — `gddy platform app enable <name> --store-id <storeId>` makes the placement discoverable for a store. Settings (like actions/subscriptions/uiExtensions) are keyed per-release with no inheritance — a store already enabled against an older release doesn't pick up settings added in a newer one until `enable` is re-run for that store.
+4. **Enable/backfill** — `gddy platform app enable <name> --store-id <storeId>` makes the placement discoverable for a store. Confirm with `gddy platform app enablements --store-id <storeId>` (lists apps currently enabled on that store). Settings (like actions/subscriptions/uiExtensions) are keyed per-release with no inheritance — a store already enabled against an older release doesn't pick up settings added in a newer one until `enable` is re-run for that store.
 
 ## Presentation shape
 
@@ -153,5 +153,5 @@ Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ mi
 ## Gotchas
 
 - **No release inheritance.** `release` resends every current setting from `godaddy.toml`; leaving one out doesn't archive it globally, but any store enabled against the *new* release loses it.
-- **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active — re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill.
+- **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active — re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill, then `gddy platform app enablements --store-id <storeId>` to confirm.
 - **`presentation`/`presentationFile` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`) — it only fails at `release`, with the message shown above.

@@ -2,7 +2,6 @@ mod dereference;
 mod domains_merge;
 mod github;
 mod graphql;
-mod hosting_spec;
 mod manifest;
 mod openapi;
 mod shopping_merge;
@@ -71,11 +70,6 @@ fn resolve_output_dir() -> PathBuf {
     manifest_dir.join("../../schemas/api")
 }
 
-fn resolve_hosting_spec_path() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.join("../../schemas/openapi/hosting-nodejs-public-v1.yaml")
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -83,8 +77,6 @@ fn resolve_hosting_spec_path() -> PathBuf {
 fn main() -> Result<()> {
     let output_dir = resolve_output_dir();
     std::fs::create_dir_all(&output_dir).context("failed to create output dir")?;
-
-    hosting_spec::refresh(&resolve_hosting_spec_path())?;
 
     let source_manifest = load_source_manifest()?;
     eprintln!("Discovering specification repositories...");

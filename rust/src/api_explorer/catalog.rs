@@ -189,10 +189,6 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
         "transactions",
         include_str!("../../schemas/api/transactions.json"),
     ),
-    (
-        "hosting-nodejs",
-        include_str!("../../schemas/api/hosting-nodejs.json"),
-    ),
     ("domains", include_str!("../../schemas/api/domains.json")),
 ];
 

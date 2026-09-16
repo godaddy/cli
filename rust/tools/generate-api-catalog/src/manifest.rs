@@ -77,7 +77,7 @@ mod tests {
         let manifest = load_source_manifest().expect("load source manifest");
         let expected = manifest.expected_domains();
 
-        assert_eq!(expected.len(), 22);
+        assert_eq!(expected.len(), 21);
         assert_eq!(manifest.remote.len(), 22);
         assert_eq!(
             manifest
@@ -87,13 +87,6 @@ mod tests {
                 .count(),
             1
         );
-        assert_eq!(
-            manifest
-                .local
-                .iter()
-                .map(|source| source.domain.as_str())
-                .collect::<Vec<_>>(),
-            ["hosting-nodejs"]
-        );
+        assert!(manifest.local.is_empty());
     }
 }

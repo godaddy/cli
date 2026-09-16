@@ -17,11 +17,12 @@ output_schema!(ApplicationInit {
     "name": "string";
     "status": "string";
     "clientId": "string";
-    "orgId": "string";
+    "orgId": "string", optional;
     "url": "string";
     "proxyUrl": "string";
     "authorizationScopes": "[]string";
-    "oauthGrantTypes": "[]string";
+    "oauthGrantTypes": "[]string", optional;
+    "subscriptions": "[]object", optional;
     "filesWritten": "object";
 });
 
@@ -39,6 +40,14 @@ output_schema!(ApplicationUpdate {
 
 output_schema!(ApplicationRef {
     "id": "string";
+});
+
+output_schema!(StoreEnablement {
+    "name": "string";
+    "status": "string";
+    "releaseVersion": "string", optional;
+    "id": "string", optional;
+    "label": "string", optional;
 });
 
 output_schema!(ApplicationArchive {

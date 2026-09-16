@@ -10,6 +10,7 @@ mod add;
 mod add_extension;
 mod config;
 mod deploy;
+mod enablements;
 mod info;
 mod init;
 mod lifecycle;
@@ -81,6 +82,7 @@ pub fn application_group() -> RuntimeGroupSpec {
     .with_command(update::command())
     .with_command(lifecycle::enable_command())
     .with_command(lifecycle::disable_command())
+    .with_command(enablements::command())
     .with_command(lifecycle::archive_command())
     .with_command(release::command())
     .with_command(deploy::command())
