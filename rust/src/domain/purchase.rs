@@ -33,9 +33,18 @@ fn iso_datetime(now: chrono::DateTime<chrono::Utc>) -> String {
 /// non-customer subject is rejected with a clear local error *before* the paid
 /// call and before the cached quote is consumed. `agreedBy` is server-derived
 /// from the request's auth context (the API no longer accepts a caller-supplied
-/// consent principal), so the returned id isn't sent anywhere — this is purely a
-/// fail-fast check.
-fn consent_principal(cred: &Credential) -> Result<String> {
+/// consent principal), so nothing is returned — this is purely a fail-fast
+/// check.
+///
+/// PAT credentials are exempt. A PAT is opaque to the CLI, so
+/// [`crate::auth`]'s `pat_credential` leaves `sub` empty even though the
+/// gateway resolves the token to a customer and derives `agreedBy` from it.
+/// Applying the subject check to a PAT would fail every PAT-authenticated
+/// purchase locally, rejecting a request the register endpoint accepts.
+fn validate_consent_identity(cred: &Credential) -> Result<()> {
+    if cred.provider == crate::pat::PROVIDER {
+        return Ok(());
+    }
     let id = cred
         .sub
         .strip_prefix("customer:")
@@ -57,7 +66,7 @@ fn consent_principal(cred: &Credential) -> Result<String> {
             cred.sub
         )));
     }
-    Ok(id.to_owned())
+    Ok(())
 }
 
 /// Description for the `domain get <domain>` next-action, tailored to whether
@@ -188,11 +197,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Resolve auth *before* consuming the cached quote, so a token that
             // isn't customer-scoped fails locally rather than after the cache
             // entry (and the ~10-minute quote window) is spent. The register
-            // endpoint derives `agreedBy` server-side, so only the validation
-            // (the early return on error) is needed here — the customer id
-            // itself is intentionally discarded.
+            // endpoint derives `agreedBy` server-side, so this is validation
+            // only — no identity is carried into the request.
             let cred = ctx.credential().await?;
-            let _customer_id = consent_principal(&cred)?;
+            validate_consent_identity(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
@@ -423,7 +431,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{consent_principal, iso_datetime, next_action_description, purchase_consent_types};
+    use super::{
+        iso_datetime, next_action_description, purchase_consent_types, validate_consent_identity,
+    };
     use cli_engine::Credential;
     use domains_client::types;
 
@@ -506,28 +516,56 @@ mod tests {
     }
 
     #[test]
-    fn consent_principal_strips_customer_urn_prefix() {
+    fn consent_identity_accepts_customer_urn_and_rejects_other_subjects() {
         let cred = Credential {
             sub: "customer:56fd82e4-1c45-4596-865d-317235015b2f".to_string(),
             ..Default::default()
         };
-        assert_eq!(
-            consent_principal(&cred).expect("customer subject"),
-            "56fd82e4-1c45-4596-865d-317235015b2f"
-        );
+        assert!(validate_consent_identity(&cred).is_ok());
+
         let shopper = Credential {
             sub: "shopper:12345".to_string(),
             ..Default::default()
         };
-        assert!(consent_principal(&shopper).is_err());
+        assert!(validate_consent_identity(&shopper).is_err());
 
         // A customer subject that isn't a UUID must fail fast before the paid call.
         let not_uuid = Credential {
             sub: "customer:12345".to_string(),
             ..Default::default()
         };
-        let err = consent_principal(&not_uuid).expect_err("non-uuid customer subject");
+        let err = validate_consent_identity(&not_uuid).expect_err("non-uuid customer subject");
         assert!(err.to_string().contains("not a valid UUID"), "{err}");
+    }
+
+    /// A PAT carries no readable subject claim, so the customer-subject check
+    /// must not apply to it — the gateway resolves the PAT to a customer and
+    /// derives `agreedBy` itself. Without this exemption every
+    /// PAT-authenticated `domain purchase` fails locally on an empty `sub`,
+    /// even though the register endpoint accepts the request.
+    #[test]
+    fn consent_identity_exempts_pat_credentials_with_no_subject() {
+        let pat = Credential {
+            provider: crate::pat::PROVIDER.to_string(),
+            sub: String::new(),
+            ..Default::default()
+        };
+        assert!(
+            validate_consent_identity(&pat).is_ok(),
+            "a PAT credential must pass the consent-identity check"
+        );
+
+        // The exemption is keyed on the provider, not on `sub` being empty: an
+        // OAuth credential that somehow has no subject must still be rejected.
+        let oauth_no_sub = Credential {
+            provider: "godaddy".to_string(),
+            sub: String::new(),
+            ..Default::default()
+        };
+        assert!(
+            validate_consent_identity(&oauth_no_sub).is_err(),
+            "an empty subject is only acceptable for a PAT"
+        );
     }
 
     #[test]
