@@ -100,21 +100,39 @@ impl ShoppingClient {
         response(self.client()?.get_product().body(body).send().await).await
     }
 
-    pub async fn create_checkout(&self, body: Value) -> Result<Value, ClientError> {
+    pub async fn create_checkout(
+        &self,
+        body: Value,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
         let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
-        response(self.client()?.create_checkout().body(body).send().await).await
+        response(
+            self.client()?
+                .create_checkout()
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await
     }
 
     pub async fn get_checkout(&self, id: &str) -> Result<Value, ClientError> {
         response(self.client()?.get_checkout().id(id).send().await).await
     }
 
-    pub async fn update_checkout(&self, id: &str, body: Value) -> Result<Value, ClientError> {
+    pub async fn update_checkout(
+        &self,
+        id: &str,
+        body: Value,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
         let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
         response(
             self.client()?
                 .update_checkout()
                 .id(id)
+                .idempotency_key(idempotency_key)
                 .body(body)
                 .send()
                 .await,
@@ -301,7 +319,11 @@ mod tests {
                     "address_locality": "Mountain View",
                     "address_country": "US"
                 }
-            }]}
+            }]},
+            "consent": {
+                "agreement_types": ["terms", "ssl"],
+                "agreed_at": "2026-09-15T12:00:00Z"
+            }
         });
         let encoded_completion: shopping_client::types::CheckoutCompleteRequest =
             deserialize(completion_request.clone()).expect("valid completion request");
@@ -314,7 +336,8 @@ mod tests {
                 when.method(POST)
                     .path("/v1/shopping/checkout-sessions")
                     .header("authorization", "Bearer test-token")
-                    .header_exists("x-request-id");
+                    .header_exists("x-request-id")
+                    .header("idempotency-key", "customer-key");
                 then.status(201).json_body(json!({"id": "checkout-123"}));
             })
             .await;
@@ -332,7 +355,8 @@ mod tests {
                 when.method(PUT)
                     .path("/v1/shopping/checkout-sessions/checkout-123")
                     .header("authorization", "Bearer test-token")
-                    .header_exists("x-request-id");
+                    .header_exists("x-request-id")
+                    .header("idempotency-key", "customer-key");
                 then.status(200).json_body(json!({"id": "checkout-123"}));
             })
             .await;
@@ -349,12 +373,12 @@ mod tests {
 
         let shopping = client(&server.base_url());
         shopping
-            .create_checkout(checkout_request.clone())
+            .create_checkout(checkout_request.clone(), "customer-key")
             .await
             .expect("create");
         shopping.get_checkout("checkout-123").await.expect("get");
         shopping
-            .update_checkout("checkout-123", checkout_request)
+            .update_checkout("checkout-123", checkout_request, "customer-key")
             .await
             .expect("update");
         shopping
@@ -411,7 +435,7 @@ mod tests {
         let shopping = client(&server.base_url());
         assert_eq!(
             shopping
-                .create_checkout(json!({}))
+                .create_checkout(json!({}), "customer-key")
                 .await
                 .expect("empty create"),
             Value::Null
@@ -522,7 +546,7 @@ mod tests {
             .await;
 
         let error = client(&server.base_url())
-            .update_checkout("checkout-123", json!({}))
+            .update_checkout("checkout-123", json!({}), "customer-key")
             .await
             .expect_err("400 is an error");
 

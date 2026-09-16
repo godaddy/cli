@@ -64,8 +64,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "Add one or more purchase options to a checkout session. Repeat --item for multiple \
                  purchase options and append =QUANTITY when needed. Creating a checkout session does not \
                  place an order. Its response shows the currently selected and eligible saved payment methods \
-                 (the first five by default; use --show-all-payment-instruments for all) and important links \
-                 to review before placing an order.",
+                 (the first five by default; use --show-all-payment-instruments for all), required agreements, \
+                 and important links to review before placing an order.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -95,7 +95,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .with_dry_run());
             }
             let client = make_client(&ctx).await?;
-            let checkout = client.create_checkout(body).await.map_err(client_err)?;
+            let checkout = client
+                .create_checkout(body, &uuid::Uuid::new_v4().to_string())
+                .await
+                .map_err(client_err)?;
             let ready_for_complete =
                 checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
             let checkout_id = checkout
@@ -111,7 +114,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 actions.push(
                     next_action(
                         "shopping checkout complete <checkout-id> --agree",
-                        "Place an order after reviewing the checkout session and its terms",
+                        "Place an order after reviewing the checkout session and its required agreements",
                     )
                     .with_param("checkout-id", NextActionParam::value(checkout_id)),
                 );

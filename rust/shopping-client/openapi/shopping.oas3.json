@@ -1781,6 +1781,12 @@
           },
           "ucp": {
             "$ref": "#/components/schemas/ucp_response_checkout_schema"
+          },
+          "required_agreements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/shopping_required_agreement"
+            }
           }
         },
         "title": "Checkout",
@@ -1795,14 +1801,14 @@
           "attribution": {
             "$ref": "#/components/schemas/ucp-refs_schema_attribution"
           },
-          "idempotency_key": {
-            "type": "string"
-          },
           "payment": {
             "$ref": "#/components/schemas/ucp-refs_schema_payment"
           },
           "signals": {
             "$ref": "#/components/schemas/ucp-refs_schema_signals"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/shopping_consent_acceptance"
           }
         },
         "title": "Checkout Complete request",
@@ -4612,6 +4618,40 @@
         ],
         "title": "Warning Code",
         "type": "string"
+      },
+      "shopping_consent_acceptance": {
+        "type": "object",
+        "properties": {
+          "agreement_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agreed_at": {
+            "type": "string"
+          }
+        }
+      },
+      "shopping_required_agreement": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -5330,7 +5370,16 @@
       "post": {
         "description": "UCP-native `dev.ucp.shopping.checkout` capability. Version 1 creates\nCheckout directly with required `line_items[]` containing selected\nVariant IDs; no Cart conversion is advertised. `buyer`/`context` are\noptional (a buyer may be linked now, or left anonymous and linked\nlater, any time before `complete_checkout`). For an authenticated buyer,\nthe response returns all eligible saved payment instruments in canonical\ndeterministic handler order. If `payment` is omitted, the first eligible\ninstrument is selected. If `payment` explicitly selects an instrument,\nit must be owned by the buyer and eligible; invalid explicit selection\nproduces a recoverable error and never silently falls back. The response\n`status` reflects the checkout state machine (`incomplete`,\n`requires_escalation`, `ready_for_complete`,\n`complete_in_progress`, `completed`, `canceled`); `messages[]`\nwith `requires_buyer_input`/`requires_buyer_review` severity drive\n`requires_escalation`, in which case `continue_url` MUST be\npresent. A line item's extension `input` MUST validate against the\nselected variant's `input_schema`. A missing required value or\ninvalid input is rejected with a `recoverable` message and the\nsession stays `incomplete` — see `update_checkout` below for the\nsame rule on subsequent adds.\n",
         "operationId": "create_checkout",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5814,6 +5863,14 @@
             "description": "The unique identifier of the checkout session.",
             "in": "path",
             "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
             "required": true,
             "schema": {
               "type": "string"
