@@ -32,7 +32,7 @@ gddy hosting operation get --operation-id <operation-id>
 
 ## 2. Upload source code
 
-You can upload again later to the same app. Each upload replaces PREVIEW.
+Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
 ```sh
 gddy hosting source upload --app-id <app-id> --file ./app.zip
