@@ -1,0 +1,35 @@
+name: CODEOWNERS drift
+
+# Regenerates .github/CODEOWNERS from reviewers.json and fails if the
+# committed file is out of sync — same regenerate-then-diff shape as
+# catalog-drift.yml, but purely local (no upstream fetch), so no schedule.
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Regenerate CODEOWNERS from reviewers.json
+        run: ./.github/scripts/generate-codeowners.sh
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --quiet -- .github/CODEOWNERS; then
+            echo "::error::.github/CODEOWNERS is stale vs .github/scripts/reviewers.json. Regenerate with .github/scripts/generate-codeowners.sh and commit."
+            git diff -- .github/CODEOWNERS
+            exit 1
+          fi
+          echo "CODEOWNERS is in sync with reviewers.json."

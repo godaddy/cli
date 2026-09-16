@@ -10,7 +10,6 @@ use domains_client::types;
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::quote_cache;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 
 output_schema!(DomainPurchaseResult {
@@ -161,22 +160,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
             // a failed charge leaves the quote reusable.
-            let cached = match quote_cache::get(&quote_token) {
-                quote_cache::Lookup::Found(q) => *q,
-                quote_cache::Lookup::Expired => {
+            let cached = match super::quote_cache::get(&quote_token) {
+                super::quote_cache::Lookup::Found(q) => *q,
+                super::quote_cache::Lookup::Expired => {
                     return Err(CliCoreError::message(
                         "that quote has expired (quotes last ~10 minutes). Re-run \
                              `gddy domain quote <domain>` for a fresh quote and token.",
                     ));
                 }
-                quote_cache::Lookup::Missing => {
+                super::quote_cache::Lookup::Missing => {
                     return Err(CliCoreError::message(
                         "no cached quote for that token. Run `gddy domain quote <domain>` \
                              first — quotes are cached locally, so quote and purchase must run \
                              on the same machine within the token's ~10-minute lifetime.",
                     ));
                 }
-                quote_cache::Lookup::NoConfigDir => {
+                super::quote_cache::Lookup::NoConfigDir => {
                     return Err(CliCoreError::message(
                         "could not locate a config directory to read the quote cache from. \
                              `domain purchase` needs the local quote written by `domain quote`; \
@@ -282,7 +281,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             };
             // The token is consumed server-side on a successful execute, so drop
             // our cached copy too (single-use).
-            quote_cache::remove(&quote_token);
+            super::quote_cache::remove(&quote_token);
             let price = cached.price.clone();
             let currency = cached.currency.clone();
 

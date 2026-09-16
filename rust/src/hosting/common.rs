@@ -1,8 +1,8 @@
 use cli_engine::{CliCoreError, CommandContext};
 use serde_json::Value;
 
-use crate::application::client::api_url_for_env;
 use crate::hosting::client::{ClientError, HostingClient};
+use crate::http::api_url_for_env;
 use crate::output_schema::output_schema;
 
 output_schema!(HostingAppSummary {
