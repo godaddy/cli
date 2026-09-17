@@ -730,7 +730,7 @@ mod tests {
             Some("GBP".to_owned())
         );
         assert_eq!(
-            body.0.payment.as_ref().unwrap().0.instruments[0].id,
+            body.0.payment.as_ref().expect("payment").0.instruments[0].id,
             Some("payment-2".to_owned())
         );
         assert_eq!(
@@ -769,7 +769,7 @@ mod tests {
             Some("jane@example.test".to_owned())
         );
         assert_eq!(
-            body.0.payment.unwrap().0.instruments[0].id,
+            body.0.payment.expect("payment").0.instruments[0].id,
             Some("payment-1".to_owned())
         );
     }
