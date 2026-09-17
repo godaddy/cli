@@ -19,7 +19,8 @@ use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
 
-const CATALOG_CATEGORY_LIMIT: u8 = 50;
+const CATALOG_CATEGORY_LIMIT: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(50).expect("CATALOG_CATEGORY_LIMIT is nonzero");
 const CACHE_FILE_NAME: &str = "shopping-catalog-categories.json";
 const CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -74,8 +75,7 @@ async fn refresh_categories(
     let client = make_client(ctx).await?;
     let request = CatalogSearchSearchRequest {
         pagination: Some(PaginationRequest {
-            limit: std::num::NonZeroU64::new(u64::from(CATALOG_CATEGORY_LIMIT))
-                .expect("CATALOG_CATEGORY_LIMIT is nonzero"),
+            limit: CATALOG_CATEGORY_LIMIT,
             ..Default::default()
         }),
         ..Default::default()

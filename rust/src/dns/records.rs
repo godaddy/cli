@@ -25,7 +25,8 @@ pub(super) const LISTABLE_TYPES: &[&str] = &[
 pub(super) const DEFAULT_TTL: i64 = 3600;
 /// Page size for the paginated v3 list; the handler pages through until every
 /// matching record is collected.
-const LIST_PAGE_SIZE: i64 = 100;
+const LIST_PAGE_SIZE: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(100).expect("LIST_PAGE_SIZE is nonzero");
 
 /// clap value-parser for a mutating `--type` (`add`/`set`/`delete`): validate
 /// against [`WRITABLE_TYPES`] and return the canonical upper-case wire string.
@@ -371,8 +372,6 @@ pub(super) async fn fetch_records(
     name: Option<&str>,
     debug: bool,
 ) -> Result<Vec<types::DnsRecord>, CliCoreError> {
-    let page_size = std::num::NonZeroU64::new(LIST_PAGE_SIZE as u64)
-        .expect("LIST_PAGE_SIZE is a positive constant");
     let mut all = Vec::new();
     let mut page: u64 = 1;
     loop {
@@ -381,7 +380,7 @@ pub(super) async fn fetch_records(
             .list_dns_records()
             .zone(zone)
             .page(page_nz)
-            .page_size(page_size)
+            .page_size(LIST_PAGE_SIZE)
             .total_required(true);
         if let Some(t) = type_ {
             req = req.type_(types::DnsRecordType(t.to_owned()));
@@ -401,7 +400,7 @@ pub(super) async fn fetch_records(
         let last = body
             .total_pages
             .map(|tp| page >= tp.get())
-            .unwrap_or(got < LIST_PAGE_SIZE as usize);
+            .unwrap_or(got < LIST_PAGE_SIZE.get() as usize);
         if last || got == 0 {
             break;
         }
