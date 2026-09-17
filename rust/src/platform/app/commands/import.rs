@@ -132,6 +132,204 @@ fn import_view_columns() -> Vec<TableColumn> {
     ]
 }
 
+/// Reads the local manifest at `config_path`, if one exists. Only a missing
+/// file is treated as "nothing to preserve" — a manifest that exists but
+/// fails to parse/validate/read is a fatal error, since silently ignoring it
+/// would let this command overwrite an unreadable manifest and discard
+/// whatever locally-authored sections it held.
+fn read_existing_config(
+    config_path: &std::path::Path,
+) -> cli_engine::Result<Option<crate::config::Config>> {
+    match crate::config::read_config(config_path) {
+        Ok(cfg) => Ok(Some(cfg)),
+        Err(crate::config::ConfigError::NotFound { .. }) => Ok(None),
+        Err(e) => Err(crate::error::GddyError::config(format!(
+            "failed to read existing config at {}: {e}",
+            config_path.display()
+        ))
+        .into_cli_error()),
+    }
+}
+
+/// Guards against carrying a *different* application's locally-authored
+/// sections (actions, dependencies, extensions, settings, version) into the
+/// application being imported, e.g. running `import b` in a directory whose
+/// `godaddy.toml` still describes application `a`. Returns `None` when there
+/// is nothing to preserve (no existing manifest, or one that's confirmed to
+/// belong to `name`).
+fn existing_config_for(
+    existing: Option<crate::config::Config>,
+    name: &str,
+    force: bool,
+) -> cli_engine::Result<Option<crate::config::Config>> {
+    let Some(cfg) = existing else {
+        return Ok(None);
+    };
+    if cfg.name == name {
+        return Ok(Some(cfg));
+    }
+    if !force {
+        return Err(cli_engine::CliCoreError::message(format!(
+            "godaddy.toml in this directory belongs to application '{}', not '{name}'. Re-run \
+             in a directory with '{name}''s manifest (or none), or pass --force to overwrite it \
+             and discard '{}'s locally-authored sections (actions, dependencies, extensions, \
+             settings).",
+            cfg.name, cfg.name
+        )));
+    }
+    tracing::warn!(
+        existing_app = %cfg.name,
+        importing_app = %name,
+        "existing godaddy.toml belongs to a different application; discarding its \
+         locally-authored sections"
+    );
+    Ok(None)
+}
+
+/// Shared by the `import` command and `init --from-existing`'s deprecated
+/// forwarding alias. Read-only against the API (no `createApplication`, no
+/// `.env` write); safe to re-run to re-sync webhook subscriptions after a
+/// new release.
+pub(super) async fn run(
+    ctx: &cli_engine::CommandContext,
+    name: String,
+    force: bool,
+) -> cli_engine::Result<CommandResult> {
+    let env = ctx.middleware.env.clone();
+    let config_path = crate::config::config_path(Some(&env));
+
+    let client = super::make_client(ctx).await?;
+    let data = client
+        .get_application_with_releases(&name)
+        .await
+        .map_err(super::client_err)?;
+    let app = &data["application"];
+    if app.is_null() {
+        return Err(
+            crate::error::GddyError::not_found(format!("application '{name}' not found"))
+                .into_cli_error(),
+        );
+    }
+
+    let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
+    let description = app["description"].as_str().unwrap_or("").to_owned();
+    let url = app["url"].as_str().unwrap_or("").to_owned();
+    let proxy_url = app["proxyUrl"].as_str().unwrap_or("").to_owned();
+    let scopes: Vec<String> = app["authorizationScopes"]
+        .as_array()
+        .map(|scopes| {
+            scopes
+                .iter()
+                .filter_map(|s| s.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
+        if !crate::platform::app::public_url::is_public_routable_url(u) {
+            return Err(cli_engine::CliCoreError::message(format!(
+                "Invalid application configuration: {field} must be a publicly-resolvable \
+                 http(s) URL (localhost, loopback, and private IPs are not allowed)"
+            )));
+        }
+    }
+
+    let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
+
+    // Preserve locally-authored fields the API doesn't track (actions,
+    // dependencies, extensions, settings), if a godaddy.toml for *this*
+    // application already exists; this command only syncs identity, version,
+    // and webhook subscriptions, not the whole manifest.
+    let existing = read_existing_config(&config_path)?;
+    let existing = existing_config_for(existing, &name, force)?;
+
+    if let Some(existing_cfg) = &existing {
+        let local_webhooks = existing_cfg
+            .subscriptions
+            .as_ref()
+            .map(|s| s.webhook.as_slice())
+            .unwrap_or_default();
+        let at_risk = subscriptions_at_risk(local_webhooks, &webhook_subscriptions);
+        if !at_risk.is_empty() && !force {
+            confirm_overwrite_or_abort(ctx, &name, &at_risk)?;
+        }
+    }
+
+    // Get latest release version from app; fall back to the local manifest's
+    // version (e.g. an app with no release yet), then to a fresh-manifest default.
+    let version = latest_release(app)
+        .and_then(|node| node["version"].as_str())
+        .map(str::to_owned)
+        .or_else(|| existing.as_ref().map(|c| c.version.clone()))
+        .unwrap_or_else(|| "0.0.0".to_owned());
+    let actions = existing
+        .as_ref()
+        .map(|c| c.actions.clone())
+        .unwrap_or_default();
+    let dependencies = existing
+        .as_ref()
+        .map(|c| c.dependencies.clone())
+        .unwrap_or_default();
+    let settings = existing
+        .as_ref()
+        .map(|c| c.settings.clone())
+        .unwrap_or_default();
+    let extensions = existing.and_then(|c| c.extensions);
+
+    let config = crate::config::Config {
+        name: name.clone(),
+        client_id,
+        description: Some(description),
+        version,
+        url: url.clone(),
+        proxy_url: proxy_url.clone(),
+        authorization_scopes: scopes.clone(),
+        actions,
+        subscriptions: Some(crate::config::SubscriptionsConfig {
+            webhook: webhook_subscriptions.clone(),
+        }),
+        dependencies,
+        extensions,
+        settings,
+    };
+
+    crate::config::write_config(&config_path, &config).map_err(|e| {
+        crate::error::GddyError::config(format!("failed to write config: {e}")).into_cli_error()
+    })?;
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let subscriptions_json: Vec<_> = webhook_subscriptions
+        .iter()
+        .map(|s| json!({ "name": s.name, "url": s.url, "events": s.events }))
+        .collect();
+
+    Ok(CommandResult::new(json!({
+        "id": app["id"].as_str().unwrap_or("").to_owned(),
+        "name": name,
+        "status": app["status"].as_str().unwrap_or("").to_owned(),
+        "clientId": config.client_id,
+        "url": url,
+        "proxyUrl": proxy_url,
+        "authorizationScopes": scopes,
+        "subscriptions": subscriptions_json,
+        "filesWritten": {
+            "config": cwd.join(&config_path).display().to_string(),
+        },
+    }))
+    .with_next_actions(vec![
+        next_action(
+            "platform app validate <name>",
+            "Validate the remote application state",
+        )
+        .with_param("name", required_value(&name)),
+        next_action(
+            "platform app info --name <name>",
+            "Inspect application details",
+        )
+        .with_param("name", required_value(&name)),
+    ]))
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ImportArgs, _, _, _>(
         CommandSpec::from_args::<ImportArgs>(
@@ -146,149 +344,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             (actions, dependencies, extensions, settings). Read-only against the API (no \
             application is created, no .env is written), so it's safe to re-run to \
             re-sync webhook subscriptions after a new release. Use `gddy platform app \
-            update` to change description/url/proxy-url/scopes.",
+            update` to change label/description; url, proxy-url, and scopes are not \
+            currently editable after registration.",
         )
         .with_system("applications")
         .with_tier(Tier::Mutate)
         .with_scopes(&[APP_REGISTRY_READ])
         .with_output_schema::<ApplicationImport>()
         .with_view(import_view_columns()),
-        |ctx, args: ImportArgs| async move {
-            let env = ctx.middleware.env.clone();
-            let config_path = crate::config::config_path(Some(&env));
-            let name = args.name;
-
-            let client = super::make_client(&ctx).await?;
-            let data = client
-                .get_application_with_releases(&name)
-                .await
-                .map_err(super::client_err)?;
-            let app = &data["application"];
-            if app.is_null() {
-                return Err(crate::error::GddyError::not_found(format!(
-                    "application '{name}' not found"
-                ))
-                .into_cli_error());
-            }
-
-            let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
-            let description = app["description"].as_str().unwrap_or("").to_owned();
-            let url = app["url"].as_str().unwrap_or("").to_owned();
-            let proxy_url = app["proxyUrl"].as_str().unwrap_or("").to_owned();
-            let scopes: Vec<String> = app["authorizationScopes"]
-                .as_array()
-                .map(|scopes| {
-                    scopes
-                        .iter()
-                        .filter_map(|s| s.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
-                if !crate::platform::app::public_url::is_public_routable_url(u) {
-                    return Err(cli_engine::CliCoreError::message(format!(
-                        "Invalid application configuration: {field} must be a publicly-resolvable \
-                         http(s) URL (localhost, loopback, and private IPs are not allowed)"
-                    )));
-                }
-            }
-
-            let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
-
-            // Preserve locally-authored fields the API doesn't track (actions,
-            // dependencies, extensions, settings), if a godaddy.toml already exists;
-            // this command only syncs identity, version, and webhook subscriptions,
-            // not the whole manifest.
-            let existing = crate::config::read_config(&config_path).ok();
-
-            if let Some(existing_cfg) = &existing {
-                let local_webhooks = existing_cfg
-                    .subscriptions
-                    .as_ref()
-                    .map(|s| s.webhook.as_slice())
-                    .unwrap_or_default();
-                let at_risk = subscriptions_at_risk(local_webhooks, &webhook_subscriptions);
-                if !at_risk.is_empty() && !args.force {
-                    confirm_overwrite_or_abort(&ctx, &name, &at_risk)?;
-                }
-            }
-
-            // Get latest release version from app; fall back to the local manifest's
-            // version (e.g. an app with no release yet), then to a fresh-manifest default.
-            let version = latest_release(app)
-                .and_then(|node| node["version"].as_str())
-                .map(str::to_owned)
-                .or_else(|| existing.as_ref().map(|c| c.version.clone()))
-                .unwrap_or_else(|| "0.0.0".to_owned());
-            let actions = existing
-                .as_ref()
-                .map(|c| c.actions.clone())
-                .unwrap_or_default();
-            let dependencies = existing
-                .as_ref()
-                .map(|c| c.dependencies.clone())
-                .unwrap_or_default();
-            let settings = existing
-                .as_ref()
-                .map(|c| c.settings.clone())
-                .unwrap_or_default();
-            let extensions = existing.and_then(|c| c.extensions);
-
-            let config = crate::config::Config {
-                name: name.clone(),
-                client_id,
-                description: Some(description),
-                version,
-                url: url.clone(),
-                proxy_url: proxy_url.clone(),
-                authorization_scopes: scopes.clone(),
-                actions,
-                subscriptions: Some(crate::config::SubscriptionsConfig {
-                    webhook: webhook_subscriptions.clone(),
-                }),
-                dependencies,
-                extensions,
-                settings,
-            };
-
-            crate::config::write_config(&config_path, &config).map_err(|e| {
-                crate::error::GddyError::config(format!("failed to write config: {e}"))
-                    .into_cli_error()
-            })?;
-
-            let cwd = std::env::current_dir().unwrap_or_default();
-            let subscriptions_json: Vec<_> = webhook_subscriptions
-                .iter()
-                .map(|s| json!({ "name": s.name, "url": s.url, "events": s.events }))
-                .collect();
-
-            Ok(CommandResult::new(json!({
-                "id": app["id"].as_str().unwrap_or("").to_owned(),
-                "name": name,
-                "status": app["status"].as_str().unwrap_or("").to_owned(),
-                "clientId": config.client_id,
-                "url": url,
-                "proxyUrl": proxy_url,
-                "authorizationScopes": scopes,
-                "subscriptions": subscriptions_json,
-                "filesWritten": {
-                    "config": cwd.join(&config_path).display().to_string(),
-                },
-            }))
-            .with_next_actions(vec![
-                next_action(
-                    "platform app validate <name>",
-                    "Validate the remote application state",
-                )
-                .with_param("name", required_value(&name)),
-                next_action(
-                    "platform app info --name <name>",
-                    "Inspect application details",
-                )
-                .with_param("name", required_value(&name)),
-            ]))
-        },
+        |ctx, args: ImportArgs| async move { run(&ctx, args.name, args.force).await },
     )
 }
 
@@ -297,10 +361,10 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        import_view_columns, latest_release, subscriptions_at_risk,
-        subscriptions_from_latest_release,
+        existing_config_for, import_view_columns, latest_release, read_existing_config,
+        subscriptions_at_risk, subscriptions_from_latest_release,
     };
-    use crate::config::SubscriptionConfig;
+    use crate::config::{Config, SubscriptionConfig};
 
     fn import_clap_command() -> clap::Command {
         super::command().spec.clap_command()
@@ -311,6 +375,23 @@ mod tests {
             name: name.to_owned(),
             url: url.to_owned(),
             events: events.iter().map(|e| (*e).to_owned()).collect(),
+        }
+    }
+
+    fn config_for(name: &str) -> Config {
+        Config {
+            name: name.to_owned(),
+            client_id: "client-1".to_owned(),
+            description: None,
+            version: "1.0.0".to_owned(),
+            url: "https://example.com".to_owned(),
+            proxy_url: "https://proxy.example.com".to_owned(),
+            authorization_scopes: vec![],
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions: None,
+            settings: vec![],
         }
     }
 
@@ -429,5 +510,60 @@ mod tests {
             cli_engine::render_human_with_view(&envelope, Some(&import_view_columns()), "");
         assert!(rendered.contains("Files Written:"), "{rendered}");
         assert!(rendered.contains("godaddy.toml"), "{rendered}");
+    }
+
+    #[test]
+    fn read_existing_config_treats_a_missing_file_as_none() {
+        let dir =
+            std::env::temp_dir().join(format!("gddy-import-test-missing-{}", std::process::id()));
+        let path = dir.join("godaddy.toml");
+        assert!(
+            read_existing_config(&path)
+                .expect("missing file is not an error")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn read_existing_config_propagates_parse_errors_instead_of_swallowing_them() {
+        let dir =
+            std::env::temp_dir().join(format!("gddy-import-test-corrupt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("godaddy.toml");
+        std::fs::write(&path, "this is not valid toml {{{").expect("write corrupt config");
+
+        let err = read_existing_config(&path)
+            .expect_err("a corrupt (but present) manifest must not be treated as \"no config\"");
+        assert!(err.to_string().contains("failed to read existing config"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn existing_config_for_preserves_a_matching_manifest() {
+        let existing = Some(config_for("demo"));
+        let result = existing_config_for(existing, "demo", false)
+            .expect("matching name should be preserved");
+        assert_eq!(result.map(|c| c.name), Some("demo".to_owned()));
+    }
+
+    #[test]
+    fn existing_config_for_rejects_a_mismatched_manifest_without_force() {
+        let existing = Some(config_for("app-a"));
+        let err = existing_config_for(existing, "app-b", false)
+            .expect_err("importing a different app over an existing manifest must be rejected");
+        assert!(err.to_string().contains("app-a"));
+        assert!(err.to_string().contains("app-b"));
+    }
+
+    #[test]
+    fn existing_config_for_discards_a_mismatched_manifest_with_force() {
+        let existing = Some(config_for("app-a"));
+        let result = existing_config_for(existing, "app-b", true)
+            .expect("force should allow overwriting a different application's manifest");
+        assert!(
+            result.is_none(),
+            "a different application's local sections must not be carried over, even with force"
+        );
     }
 }

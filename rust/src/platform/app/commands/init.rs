@@ -44,6 +44,26 @@ struct InitArgs {
     /// is still pending (required for non-TTY).
     #[arg(long)]
     accept_agreements: bool,
+
+    /// [DEPRECATED: use `gddy platform app import <name>`] Fetch an
+    /// already-registered application's remote config and its latest
+    /// release's webhook subscriptions into godaddy.toml, instead of
+    /// creating a new application.
+    #[arg(
+        long,
+        value_name = "NAME",
+        conflicts_with_all = [
+            "accept_agreements", "name", "config", "label", "description", "url", "proxy_url",
+            "scopes",
+        ]
+    )]
+    from_existing: Option<String>,
+
+    /// With --from-existing, skip the confirmation/abort when the local
+    /// godaddy.toml has webhook subscriptions not present in the
+    /// application's latest published release.
+    #[arg(long, requires = "from_existing")]
+    force: bool,
 }
 
 /// `filesWritten` is a small path-by-kind object (`config`/`env`), so it
@@ -83,6 +103,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<ApplicationInit>()
             .with_view(init_view_columns()),
         |ctx, args: InitArgs| async move {
+            if let Some(name) = args.from_existing {
+                tracing::warn!(
+                    "`init --from-existing` is deprecated and will be removed in a future \
+                     release; use `gddy platform app import {name}` instead"
+                );
+                return super::import::run(&ctx, name, args.force).await;
+            }
+
             let env = ctx.middleware.env.clone();
             let config_path = crate::config::config_path(Some(&env));
 
