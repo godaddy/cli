@@ -1,0 +1,80 @@
+{
+  "comment": "Source of truth for .github/CODEOWNERS, generated via generate-codeowners.sh. Please sort values for easier maintenance. Plain JSON has no comment syntax, so use \"comment\" properties where you need to leave a note.",
+
+  "fallbackPattern": "*",
+
+  "infra": {
+    "comment": "Always-required infra sign-off group.",
+    "users": [
+      "axburgess-godaddy",
+      "jpage-godaddy",
+      "jpearlman-godaddy",
+      "mguerrero3-godaddy",
+      "qcai-godaddy",
+      "rts1-godaddy",
+      "runruh-godaddy"
+    ]
+  },
+
+  "productPaths": [
+    {
+      "comment": "TODO: get list of reviewers for DNS",
+      "label": "dns",
+      "patterns": ["rust/src/dns/**"],
+      "users": []
+    },
+    {
+      "comment": "TODO: get list of reviewers for domains",
+      "label": "domains",
+      "patterns": ["rust/domains-client/**", "rust/src/domain/**"],
+      "users": []
+    },
+    {
+      "comment": "gddy email commands",
+      "label": "email",
+      "patterns": ["rust/src/email/**"],
+      "users": [
+        "sgimpel-godaddy",
+        "srao-godaddy"
+      ]
+    },
+    {
+      "comment": "gddy hosting commands",
+      "label": "hosting",
+      "patterns": ["rust/src/hosting/**"],
+      "users": [
+        "apetrovic-godaddy",
+        "jhenderson1-godaddy"
+      ]
+    },
+    {
+      "comment": "gddy payment_methods and shopping commands",
+      "label": "ecomm",
+      "patterns": [
+        "rust/shopping-client/**",
+        "rust/src/payment_methods/**",
+        "rust/src/shopping/**"
+      ],
+      "users": [
+        "jrogers1-godaddy",
+        "mbansiwal-godaddy",
+        "sswaminathan-godaddy"
+      ]
+    },
+    {
+      "comment": "gddy platform commands",
+      "label": "platform",
+      "patterns": [
+        "rust/src/platform/**"
+      ],
+      "users": [
+        "dsingh5-godaddy",
+        "nmolham-godaddy",
+        "sgopalan-godaddy",
+        "smukherjee-godaddy",
+        "tmittal-godaddy",
+        "wcole1-godaddy"
+      ]
+    }
+  ]
+}

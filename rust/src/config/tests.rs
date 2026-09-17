@@ -1,0 +1,561 @@
+use super::settings_form::{
+    SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
+};
+use super::*;
+
+fn valid_config() -> Config {
+    Config {
+        name: "my-app".to_owned(),
+        client_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+        description: Some("test".to_owned()),
+        version: "1.2.3".to_owned(),
+        url: "https://example.com".to_owned(),
+        proxy_url: "https://proxy.example.com".to_owned(),
+        authorization_scopes: vec!["openid".to_owned()],
+        actions: vec![],
+        subscriptions: None,
+        dependencies: vec![],
+        extensions: None,
+        settings: vec![],
+        native_extension: None,
+    }
+}
+
+#[test]
+fn relativize_webhook_url_reduces_same_host_url_to_a_path() {
+    assert_eq!(
+        relativize_webhook_url(
+            "https://proxy.example.com/webhooks/orders",
+            "https://proxy.example.com"
+        ),
+        "/webhooks/orders"
+    );
+}
+
+#[test]
+fn relativize_webhook_url_keeps_query_and_fragment() {
+    assert_eq!(
+        relativize_webhook_url(
+            "https://proxy.example.com/webhooks/orders?x=1#frag",
+            "https://proxy.example.com"
+        ),
+        "/webhooks/orders?x=1#frag"
+    );
+}
+
+#[test]
+fn relativize_webhook_url_leaves_cross_host_url_unchanged() {
+    assert_eq!(
+        relativize_webhook_url(
+            "https://elsewhere.example.com/webhooks/orders",
+            "https://proxy.example.com"
+        ),
+        "https://elsewhere.example.com/webhooks/orders"
+    );
+}
+
+#[test]
+fn relativize_webhook_url_leaves_unparsable_url_unchanged() {
+    assert_eq!(
+        relativize_webhook_url("not a url", "https://proxy.example.com"),
+        "not a url"
+    );
+}
+
+#[test]
+fn env_path_matches_convention() {
+    use std::path::Path;
+    assert_eq!(env_path(None), Path::new(".env"));
+    assert_eq!(env_path(Some("prod")), Path::new(".env"));
+    assert_eq!(env_path(Some("ote")), Path::new(".env.ote"));
+}
+
+#[test]
+fn merge_env_content_writes_fresh_keys() {
+    let result = merge_env_content(None, "secret", "pubkey", "cid", "csecret");
+    assert!(result.contains(r#"GODADDY_WEBHOOK_SECRET="secret""#));
+    assert!(result.contains(r#"GODADDY_PUBLIC_KEY="pubkey""#));
+    assert!(result.contains(r#"GODADDY_CLIENT_ID="cid""#));
+    assert!(result.contains(r#"GODADDY_CLIENT_SECRET="csecret""#));
+}
+
+#[test]
+fn merge_env_content_preserves_existing() {
+    let existing = "FOO=bar\n# note\nGODADDY_CLIENT_ID=\"old\"";
+    let result = merge_env_content(Some(existing), "secret", "pubkey", "new_cid", "csecret");
+    assert!(result.contains("FOO=bar"));
+    assert!(result.contains("# note"));
+    assert!(result.contains(r#"GODADDY_CLIENT_ID="new_cid""#));
+    assert!(!result.contains("\"old\""));
+}
+
+#[test]
+fn merge_env_content_dedupes_owned_keys() {
+    let existing = "GODADDY_CLIENT_ID=a\nGODADDY_CLIENT_ID=b";
+    let result = merge_env_content(Some(existing), "s", "p", "new", "cs");
+    assert_eq!(result.matches("GODADDY_CLIENT_ID=").count(), 1);
+    assert!(result.contains(r#"GODADDY_CLIENT_ID="new""#));
+}
+
+#[test]
+fn validate_accepts_a_well_formed_config() {
+    valid_config().validate().expect("valid config should pass");
+}
+
+fn native_extension(
+    name: Option<&str>,
+    support_contact: &str,
+    android_package_name: &str,
+) -> NativeExtensionConfig {
+    NativeExtensionConfig {
+        name: name.map(str::to_owned),
+        support_contact: support_contact.to_owned(),
+        android_package_name: android_package_name.to_owned(),
+    }
+}
+
+#[test]
+fn validate_accepts_native_extension_with_optional_name_omitted() {
+    let mut config = valid_config();
+    config.native_extension = Some(native_extension(
+        None,
+        "support@example.com",
+        "com.example.app",
+    ));
+    config
+        .validate()
+        .expect("native_extension with no name should pass");
+}
+
+#[test]
+fn validate_rejects_empty_native_extension_support_contact() {
+    let mut config = valid_config();
+    config.native_extension = Some(native_extension(None, "", "com.example.app"));
+    let err = config
+        .validate()
+        .expect_err("empty support_contact must fail");
+    assert!(
+        err.to_string().contains("native_extension.support_contact"),
+        "{err}"
+    );
+}
+
+#[test]
+fn validate_rejects_empty_native_extension_android_package_name() {
+    let mut config = valid_config();
+    config.native_extension = Some(native_extension(None, "support@example.com", ""));
+    let err = config
+        .validate()
+        .expect_err("empty android_package_name must fail");
+    assert!(
+        err.to_string()
+            .contains("native_extension.android_package_name"),
+        "{err}"
+    );
+}
+
+#[test]
+fn native_extension_name_omitted_deserializes_as_none() {
+    let raw = r#"
+name = "my-app"
+client_id = "550e8400-e29b-41d4-a716-446655440000"
+version = "1.2.3"
+url = "https://example.com"
+proxy_url = "https://proxy.example.com"
+authorization_scopes = ["openid"]
+
+[native_extension]
+support_contact = "support@example.com"
+android_package_name = "com.example.app"
+"#;
+    let config: Config = toml::from_str(raw).expect("parse");
+    config.validate().expect("validate");
+    let native = config.native_extension.expect("section present");
+    assert_eq!(native.name, None);
+    assert_eq!(native.support_contact, "support@example.com");
+    assert_eq!(native.android_package_name, "com.example.app");
+}
+
+#[test]
+fn native_extension_name_present_round_trips_through_toml() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    let mut config = valid_config();
+    config.native_extension = Some(native_extension(
+        Some("My Display Name"),
+        "support@example.com",
+        "com.example.app",
+    ));
+    write_config(&path, &config).expect("write");
+    let read_back = read_config(&path).expect("read");
+    let native = read_back.native_extension.expect("section present");
+    assert_eq!(native.name.as_deref(), Some("My Display Name"));
+    assert_eq!(native.support_contact, "support@example.com");
+    assert_eq!(native.android_package_name, "com.example.app");
+}
+
+#[test]
+fn read_config_rejects_native_extension_missing_support_contact() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    std::fs::write(
+        &path,
+        r#"
+name = "my-app"
+client_id = "550e8400-e29b-41d4-a716-446655440000"
+version = "1.2.3"
+url = "https://example.com"
+proxy_url = "https://proxy.example.com"
+authorization_scopes = ["openid"]
+
+[native_extension]
+android_package_name = "com.example.app"
+"#,
+    )
+    .expect("write");
+    let err = read_config(&path)
+        .expect_err("missing support_contact must fail at parse, not the network");
+    assert!(
+        matches!(err, ConfigError::Parse(_)),
+        "expected parse error, got {err:?}"
+    );
+}
+
+#[test]
+fn validate_rejects_invalid_name() {
+    let mut config = valid_config();
+    config.name = "AB".to_owned();
+    let err = config.validate().expect_err("uppercase/short name");
+    assert!(err.to_string().contains("name must match"), "{err}");
+}
+
+#[test]
+fn is_valid_app_name_pattern() {
+    assert!(is_valid_app_name("my-app"));
+    assert!(is_valid_app_name("abc"));
+    assert!(is_valid_app_name(&"a".repeat(255)));
+    assert!(!is_valid_app_name(""));
+    assert!(!is_valid_app_name("ab"));
+    assert!(!is_valid_app_name("AB"));
+    assert!(!is_valid_app_name("MyApp"));
+    assert!(!is_valid_app_name("my_app"));
+    assert!(!is_valid_app_name(&"a".repeat(256)));
+}
+
+#[test]
+fn validate_rejects_non_v4_uuid_client_id() {
+    let mut config = valid_config();
+    config.client_id = "550e8400-e29b-11d4-a716-446655440000".to_owned();
+    let err = config.validate().expect_err("uuid v1");
+    assert!(err.to_string().contains("client_id"), "{err}");
+}
+
+#[test]
+fn validate_rejects_non_semver_version() {
+    let mut config = valid_config();
+    config.version = "1.0".to_owned();
+    let err = config.validate().expect_err("incomplete semver");
+    assert!(err.to_string().contains("version"), "{err}");
+}
+
+#[test]
+fn validate_rejects_non_absolute_urls() {
+    let mut config = valid_config();
+    config.url = "/relative".to_owned();
+    let err = config.validate().expect_err("relative url");
+    assert!(
+        err.to_string()
+            .contains("url must be an absolute http(s) URL"),
+        "{err}"
+    );
+}
+
+#[test]
+fn validate_rejects_non_http_url_schemes() {
+    let mut config = valid_config();
+    config.url = "ftp://files.example.com/app".to_owned();
+    config.proxy_url = "file:///tmp/proxy".to_owned();
+    let err = config.validate().expect_err("non-http schemes");
+    let msg = err.to_string();
+    assert!(msg.contains("url must be an absolute http(s) URL"), "{msg}");
+    assert!(
+        msg.contains("proxy_url must be an absolute http(s) URL"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn validate_rejects_non_http_endpoint_scheme() {
+    let mut config = valid_config();
+    config.actions.push(ActionConfig {
+        name: "sync".to_owned(),
+        url: "ftp://files.example.com/sync".to_owned(),
+    });
+    let err = config.validate().expect_err("ftp action endpoint");
+    assert!(err.to_string().contains("actions[0].url"), "{err}");
+}
+
+#[test]
+fn validate_rejects_uuid_with_non_rfc4122_variant() {
+    let mut config = valid_config();
+    config.client_id = "550e8400-e29b-41d4-c716-446655440000".to_owned();
+    let err = config.validate().expect_err("bad uuid variant");
+    assert!(err.to_string().contains("client_id"), "{err}");
+}
+
+#[test]
+fn validate_rejects_empty_authorization_scopes() {
+    let mut config = valid_config();
+    config.authorization_scopes.clear();
+    let err = config.validate().expect_err("empty scopes");
+    assert!(err.to_string().contains("authorization_scopes"), "{err}");
+}
+
+#[test]
+fn validate_rejects_short_action_name_and_bad_endpoint() {
+    let mut config = valid_config();
+    config.actions.push(ActionConfig {
+        name: "ab".to_owned(),
+        url: "https://not a url".to_owned(),
+    });
+    let err = config.validate().expect_err("bad action");
+    let msg = err.to_string();
+    assert!(msg.contains("actions[0].name"), "{msg}");
+    assert!(msg.contains("actions[0].url"), "{msg}");
+}
+
+#[test]
+fn validate_accepts_proxy_relative_action_url() {
+    let mut config = valid_config();
+    config.actions.push(ActionConfig {
+        name: "sync".to_owned(),
+        url: "/actions/sync".to_owned(),
+    });
+    config.validate().expect("proxy-relative action url");
+}
+
+#[test]
+fn validate_rejects_subscription_without_events() {
+    let mut config = valid_config();
+    config.subscriptions = Some(SubscriptionsConfig {
+        webhook: vec![SubscriptionConfig {
+            name: "hook".to_owned(),
+            events: vec![],
+            url: "/hooks".to_owned(),
+        }],
+    });
+    let err = config.validate().expect_err("empty events");
+    assert!(err.to_string().contains("events"), "{err}");
+}
+
+#[test]
+fn validate_rejects_dependency_with_bad_semver() {
+    let mut config = valid_config();
+    config.dependencies.push(DependenciesConfig {
+        app: vec![DependencyConfig {
+            name: "other-app".to_owned(),
+            version: Some("not-semver".to_owned()),
+        }],
+        feature: vec![],
+    });
+    let err = config.validate().expect_err("bad dep version");
+    assert!(
+        err.to_string().contains("dependencies[0].app[0].version"),
+        "{err}"
+    );
+}
+
+#[test]
+fn validate_rejects_embed_without_targets() {
+    let mut config = valid_config();
+    config.extensions = Some(ExtensionsConfig {
+        embed: vec![EmbedExtensionConfig {
+            name: "panel".to_owned(),
+            handle: "panel-handle".to_owned(),
+            source: "ext/index.tsx".to_owned(),
+            targets: vec![],
+        }],
+        checkout: vec![],
+        blocks: None,
+    });
+    let err = config.validate().expect_err("missing targets");
+    assert!(err.to_string().contains("targets"), "{err}");
+}
+
+#[test]
+fn validate_accepts_embed_with_targets() {
+    let mut config = valid_config();
+    config.extensions = Some(ExtensionsConfig {
+        embed: vec![EmbedExtensionConfig {
+            name: "panel".to_owned(),
+            handle: "panel-handle".to_owned(),
+            source: "ext/index.tsx".to_owned(),
+            targets: vec![ExtensionTarget {
+                target: "commerce.product.details".to_owned(),
+            }],
+        }],
+        checkout: vec![],
+        blocks: None,
+    });
+    config.validate().expect("embed with targets should pass");
+}
+
+#[test]
+fn validate_rejects_empty_blocks_source() {
+    let mut config = valid_config();
+    config.extensions = Some(ExtensionsConfig {
+        embed: vec![],
+        checkout: vec![],
+        blocks: Some(BlocksExtensionConfig {
+            source: String::new(),
+        }),
+    });
+    let err = config.validate().expect_err("empty blocks source");
+    assert!(
+        err.to_string().contains("extensions.blocks.source"),
+        "{err}"
+    );
+}
+
+#[test]
+fn validate_accepts_placement_only_setting() {
+    let mut config = valid_config();
+    config.settings.push(SettingConfig {
+        group: "tax-center".to_owned(),
+        slug: "godaddy-tax".to_owned(),
+        title: None,
+        description: None,
+        entry_path: "/settings/godaddy-tax".to_owned(),
+        order: None,
+        capabilities: vec![],
+        icon: None,
+        metadata: None,
+        presentation_file: None,
+        presentation: None,
+    });
+    config
+        .validate()
+        .expect("placement-only setting should be valid");
+}
+
+#[test]
+fn validate_rejects_invalid_setting_slug() {
+    let mut config = valid_config();
+    config.settings.push(SettingConfig {
+        group: "Tax_Center".to_owned(),
+        slug: "godaddy-tax".to_owned(),
+        title: None,
+        description: None,
+        entry_path: "/settings/godaddy-tax".to_owned(),
+        order: None,
+        capabilities: vec![],
+        icon: None,
+        metadata: None,
+        presentation_file: None,
+        presentation: None,
+    });
+    let err = config.validate().expect_err("bad group slug");
+    assert!(err.to_string().contains("settings[0].group"), "{err}");
+}
+
+#[test]
+fn setting_with_presentation_round_trips_through_toml() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    let mut config = valid_config();
+    config.settings.push(SettingConfig {
+        group: "tax-center".to_owned(),
+        slug: "godaddy-tax".to_owned(),
+        title: Some("GoDaddy Tax".to_owned()),
+        description: None,
+        entry_path: "/settings/godaddy-tax".to_owned(),
+        order: Some(10),
+        capabilities: vec!["read".to_owned(), "write".to_owned()],
+        icon: Some(SettingIcon {
+            name: "percent".to_owned(),
+            library: "lucide".to_owned(),
+        }),
+        metadata: None,
+        presentation_file: None,
+        presentation: Some(SettingPresentation::Form(SettingsFormV1Presentation {
+            sections: vec![SettingsFormV1Section {
+                key: "defaults".to_owned(),
+                label: "Defaults".to_owned(),
+                description: None,
+                visible_when: None,
+                fields: vec![SettingsFormV1Field::Boolean {
+                    key: "autoCalculate".to_owned(),
+                    label: "Auto-calculate".to_owned(),
+                    description: None,
+                    required: false,
+                    default_value: Some(true),
+                }],
+            }],
+        })),
+    });
+    write_config(&path, &config).expect("write config with setting");
+    let read_back = read_config(&path).expect("read config with setting");
+    assert_eq!(read_back.settings.len(), 1);
+    assert_eq!(read_back.settings[0].entry_path, "/settings/godaddy-tax");
+    let SettingPresentation::Form(form) = read_back.settings[0]
+        .presentation
+        .as_ref()
+        .expect("presentation")
+    else {
+        unreachable!("expected form presentation");
+    };
+    let SettingsFormV1Field::Boolean { default_value, .. } = &form.sections[0].fields[0] else {
+        unreachable!("expected boolean field");
+    };
+    assert_eq!(default_value, &Some(true));
+}
+
+#[test]
+fn setting_with_presentation_file_round_trips_without_expansion() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    let mut config = valid_config();
+    config.settings.push(SettingConfig {
+        group: "tax-center".to_owned(),
+        slug: "manual-tax".to_owned(),
+        title: None,
+        description: None,
+        entry_path: "/settings/manual-tax".to_owned(),
+        order: None,
+        capabilities: vec![],
+        icon: None,
+        metadata: None,
+        presentation_file: Some("fixtures/manual-tax-presentation.json".to_owned()),
+        presentation: None,
+    });
+    write_config(&path, &config).expect("write config with presentationFile");
+    let read_back = read_config(&path).expect("read config with presentationFile");
+    assert_eq!(
+        read_back.settings[0].presentation_file,
+        Some("fixtures/manual-tax-presentation.json".to_owned())
+    );
+    assert!(read_back.settings[0].presentation.is_none());
+}
+
+#[test]
+fn read_config_runs_validation() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    let mut config = valid_config();
+    config.name = "x".to_owned();
+    let raw = toml::to_string_pretty(&config).expect("serialize");
+    std::fs::write(&path, raw).expect("write");
+    let err = read_config(&path).expect_err("short name should fail validation on read");
+    assert!(matches!(err, ConfigError::Validation(_)), "got {err:?}");
+}
+
+#[test]
+fn write_config_runs_validation() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("godaddy.toml");
+    let mut config = valid_config();
+    config.name = "x".to_owned();
+    let err = write_config(&path, &config).expect_err("short name should fail on write");
+    assert!(matches!(err, ConfigError::Validation(_)), "got {err:?}");
+    assert!(!path.exists(), "invalid config must not be written");
+}

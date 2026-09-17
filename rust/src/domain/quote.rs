@@ -15,7 +15,6 @@ use super::common::{
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
-use crate::{contacts, quote_cache};
 
 // Mirrors what `quote_to_json` emits: `domain`/`available` are always present;
 // the rest appear only when the API supplies them (available + priced quotes).
@@ -77,12 +76,12 @@ fn build_profile(
     renew_auto: bool,
     name_servers: &[String],
 ) -> Result<types::InlineRegistrationProfile> {
-    let file = contacts::load().map_err(|e| CliCoreError::message(e.to_string()))?;
+    let file = super::contacts_file::load().map_err(|e| CliCoreError::message(e.to_string()))?;
     let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
-    let registrant = to_api(contacts::Role::Registrant)?;
-    let admin = to_api(contacts::Role::Admin)?;
-    let billing = to_api(contacts::Role::Billing)?;
-    let tech = to_api(contacts::Role::Tech)?;
+    let registrant = to_api(super::contacts_file::Role::Registrant)?;
+    let admin = to_api(super::contacts_file::Role::Admin)?;
+    let billing = to_api(super::contacts_file::Role::Billing)?;
+    let tech = to_api(super::contacts_file::Role::Tech)?;
 
     let any_non_registrant = admin.is_some() || billing.is_some() || tech.is_some();
     let contacts_obj = match registrant {
@@ -371,7 +370,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     })?),
                     None => None,
                 };
-                let cached = quote_cache::CachedQuote {
+                let cached = super::quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
                     period: quote.period.map_or(period, |p| p.get()),
                     agreement_types,
@@ -392,7 +391,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
                     fees: fees_json,
                 };
-                if let Err(e) = quote_cache::save(&token, cached) {
+                if let Err(e) = super::quote_cache::save(&token, cached) {
                     // Non-fatal: the quote is still shown, but purchase won't
                     // find it. Warn so the user knows to re-quote on this host.
                     tracing::warn!(error = %e, "could not cache the quote for purchase");

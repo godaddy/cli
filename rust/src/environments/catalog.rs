@@ -83,9 +83,7 @@ mod tests {
         // `domain_override`'s injected `std::env::var`), so it must be
         // serialized against tests elsewhere in this module family that
         // mutate them with `EnvGuard`/`set_var` (see `ENV_LOCK`'s own doc).
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let url = resolve_catalog_base_url(
             "fulfillments",
             "https://fulfillment.api.commerce.godaddy.com/v1/commerce",
@@ -101,9 +99,7 @@ mod tests {
     fn resolve_catalog_base_url_applies_convention_for_non_prod() {
         // See `resolve_catalog_base_url_returns_prod_unchanged` for why this
         // takes `ENV_LOCK`.
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         // No override exists anywhere for this made-up env/domain pair, so
         // this exercises the `{env}-godaddy.com` convention fallback.
         let url = resolve_catalog_base_url(
