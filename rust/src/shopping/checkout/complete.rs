@@ -262,7 +262,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(completion_error)?;
-            let order_id = completion.order.as_ref().and_then(|order| order.id.clone());
+            let order_id = completion
+                .as_ref()
+                .and_then(|completion| completion.order.as_ref())
+                .and_then(|order| order.id.clone());
             let mut actions = order_id.map_or_else(Vec::new, |order_id| {
                 vec![
                     next_action(

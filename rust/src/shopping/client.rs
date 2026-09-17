@@ -24,6 +24,8 @@ pub enum ClientError {
     Build(#[from] shopping_client::BuildError),
     #[error("Shopping API returned an unexpected error payload: {0:?}")]
     UnexpectedErrorPayload(serde_json::Value),
+    #[error("Shopping API returned no data for this request")]
+    EmptyResponse,
 }
 
 impl ClientError {
@@ -45,7 +47,8 @@ impl ClientError {
             | Self::Request(_)
             | Self::Response(_)
             | Self::Build(_)
-            | Self::UnexpectedErrorPayload(_) => None,
+            | Self::UnexpectedErrorPayload(_)
+            | Self::EmptyResponse => None,
         }
     }
 }
@@ -69,6 +72,10 @@ impl From<ClientError> for crate::error::GddyError {
                 "Shopping API returned an unexpected payload: {payload}"
             ))
             .with_system("shopping"),
+            ClientError::EmptyResponse => {
+                Self::unexpected("Shopping API returned no data for this request")
+                    .with_system("shopping")
+            }
         }
     }
 }
@@ -179,15 +186,28 @@ impl_into_checkout!(
     CompleteCheckoutResponse,
 );
 
-fn checkout_or_default<T: IntoCheckout>(response: Option<T>) -> Result<Checkout, ClientError> {
-    response.map_or_else(|| Ok(Checkout::default()), IntoCheckout::into_checkout)
+/// For a GET fetching an existing resource, an empty successful body is not
+/// a meaningful state (unlike the create/complete mutations below, where
+/// it's a documented possible ack) — surface it as an error rather than
+/// manufacturing a default value that would misrepresent "no data" as "an
+/// empty but real resource."
+fn checkout_or_empty_error<T: IntoCheckout>(response: Option<T>) -> Result<Checkout, ClientError> {
+    response.map_or(Err(ClientError::EmptyResponse), IntoCheckout::into_checkout)
+}
+
+/// A mutation's empty successful body (some environments 202/204 certain
+/// checkout operations) is a real, distinct outcome from "no data" — the
+/// caller must be able to tell it apart from an actual `Checkout`, so this
+/// preserves it as `None` rather than defaulting to an empty `Checkout`.
+fn checkout_or_none<T: IntoCheckout>(response: Option<T>) -> Result<Option<Checkout>, ClientError> {
+    response.map(IntoCheckout::into_checkout).transpose()
 }
 
 pub(crate) async fn get_checkout(
     client: &shopping_client::Client,
     id: &str,
 ) -> Result<Checkout, ClientError> {
-    checkout_or_default(
+    checkout_or_empty_error(
         decode::<GetCheckoutResponse>(client.get_checkout().id(id).send().await).await?,
     )
 }
@@ -196,8 +216,8 @@ pub(crate) async fn create_checkout(
     client: &shopping_client::Client,
     body: CheckoutWritableRequest,
     idempotency_key: &str,
-) -> Result<Checkout, ClientError> {
-    checkout_or_default(
+) -> Result<Option<Checkout>, ClientError> {
+    checkout_or_none(
         decode::<CreateCheckoutResponse>(
             client
                 .create_checkout()
@@ -215,8 +235,8 @@ pub(crate) async fn update_checkout(
     id: &str,
     body: CheckoutWritableRequest,
     idempotency_key: &str,
-) -> Result<Checkout, ClientError> {
-    checkout_or_default(
+) -> Result<Option<Checkout>, ClientError> {
+    checkout_or_none(
         decode::<UpdateCheckoutResponse>(
             client
                 .update_checkout()
@@ -235,8 +255,8 @@ pub(crate) async fn complete_checkout(
     id: &str,
     body: CheckoutCompleteRequest,
     idempotency_key: &str,
-) -> Result<Checkout, ClientError> {
-    checkout_or_default(
+) -> Result<Option<Checkout>, ClientError> {
+    checkout_or_none(
         decode::<CompleteCheckoutResponse>(
             client
                 .complete_checkout()
@@ -259,7 +279,7 @@ pub(crate) async fn get_order(
         Some(GetOrderResponse::ErrorResponse(payload)) => {
             Err(ClientError::UnexpectedErrorPayload(payload.into()))
         }
-        None => Ok(Order::default()),
+        None => Err(ClientError::EmptyResponse),
     }
 }
 
@@ -610,6 +630,84 @@ mod tests {
 
         create.assert_async().await;
         complete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn empty_mutation_acks_are_distinct_none_not_a_default_checkout() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/shopping/checkout-sessions");
+                then.status(202).body("");
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/checkout-sessions/checkout-123/complete")
+                    .header("idempotency-key", "customer-key");
+                then.status(204);
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        let created = create_checkout(
+            &shopping,
+            CheckoutWritableRequest(Default::default()),
+            "customer-key",
+        )
+        .await
+        .expect("empty create should not be an error");
+        let completed = complete_checkout(
+            &shopping,
+            "checkout-123",
+            CheckoutCompleteRequest(Default::default()),
+            "customer-key",
+        )
+        .await
+        .expect("empty completion should not be an error");
+
+        create.assert_async().await;
+        complete.assert_async().await;
+        assert!(
+            created.is_none(),
+            "an empty ack must stay distinguishable from an empty-but-real Checkout"
+        );
+        assert!(
+            completed.is_none(),
+            "an empty ack must stay distinguishable from an empty-but-real Checkout"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_checkout_and_get_order_reject_an_empty_body_as_unexpected() {
+        let server = MockServer::start_async().await;
+        let checkout = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/checkout-sessions/checkout-123");
+                then.status(200).body("");
+            })
+            .await;
+        let order = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/shopping/orders/order-123");
+                then.status(200).body("");
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        let checkout_error = get_checkout(&shopping, "checkout-123")
+            .await
+            .expect_err("an empty checkout GET is not a valid checkout");
+        let order_error = get_order(&shopping, "order-123")
+            .await
+            .expect_err("an empty order GET is not a valid order");
+
+        checkout.assert_async().await;
+        order.assert_async().await;
+        assert!(matches!(checkout_error, ClientError::EmptyResponse));
+        assert!(matches!(order_error, ClientError::EmptyResponse));
     }
 
     #[tokio::test]

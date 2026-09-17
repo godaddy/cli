@@ -111,12 +111,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(client_err)?;
-            let ready_for_complete = checkout.status.as_deref() == Some("ready_for_complete");
-            let checkout_id = checkout.id.clone().unwrap_or_default();
+            let ready_for_complete = checkout
+                .as_ref()
+                .and_then(|checkout| checkout.status.as_deref())
+                == Some("ready_for_complete");
+            let checkout_id = checkout
+                .as_ref()
+                .and_then(|checkout| checkout.id.clone())
+                .unwrap_or_default();
             let env = crate::environments::resolve(&ctx.middleware.env)?;
-            let mut actions = no_saved_payment_method_action(&checkout, &env.account_url)
-            .into_iter()
-            .collect::<Vec<_>>();
+            let mut actions = checkout
+                .as_ref()
+                .and_then(|checkout| no_saved_payment_method_action(checkout, &env.account_url))
+                .into_iter()
+                .collect::<Vec<_>>();
             if ready_for_complete {
                 actions.push(
                     next_action(

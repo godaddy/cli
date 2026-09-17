@@ -152,16 +152,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }))
                 .with_dry_run());
             }
-            update_response(
-                crate::shopping::client::update_checkout(
-                    &client,
-                    &args.id,
-                    body,
-                    &uuid::Uuid::new_v4().to_string(),
-                )
-                .await
-                .map_err(client_err)?,
-            )?;
+            if let Some(checkout) = crate::shopping::client::update_checkout(
+                &client,
+                &args.id,
+                body,
+                &uuid::Uuid::new_v4().to_string(),
+            )
+            .await
+            .map_err(client_err)?
+            {
+                update_response(checkout)?;
+            }
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
