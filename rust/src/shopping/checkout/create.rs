@@ -7,7 +7,7 @@ use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments,
 };
-use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
+use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response, empty_acknowledgement_response};
 
 output_schema!(CheckoutOutput {
     "ucp": "object";
@@ -111,6 +111,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(client_err)?;
+            let is_acknowledgement = checkout.is_none();
             let ready_for_complete = checkout
                 .as_ref()
                 .and_then(|checkout| checkout.status.as_deref())
@@ -141,7 +142,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .into_cli_error()
             })?;
             let output = if ctx.middleware.output_format == "human" {
-                checkout_response(&checkout, args.show_all_payment_instruments)
+                if is_acknowledgement {
+                    empty_acknowledgement_response(
+                        "The Shopping API accepted the request but hasn't returned checkout details yet.",
+                    )
+                } else {
+                    checkout_response(&checkout, args.show_all_payment_instruments)
+                }
             } else {
                 checkout
             };

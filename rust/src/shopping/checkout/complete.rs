@@ -14,7 +14,9 @@ use crate::shopping::common::{
     CheckoutInput, client_err, make_client, payment_selection_body,
     require_selected_payment_instrument, selected_payment_id,
 };
-use crate::shopping::human::{CHECKOUT_COMPLETE_VIEW_ID, checkout_completion_response};
+use crate::shopping::human::{
+    CHECKOUT_COMPLETE_VIEW_ID, checkout_completion_response, empty_acknowledgement_response,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
@@ -269,6 +271,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(completion_error)?;
+            let is_acknowledgement = completion.is_none();
             let order_id = completion
                 .as_ref()
                 .and_then(|completion| completion.order.as_ref())
@@ -290,7 +293,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .into_cli_error()
             })?;
             let output = if ctx.middleware.output_format == "human" {
-                checkout_completion_response(&completion)
+                if is_acknowledgement {
+                    empty_acknowledgement_response(
+                        "The Shopping API accepted the request but hasn't returned completion details yet.",
+                    )
+                } else {
+                    checkout_completion_response(&completion)
+                }
             } else {
                 completion
             };
