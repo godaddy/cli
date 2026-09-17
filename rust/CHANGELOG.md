@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.19](https://github.com/godaddy/cli/compare/v0.2.18...v0.2.19) (2026-09-17)
+
+
+### Miscellaneous
+
+* **hosting:** Implement shopping hint in hosting guide when custome… ([#273](https://github.com/godaddy/cli/issues/273)) ([5b60267](https://github.com/godaddy/cli/commit/5b6026709893b6695d73bba40733e153342e2ba3))
+
 ## [0.2.18](https://github.com/godaddy/cli/compare/v0.2.17...v0.2.18) (2026-09-17)
 
 
