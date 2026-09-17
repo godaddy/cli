@@ -239,9 +239,8 @@ The username (the part before `@`) must:
 
 ## Command reference
 
-- `gddy email check-eligibility --email <email>` — see which accounts (if any) can
-receive a new mailbox for this address, and what consent is outstanding.
-- `gddy email create --email <email> [--account-id <id>] [--first-name <name>] [--last-name <name>] [--consent <requirement-type>]...` — submit a provisioning request. Returns 202 with the mailbox at `status: EXECUTING`; poll with `gddy email get` until `COMPLETED` or `FAILED`.
+- `gddy email check-eligibility --email <email>` — see which accounts (if any) can receive a new mailbox for this address, and what consent is outstanding.
+- `gddy email create --email <email> [--account-id <id>] [--first-name <name>] [--last-name <name>] [--consent <requirement-type>]...` — submit a provisioning request. Returns 202 with the mailbox at `status: EXECUTING`; poll with `gddy email get <mailbox-id>` until `COMPLETED` or `FAILED`.
 - `gddy email get <mailbox-id>` — look up one mailbox by ID. Use to poll provisioning status.
 - `gddy email list [--status <status>] [--field <fields>] [--page <n>] [--page-size <n>] [--total-required]` — list your mailboxes.
   - `--status`: filter by lifecycle status (`COMPLETED`, `EXECUTING`, `FAILED`).
