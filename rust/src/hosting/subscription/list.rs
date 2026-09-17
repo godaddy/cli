@@ -1,4 +1,6 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
 use crate::hosting::common::{HostingSubscriptionList, client_err, make_client, next_page_token};
@@ -68,41 +70,93 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
                 .sum();
 
-            let attachable: Vec<String> = all_items
-                .iter()
-                .filter(|item| {
-                    item.get("availableSlots")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0)
-                        > 0
-                })
-                .filter_map(|item| {
-                    item.get("subscriptionId")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_owned)
-                })
-                .collect();
-
-            let mut subscription_id = NextActionParam::required();
-            subscription_id.r#enum = attachable;
-            subscription_id.description = Some(
-                "Hosting plan with availableSlots > 0. Confirm with the customer before \
-                 attach, even if this enum has a single id; an app attaches to one plan."
-                    .to_owned(),
-            );
-
             Ok(CommandResult::new(json!({
                 "items": all_items,
                 "totalAvailableSlots": total_available_slots,
             }))
-            .with_next_actions(vec![
-                next_action(
-                    "hosting subscription attach --app-id <app-id> --subscription-id <id>",
-                    "Attach an application to a hosting plan",
-                )
-                .with_param("app-id", NextActionParam::required())
-                .with_param("subscription-id", subscription_id),
-            ]))
+            .with_next_actions(list_next_actions(&all_items)))
         },
     )
+}
+
+fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
+    let attachable: Vec<String> = items
+        .iter()
+        .filter(|item| {
+            item.get("availableSlots")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                > 0
+        })
+        .filter_map(|item| {
+            item.get("subscriptionId")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+        })
+        .collect();
+
+    if attachable.is_empty() {
+        return vec![next_action(
+            "shopping catalog search --category webHosting",
+            "Buy a Web Hosting plan (NODEJS). Other app types will use a different category.",
+        )];
+    }
+
+    let mut subscription_id = NextActionParam::required();
+    subscription_id.r#enum = attachable;
+    subscription_id.description = Some(
+        "Hosting plan with availableSlots > 0. Confirm with the customer before \
+         attach, even if this enum has a single id; an app attaches to one plan."
+            .to_owned(),
+    );
+
+    vec![
+        next_action(
+            "hosting subscription attach --app-id <app-id> --subscription-id <id>",
+            "Attach an application to a hosting plan",
+        )
+        .with_param("app-id", NextActionParam::required())
+        .with_param("subscription-id", subscription_id),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_next_actions_attach_when_a_slot_is_free() {
+        let actions = list_next_actions(&[json!({
+            "subscriptionId": "sub-1",
+            "availableSlots": 2
+        })]);
+        assert_eq!(actions.len(), 1);
+        assert!(actions[0].command.contains("subscription attach"));
+        assert_eq!(
+            actions[0].params["subscription-id"].r#enum,
+            vec!["sub-1".to_owned()]
+        );
+    }
+
+    #[test]
+    fn list_next_actions_shop_when_no_slots() {
+        let actions = list_next_actions(&[json!({
+            "subscriptionId": "sub-full",
+            "availableSlots": 0
+        })]);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping catalog search --category webHosting"
+        );
+    }
+
+    #[test]
+    fn list_next_actions_shop_when_list_is_empty() {
+        let actions = list_next_actions(&[]);
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping catalog search --category webHosting"
+        );
+    }
 }

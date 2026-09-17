@@ -69,6 +69,8 @@ gddy hosting subscription list
 gddy hosting subscription attach --app-id <app-id> --subscription-id <subscription-id>
 ```
 
+If `totalAvailableSlots` is 0, buy a Web Hosting plan (`gddy shopping catalog search --category webHosting` for NODEJS), poll list until a slot appears, then attach. See `gddy guide shopping` for checkout.
+
 Skip this on later deploys.
 
 ## 5. Publish to production
@@ -76,6 +78,8 @@ Skip this on later deploys.
 ```sh
 gddy hosting deployment publish --app-id <app-id>
 ```
+
+If publish returns `WH_PLAN_REQUIRED`, the app is not attached — go back to step 4.
 
 Poll until COMPLETED:
 
