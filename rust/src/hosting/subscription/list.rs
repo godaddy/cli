@@ -105,8 +105,8 @@ fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
     let mut subscription_id = NextActionParam::required();
     subscription_id.r#enum = attachable;
     subscription_id.description = Some(
-        "Hosting plan with availableSlots > 0. Confirm with the customer before \
-         attach, even if this enum has a single id; an app attaches to one plan."
+        "Hosting plan with availableSlots > 0. Confirm which plan to attach. \
+         An app is attached to one plan."
             .to_owned(),
     );
 
