@@ -46,6 +46,13 @@ pub(crate) fn refresh(
     rewrite_defs_refs(&mut spec);
     remove_remaining_relative_refs(&mut spec);
     remove_self_referencing_schemas(&mut spec);
+    dealias_name_colliding_schemas(
+        &mut spec,
+        &[(
+            "get_product_response",
+            "catalog_lookup_get_product_response",
+        )],
+    );
 
     let object = spec
         .as_object_mut()
@@ -117,6 +124,50 @@ fn remove_remaining_relative_refs(value: &mut Value) {
         Value::Array(values) => {
             for value in values {
                 remove_remaining_relative_refs(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Progenitor names an operation's `oneOf` response enum from its
+/// `operationId` (`get_product` -> `GetProductResponse`), independently of
+/// how it names the schema-alias newtype it generates for a bare `$ref`
+/// schema (`get_product_response` -> `GetProductResponse`). When those two
+/// derived names collide, progenitor silently reuses the schema newtype as
+/// the operation's response type instead of generating the `oneOf` enum,
+/// so the `error_response` branch has no Rust variant to match against at
+/// all — unlike every other operation in this contract, whose schema and
+/// operationId names differ enough not to collide. Point every reference
+/// to `alias` directly at what it aliases and drop the now-unreferenced
+/// alias schema, freeing its derived name for the operation's own enum.
+fn dealias_name_colliding_schemas(spec: &mut Value, aliases: &[(&str, &str)]) {
+    for (alias, target) in aliases {
+        let from = format!("#/components/schemas/{alias}");
+        let to = format!("#/components/schemas/{target}");
+        replace_ref(spec, &from, &to);
+        if let Some(schemas) = spec
+            .pointer_mut("/components/schemas")
+            .and_then(Value::as_object_mut)
+        {
+            schemas.remove(*alias);
+        }
+    }
+}
+
+fn replace_ref(value: &mut Value, from: &str, to: &str) {
+    match value {
+        Value::Object(map) => {
+            if map.get("$ref").and_then(Value::as_str) == Some(from) {
+                map.insert("$ref".to_owned(), Value::String(to.to_owned()));
+            }
+            for child in map.values_mut() {
+                replace_ref(child, from, to);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                replace_ref(value, from, to);
             }
         }
         _ => {}
@@ -479,7 +530,10 @@ fn relax(value: &mut Value) {
 mod tests {
     use serde_json::json;
 
-    use super::{preserve_payment_instrument_fields, prune_documentation_fields};
+    use super::{
+        dealias_name_colliding_schemas, preserve_payment_instrument_fields,
+        prune_documentation_fields,
+    };
 
     #[test]
     fn pruning_removes_documentation_and_examples_recursively() {
@@ -612,5 +666,67 @@ mod tests {
             "type must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
         );
         assert_eq!(properties["selected"]["type"], "boolean");
+    }
+
+    #[test]
+    fn dealiasing_points_references_at_the_target_and_drops_the_alias_schema() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "get_product_response": {"$ref": "#/components/schemas/catalog_lookup_get_product_response"},
+                    "catalog_lookup_get_product_response": {"type": "object"}
+                }
+            },
+            "paths": {
+                "/product": {
+                    "post": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "oneOf": [
+                                                {"$ref": "#/components/schemas/get_product_response"},
+                                                {"$ref": "#/components/schemas/error_response"}
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        dealias_name_colliding_schemas(
+            &mut spec,
+            &[(
+                "get_product_response",
+                "catalog_lookup_get_product_response",
+            )],
+        );
+
+        assert!(
+            spec.pointer("/components/schemas/get_product_response")
+                .is_none(),
+            "the alias schema must be removed so its derived name is free for the operation's own response enum"
+        );
+        assert_eq!(
+            spec.pointer(
+                "/paths/~1product/post/responses/200/content/application~1json/schema/oneOf/0/$ref"
+            ),
+            Some(&json!(
+                "#/components/schemas/catalog_lookup_get_product_response"
+            )),
+            "the oneOf branch must point directly at the real schema"
+        );
+        assert_eq!(
+            spec.pointer(
+                "/paths/~1product/post/responses/200/content/application~1json/schema/oneOf/1/$ref"
+            ),
+            Some(&json!("#/components/schemas/error_response")),
+            "the untouched error_response branch must be left alone"
+        );
     }
 }

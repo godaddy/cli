@@ -422,6 +422,11 @@ mod tests {
         .await
         .expect("product")
         .expect("non-empty product response");
+        let product = match product {
+            GetProductResponse::CatalogLookupGetProductResponse(product) => Some(product),
+            GetProductResponse::ErrorResponse(_) => None,
+        }
+        .expect("expected a product response, not an error payload");
 
         mock.assert_async().await;
         // Regression guard: a spec-generation bug once stripped the
@@ -431,7 +436,6 @@ mod tests {
         // and it silently vanished on the way through the typed client.
         assert_eq!(
             product
-                .0
                 .product
                 .expect("product")
                 .description

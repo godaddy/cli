@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use shopping_client::types::{
-    CatalogLookupGetProductRequest, GetProductRequest, GetProductResponse,
+    CatalogLookupGetProductRequest, CatalogLookupGetProductResponse, GetProductRequest,
+    GetProductResponse,
 };
 
 use crate::next_action::next_action;
@@ -52,6 +53,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .await
             .map_err(client_err)?
             .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
+            let response = match response {
+                GetProductResponse::CatalogLookupGetProductResponse(response) => response,
+                GetProductResponse::ErrorResponse(payload) => {
+                    return Err(client_err(ClientError::UnexpectedErrorPayload(
+                        payload.into(),
+                    )));
+                }
+            };
             let actions = next_actions(&response, &ctx.middleware.env);
             let response = serde_json::to_value(&response).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
@@ -69,8 +78,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-fn next_actions(response: &GetProductResponse, env: &str) -> Vec<cli_engine::NextAction> {
-    let Some(product) = response.0.product.as_ref() else {
+fn next_actions(
+    response: &CatalogLookupGetProductResponse,
+    env: &str,
+) -> Vec<cli_engine::NextAction> {
+    let Some(product) = response.product.as_ref() else {
         return Vec::new();
     };
     let Some((variant_id, currency)) = product.variants.iter().find_map(|variant| {
@@ -132,7 +144,7 @@ mod tests {
         });
         let output = catalog_product_response(&response);
 
-        let typed_response = GetProductResponse(CatalogLookupGetProductResponse {
+        let typed_response = CatalogLookupGetProductResponse {
             product: Some(CatalogLookupGetProductResponseProduct {
                 variants: vec![Variant {
                     id: Some("variant-1".to_owned()),
@@ -149,7 +161,7 @@ mod tests {
                 ..Default::default()
             }),
             ..Default::default()
-        });
+        };
         let actions = next_actions(&typed_response, "test");
 
         assert_eq!(output["title"], "Product");

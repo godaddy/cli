@@ -1358,9 +1358,6 @@
       "get_product_request": {
         "$ref": "#/components/schemas/catalog_lookup_get_product_request"
       },
-      "get_product_response": {
-        "$ref": "#/components/schemas/catalog_lookup_get_product_response"
-      },
       "hosting_schema": {
         "$id": "https://godaddy.com/ucp/schemas/product-metadata/hosting.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3381,7 +3378,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/get_product_response"
+                      "$ref": "#/components/schemas/catalog_lookup_get_product_response"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"

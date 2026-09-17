@@ -23,11 +23,12 @@ pub(crate) fn register_human_views(ctx: &mut ModuleContext<'_>) {
 }
 
 /// A distinct human-mode result for when the API accepted a request but
-/// returned no resource to describe (some environments 202/204 certain
-/// checkout operations) — `render_checkout`/`render_checkout_completion`
-/// print `message` directly instead of rendering a normal-looking but
-/// entirely blank checkout/completion summary, which would look like a
-/// real (if empty) result rather than "no data came back."
+/// returned no resource to describe (some environments return a 202/204
+/// with no body for certain checkout operations) —
+/// `render_checkout`/`render_checkout_completion` print `message` directly
+/// instead of rendering a normal-looking but entirely blank checkout or
+/// completion summary, which would look like a real (if empty) result
+/// rather than "no data came back."
 pub(crate) fn empty_acknowledgement_response(message: &str) -> Value {
     json!({"acknowledged": message})
 }
