@@ -207,10 +207,11 @@ fn checkout_or_empty_error<T: IntoCheckout>(response: Option<T>) -> Result<Check
     Ok(checkout)
 }
 
-/// A mutation's empty successful body (some environments 202/204 certain
-/// checkout operations) is a real, distinct outcome from "no data" — the
-/// caller must be able to tell it apart from an actual `Checkout`, so this
-/// preserves it as `None` rather than defaulting to an empty `Checkout`.
+/// A mutation's empty successful body (some environments return a 202/204
+/// for certain checkout operations) is a real, distinct outcome from "no
+/// data" — the caller must be able to tell it apart from an actual
+/// `Checkout`, so this preserves it as `None` rather than defaulting to an
+/// empty `Checkout`.
 fn checkout_or_none<T: IntoCheckout>(response: Option<T>) -> Result<Option<Checkout>, ClientError> {
     response.map(IntoCheckout::into_checkout).transpose()
 }
@@ -287,7 +288,12 @@ pub(crate) async fn get_order(
     order_id: &str,
 ) -> Result<Order, ClientError> {
     match decode::<GetOrderResponse>(client.get_order().id(order_id).send().await).await? {
-        Some(GetOrderResponse::Order(order)) => Ok(order),
+        Some(GetOrderResponse::Order(order)) => {
+            if order.id.as_deref().is_none_or(str::is_empty) {
+                return Err(ClientError::EmptyResponse);
+            }
+            Ok(order)
+        }
         Some(GetOrderResponse::ErrorResponse(payload)) => {
             Err(ClientError::UnexpectedErrorPayload(payload.into()))
         }
@@ -753,6 +759,24 @@ mod tests {
         let error = get_checkout(&client(&server.base_url()), "checkout-123")
             .await
             .expect_err("a checkout response missing its own id is not usable");
+
+        mock.assert_async().await;
+        assert!(matches!(error, ClientError::EmptyResponse));
+    }
+
+    #[tokio::test]
+    async fn get_order_rejects_a_valid_but_id_less_json_object() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/shopping/orders/order-123");
+                then.status(200).json_body(json!({}));
+            })
+            .await;
+
+        let error = get_order(&client(&server.base_url()), "order-123")
+            .await
+            .expect_err("an order response missing its own id is not usable");
 
         mock.assert_async().await;
         assert!(matches!(error, ClientError::EmptyResponse));
