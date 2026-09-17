@@ -51,8 +51,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await?;
                 order
             } else {
-                client.get_order(&args.id).await.map_err(client_err)?
+                crate::shopping::client::get_order(&client, &args.id)
+                    .await
+                    .map_err(client_err)?
             };
+            let order = serde_json::to_value(&order).map_err(|error| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to encode order response: {error}"
+                ))
+                .into_cli_error()
+            })?;
             let output = if ctx.middleware.output_format == "human" {
                 order_response(&order)
             } else {

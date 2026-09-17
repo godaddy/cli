@@ -71,6 +71,9 @@
         "$id": "https://ucp.dev/schemas/shopping/types/adjustment.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "description": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -841,6 +844,24 @@
         "title": "Context",
         "type": "object"
       },
+      "description": {
+        "$id": "https://ucp.dev/schemas/shopping/types/description.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "minProperties": 1,
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "plain": {
+            "type": "string"
+          }
+        },
+        "title": "Description",
+        "type": "object"
+      },
       "detail_option_value": {
         "$id": "https://ucp.dev/schemas/shopping/types/detail_option_value.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -951,6 +972,9 @@
         "$id": "https://ucp.dev/schemas/shopping/types/expectation.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "description": {
+            "type": "string"
+          },
           "destination": {
             "$ref": "#/components/schemas/postal_address"
           },
@@ -1118,6 +1142,10 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
+          "description": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
           "fulfillable_on": {
             "type": "string",
             "ucp_request": "omit"
@@ -1162,6 +1190,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "carrier": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "id": {
@@ -1289,6 +1320,10 @@
         "additionalProperties": true,
         "properties": {
           "carrier": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
+          "description": {
             "type": "string",
             "ucp_request": "omit"
           },
@@ -2076,6 +2111,9 @@
               "$ref": "#/components/schemas/category"
             },
             "type": "array"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
           },
           "handle": {
             "type": "string"
@@ -3071,6 +3109,9 @@
               "$ref": "#/components/schemas/category"
             },
             "type": "array"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
           },
           "handle": {
             "type": "string"

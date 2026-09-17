@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use serde_json::Value;
+use shopping_client::types::{
+    Checkout, CheckoutCompleteRequest, CheckoutWritableRequest, CompleteCheckoutResponse,
+    CreateCheckoutResponse, GetCheckoutResponse, GetOrderResponse, Order, UpdateCheckoutResponse,
+};
 
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +22,8 @@ pub enum ClientError {
     Response(#[from] serde_json::Error),
     #[error("failed to construct Shopping API client: {0}")]
     Build(#[from] shopping_client::BuildError),
+    #[error("Shopping API returned an unexpected error payload: {0:?}")]
+    UnexpectedErrorPayload(serde_json::Value),
 }
 
 impl ClientError {
@@ -36,7 +41,11 @@ impl ClientError {
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Http { retry_after, .. } => *retry_after,
-            Self::Network(_) | Self::Request(_) | Self::Response(_) | Self::Build(_) => None,
+            Self::Network(_)
+            | Self::Request(_)
+            | Self::Response(_)
+            | Self::Build(_)
+            | Self::UnexpectedErrorPayload(_) => None,
         }
     }
 }
@@ -56,140 +65,63 @@ impl From<ClientError> for crate::error::GddyError {
                 Self::config(format!("failed to construct Shopping API client: {error}"))
                     .with_system("shopping")
             }
+            ClientError::UnexpectedErrorPayload(payload) => Self::unexpected(format!(
+                "Shopping API returned an unexpected payload: {payload}"
+            ))
+            .with_system("shopping"),
         }
     }
 }
 
-pub struct ShoppingClient {
-    base_url: String,
-    authorization: String,
+/// Builds a generated Shopping API client carrying the caller's authorization
+/// and a request ID that correlates every HTTP call this client instance
+/// makes. Build one per command invocation, then call its generated
+/// operation methods (`search_catalog()`, `get_checkout()`, ...) directly.
+pub(crate) fn build_client(
+    base_url: impl AsRef<str>,
+    token: impl AsRef<str>,
+) -> Result<shopping_client::Client, ClientError> {
+    shopping_client::client_with_auth(
+        base_url.as_ref(),
+        &format!("Bearer {}", token.as_ref()),
+        USER_AGENT,
+        &uuid::Uuid::new_v4().to_string(),
+    )
+    .map_err(ClientError::Build)
 }
 
-impl ShoppingClient {
-    pub fn new(base_url: impl AsRef<str>, token: impl AsRef<str>) -> Result<Self, ClientError> {
-        let client = Self {
-            base_url: base_url.as_ref().to_owned(),
-            authorization: format!("Bearer {}", token.as_ref()),
-        };
-        client.client()?;
-        Ok(client)
-    }
-
-    fn client(&self) -> Result<shopping_client::Client, ClientError> {
-        shopping_client::client_with_auth(
-            &self.base_url,
-            &self.authorization,
-            USER_AGENT,
-            &uuid::Uuid::new_v4().to_string(),
-        )
-        .map_err(ClientError::Build)
-    }
-
-    pub async fn catalog_search(&self, body: Value) -> Result<Value, ClientError> {
-        let body: shopping_client::types::SearchRequest = deserialize(body)?;
-        response(self.client()?.search_catalog().body(body).send().await).await
-    }
-
-    pub async fn catalog_lookup(&self, body: Value) -> Result<Value, ClientError> {
-        let body: shopping_client::types::LookupRequest = deserialize(body)?;
-        response(self.client()?.lookup_catalog().body(body).send().await).await
-    }
-
-    pub async fn catalog_product(&self, body: Value) -> Result<Value, ClientError> {
-        let body: shopping_client::types::GetProductRequest = deserialize(body)?;
-        response(self.client()?.get_product().body(body).send().await).await
-    }
-
-    pub async fn create_checkout(
-        &self,
-        body: Value,
-        idempotency_key: &str,
-    ) -> Result<Value, ClientError> {
-        let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
-        response(
-            self.client()?
-                .create_checkout()
-                .idempotency_key(idempotency_key)
-                .body(body)
-                .send()
-                .await,
-        )
-        .await
-    }
-
-    pub async fn get_checkout(&self, id: &str) -> Result<Value, ClientError> {
-        response(self.client()?.get_checkout().id(id).send().await).await
-    }
-
-    pub async fn update_checkout(
-        &self,
-        id: &str,
-        body: Value,
-        idempotency_key: &str,
-    ) -> Result<Value, ClientError> {
-        let body: shopping_client::types::CheckoutWritableRequest = deserialize(body)?;
-        response(
-            self.client()?
-                .update_checkout()
-                .id(id)
-                .idempotency_key(idempotency_key)
-                .body(body)
-                .send()
-                .await,
-        )
-        .await
-    }
-
-    pub async fn complete_checkout(
-        &self,
-        id: &str,
-        body: Value,
-        idempotency_key: &str,
-    ) -> Result<Value, ClientError> {
-        let body: shopping_client::types::CheckoutCompleteRequest = deserialize(body)?;
-        response(
-            self.client()?
-                .complete_checkout()
-                .id(id)
-                .idempotency_key(idempotency_key)
-                .body(body)
-                .send()
-                .await,
-        )
-        .await
-    }
-
-    pub async fn get_order(&self, id: &str) -> Result<Value, ClientError> {
-        response(self.client()?.get_order().id(id).send().await).await
-    }
-}
-
-fn deserialize<T: serde::de::DeserializeOwned>(body: Value) -> Result<T, ClientError> {
-    serde_json::from_value(body).map_err(ClientError::Response)
-}
-
-async fn response<T: serde::Serialize>(
+/// Decodes a generated operation's response, preserving the caller's typed
+/// response shape. `None` means the server returned a successful but empty
+/// body (some environments 202/204 certain checkout operations).
+pub(crate) async fn decode<T>(
     response: Result<progenitor_client::ResponseValue<T>, progenitor_client::Error<()>>,
-) -> Result<Value, ClientError> {
+) -> Result<Option<T>, ClientError>
+where
+    T: serde::de::DeserializeOwned,
+{
     match response {
-        Ok(response) => serde_json::to_value(response.into_inner()).map_err(ClientError::Response),
+        Ok(response) => Ok(Some(response.into_inner())),
         Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) if bytes.is_empty() => {
-            Ok(Value::Null)
+            Ok(None)
         }
         Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) => {
             // UCP extension metadata can evolve independently of the core
             // response schemas. Preserve a successful JSON response for the
             // CLI's dynamic projection when typed decoding cannot represent it.
-            serde_json::from_slice(&bytes).map_err(ClientError::Response)
+            serde_json::from_slice(&bytes)
+                .map(Some)
+                .map_err(ClientError::Response)
         }
         Err(progenitor_client::Error::UnexpectedResponse(response))
             if response.status().is_success() =>
         {
             let bytes = response.bytes().await.unwrap_or_default();
             if bytes.is_empty() {
-                Ok(Value::Null)
+                Ok(None)
             } else {
-                serde_json::from_slice(&bytes).map_err(ClientError::Response)
+                serde_json::from_slice(&bytes)
+                    .map(Some)
+                    .map_err(ClientError::Response)
             }
         }
         Err(progenitor_client::Error::UnexpectedResponse(response)) => {
@@ -214,16 +146,139 @@ async fn response<T: serde::Serialize>(
     }
 }
 
+/// Every checkout write operation's response is `oneOf [Checkout,
+/// ErrorResponse]` (`ErrorResponse` wraps an open-ended JSON error payload).
+/// Since every `Checkout` field is optional, untagged deserialization
+/// resolves to the `Checkout` variant for any realistic response, so the
+/// `ErrorResponse` arm below is defense-in-depth, not a path exercised by
+/// well-formed API responses.
+trait IntoCheckout {
+    fn into_checkout(self) -> Result<Checkout, ClientError>;
+}
+
+macro_rules! impl_into_checkout {
+    ($($response:ty),+ $(,)?) => {
+        $(impl IntoCheckout for $response {
+            fn into_checkout(self) -> Result<Checkout, ClientError> {
+                match self {
+                    Self::Checkout(checkout) => Ok(checkout),
+                    Self::ErrorResponse(payload) => {
+                        Err(ClientError::UnexpectedErrorPayload(payload.into()))
+                    }
+                }
+            }
+        })+
+    };
+}
+
+impl_into_checkout!(
+    GetCheckoutResponse,
+    CreateCheckoutResponse,
+    UpdateCheckoutResponse,
+    CompleteCheckoutResponse,
+);
+
+fn checkout_or_default<T: IntoCheckout>(response: Option<T>) -> Result<Checkout, ClientError> {
+    response.map_or_else(|| Ok(Checkout::default()), IntoCheckout::into_checkout)
+}
+
+pub(crate) async fn get_checkout(
+    client: &shopping_client::Client,
+    id: &str,
+) -> Result<Checkout, ClientError> {
+    checkout_or_default(
+        decode::<GetCheckoutResponse>(client.get_checkout().id(id).send().await).await?,
+    )
+}
+
+pub(crate) async fn create_checkout(
+    client: &shopping_client::Client,
+    body: CheckoutWritableRequest,
+    idempotency_key: &str,
+) -> Result<Checkout, ClientError> {
+    checkout_or_default(
+        decode::<CreateCheckoutResponse>(
+            client
+                .create_checkout()
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await?,
+    )
+}
+
+pub(crate) async fn update_checkout(
+    client: &shopping_client::Client,
+    id: &str,
+    body: CheckoutWritableRequest,
+    idempotency_key: &str,
+) -> Result<Checkout, ClientError> {
+    checkout_or_default(
+        decode::<UpdateCheckoutResponse>(
+            client
+                .update_checkout()
+                .id(id)
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await?,
+    )
+}
+
+pub(crate) async fn complete_checkout(
+    client: &shopping_client::Client,
+    id: &str,
+    body: CheckoutCompleteRequest,
+    idempotency_key: &str,
+) -> Result<Checkout, ClientError> {
+    checkout_or_default(
+        decode::<CompleteCheckoutResponse>(
+            client
+                .complete_checkout()
+                .id(id)
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
+        )
+        .await?,
+    )
+}
+
+pub(crate) async fn get_order(
+    client: &shopping_client::Client,
+    order_id: &str,
+) -> Result<Order, ClientError> {
+    match decode::<GetOrderResponse>(client.get_order().id(order_id).send().await).await? {
+        Some(GetOrderResponse::Order(order)) => Ok(order),
+        Some(GetOrderResponse::ErrorResponse(payload)) => {
+            Err(ClientError::UnexpectedErrorPayload(payload.into()))
+        }
+        None => Ok(Order::default()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use httpmock::prelude::*;
     use serde_json::json;
+    use shopping_client::types::{
+        CatalogLookupGetProductRequest, CatalogLookupLookupRequest, CatalogSearchSearchRequest,
+        CheckoutCompleteRequest, CheckoutWritableRequest, CompleteCheckoutResponse,
+        CreateCheckoutResponse, GetCheckoutResponse, GetOrderResponse, GetProductRequest,
+        GetProductResponse, LookupRequest, SearchCatalogResponse, SearchRequest,
+        UpdateCheckoutResponse,
+    };
     use std::result::Result as TestResult;
 
     use super::*;
 
-    fn client(base_url: &str) -> ShoppingClient {
-        ShoppingClient::new(base_url, "test-token").expect("client should build")
+    fn client(base_url: &str) -> shopping_client::Client {
+        build_client(base_url, "test-token").expect("client should build")
     }
 
     fn assert_http_error(
@@ -285,22 +340,81 @@ mod tests {
             .await;
 
         let shopping = client(&server.base_url());
-        shopping
-            .catalog_search(search_request)
+        let search_body = SearchRequest(CatalogSearchSearchRequest {
+            query: Some("hosting".to_owned()),
+            ..Default::default()
+        });
+        let lookup_body = LookupRequest(CatalogLookupLookupRequest {
+            ids: vec!["web-hosting".to_owned()],
+            ..Default::default()
+        });
+        let product_body = GetProductRequest(CatalogLookupGetProductRequest {
+            id: Some("web-hosting".to_owned()),
+            ..Default::default()
+        });
+        decode(shopping.search_catalog().body(search_body).send().await)
             .await
             .expect("search");
-        shopping
-            .catalog_lookup(lookup_request)
+        decode(shopping.lookup_catalog().body(lookup_body).send().await)
             .await
             .expect("lookup");
-        shopping
-            .catalog_product(product_request)
+        decode(shopping.get_product().body(product_body).send().await)
             .await
             .expect("product");
 
         search.assert_async().await;
         lookup.assert_async().await;
         product.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn catalog_product_preserves_the_description_field_through_the_typed_client() {
+        let server = MockServer::start_async().await;
+        let upstream_response = json!({
+            "product": {
+                "id": "web-hosting",
+                "title": "Web Hosting",
+                "description": {"plain": "Fast, reliable hosting for your site."}
+            }
+        });
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/shopping/catalog/product");
+                then.status(200).json_body(upstream_response.clone());
+            })
+            .await;
+
+        let product_body = GetProductRequest(CatalogLookupGetProductRequest {
+            id: Some("web-hosting".to_owned()),
+            ..Default::default()
+        });
+        let product: GetProductResponse = decode(
+            client(&server.base_url())
+                .get_product()
+                .body(product_body)
+                .send()
+                .await,
+        )
+        .await
+        .expect("product")
+        .expect("non-empty product response");
+
+        mock.assert_async().await;
+        // Regression guard: a spec-generation bug once stripped the
+        // `description` field from the `product`/`variant` schemas (it
+        // collided with a documentation-pruning keyword), so progenitor
+        // generated a `Product` struct with no `description` field at all,
+        // and it silently vanished on the way through the typed client.
+        assert_eq!(
+            product
+                .0
+                .product
+                .expect("product")
+                .description
+                .expect("description")
+                .plain,
+            Some("Fast, reliable hosting for your site.".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -325,10 +439,12 @@ mod tests {
                 "agreed_at": "2026-09-15T12:00:00Z"
             }
         });
-        let encoded_completion: shopping_client::types::CheckoutCompleteRequest =
-            deserialize(completion_request.clone()).expect("valid completion request");
+        let checkout_body: CheckoutWritableRequest =
+            serde_json::from_value(checkout_request.clone()).expect("valid checkout request");
+        let completion_body: CheckoutCompleteRequest =
+            serde_json::from_value(completion_request.clone()).expect("valid completion request");
         assert_eq!(
-            serde_json::to_value(encoded_completion).expect("serialize completion request"),
+            serde_json::to_value(&completion_body).expect("serialize completion request"),
             completion_request
         );
         let create = server
@@ -372,19 +488,41 @@ mod tests {
             .await;
 
         let shopping = client(&server.base_url());
-        shopping
-            .create_checkout(checkout_request.clone(), "customer-key")
+        decode::<CreateCheckoutResponse>(
+            shopping
+                .create_checkout()
+                .idempotency_key("customer-key")
+                .body(checkout_body.clone())
+                .send()
+                .await,
+        )
+        .await
+        .expect("create");
+        decode::<GetCheckoutResponse>(shopping.get_checkout().id("checkout-123").send().await)
             .await
-            .expect("create");
-        shopping.get_checkout("checkout-123").await.expect("get");
-        shopping
-            .update_checkout("checkout-123", checkout_request, "customer-key")
-            .await
-            .expect("update");
-        shopping
-            .complete_checkout("checkout-123", completion_request, "customer-key")
-            .await
-            .expect("complete");
+            .expect("get");
+        decode::<UpdateCheckoutResponse>(
+            shopping
+                .update_checkout()
+                .id("checkout-123")
+                .idempotency_key("customer-key")
+                .body(checkout_body)
+                .send()
+                .await,
+        )
+        .await
+        .expect("update");
+        decode::<CompleteCheckoutResponse>(
+            shopping
+                .complete_checkout()
+                .id("checkout-123")
+                .idempotency_key("customer-key")
+                .body(completion_body)
+                .send()
+                .await,
+        )
+        .await
+        .expect("complete");
 
         create.assert_async().await;
         get.assert_async().await;
@@ -405,13 +543,21 @@ mod tests {
             })
             .await;
 
-        let order = client(&server.base_url())
-            .get_order("order-123")
-            .await
-            .expect("get order");
+        let order = decode::<GetOrderResponse>(
+            client(&server.base_url())
+                .get_order()
+                .id("order-123")
+                .send()
+                .await,
+        )
+        .await
+        .expect("get order")
+        .expect("non-empty order response");
 
         mock.assert_async().await;
-        assert_eq!(order["id"], "order-123");
+        assert!(
+            matches!(order, GetOrderResponse::Order(order) if order.id == Some("order-123".to_owned()))
+        );
     }
 
     #[tokio::test]
@@ -433,19 +579,32 @@ mod tests {
             .await;
 
         let shopping = client(&server.base_url());
-        assert_eq!(
-            shopping
-                .create_checkout(json!({}), "customer-key")
-                .await
-                .expect("empty create"),
-            Value::Null
+        assert!(
+            decode::<CreateCheckoutResponse>(
+                shopping
+                    .create_checkout()
+                    .idempotency_key("customer-key")
+                    .body(CheckoutWritableRequest(Default::default()))
+                    .send()
+                    .await,
+            )
+            .await
+            .expect("empty create")
+            .is_none()
         );
-        assert_eq!(
-            shopping
-                .complete_checkout("checkout-123", json!({}), "customer-key")
-                .await
-                .expect("empty completion"),
-            Value::Null
+        assert!(
+            decode::<CompleteCheckoutResponse>(
+                shopping
+                    .complete_checkout()
+                    .id("checkout-123")
+                    .idempotency_key("customer-key")
+                    .body(CheckoutCompleteRequest(Default::default()))
+                    .send()
+                    .await,
+            )
+            .await
+            .expect("empty completion")
+            .is_none()
         );
 
         create.assert_async().await;
@@ -471,12 +630,10 @@ mod tests {
             .await;
 
         let shopping = client(&server.base_url());
-        shopping
-            .get_checkout("session/a?b#c%d")
+        decode::<GetCheckoutResponse>(shopping.get_checkout().id("session/a?b#c%d").send().await)
             .await
             .expect("encoded checkout");
-        shopping
-            .get_order("order/a?b#c%d")
+        decode::<GetOrderResponse>(shopping.get_order().id("order/a?b#c%d").send().await)
             .await
             .expect("encoded order");
 
@@ -496,10 +653,15 @@ mod tests {
             })
             .await;
 
-        let error = client(&server.base_url())
-            .get_order("order-123")
-            .await
-            .expect_err("429 is an error");
+        let error = decode::<GetOrderResponse>(
+            client(&server.base_url())
+                .get_order()
+                .id("order-123")
+                .send()
+                .await,
+        )
+        .await
+        .expect_err("429 is an error");
 
         mock.assert_async().await;
         assert!(error.is_retryable_order_read());
@@ -523,10 +685,15 @@ mod tests {
             })
             .await;
 
-        let error = client(&server.base_url())
-            .get_order("123")
-            .await
-            .expect_err("404 is an error");
+        let error = decode::<GetOrderResponse>(
+            client(&server.base_url())
+                .get_order()
+                .id("123")
+                .send()
+                .await,
+        )
+        .await
+        .expect_err("404 is an error");
 
         mock.assert_async().await;
         assert!(error.is_retryable_order_read());
@@ -545,10 +712,17 @@ mod tests {
             })
             .await;
 
-        let error = client(&server.base_url())
-            .update_checkout("checkout-123", json!({}), "customer-key")
-            .await
-            .expect_err("400 is an error");
+        let error = decode::<UpdateCheckoutResponse>(
+            client(&server.base_url())
+                .update_checkout()
+                .id("checkout-123")
+                .idempotency_key("customer-key")
+                .body(CheckoutWritableRequest(Default::default()))
+                .send()
+                .await,
+        )
+        .await
+        .expect_err("400 is an error");
 
         mock.assert_async().await;
         assert!(!error.is_retryable_order_read());
@@ -566,10 +740,15 @@ mod tests {
             })
             .await;
 
-        let error = client(&server.base_url())
-            .get_order("order-123")
-            .await
-            .expect_err("503 is an error");
+        let error = decode::<GetOrderResponse>(
+            client(&server.base_url())
+                .get_order()
+                .id("order-123")
+                .send()
+                .await,
+        )
+        .await
+        .expect_err("503 is an error");
 
         mock.assert_async().await;
         assert!(error.is_retryable_order_read());
@@ -587,10 +766,15 @@ mod tests {
             })
             .await;
 
-        let error = client(&server.base_url())
-            .catalog_search(json!({}))
-            .await
-            .expect_err("malformed JSON is an error");
+        let error = decode::<SearchCatalogResponse>(
+            client(&server.base_url())
+                .search_catalog()
+                .body(SearchRequest(Default::default()))
+                .send()
+                .await,
+        )
+        .await
+        .expect_err("malformed JSON is an error");
 
         mock.assert_async().await;
         assert!(

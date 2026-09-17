@@ -332,6 +332,13 @@ fn add_idempotency_headers(spec: &mut Value) -> Result<()> {
 /// Removes source-contract prose and verbose object examples that are irrelevant
 /// to typed Rust client generation. Restore generic required response descriptions
 /// afterward, and retain protocol metadata plus string-array examples.
+///
+/// A JSON Schema `properties` map, and `components.schemas`, are keyed by
+/// field/schema *names* rather than documentation metadata, even though a
+/// name can collide with a metadata keyword (e.g. the Shopping contract has
+/// a `product.properties.description` field and a schema literally named
+/// `description`). Pruning must never remove those keys — only recurse into
+/// their values.
 fn prune_documentation_fields(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -345,8 +352,12 @@ fn prune_documentation_fields(value: &mut Value) {
             {
                 map.remove("examples");
             }
-            for child in map.values_mut() {
-                prune_documentation_fields(child);
+            for (key, child) in map.iter_mut() {
+                if key == "properties" || key == "schemas" {
+                    prune_named_schema_map(child);
+                } else {
+                    prune_documentation_fields(child);
+                }
             }
         }
         Value::Array(values) => {
@@ -355,6 +366,17 @@ fn prune_documentation_fields(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+/// Recurses into the *values* of a name-keyed schema map (a Schema Object's
+/// `properties`, or `components.schemas`) without pruning the map's own
+/// keys, which are field/schema names rather than documentation metadata.
+fn prune_named_schema_map(value: &mut Value) {
+    if let Value::Object(map) = value {
+        for child in map.values_mut() {
+            prune_documentation_fields(child);
+        }
     }
 }
 
@@ -500,5 +522,48 @@ mod tests {
         );
         assert!(!spec.to_string().contains("example\":"));
         assert!(!spec.to_string().contains("externalDocs"));
+    }
+
+    #[test]
+    fn pruning_preserves_property_and_schema_names_that_collide_with_metadata_keywords() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "description": {"type": "string"},
+                    "product": {
+                        "type": "object",
+                        "properties": {
+                            "description": {
+                                "description": "Human-readable product description.",
+                                "$ref": "#/components/schemas/description"
+                            },
+                            "summary": {"description": "Short blurb.", "type": "string"}
+                        }
+                    }
+                }
+            }
+        });
+
+        prune_documentation_fields(&mut spec);
+
+        assert!(
+            spec.pointer("/components/schemas/description").is_some(),
+            "a schema literally named `description` must survive pruning"
+        );
+        assert_eq!(
+            spec.pointer("/components/schemas/product/properties/description/$ref"),
+            Some(&json!("#/components/schemas/description")),
+            "a `description` field on `product` must survive pruning"
+        );
+        assert!(
+            spec.pointer("/components/schemas/product/properties/summary")
+                .is_some(),
+            "a `summary` field on `product` must survive pruning"
+        );
+        assert!(
+            spec.pointer("/components/schemas/product/properties/description/description")
+                .is_none(),
+            "the nested schema's own doc string must still be pruned"
+        );
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use cli_engine::NextAction;
-use serde_json::Value;
+use shopping_client::types::{Checkout, LookupResponse};
 
 use crate::next_action::next_action;
 
@@ -15,34 +15,24 @@ const CATEGORY_ACTIONS: &[(&str, &str, &str)] = &[
 ];
 
 /// Returns unique purchasable product IDs from a checkout session.
-pub(crate) fn purchased_product_ids(checkout: &Value) -> Vec<String> {
+pub(crate) fn purchased_product_ids(checkout: &Checkout) -> Vec<String> {
     checkout
-        .get("line_items")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|line_item| line_item.pointer("/item/id").and_then(Value::as_str))
-        .map(str::to_owned)
+        .line_items
+        .iter()
+        .filter_map(|line_item| line_item.item.as_ref()?.id.clone())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
 }
 
 /// Returns post-purchase actions for categories in a Shopping catalog lookup response.
-pub(crate) fn post_purchase_actions(catalog_response: &Value) -> Vec<NextAction> {
+pub(crate) fn post_purchase_actions(catalog_response: &LookupResponse) -> Vec<NextAction> {
     let categories = catalog_response
-        .get("products")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .flat_map(|product| {
-            product
-                .get("categories")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-        })
-        .filter_map(|category| category.get("value").and_then(Value::as_str))
+        .0
+        .products
+        .iter()
+        .flat_map(|product| product.categories.iter())
+        .filter_map(|category| category.value.as_deref())
         .collect::<BTreeSet<_>>();
 
     CATEGORY_ACTIONS
@@ -54,20 +44,47 @@ pub(crate) fn post_purchase_actions(catalog_response: &Value) -> Vec<NextAction>
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use shopping_client::types::{
+        CatalogLookupLookupResponse, CatalogLookupLookupResponseProductsItem, Category, Checkout,
+        Item, LineItem, LookupResponse,
+    };
 
     use super::{post_purchase_actions, purchased_product_ids};
 
+    fn line_item(id: Option<&str>) -> LineItem {
+        LineItem {
+            item: Some(Item {
+                id: id.map(str::to_owned),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn product_with_categories(categories: &[&str]) -> CatalogLookupLookupResponseProductsItem {
+        CatalogLookupLookupResponseProductsItem {
+            categories: categories
+                .iter()
+                .map(|value| Category {
+                    value: Some((*value).to_owned()),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn returns_unique_product_ids_from_checkout_items() {
-        let checkout = json!({
-            "line_items": [
-                {"item": {"id": "email-product"}},
-                {"item": {"id": "hosting-product"}},
-                {"item": {"id": "email-product"}},
-                {"item": {}}
-            ]
-        });
+        let checkout = Checkout {
+            line_items: vec![
+                line_item(Some("email-product")),
+                line_item(Some("hosting-product")),
+                line_item(Some("email-product")),
+                line_item(None),
+            ],
+            ..Default::default()
+        };
 
         assert_eq!(
             purchased_product_ids(&checkout),
@@ -77,13 +94,14 @@ mod tests {
 
     #[test]
     fn post_purchase_actions_follow_catalog_categories() {
-        let lookup = json!({
-            "products": [
-                {"categories": [{"value": "email"}]},
-                {"categories": [{"value": "webHosting"}]},
-                {"categories": [{"value": "email"}]},
-                {"categories": [{"value": "domains"}]}
-            ]
+        let lookup = LookupResponse(CatalogLookupLookupResponse {
+            products: vec![
+                product_with_categories(&["email"]),
+                product_with_categories(&["webHosting"]),
+                product_with_categories(&["email"]),
+                product_with_categories(&["domains"]),
+            ],
+            ..Default::default()
         });
 
         let actions = post_purchase_actions(&lookup);
@@ -95,11 +113,12 @@ mod tests {
 
     #[test]
     fn post_purchase_actions_ignore_unknown_or_missing_categories() {
-        let lookup = json!({
-            "products": [
-                {"categories": [{"value": "domains"}]},
-                {}
-            ]
+        let lookup = LookupResponse(CatalogLookupLookupResponse {
+            products: vec![
+                product_with_categories(&["domains"]),
+                CatalogLookupLookupResponseProductsItem::default(),
+            ],
+            ..Default::default()
         });
 
         assert!(post_purchase_actions(&lookup).is_empty());

@@ -1,10 +1,14 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextAction, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
-use serde_json::{Value, json};
+use shopping_client::types::{
+    CatalogSearchSearchRequest, CatalogSearchSearchResponse, SearchCatalogResponse, SearchRequest,
+    SearchResponse, Variant,
+};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::shopping::client::decode;
 use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
 use crate::shopping::human::{CATALOG_SEARCH_VIEW_ID, catalog_search_response};
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
@@ -52,21 +56,39 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<CatalogSearchOutput>()
             .with_view_id(CATALOG_SEARCH_VIEW_ID),
         |ctx, args: Args| async move {
-            let mut request = json!({});
+            let mut request = CatalogSearchSearchRequest::default();
             merge_search_args(
                 &mut request,
                 args.query.as_deref(),
                 &args.category,
                 args.cursor.as_deref(),
             )?;
-            merge_context_currency(&mut request, args.currency.as_deref())?;
-            merge_pagination(&mut request, args.limit)?;
+            merge_context_currency(&mut request.context, args.currency.as_deref());
+            merge_pagination(&mut request, args.limit);
             let client = make_client(&ctx).await?;
-            let response = client
-                .catalog_search(request.clone())
-                .await
-                .map_err(client_err)?;
-            let next_actions = next_actions(&response, &mut request, &ctx.middleware.env)?;
+            let response = decode::<SearchCatalogResponse>(
+                client
+                    .search_catalog()
+                    .body(SearchRequest(request.clone()))
+                    .send()
+                    .await,
+            )
+            .await
+            .map_err(client_err)?
+            .unwrap_or_else(|| {
+                SearchCatalogResponse::SearchResponse(SearchResponse(Default::default()))
+            });
+            let response = match response {
+                SearchCatalogResponse::SearchResponse(response) => response.0,
+                SearchCatalogResponse::ErrorResponse(_) => CatalogSearchSearchResponse::default(),
+            };
+            let next_actions = next_actions(&response, &mut request, args.limit, &ctx.middleware.env)?;
+            let response = serde_json::to_value(&response).map_err(|error| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to encode catalog search response: {error}"
+                ))
+                .into_cli_error()
+            })?;
             let output = if ctx.middleware.output_format == "human" {
                 catalog_search_response(&response)
             } else {
@@ -78,80 +100,70 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 fn merge_search_args(
-    request: &mut Value,
+    request: &mut CatalogSearchSearchRequest,
     query: Option<&str>,
     categories: &[String],
     cursor: Option<&str>,
 ) -> Result<()> {
-    let object = request
-        .as_object_mut()
-        .expect("catalog search request is an object");
     if let Some(query) = query {
-        merge_string(object, "query", query);
+        request.query = Some(query.to_owned());
     }
     if !categories.is_empty() {
-        let filters = object.entry("filters").or_insert_with(|| json!({}));
-        let filters = filters.as_object_mut().ok_or_else(|| {
-            crate::error::GddyError::validation("filters must be a JSON object").into_cli_error()
-        })?;
-        if filters.contains_key("categories") {
+        let filters = request.filters.get_or_insert_with(Default::default);
+        if !filters.categories.is_empty() {
             return Err(crate::error::GddyError::validation(
                 "--category cannot be combined with an existing category filter",
             )
             .into_cli_error());
         }
-        filters.insert("categories".to_owned(), json!(categories));
+        filters.categories = categories.to_vec();
     }
     if let Some(cursor) = cursor {
-        let pagination = object.entry("pagination").or_insert_with(|| json!({}));
-        let pagination = pagination.as_object_mut().ok_or_else(|| {
-            crate::error::GddyError::validation("pagination must be a JSON object").into_cli_error()
-        })?;
-        merge_string(pagination, "cursor", cursor);
+        request
+            .pagination
+            .get_or_insert_with(Default::default)
+            .cursor = Some(cursor.to_owned());
     }
     Ok(())
 }
 
-fn merge_string(object: &mut serde_json::Map<String, Value>, key: &str, value: &str) {
-    object.insert(key.to_owned(), json!(value));
+fn merge_pagination(request: &mut CatalogSearchSearchRequest, limit: Option<u8>) {
+    let Some(limit) = limit else {
+        return;
+    };
+    let limit = std::num::NonZeroU64::new(u64::from(limit)).expect("clap enforces --limit >= 1");
+    request
+        .pagination
+        .get_or_insert_with(Default::default)
+        .limit = limit;
 }
 
-fn merge_pagination(request: &mut Value, limit: Option<u8>) -> Result<()> {
-    if limit.is_none() {
-        return Ok(());
-    }
-    let object = request
-        .as_object_mut()
-        .expect("catalog search request is an object");
-    let pagination = object.entry("pagination").or_insert_with(|| json!({}));
-    let pagination = pagination.as_object_mut().ok_or_else(|| {
-        crate::error::GddyError::validation("pagination must be a JSON object").into_cli_error()
-    })?;
-
-    if let Some(limit) = limit {
-        pagination.insert("limit".to_owned(), json!(limit));
-    }
-    Ok(())
-}
-
-fn next_actions(response: &Value, request: &mut Value, env: &str) -> Result<Vec<NextAction>> {
+fn next_actions(
+    response: &CatalogSearchSearchResponse,
+    request: &mut CatalogSearchSearchRequest,
+    requested_limit: Option<u8>,
+    env: &str,
+) -> Result<Vec<NextAction>> {
     let mut actions = product_actions(response, request, env);
-    actions.extend(next_page_action(response, request, env)?);
+    actions.extend(next_page_action(response, request, requested_limit, env)?);
     Ok(actions)
 }
 
-fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<NextAction> {
-    let Some(product) = response
-        .get("products")
-        .and_then(Value::as_array)
-        .and_then(|items| items.first())
-    else {
+fn product_actions(
+    response: &CatalogSearchSearchResponse,
+    request: &CatalogSearchSearchRequest,
+    env: &str,
+) -> Vec<NextAction> {
+    let Some(product) = response.products.first() else {
         return Vec::new();
     };
-    let Some(product_id) = product.get("id").and_then(Value::as_str) else {
+    let Some(product_id) = product.id.as_deref() else {
         return Vec::new();
     };
-    let currency = request.pointer("/context/currency").and_then(Value::as_str);
+    let currency = request
+        .context
+        .as_ref()
+        .and_then(|context| context.currency.as_deref());
     let mut get_action = next_action(
         command_for_env(env, "catalog get <product-id>"),
         "View the selected product's details",
@@ -163,16 +175,17 @@ fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<NextActi
     }
     let mut actions = vec![get_action];
     if let Some(variant) = product
-        .get("variants")
-        .and_then(Value::as_array)
-        .and_then(|variants| variants.iter().find(|variant| is_available(variant)))
+        .variants
+        .iter()
+        .find(|variant| is_available(variant))
     {
-        let Some(variant_id) = variant.get("id").and_then(Value::as_str) else {
+        let Some(variant_id) = variant.id.as_deref() else {
             return actions;
         };
         let currency = variant
-            .pointer("/price/currency")
-            .and_then(Value::as_str)
+            .price
+            .as_ref()
+            .and_then(|price| price.currency.as_deref())
             .unwrap_or("USD");
         actions.push(
             next_action(
@@ -189,72 +202,66 @@ fn product_actions(response: &Value, request: &Value, env: &str) -> Vec<NextActi
     actions
 }
 
-fn next_page_action(response: &Value, request: &mut Value, env: &str) -> Result<Vec<NextAction>> {
-    let Some(pagination) = response.get("pagination") else {
+fn next_page_action(
+    response: &CatalogSearchSearchResponse,
+    request: &mut CatalogSearchSearchRequest,
+    requested_limit: Option<u8>,
+    env: &str,
+) -> Result<Vec<NextAction>> {
+    let Some(pagination) = response.pagination.as_ref() else {
         return Ok(Vec::new());
     };
-    if !pagination
-        .get("has_next_page")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
+    if !pagination.has_next_page.unwrap_or(false) {
         return Ok(Vec::new());
     }
-    let cursor = pagination
-        .get("cursor")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            crate::error::GddyError::unexpected(
-                "catalog search indicated another page but did not return a cursor",
-            )
-            .into_cli_error()
-        })?;
-    let request = request
-        .as_object_mut()
-        .expect("catalog search request is an object");
-    let pagination = request.entry("pagination").or_insert_with(|| json!({}));
-    let pagination = pagination.as_object_mut().ok_or_else(|| {
-        crate::error::GddyError::validation("pagination must be a JSON object").into_cli_error()
+    let cursor = pagination.cursor.clone().ok_or_else(|| {
+        crate::error::GddyError::unexpected(
+            "catalog search indicated another page but did not return a cursor",
+        )
+        .into_cli_error()
     })?;
-    pagination.insert("cursor".to_owned(), json!(cursor));
-    Ok(vec![search_action(request, env)?])
+    request
+        .pagination
+        .get_or_insert_with(Default::default)
+        .cursor = Some(cursor);
+    Ok(vec![search_action(request, requested_limit, env)?])
 }
 
-fn search_action(request: &serde_json::Map<String, Value>, env: &str) -> Result<NextAction> {
+fn search_action(
+    request: &CatalogSearchSearchRequest,
+    requested_limit: Option<u8>,
+    env: &str,
+) -> Result<NextAction> {
     let mut command = "catalog search".to_owned();
     let mut params = Vec::new();
-    append_search_param(&mut command, &mut params, "query", request.get("query"));
-    if let Some(categories) = request
-        .get("filters")
-        .and_then(Value::as_object)
-        .and_then(|filters| filters.get("categories"))
-        .and_then(Value::as_array)
-    {
-        for (index, category) in categories.iter().filter_map(Value::as_str).enumerate() {
+    append_search_param(&mut command, &mut params, "query", request.query.as_deref());
+    if let Some(filters) = request.filters.as_ref() {
+        for (index, category) in filters.categories.iter().enumerate() {
             let name = format!("category-{index}");
             command.push_str(&format!(" --category <{name}>"));
-            params.push((name, category.to_owned()));
+            params.push((name, category.clone()));
         }
     }
-    let pagination = request.get("pagination").and_then(Value::as_object);
     append_search_param(
         &mut command,
         &mut params,
         "cursor",
-        pagination.and_then(|pagination| pagination.get("cursor")),
+        request
+            .pagination
+            .as_ref()
+            .and_then(|pagination| pagination.cursor.as_deref()),
     );
-    if let Some(limit) = pagination
-        .and_then(|pagination| pagination.get("limit"))
-        .and_then(Value::as_u64)
-    {
+    if let Some(limit) = requested_limit {
         command.push_str(&format!(" --limit {limit}"));
     }
-    let context = request.get("context").and_then(Value::as_object);
     append_search_param(
         &mut command,
         &mut params,
         "currency",
-        context.and_then(|context| context.get("currency")),
+        request
+            .context
+            .as_ref()
+            .and_then(|context| context.currency.as_deref()),
     );
     Ok(params.into_iter().fold(
         next_action(command_for_env(env, command), "Fetch the next catalog page"),
@@ -266,51 +273,77 @@ fn append_search_param(
     command: &mut String,
     params: &mut Vec<(String, String)>,
     name: &str,
-    value: Option<&Value>,
+    value: Option<&str>,
 ) {
-    if let Some(value) = value.and_then(Value::as_str) {
+    if let Some(value) = value {
         command.push_str(&format!(" --{name} <{name}>"));
         params.push((name.to_owned(), value.to_owned()));
     }
 }
 
-fn is_available(variant: &Value) -> bool {
+fn is_available(variant: &Variant) -> bool {
     variant
-        .pointer("/availability/available")
-        .and_then(Value::as_bool)
+        .availability
+        .as_ref()
+        .and_then(|availability| availability.available)
         .unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use shopping_client::types::{
+        Amount, Category, PaginationRequest, PaginationResponse, Price, Product, SearchFilters,
+        VariantAvailability,
+    };
 
-    use super::{merge_pagination, merge_search_args, next_actions};
+    use super::{
+        CatalogSearchSearchRequest, CatalogSearchSearchResponse, Variant, merge_pagination,
+        merge_search_args, next_actions,
+    };
     use crate::shopping::common::{currency_code, merge_context_currency};
     use crate::shopping::human::catalog_search_response;
 
-    fn response() -> serde_json::Value {
-        json!({
-            "products": [{
-                "id": "product-1",
-                "title": "Product",
-                "categories": [{"value": "email"}],
-                "variants": [{
-                    "id": "product-1:1yr",
-                    "title": "Product — 1 Year",
-                    "availability": {"available": true},
-                    "price": {"amount": 7188, "currency": "USD"},
-                    "list_price": {"amount": 11988, "currency": "USD"}
-                }]
+    fn response() -> CatalogSearchSearchResponse {
+        CatalogSearchSearchResponse {
+            products: vec![Product {
+                id: Some("product-1".to_owned()),
+                title: Some("Product".to_owned()),
+                categories: vec![Category {
+                    value: Some("email".to_owned()),
+                    ..Default::default()
+                }],
+                variants: vec![Variant {
+                    id: Some("product-1:1yr".to_owned()),
+                    title: Some("Product — 1 Year".to_owned()),
+                    availability: Some(VariantAvailability {
+                        available: Some(true),
+                        ..Default::default()
+                    }),
+                    price: Some(Price {
+                        amount: Some(Amount(7188)),
+                        currency: Some("USD".to_owned()),
+                    }),
+                    list_price: Some(Price {
+                        amount: Some(Amount(11988)),
+                        currency: Some("USD".to_owned()),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
             }],
-            "pagination": {"cursor": "next", "has_next_page": true, "total_count": 14},
-            "messages": []
-        })
+            pagination: Some(PaginationResponse {
+                cursor: Some("next".to_owned()),
+                has_next_page: Some(true),
+                total_count: Some(14),
+            }),
+            messages: vec![],
+            ucp: None,
+        }
     }
 
     #[test]
     fn builds_search_request_without_a_json_body() {
-        let mut request = json!({});
+        let mut request = CatalogSearchSearchRequest::default();
         merge_search_args(
             &mut request,
             Some("email"),
@@ -318,35 +351,44 @@ mod tests {
             Some("cursor-1"),
         )
         .expect("flags should merge");
-        merge_context_currency(&mut request, Some("GBP")).expect("currency should merge");
-        merge_pagination(&mut request, Some(3)).expect("limit should merge");
+        merge_context_currency(&mut request.context, Some("GBP"));
+        merge_pagination(&mut request, Some(3));
 
+        assert_eq!(request.query, Some("email".to_owned()));
         assert_eq!(
-            request,
-            json!({
-                "query": "email",
-                "filters": {"categories": ["email", "hosting"]},
-                "pagination": {"cursor": "cursor-1", "limit": 3},
-                "context": {"currency": "GBP"}
-            })
+            request.filters.expect("filters").categories,
+            vec!["email".to_owned(), "hosting".to_owned()]
+        );
+        let pagination = request.pagination.expect("pagination");
+        assert_eq!(pagination.cursor, Some("cursor-1".to_owned()));
+        assert_eq!(pagination.limit.get(), 3);
+        assert_eq!(
+            request.context.expect("context").currency,
+            Some("GBP".to_owned())
         );
     }
 
     #[test]
     fn merges_limit_with_the_requested_cursor() {
-        let mut request = json!({"query": "email", "pagination": {"cursor": "cursor-1"}});
-        merge_pagination(&mut request, Some(25)).expect("valid pagination");
-        assert_eq!(
-            request,
-            json!({"query": "email", "pagination": {"limit": 25, "cursor": "cursor-1"}})
-        );
+        let mut request = CatalogSearchSearchRequest {
+            query: Some("email".to_owned()),
+            pagination: Some(PaginationRequest {
+                cursor: Some("cursor-1".to_owned()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        merge_pagination(&mut request, Some(25));
+        let pagination = request.pagination.expect("pagination");
+        assert_eq!(pagination.limit.get(), 25);
+        assert_eq!(pagination.cursor, Some("cursor-1".to_owned()));
     }
 
     #[test]
     fn next_actions_keep_the_selected_environment() {
         let response = response();
-        let mut request = json!({"pagination": {"limit": 3}});
-        let actions = next_actions(&response, &mut request, "test").expect("actions");
+        let mut request = CatalogSearchSearchRequest::default();
+        let actions = next_actions(&response, &mut request, Some(3), "test").expect("actions");
         assert_eq!(actions.len(), 3);
         assert!(
             actions
@@ -376,12 +418,15 @@ mod tests {
     #[test]
     fn next_actions_keep_dynamic_values_in_structured_parameters() {
         let response = response();
-        let mut request = json!({
-            "query": "O'Reilly",
-            "filters": {"categories": ["web & email"]},
-            "pagination": {"limit": 3}
-        });
-        let actions = next_actions(&response, &mut request, "test").expect("actions");
+        let mut request = CatalogSearchSearchRequest {
+            query: Some("O'Reilly".to_owned()),
+            filters: Some(SearchFilters {
+                categories: vec!["web & email".to_owned()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let actions = next_actions(&response, &mut request, Some(3), "test").expect("actions");
 
         assert_eq!(
             actions[0].params["product-id"].value.as_deref(),
@@ -402,7 +447,8 @@ mod tests {
 
     #[test]
     fn human_output_retains_products_for_grouped_rendering() {
-        let response = catalog_search_response(&response());
+        let response = serde_json::to_value(response()).expect("serialize response");
+        let response = catalog_search_response(&response);
         assert_eq!(response["products"].as_array().map(Vec::len), Some(1));
         assert_eq!(response["products"][0]["title"], "Product");
         assert_eq!(
@@ -415,11 +461,17 @@ mod tests {
     #[test]
     fn merges_currency_and_preserves_it_for_follow_up_actions() {
         let response = response();
-        let mut request = json!({"pagination": {"limit": 3}});
-        merge_context_currency(&mut request, Some("jpy")).expect("valid currency");
-        let actions = next_actions(&response, &mut request, "test").expect("actions");
+        let mut request = CatalogSearchSearchRequest::default();
+        merge_context_currency(&mut request.context, Some("jpy"));
+        let actions = next_actions(&response, &mut request, None, "test").expect("actions");
 
-        assert_eq!(request.pointer("/context/currency"), Some(&json!("jpy")));
+        assert_eq!(
+            request
+                .context
+                .as_ref()
+                .and_then(|context| context.currency.clone()),
+            Some("jpy".to_owned())
+        );
         assert_eq!(actions[1].params["currency"].value.as_deref(), Some("USD"));
         assert_eq!(actions[2].params["currency"].value.as_deref(), Some("jpy"));
     }

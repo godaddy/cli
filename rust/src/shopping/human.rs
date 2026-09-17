@@ -456,12 +456,6 @@ fn selected_payment_instrument(checkout: &Value) -> Option<&Value> {
         })
 }
 
-pub(crate) fn selected_payment_id(checkout: &Value) -> Option<&str> {
-    selected_payment_instrument(checkout)
-        .and_then(|instrument| instrument.get("id"))?
-        .as_str()
-}
-
 fn required_agreements(checkout: &Value) -> Vec<Value> {
     checkout
         .get("required_agreements")

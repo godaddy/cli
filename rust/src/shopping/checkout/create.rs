@@ -1,5 +1,4 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
-use serde_json::Value;
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -86,26 +85,34 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 payment_instrument: args.payment_instrument,
             };
             let body = input.create_body()?;
-            reject_multiple_payment_instruments(&body)?;
+            let instruments = body
+                .0
+                .payment
+                .as_ref()
+                .map_or(&[][..], |payment| payment.0.instruments.as_slice());
+            reject_multiple_payment_instruments(instruments)?;
             if ctx.dry_run() {
                 return Ok(CommandResult::new(serde_json::json!({
                     "action": "dry-run: would create checkout",
-                    "body": body,
+                    "body": serde_json::to_value(&body).map_err(|error| {
+                        crate::error::GddyError::unexpected(format!(
+                            "failed to encode checkout create request: {error}"
+                        ))
+                        .into_cli_error()
+                    })?,
                 }))
                 .with_dry_run());
             }
             let client = make_client(&ctx).await?;
-            let checkout = client
-                .create_checkout(body, &uuid::Uuid::new_v4().to_string())
-                .await
-                .map_err(client_err)?;
-            let ready_for_complete =
-                checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
-            let checkout_id = checkout
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
+            let checkout = crate::shopping::client::create_checkout(
+                &client,
+                body,
+                &uuid::Uuid::new_v4().to_string(),
+            )
+            .await
+            .map_err(client_err)?;
+            let ready_for_complete = checkout.status.as_deref() == Some("ready_for_complete");
+            let checkout_id = checkout.id.clone().unwrap_or_default();
             let env = crate::environments::resolve(&ctx.middleware.env)?;
             let mut actions = no_saved_payment_method_action(&checkout, &env.account_url)
             .into_iter()
@@ -119,6 +126,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .with_param("checkout-id", NextActionParam::value(checkout_id)),
                 );
             }
+            let checkout = serde_json::to_value(&checkout).map_err(|error| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to encode checkout response: {error}"
+                ))
+                .into_cli_error()
+            })?;
             let output = if ctx.middleware.output_format == "human" {
                 checkout_response(&checkout, args.show_all_payment_instruments)
             } else {

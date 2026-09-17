@@ -1,8 +1,11 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use serde_json::json;
+use shopping_client::types::{
+    CatalogLookupLookupRequest, LookupCatalogResponse, LookupRequest, LookupResponse,
+};
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::client::decode;
 use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
 use crate::shopping::human::{CATALOG_LOOKUP_VIEW_ID, catalog_lookup_response};
 
@@ -36,11 +39,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<CatalogLookupOutput>()
             .with_view_id(CATALOG_LOOKUP_VIEW_ID),
         |ctx, args: Args| async move {
-            let mut body = json!({"ids": args.id});
-
-            merge_context_currency(&mut body, args.currency.as_deref())?;
+            let mut request = CatalogLookupLookupRequest {
+                ids: args.id,
+                ..Default::default()
+            };
+            merge_context_currency(&mut request.context, args.currency.as_deref());
             let client = make_client(&ctx).await?;
-            let response = client.catalog_lookup(body).await.map_err(client_err)?;
+            let response = decode::<LookupCatalogResponse>(
+                client
+                    .lookup_catalog()
+                    .body(LookupRequest(request))
+                    .send()
+                    .await,
+            )
+            .await
+            .map_err(client_err)?
+            .unwrap_or_else(|| {
+                LookupCatalogResponse::LookupResponse(LookupResponse(Default::default()))
+            });
+            let response = serde_json::to_value(&response).map_err(|error| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to encode catalog lookup response: {error}"
+                ))
+                .into_cli_error()
+            })?;
             let output = if ctx.middleware.output_format == "human" {
                 catalog_lookup_response(&response)
             } else {
@@ -53,6 +75,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
