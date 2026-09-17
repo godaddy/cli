@@ -195,9 +195,16 @@ impl_into_checkout!(
 /// a meaningful state (unlike the create/complete mutations below, where
 /// it's a documented possible ack) — surface it as an error rather than
 /// manufacturing a default value that would misrepresent "no data" as "an
-/// empty but real resource."
+/// empty but real resource." Every `Checkout` field is optional, so a
+/// malformed-but-successful `{}` payload would otherwise decode cleanly as
+/// `Checkout::default()`; also reject that by requiring the resource's own
+/// `id` to be present, since a real checkout always carries one.
 fn checkout_or_empty_error<T: IntoCheckout>(response: Option<T>) -> Result<Checkout, ClientError> {
-    response.map_or(Err(ClientError::EmptyResponse), IntoCheckout::into_checkout)
+    let checkout = response.map_or(Err(ClientError::EmptyResponse), IntoCheckout::into_checkout)?;
+    if checkout.id.as_deref().is_none_or(str::is_empty) {
+        return Err(ClientError::EmptyResponse);
+    }
+    Ok(checkout)
 }
 
 /// A mutation's empty successful body (some environments 202/204 certain
@@ -730,6 +737,25 @@ mod tests {
         order.assert_async().await;
         assert!(matches!(checkout_error, ClientError::EmptyResponse));
         assert!(matches!(order_error, ClientError::EmptyResponse));
+    }
+
+    #[tokio::test]
+    async fn get_checkout_rejects_a_valid_but_id_less_json_object() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/shopping/checkout-sessions/checkout-123");
+                then.status(200).json_body(json!({}));
+            })
+            .await;
+
+        let error = get_checkout(&client(&server.base_url()), "checkout-123")
+            .await
+            .expect_err("a checkout response missing its own id is not usable");
+
+        mock.assert_async().await;
+        assert!(matches!(error, ClientError::EmptyResponse));
     }
 
     #[tokio::test]

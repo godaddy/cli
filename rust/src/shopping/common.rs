@@ -36,9 +36,11 @@ fn error_message_content(message: &Message) -> Option<&str> {
         Message::Warning(message) => (&message.type_, &message.content),
         Message::Info(message) => (&message.type_, &message.content),
     };
-    (type_.as_deref() == Some("error"))
-        .then_some(content.as_deref())
-        .flatten()
+    (type_.as_deref() == Some("error")).then(|| {
+        content
+            .as_deref()
+            .unwrap_or("Shopping API reported an error")
+    })
 }
 
 fn collect_error_messages(messages: &[Message]) -> Vec<&str> {
@@ -834,6 +836,17 @@ mod tests {
         assert!(!error.to_string().contains("a warning, not an error"));
 
         assert!(reject_response_errors(&[]).is_ok());
+    }
+
+    #[test]
+    fn reject_response_errors_reports_an_error_message_even_without_content() {
+        let messages = vec![Message::Error(MessageError {
+            content: None,
+            type_: Some("error".to_owned()),
+            ..Default::default()
+        })];
+
+        assert!(reject_response_errors(&messages).is_err());
     }
 
     #[test]
