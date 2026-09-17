@@ -141,13 +141,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_long(
             "Fetch an already-registered application's remote config and its latest \
             release's webhook subscriptions, and write them to a godaddy.toml manifest \
-            in the current directory, mirroring the remote application exactly. \
-            Read-only against the API (no application is created, no .env is written), \
-            so it's safe to re-run to re-sync webhook subscriptions after a new release. \
-            Use `gddy platform app update` to change description/url/proxy-url/scopes.",
+            in the current directory. Syncs identity, version, and webhook subscriptions \
+            from the remote application, while preserving locally-authored sections \
+            (actions, dependencies, extensions, settings). Read-only against the API (no \
+            application is created, no .env is written), so it's safe to re-run to \
+            re-sync webhook subscriptions after a new release. Use `gddy platform app \
+            update` to change description/url/proxy-url/scopes.",
         )
         .with_system("applications")
-        .with_tier(Tier::Read)
+        .with_tier(Tier::Mutate)
         .with_scopes(&[APP_REGISTRY_READ])
         .with_output_schema::<ApplicationImport>()
         .with_view(import_view_columns()),
