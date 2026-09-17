@@ -211,9 +211,13 @@ fn checkout_or_empty_error<T: IntoCheckout>(response: Option<T>) -> Result<Check
 /// for certain checkout operations) is a real, distinct outcome from "no
 /// data" — the caller must be able to tell it apart from an actual
 /// `Checkout`, so this preserves it as `None` rather than defaulting to an
-/// empty `Checkout`.
+/// empty `Checkout`. A nonempty response must still identify its checkout;
+/// otherwise an object-shaped error payload can decode as `Checkout` because
+/// the generated `oneOf` response variants are untagged and all optional.
 fn checkout_or_none<T: IntoCheckout>(response: Option<T>) -> Result<Option<Checkout>, ClientError> {
-    response.map(IntoCheckout::into_checkout).transpose()
+    response
+        .map(|response| checkout_or_empty_error(Some(response)))
+        .transpose()
 }
 
 pub(crate) async fn get_checkout(
@@ -762,6 +766,63 @@ mod tests {
 
         mock.assert_async().await;
         assert!(matches!(error, ClientError::EmptyResponse));
+    }
+
+    #[tokio::test]
+    async fn mutations_reject_a_nonempty_checkout_response_without_an_id() {
+        let server = MockServer::start_async().await;
+        let create = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/v1/shopping/checkout-sessions");
+                then.status(200).json_body(json!({}));
+            })
+            .await;
+        let update = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v1/shopping/checkout-sessions/checkout-123");
+                then.status(200).json_body(json!({}));
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/shopping/checkout-sessions/checkout-123/complete");
+                then.status(200).json_body(json!({}));
+            })
+            .await;
+
+        let shopping = client(&server.base_url());
+        let create_error = create_checkout(
+            &shopping,
+            CheckoutWritableRequest(Default::default()),
+            "customer-key",
+        )
+        .await
+        .expect_err("a nonempty create response without an id is invalid");
+        let update_error = update_checkout(
+            &shopping,
+            "checkout-123",
+            CheckoutWritableRequest(Default::default()),
+            "customer-key",
+        )
+        .await
+        .expect_err("a nonempty update response without an id is invalid");
+        let complete_error = complete_checkout(
+            &shopping,
+            "checkout-123",
+            CheckoutCompleteRequest(Default::default()),
+            "customer-key",
+        )
+        .await
+        .expect_err("a nonempty completion response without an id is invalid");
+
+        create.assert_async().await;
+        update.assert_async().await;
+        complete.assert_async().await;
+        assert!(matches!(create_error, ClientError::EmptyResponse));
+        assert!(matches!(update_error, ClientError::EmptyResponse));
+        assert!(matches!(complete_error, ClientError::EmptyResponse));
     }
 
     #[tokio::test]
