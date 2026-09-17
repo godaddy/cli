@@ -378,9 +378,7 @@ mod tests {
 
     #[test]
     fn env_var_overrides_auth_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_AUTH_URL", "https://auth.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
@@ -396,9 +394,7 @@ mod tests {
 
     #[test]
     fn env_var_overrides_token_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_TOKEN_URL", "https://token.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
@@ -410,9 +406,7 @@ mod tests {
 
     #[test]
     fn env_var_overrides_domains_api_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_DOMAINS_API_URL", "https://domains.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
@@ -424,9 +418,7 @@ mod tests {
 
     #[test]
     fn env_var_overrides_account_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_ACCOUNT_URL", "https://account.override.test");
 
         let resolved = test_environment_with_app_id("dev", |t| {
@@ -462,9 +454,7 @@ mod tests {
 
     #[test]
     fn env_var_override_rejects_a_malformed_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_AUTH_URL", "not-a-url");
 
         let err = Environments::new("dev")
@@ -482,9 +472,7 @@ mod tests {
 
     #[test]
     fn blank_env_var_override_falls_through_to_derived_auth_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let _guard = EnvGuard::set("GDDY_AUTH_URL", "   ");
 
         let resolved = test_environment_with_app_id("dev", |t| {

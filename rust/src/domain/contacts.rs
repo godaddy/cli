@@ -6,7 +6,6 @@ use cli_engine::{
 };
 use serde_json::json;
 
-use crate::contacts;
 use crate::next_action::next_action;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -54,7 +53,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
         .no_auth(true)
         .with_default_fields("path,action"),
         |ctx, args: ContactsInitArgs| async move {
-            let path = contacts::contacts_path().ok_or_else(|| {
+            let path = super::contacts_file::contacts_path().ok_or_else(|| {
                 CliCoreError::message("could not determine a config directory for contacts.toml")
             })?;
             let force = args.force;
@@ -75,7 +74,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 }))
                 .with_dry_run());
             }
-            cli_engine::fs::write_string_atomic(&path, contacts::sample_toml())?;
+            cli_engine::fs::write_string_atomic(&path, super::contacts_file::sample_toml())?;
             Ok(CommandResult::new(json!({
                 "path": path.display().to_string(),
                 "action": action,

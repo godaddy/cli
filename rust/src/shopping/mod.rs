@@ -6,6 +6,7 @@ mod common;
 mod human;
 mod money;
 mod order;
+mod product_actions;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 

@@ -185,6 +185,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             agreement_gate(&checkout, args.agree)?;
+            let product_ids = crate::shopping::product_actions::purchased_product_ids(&checkout);
+            let product_actions = if product_ids.is_empty() {
+                Vec::new()
+            } else {
+                client
+                    .catalog_lookup(json!({"ids": product_ids}))
+                    .await
+                    .map(|response| crate::shopping::product_actions::post_purchase_actions(&response))
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(error = %error, "could not look up purchased product categories");
+                        Vec::new()
+                    })
+            };
             let billing_address = billing_address(args.billing_address.as_deref())?;
             let mut body = if let Some(payment_instrument) = args.payment_instrument {
                 CheckoutInput {
@@ -217,7 +230,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(completion_error)?;
             let order_id = completion.pointer("/order/id").and_then(Value::as_str);
-            let actions = order_id.map_or_else(Vec::new, |order_id| {
+            let mut actions = order_id.map_or_else(Vec::new, |order_id| {
                 vec![
                     next_action(
                         "shopping order get <order-id> --wait",
@@ -226,6 +239,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .with_param("order-id", NextActionParam::value(order_id)),
                 ]
             });
+            actions.extend(product_actions);
             let output = if ctx.middleware.output_format == "human" {
                 checkout_completion_response(&completion)
             } else {

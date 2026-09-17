@@ -157,38 +157,32 @@ jobs:
             --options runtime --timestamp "$BIN"
           codesign --verify --strict --verbose=2 "$BIN"
 
-      # Notarization is temporarily disabled — tracked in DEVEX-1080. Signing
-      # alone already fixes DEVEX-896's Keychain-reprompt bug; notarization
-      # only matters for browser-downloaded (quarantined) tarballs, so it's
-      # safe to land signing first and re-enable this once the
-      # NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID
-      # secrets exist on this repo.
-      # - name: Notarize gddy (macOS)
-      #   if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
-      #   shell: bash
-      #   env:
-      #     API_KEY_BASE64: ${{ secrets.NOTARIZATION_API_KEY }}
-      #     KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
-      #     ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-      #   run: |
-      #     if [ -z "$API_KEY_BASE64" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ]; then
-      #       echo "::error::gddy was signed but NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID are missing"
-      #       exit 1
-      #     fi
-      #     KEY_PATH="$RUNNER_TEMP/notary_key.p8"
-      #     printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY_PATH"
-      #     chmod 600 "$KEY_PATH"
-      #
-      #     NOTARY_ZIP="$RUNNER_TEMP/notarize.zip"
-      #     ditto -c -k --sequesterRsrc "target/${{ matrix.target }}/release/gddy" "$NOTARY_ZIP"
-      #
-      #     xcrun notarytool submit "$NOTARY_ZIP" \
-      #       --key "$KEY_PATH" \
-      #       --key-id "$KEY_ID" \
-      #       --issuer "$ISSUER_ID" \
-      #       --wait
-      #
-      #     rm -f "$KEY_PATH" "$NOTARY_ZIP"
+      - name: Notarize gddy (macOS)
+        if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        env:
+          API_KEY_BASE64: ${{ secrets.NOTARIZATION_API_KEY }}
+          KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+          ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+        run: |
+          if [ -z "$API_KEY_BASE64" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ]; then
+            echo "::error::gddy was signed but NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID are missing"
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+          printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          NOTARY_ZIP="$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --sequesterRsrc "target/${{ matrix.target }}/release/gddy" "$NOTARY_ZIP"
+
+          xcrun notarytool submit "$NOTARY_ZIP" \
+            --key "$KEY_PATH" \
+            --key-id "$KEY_ID" \
+            --issuer "$ISSUER_ID" \
+            --wait
+
+          rm -f "$KEY_PATH" "$NOTARY_ZIP"
 
       - name: Tear down signing keychain (macOS)
         if: always() && matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
