@@ -14,8 +14,9 @@ struct ImportArgs {
     #[arg(value_name = "NAME")]
     name: String,
 
-    /// Skip the confirmation/abort when the local godaddy.toml has webhook
-    /// subscriptions not present in the application's latest published release.
+    /// Skip safety checks when the local godaddy.toml would be overwritten:
+    /// allows discarding unpublished webhook subscription changes, and
+    /// allows overwriting a manifest that belongs to a different application.
     #[arg(long)]
     force: bool,
 }
@@ -227,7 +228,7 @@ pub(super) async fn run(
 
     for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
         if !crate::platform::app::public_url::is_public_routable_url(u) {
-            return Err(cli_engine::CliCoreError::message(format!(
+            return Err(super::validation_err(format!(
                 "Invalid application configuration: {field} must be a publicly-resolvable \
                  http(s) URL (localhost, loopback, and private IPs are not allowed)"
             )));
