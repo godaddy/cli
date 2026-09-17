@@ -123,7 +123,10 @@ where
         Err(progenitor_client::Error::UnexpectedResponse(response))
             if response.status().is_success() =>
         {
-            let bytes = response.bytes().await.unwrap_or_default();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|error| ClientError::Network(error.to_string()))?;
             if bytes.is_empty() {
                 Ok(None)
             } else {

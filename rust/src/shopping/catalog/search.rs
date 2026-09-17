@@ -3,7 +3,7 @@ use cli_engine::{
 };
 use shopping_client::types::{
     CatalogSearchSearchRequest, CatalogSearchSearchResponse, SearchCatalogResponse, SearchRequest,
-    SearchResponse, Variant,
+    Variant,
 };
 
 use crate::next_action::next_action;
@@ -75,9 +75,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(client_err)?
-            .unwrap_or_else(|| {
-                SearchCatalogResponse::SearchResponse(SearchResponse(Default::default()))
-            });
+            .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
             let response = match response {
                 SearchCatalogResponse::SearchResponse(response) => response.0,
                 SearchCatalogResponse::ErrorResponse(payload) => {

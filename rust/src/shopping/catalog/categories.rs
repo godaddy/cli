@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shopping_client::types::{
     CatalogSearchSearchRequest, CatalogSearchSearchResponse, PaginationRequest,
-    SearchCatalogResponse, SearchRequest, SearchResponse,
+    SearchCatalogResponse, SearchRequest,
 };
 
 use crate::output_schema::output_schema;
@@ -89,7 +89,7 @@ async fn refresh_categories(
     )
     .await
     .map_err(client_err)?
-    .unwrap_or_else(|| SearchCatalogResponse::SearchResponse(SearchResponse(Default::default())));
+    .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
     let response = match response {
         SearchCatalogResponse::SearchResponse(response) => response.0,
         SearchCatalogResponse::ErrorResponse(payload) => {

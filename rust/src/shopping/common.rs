@@ -212,16 +212,12 @@ impl CheckoutInput {
 /// The two are wire-compatible (each writable field wraps the exact same
 /// inner type the read side uses, e.g. `UcpRefsSchemaBuyer(pub Buyer)`), so
 /// this is a direct field mapping — no dynamic JSON involved.
+///
+/// `checkout.line_items` may legitimately be empty (e.g. every item was
+/// removed) — `client::get_checkout` already rejects a malformed/empty API
+/// response before a `Checkout` ever reaches here, so an empty cart at this
+/// point is real, not a sign of missing data.
 fn checkout_to_writable(checkout: &Checkout) -> Result<CheckoutWritableRequestSchema> {
-    if checkout.line_items.is_empty() {
-        // `#[serde(default)]` means a missing `line_items` key and an empty
-        // array both deserialize to `vec![]`, so this is the only remaining
-        // signal that the fetched checkout is incomplete or malformed —
-        // rebuilding a writable body from it would silently drop the cart.
-        return Err(
-            GddyError::unexpected("checkout response did not include line items").into_cli_error(),
-        );
-    }
     let line_items = checkout
         .line_items
         .iter()
@@ -775,15 +771,35 @@ mod tests {
     }
 
     #[test]
-    fn update_rejects_no_changes_or_incomplete_checkout_responses() {
+    fn update_rejects_when_no_changes_are_requested() {
         assert!(CheckoutInput::default().update_body(&checkout()).is_err());
-        assert!(
-            CheckoutInput {
-                buyer_email: Some("jane@example.test".to_owned()),
-                ..CheckoutInput::default()
-            }
-            .update_body(&Checkout::default())
-            .is_err()
+    }
+
+    #[test]
+    fn update_allows_a_legitimately_empty_cart() {
+        // `client::get_checkout` already rejects a malformed/empty API
+        // response before a real caller ever reaches `update_body`, so an
+        // empty `line_items` here represents a checkout whose items were
+        // all removed, not missing data — it must still be updatable.
+        let empty_cart = Checkout {
+            id: Some("checkout-1".to_owned()),
+            line_items: vec![],
+            ..checkout()
+        };
+        let body = CheckoutInput {
+            buyer_email: Some("jane@example.test".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&empty_cart)
+        .expect("an empty cart should still accept a buyer update");
+
+        assert!(body.0.line_items.is_empty());
+        assert_eq!(
+            body.0
+                .buyer
+                .as_ref()
+                .and_then(|buyer| buyer.0.email.clone()),
+            Some("jane@example.test".to_owned())
         );
     }
 

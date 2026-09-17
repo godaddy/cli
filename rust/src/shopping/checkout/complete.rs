@@ -204,7 +204,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     Some(LookupCatalogResponse::LookupResponse(response)) => {
                         crate::shopping::product_actions::post_purchase_actions(&response)
                     }
-                    _ => Vec::new(),
+                    Some(LookupCatalogResponse::ErrorResponse(payload)) => {
+                        tracing::warn!(
+                            error = ?payload,
+                            "could not look up purchased product categories"
+                        );
+                        Vec::new()
+                    }
+                    None => Vec::new(),
                 })
                 .unwrap_or_else(|error| {
                     tracing::warn!(error = %error, "could not look up purchased product categories");

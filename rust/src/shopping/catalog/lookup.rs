@@ -1,7 +1,5 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use shopping_client::types::{
-    CatalogLookupLookupRequest, LookupCatalogResponse, LookupRequest, LookupResponse,
-};
+use shopping_client::types::{CatalogLookupLookupRequest, LookupCatalogResponse, LookupRequest};
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
@@ -54,9 +52,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(client_err)?
-            .unwrap_or_else(|| {
-                LookupCatalogResponse::LookupResponse(LookupResponse(Default::default()))
-            });
+            .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
             let response = match response {
                 LookupCatalogResponse::LookupResponse(response) => response.0,
                 LookupCatalogResponse::ErrorResponse(payload) => {
