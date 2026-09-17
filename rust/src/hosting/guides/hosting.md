@@ -79,7 +79,7 @@ Skip this on later deploys.
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app is not attached — go back to step 4.
+If publish returns `WH_PLAN_REQUIRED`, the app is not attached. Go back to step 4.
 
 Poll until COMPLETED:
 
