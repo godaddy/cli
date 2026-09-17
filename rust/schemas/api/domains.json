@@ -330,7 +330,7 @@
     "ContactSource": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/contact-source.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Where the resolved registrant contact came from. INLINE — contact was supplied via an inline registration profile on the request. PROFILE — contact was resolved from a named or default saved profile. ACCOUNT — contact was derived from the authenticated principal's account identity (no profile supplied or on file).\n",
+      "description": "Where the resolved registrant contact came from. INLINE — contact was supplied via an inline registration profile on the request. PROFILE — contact was resolved from a saved registration profile. ACCOUNT — contact was derived from the authenticated principal's account identity (no profile supplied).\n",
       "enum": [
         "INLINE",
         "PROFILE",
@@ -844,7 +844,7 @@
     "DomainOperationResult": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation-result.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The terminal success payload for a completed domain operation. Returned on the parent DomainOperation when status is COMPLETED. Absent for non-terminal statuses (CONFIRMED, EXECUTING) and for FAILED operations.\nOnce status reaches COMPLETED it is terminal: result is populated, remains available on subsequent polls, and status does not revert. Interpret the fields present in result using the parent operation's type:\nREGISTER — expiresAt, orderId.\n",
+      "description": "The terminal success payload for a completed domain operation. Returned on the parent DomainOperation when status is COMPLETED. Absent for non-terminal statuses (CONFIRMED, EXECUTING) and for FAILED operations.\nOnce status reaches COMPLETED it is terminal: result is populated, remains available on subsequent polls, and status does not revert. Interpret the fields present in result using the parent operation's type:\nREGISTER — expiresAt, orderId. RENEW — expiresAt, orderId.\n",
       "properties": {
         "expiresAt": {
           "allOf": [
@@ -886,9 +886,10 @@
     "DomainOperationType": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-operation-type.v3",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER — new domain registration. UPDATE_AUTO_RENEW — update auto-renewal settings for a domain. UPDATE_NAMESERVERS — update nameservers for a domain. UPDATE_TRANSFER_LOCK — update transfer-lock settings for a domain.\n",
+      "description": "The type of asynchronous domain operation. Used to distinguish which workflow is being polled on the /operations/{operationId} endpoint. REGISTER — new domain registration. RENEW — renew an existing domain. UPDATE_AUTO_RENEW — update auto-renewal settings for a domain. UPDATE_NAMESERVERS — update nameservers for a domain. UPDATE_TRANSFER_LOCK — update transfer-lock settings for a domain.\n",
       "examples": [
         "REGISTER",
+        "RENEW",
         "UPDATE_AUTO_RENEW",
         "UPDATE_NAMESERVERS",
         "UPDATE_TRANSFER_LOCK"
@@ -1155,7 +1156,7 @@
               "$ref": "#/$defs/uuid"
             },
             {
-              "description": "ID of a saved registration profile to use for contacts and preference defaults. Omit to fall back to the account-default profile for the domain's TLD, then to account identity.\n"
+              "description": "ID of a saved registration profile to use for contacts and preference defaults. Must match the profileId supplied on the quote when one was used. Any inline profile overrides it role by role; when neither supplies a registrant, account identity applies.\n"
             }
           ]
         },
@@ -1212,6 +1213,117 @@
       ],
       "title": "Registration",
       "type": "object"
+    },
+    "RegistrationPreference": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-preference.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A purchase preference enabled on a saved registration profile.\nAUTO_RENEW — renew the domain automatically before it expires. PRIVACY — withhold registrant details from public WHOIS. TRUSTEE — local-presence service required by some TLDs. Derived from the contacts supplied rather than set directly, and returned on read when it applies.\nNot a closed set. These are the preferences this version names; a profile may carry a preference that is not among them, and new ones may be named in a later version.\n",
+      "examples": [
+        "AUTO_RENEW",
+        "PRIVACY",
+        "TRUSTEE"
+      ],
+      "title": "Registration Preference",
+      "type": "string"
+    },
+    "RegistrationProfile": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-profile.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A saved, reusable set of contacts and purchase preference defaults, referenced by profileId on a registration quote or a registration.\nA profile is a registration-time template. Its values are copied into the registration when a quote is executed, and nothing links the profile to the resulting domain afterwards. A profile cannot be edited, and no change to a profile can affect a domain already registered from it. To change saved details, create the replacement first, then delete the profile it supersedes.\nA profile is scoped to the TLDs named on create, because contact requirements are set by the TLD rather than by the contacts supplied. TLDs sharing one set of requirements share a profile; a TLD demanding additional registrant detail needs its own. See GET /registration-schemas/{tld} for what contacts a TLD requires.\nSee profileId on the registration quote for how a saved profile, an inline profile and account identity combine.\n",
+      "properties": {
+        "contacts": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Contacts"
+            },
+            {
+              "description": "Contacts saved on this profile. Every role given here applies to all the TLDs the profile covers, since those TLDs share one set of contact requirements.\n"
+            }
+          ]
+        },
+        "createdAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "When the profile was created. Absent for profiles created before this timestamp was recorded.\n",
+              "readOnly": true
+            }
+          ]
+        },
+        "links": {
+          "description": "HATEOAS link relations. rel=self — the canonical URL for this profile. Profiles are replace-only, so no relation is offered for modifying one.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "name": {
+          "description": "Optional human-readable label. Recommended, since it is the only human-readable field that tells one profile from another on read. Not required to be unique.\n",
+          "example": "Acme Corp standard contacts",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        "nameServers": {
+          "description": "Authoritative nameservers applied when this profile is used. Omit to inherit platform defaults at registration time. No minimum count applies to a stored profile, which may carry a partial set or none.\n",
+          "example": [
+            "ns1.example.com",
+            "ns2.example.com"
+          ],
+          "items": {
+            "$ref": "#/$defs/NameserverHostname"
+          },
+          "maxItems": 13,
+          "type": "array"
+        },
+        "preferences": {
+          "description": "Purchase preferences to enable when this profile is used. A profile can only enable a preference, never disable one, so leaving a value out of the list means the registration takes the platform default for it: auto-renew on, privacy off. To register without auto-renew, supply the preference inline on that registration instead.\nOn read the list is what the profile will apply, which is not always what was sent: a preference the supplied contacts require is added when the profile is created. Treat it as open — it may name a preference this version does not document.\n",
+          "example": [
+            "AUTO_RENEW",
+            "PRIVACY"
+          ],
+          "items": {
+            "$ref": "#/$defs/RegistrationPreference"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "profileId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Server-assigned identifier. Opaque: store it and echo it back on quote and registration requests. Do not parse it or infer meaning from its value.\n",
+              "example": "14514a29-5fce-4624-8d8a-d8abd56015e2",
+              "readOnly": true
+            }
+          ]
+        },
+        "tlds": {
+          "description": "The TLDs this profile is for. Supplied on create and not returned on read, so a caller that needs the mapping should keep its own. All TLDs listed must share one set of contact requirements; if they do not, the request is rejected and the caller should create one profile per requirement set.\n",
+          "example": [
+            "com",
+            "net"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "tlds",
+        "contacts"
+      ],
+      "title": "Registration Profile",
+      "type": "object",
+      "x-sensitivity": "confidential"
     },
     "RegistrationQuote": {
       "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote.v3",
@@ -1328,6 +1440,268 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "TLD-specific JSON Schema describing the fields required to register a domain under this TLD. The structure varies per TLD and is not further constrained at the API layer. Use the contents to guide construction of the POST /registration-quotes and POST /registrations request bodies.\n",
       "title": "Registration Schema",
+      "type": "object"
+    },
+    "Renewal": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/renewal.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A domain renewal entity created when a POST /renewals request is accepted. Renewals are a top-level resource with their own stable renewalId; the domain relationship is captured in the representation.\nOn POST /renewals, supply the writable fields (domain, quoteToken, and consent; period is optional). The server returns the full Renewal with readOnly fields populated. Poll links[rel=self] (GET /renewals/{renewalId}) until status reaches COMPLETED or FAILED. The same resource is also reachable via GET /operations/{operationId} for clients operating at the abstract level; operationId is included in the representation for that purpose.\nThe price commitment rides in the quoteToken; consent records when the customer confirmed the charge. Renewals have no legal-agreement or fee acknowledgment surface — use RenewalConsent, not Consent.\n",
+      "properties": {
+        "consent": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/RenewalConsent"
+            },
+            {
+              "description": "The customer's confirmation of the renewal. On execute, supply agreedAt; agreedBy is server-derived and returned on the persisted record.\n"
+            }
+          ]
+        },
+        "createdAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp when this renewal was initiated.",
+              "readOnly": true
+            }
+          ]
+        },
+        "domain": {
+          "description": "The domain name to renew, in punycode A-label form for IDNs. Must match the domain in the quoteToken.\n",
+          "example": "example.com",
+          "type": "string"
+        },
+        "expiresAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The domain's new expiry date once the renewal completes. Present only when status is COMPLETED. This is the authoritative post-renewal expiry; RenewalQuote.resolvedNewExpiresAt is only the projected value at quote time.\n",
+              "readOnly": true
+            }
+          ]
+        },
+        "links": {
+          "description": "HATEOAS link relations for this renewal. rel=self — the canonical URL for this renewal record (GET /renewals/{renewalId}). rel=domain — the renewed domain-name resource once status is COMPLETED. rel=operation — the abstract operation at GET /operations/{operationId}.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "operationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Identifier of the DomainOperation tracking this renewal. Use with GET /operations/{operationId} for abstract operation polling. Both the concrete (GET /renewals/{renewalId}) and abstract poll endpoints resolve the same underlying state.\n",
+              "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
+              "readOnly": true
+            }
+          ]
+        },
+        "orderId": {
+          "description": "The orderId of the order that processed this renewal. Present only when status is COMPLETED. Not present for failed or in-progress renewals.\n",
+          "readOnly": true,
+          "type": "string"
+        },
+        "period": {
+          "default": 1,
+          "description": "Renewal period in years. Must match the period in the preceding quote. If omitted, defaults to 1 — so omit only when the quote was for 1 year; otherwise echo the quoted period.\n",
+          "example": 1,
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "price": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The locked renewal price charged on execute, taken from the quote. Present once the renewal is accepted.\n",
+              "readOnly": true
+            }
+          ]
+        },
+        "quoteToken": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "The single-use opaque token from the preceding quoteRenewal call. Required on execute. Consumed on first successful execution; idempotent retries with the same Idempotency-Key replay the original operation without re-consuming the token.\n",
+              "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
+              "writeOnly": true
+            }
+          ]
+        },
+        "renewalId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Server-assigned stable identifier for this renewal record. Use in GET /renewals/{renewalId} to poll for status.\n",
+              "readOnly": true
+            }
+          ]
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/DomainOperationStatus"
+            },
+            {
+              "description": "Current execution status of this renewal.",
+              "readOnly": true
+            }
+          ]
+        },
+        "updatedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "Timestamp of the most recent status update.",
+              "readOnly": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "domain",
+        "quoteToken",
+        "consent"
+      ],
+      "title": "Renewal",
+      "type": "object"
+    },
+    "RenewalConsent": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/renewal-consent.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Customer confirmation for a domain renewal. Distinct from Consent: renewals have no legal-agreement set and no purchase fees, so agreementTypes and acknowledgedFees are not part of this type. The caller supplies agreedAt; the server derives agreedBy from the authenticated request context.\n",
+      "properties": {
+        "agreedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The timestamp at which the principal confirmed the renewal. Should reflect when the customer confirmed the charge, not when the API call was made.\n"
+            }
+          ]
+        },
+        "agreedBy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ConsentActor"
+            },
+            {
+              "description": "Who gave consent and how it was transmitted. Server-derived from the execute request's auth context.\n",
+              "readOnly": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "agreedAt"
+      ],
+      "title": "Renewal Consent",
+      "type": "object"
+    },
+    "RenewalQuote": {
+      "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/renewal-quote.v3",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A price quote for renewing a single owned domain. Contains the locked renewal price, current and projected new expiry dates, and a short-lived single-use quoteToken that must be presented on the subsequent renewal execute call. Returned only when the domain is eligible to renew for the requested period; ineligibility is an HTTP error, not a negative 200.\nThe quoteToken hash binds domain + period + price + currency + currentExpiresAt + iscCode (empty string when not supplied). Binding currentExpiresAt folds in an expiry guard: if the domain is renewed or its expiry changes between quote and execute, the re-hash mismatches and the execute returns QUOTE_MISMATCH, preventing a double renewal. Binding iscCode ensures the locked price applies only when the same pricing context is presented on execute.\n",
+      "properties": {
+        "currentExpiresAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The domain's current expiry date at the moment this quote was issued. Bound into the quoteToken hash. If the domain's expiry changes between quote and execute (e.g. a concurrent renewal or registry update), the re-hash will mismatch and execute returns QUOTE_MISMATCH — preventing an unintended double renewal.\n",
+              "readOnly": true
+            }
+          ]
+        },
+        "domain": {
+          "description": "The domain name being quoted for renewal, in punycode A-label form for IDNs.\n",
+          "example": "example.com",
+          "type": "string"
+        },
+        "expiresAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The expiry timestamp of the quoteToken. After this time, presenting the token on execute returns QUOTE_EXPIRED and a fresh quote must be obtained.\n"
+            }
+          ]
+        },
+        "irreversible": {
+          "description": "Whether executing this quote is irreversible once accepted. Always true for renewal — a charge is created and the domain's expiry is extended. Provided so agents can calibrate the explicitness of any confirmation step before directing the user to execute.\n",
+          "example": true,
+          "type": "boolean"
+        },
+        "period": {
+          "description": "Renewal period in years for which the price is quoted. Defaults to 1 when not supplied on the quote request.\n",
+          "example": 1,
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "price": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/simple-money"
+            },
+            {
+              "description": "The locked renewal price for the quoted period. Held for the duration of the quoteToken's TTL.\n"
+            }
+          ]
+        },
+        "quoteToken": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "description": "Opaque, single-use token with a 10-minute TTL. Encodes a hash of domain + period + price + currency + currentExpiresAt + iscCode (empty string when not supplied). Treat as a capability; do not parse or persist beyond the immediate execute call.\n",
+              "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6"
+            }
+          ]
+        },
+        "resolvedNewExpiresAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "description": "The projected expiry date if execution succeeds: currentExpiresAt extended by the quoted period in years. Informational only; the authoritative post-renewal expiry is populated on the Renewal entity once status reaches COMPLETED.\n",
+              "readOnly": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "domain",
+        "period",
+        "price",
+        "currentExpiresAt",
+        "resolvedNewExpiresAt",
+        "quoteToken",
+        "expiresAt",
+        "irreversible"
+      ],
+      "title": "Renewal Quote",
       "type": "object"
     },
     "ResolvedSettings": {
@@ -2639,6 +3013,232 @@
       "summary": "Poll an async domain operation"
     },
     {
+      "description": "Saves a reusable set of contacts and purchase preference defaults for the named TLDs and returns it with a server-assigned profileId. Reference that profileId on POST /registration-quotes and POST /registrations instead of repeating contacts on every request.\nCreation is content-addressed. Saving the same details again returns the profileId of the existing profile rather than creating a duplicate, so a caller should save once and reuse.\nProfiles are immutable. To change saved details, create the replacement and delete the profile it supersedes, in that order.\n",
+      "method": "POST",
+      "operationId": "createRegistrationProfile",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/registration-profiles",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/RegistrationProfile"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "The profile is saved and available under the returned profileId. Also returned when an identical profile already existed, in which case no new profile was created.\n",
+          "schema": {
+            "$ref": "#/$defs/RegistrationProfile"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as an ineligible contact, unsupported TLD, non-renewable domain status, or quote_mismatch (e.g. iscCode or acknowledgedFees that do not match the locked quote).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.registration-profile:create"
+      ],
+      "summary": "Create a registration profile"
+    },
+    {
+      "description": "Returns a saved registration profile belonging to the authenticated account, or to the shopper named by X-Shopper-Id. The TLDs supplied on create are not returned.\n",
+      "method": "GET",
+      "operationId": "getRegistrationProfile",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Server-assigned registration profile identifier.",
+          "in": "path",
+          "name": "profileId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/registration-profiles/{profileId}",
+      "responses": {
+        "200": {
+          "description": "The registration profile.",
+          "schema": {
+            "$ref": "#/$defs/RegistrationProfile"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.registration-profile:read"
+      ],
+      "summary": "Retrieve a registration profile"
+    },
+    {
+      "description": "Deletes a saved registration profile. Deleting a profile that does not exist also returns 204, so a retry is safe.\nDomains already registered from this profile are unaffected; the profile was copied into the registration when the quote was executed.\n",
+      "method": "DELETE",
+      "operationId": "deleteRegistrationProfile",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Server-assigned registration profile identifier.",
+          "in": "path",
+          "name": "profileId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/registration-profiles/{profileId}",
+      "responses": {
+        "204": {
+          "description": "Profile deleted, or already absent."
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.registration-profile:delete"
+      ],
+      "summary": "Delete a registration profile"
+    },
+    {
       "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken — this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n\nMay pass `iscCode` to lock pricing at applicable rates;\nthe same value must be supplied on /registrations if provided here.\n\n**PREMIUM domains:** when the quoted domain has inventory `PREMIUM`,\nthe response includes a `fees` array containing a\n`ONE_TIME_PREMIUM_DOMAIN_PURCHASE` entry. The execute request must\necho this array verbatim in `consent.acknowledgedFees` to confirm\nthe customer accepted the specific charge before the irreversible\npurchase proceeds.\n",
       "method": "POST",
       "operationId": "quoteDomainRegistration",
@@ -2705,7 +3305,7 @@
                   "$ref": "#/$defs/uuid"
                 },
                 {
-                  "description": "ID of a saved registration profile. Omit to fall back to the account-default profile or account identity.\n"
+                  "description": "ID of a saved registration profile. Any inline profile overrides it role by role; when neither supplies a registrant, account identity applies. An id that names no profile the caller owns is rejected, never ignored, so a quote never silently applies contacts other than the ones asked for.\n"
                 }
               ]
             }
@@ -3007,6 +3607,291 @@
         "domains.domain:read"
       ],
       "summary": "Get a registration record"
+    },
+    {
+      "description": "Prices the renewal, checks domain eligibility and ownership, computes\nthe projected new expiry date, and mints a single-use quoteToken with\na 10-minute TTL. Free and read-only; safe to call speculatively. A\n`200` is returned only when a quoteToken is issued.\n\nEvaluation order:\n1. Unsupported TLD → `422` with error name `UNSUPPORTED_TLD`.\n2. Domain not found, or not owned by the authenticated identity → `404`\n   with error name `DOMAIN_NOT_FOUND` (collapsed to avoid ownership enumeration).\n3. Owned domain that cannot be renewed as requested → `422` with error\n   name `VALIDATION_ERROR` and a `details[].issue` of\n   `INVALID_PERIOD_RANGE`, `OUTSIDE_RENEWAL_WINDOW`, or `NOT_RENEWABLE`.\n4. Otherwise → `200` with a locked quoteToken.\n\n`INVALID_PERIOD_RANGE` — the requested period is not valid for this\nTLD. Covers periods the registry does not offer (e.g. `.de` only\nallows certain term lengths) and periods that would push remaining\nterm past the registry maximum (e.g. 5 years remaining, max 10,\nperiod 7). Retry with a supported, shorter period.\n\n`OUTSIDE_RENEWAL_WINDOW` — the domain is too far from expiry to renew yet.\nRetry closer to the expiry date.\n\n`NOT_RENEWABLE` — domain status does not permit renewal (e.g. expired,\nRGP redemption, or pending deletion). Check current status via\n`/domain-names`. Redemption (RGP) is out of scope for this endpoint.\n\nThe quoteToken hash binds domain + period + price + currency +\ncurrentExpiresAt + iscCode (empty string when not supplied). The\ncurrentExpiresAt binding serves as the expiry guard: if the domain is\nrenewed by another operation between quote and execute, the re-hash\nmismatches and execute returns QUOTE_MISMATCH, preventing a double\nrenewal. Binding iscCode ensures the locked price applies only when\nthe same pricing context is presented on execute.\n",
+      "method": "POST",
+      "operationId": "quoteRenewal",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates for this ISC.\n",
+          "in": "query",
+          "name": "iscCode",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/renewal-quotes",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "properties": {
+            "domain": {
+              "description": "The owned domain name to quote for renewal, in punycode A-label form.",
+              "example": "example.com",
+              "type": "string"
+            },
+            "period": {
+              "default": 1,
+              "description": "Renewal period in years.",
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "type": "object"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Eligible renewal quote. A quoteToken is always present on 200.\n",
+          "schema": {
+            "$ref": "#/$defs/RenewalQuote"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Domain was not found, or is not owned by the authenticated identity. Both cases return name DOMAIN_NOT_FOUND.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Business-rule failure. name UNSUPPORTED_TLD when the TLD is not supported for renewal. name VALIDATION_ERROR with details[].issue INVALID_PERIOD_RANGE, OUTSIDE_RENEWAL_WINDOW, or NOT_RENEWABLE when the domain is owned but cannot be renewed as requested.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:read"
+      ],
+      "summary": "Quote a single-domain renewal (no commitment)"
+    },
+    {
+      "description": "Executes a previously quoted domain renewal. **Irreversible once\naccepted; creates a charge and extends the domain expiry.** Requires a\nvalid unexpired quoteToken from `quoteRenewal`, an `Idempotency-Key`\nheader, and a consent record. The target domain and period are in the\nrequest body alongside the quoteToken.\n\nIdempotency takes precedence over the single-use check: retrying with\nthe same `Idempotency-Key` replays the original operation even after\nthe token is consumed.\n\nReturns a `Renewal` entity. Poll `links[rel=self]`\n(`GET /renewals/{renewalId}`) until status is `COMPLETED` or `FAILED`.\nThe `operationId` field is also provided for clients that prefer\n`GET /operations/{operationId}`; both resolve the same resource.\n\nPoll either until status is `COMPLETED` or `FAILED`. The operation is\nfire-and-forget; always poll at least once even if the server completed\nit synchronously.\n\nOn execute, supply `consent.agreedAt`. `agreedBy` is server-derived.\nPeriod must match the preceding quote; if omitted it defaults to 1.\n\nEvaluation order (after auth and structural validation):\n1. Quote lifecycle — expired or already-consumed token → `409` with\n   error name `QUOTE_EXPIRED` or `QUOTE_CONSUMED`.\n2. Domain not found, or not owned by the authenticated identity → `404`\n   with error name `DOMAIN_NOT_FOUND` (collapsed to avoid ownership\n   enumeration; same as `quoteRenewal`). Covers transfer, cancel, or\n   other post-quote ownership loss even when expiry is unchanged.\n3. Re-hash the quoteToken using the same bind set as quote time\n   (domain + period + price + currency + currentExpiresAt + iscCode,\n   empty string when not supplied). Any bound-value drift (e.g.\n   concurrent renewal, registry repricing, different iscCode) → `422`\n   with error name `QUOTE_MISMATCH`. Obtain a fresh quote and retry.\n4. Domain still owned but no longer renewable as requested → `422` with\n   error name `VALIDATION_ERROR` and a `details[].issue` of\n   `INVALID_PERIOD_RANGE`, `OUTSIDE_RENEWAL_WINDOW`, or `NOT_RENEWABLE`\n   (same issue codes as `quoteRenewal`). Re-quote after correcting\n   domain state or period.\n5. Otherwise → `202` with the Renewal entity.\n",
+      "method": "POST",
+      "operationId": "renewDomain",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "maxLength": 64,
+            "minLength": 16,
+            "type": "string"
+          }
+        },
+        {
+          "description": "ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates for this ISC.\n",
+          "in": "query",
+          "name": "iscCode",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/renewals",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/Renewal"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Renewal accepted. Poll the self link for status until COMPLETED or FAILED.\n",
+          "schema": {
+            "$ref": "#/$defs/Renewal"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field type.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Domain was not found, or is not owned by the authenticated identity (including post-quote transfer or cancel). Both cases return name DOMAIN_NOT_FOUND.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "409": {
+          "description": "Conflict — the request cannot be completed in the current state. Used for quote lifecycle errors (quote_expired, quote_consumed), domain state conflicts such as domain_already_exists, and immutable DNS records (dns_record_not_mutable) such as GoDaddy-managed SOA and NS records.\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Business-rule failure. name QUOTE_MISMATCH when a bound quote field no longer matches (domain, period, price, currency, currentExpiresAt, or iscCode). name VALIDATION_ERROR with details[].issue INVALID_PERIOD_RANGE, OUTSIDE_RENEWAL_WINDOW, or NOT_RENEWABLE when the domain is owned but cannot be renewed as requested (same issue codes as quoteRenewal).\n",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:update"
+      ],
+      "summary": "Renew a domain (requires quoteToken)"
+    },
+    {
+      "description": "Returns a single renewal record by its server-assigned renewalId, including the current execution status and the domain's new expiry date once the renewal completes. This is the concrete poll endpoint for renewal operations; the abstract equivalent is GET /operations/{operationId}.\nPoll until status is COMPLETED or FAILED. Non-terminal statuses (CONFIRMED, EXECUTING) indicate the operation is still in progress; use the Retry-After response header to pace polling.\n",
+      "method": "GET",
+      "operationId": "getRenewal",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+          "in": "header",
+          "name": "X-Shopper-Id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Server-assigned renewal identifier.",
+          "in": "path",
+          "name": "renewalId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/renewals/{renewalId}",
+      "responses": {
+        "200": {
+          "description": "Renewal record returned.",
+          "schema": {
+            "$ref": "#/$defs/Renewal"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "domains.domain:read"
+      ],
+      "summary": "Get a renewal record"
     },
     {
       "description": "Returns available domain name suggestions for a natural-language query\nor keyword set. All results are available (available-only contract).\nPrices are indicative; the authoritative price and availability check\nis at quote time.\n",
