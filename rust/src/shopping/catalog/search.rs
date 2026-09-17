@@ -8,7 +8,7 @@ use shopping_client::types::{
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::shopping::client::decode;
+use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
 use crate::shopping::human::{CATALOG_SEARCH_VIEW_ID, catalog_search_response};
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
@@ -80,7 +80,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             });
             let response = match response {
                 SearchCatalogResponse::SearchResponse(response) => response.0,
-                SearchCatalogResponse::ErrorResponse(_) => CatalogSearchSearchResponse::default(),
+                SearchCatalogResponse::ErrorResponse(payload) => {
+                    return Err(client_err(
+                        ClientError::UnexpectedErrorPayload(payload.into()),
+                    ));
+                }
             };
             let next_actions = next_actions(&response, &mut request, args.limit, &ctx.middleware.env)?;
             let response = serde_json::to_value(&response).map_err(|error| {

@@ -1998,11 +1998,17 @@
                 "additionalProperties": true,
                 "type": "object"
               },
+              "handler_id": {
+                "type": "string"
+              },
               "id": {
                 "type": "string"
               },
               "selected": {
                 "type": "boolean"
+              },
+              "type": {
+                "type": "string"
               }
             },
             "type": "object"

@@ -226,12 +226,20 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
         .context("Shopping selected payment instrument properties are missing")?;
     // The contract's dynamic instrument reference cannot be represented by
     // Progenitor. Retain the fields required by deployed APIs, including the
-    // standard postal address used by the completion billing-address input.
+    // standard postal address used by the completion billing-address input,
+    // and the handler routing metadata (`handler_id`, `type`) that a
+    // checkout update must echo back unchanged to keep the selected
+    // instrument routable.
     properties.insert("id".to_owned(), serde_json::json!({"type": "string"}));
     properties.insert(
         "billing_address".to_owned(),
         serde_json::json!({"type": "object", "additionalProperties": true}),
     );
+    properties.insert(
+        "handler_id".to_owned(),
+        serde_json::json!({"type": "string"}),
+    );
+    properties.insert("type".to_owned(), serde_json::json!({"type": "string"}));
     Ok(())
 }
 
@@ -471,7 +479,7 @@ fn relax(value: &mut Value) {
 mod tests {
     use serde_json::json;
 
-    use super::prune_documentation_fields;
+    use super::{preserve_payment_instrument_fields, prune_documentation_fields};
 
     #[test]
     fn pruning_removes_documentation_and_examples_recursively() {
@@ -565,5 +573,44 @@ mod tests {
                 .is_none(),
             "the nested schema's own doc string must still be pruned"
         );
+    }
+
+    #[test]
+    fn preserving_payment_instrument_fields_adds_handler_routing_metadata() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "payment_instrument_selected_payment_instrument": {
+                        "allOf": [
+                            {},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "selected": {"type": "boolean"}
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        });
+
+        preserve_payment_instrument_fields(&mut spec).expect("schema shape is present");
+
+        let properties = spec
+            .pointer("/components/schemas/payment_instrument_selected_payment_instrument/allOf/1/properties")
+            .expect("properties");
+        assert_eq!(properties["id"]["type"], "string");
+        assert_eq!(properties["billing_address"]["type"], "object");
+        assert_eq!(properties["billing_address"]["additionalProperties"], true);
+        assert_eq!(
+            properties["handler_id"]["type"], "string",
+            "handler_id must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
+        );
+        assert_eq!(
+            properties["type"]["type"], "string",
+            "type must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
+        );
+        assert_eq!(properties["selected"]["type"], "boolean");
     }
 }

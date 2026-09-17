@@ -104,13 +104,14 @@ where
         Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) if bytes.is_empty() => {
             Ok(None)
         }
-        Err(progenitor_client::Error::InvalidResponsePayload(bytes, _)) => {
-            // UCP extension metadata can evolve independently of the core
-            // response schemas. Preserve a successful JSON response for the
-            // CLI's dynamic projection when typed decoding cannot represent it.
-            serde_json::from_slice(&bytes)
-                .map(Some)
-                .map_err(ClientError::Response)
+        Err(progenitor_client::Error::InvalidResponsePayload(_, error)) => {
+            // Progenitor already tried to decode this exact payload into `T`
+            // inside `.send()` and failed with `error` — retrying the same
+            // bytes against the same type here would just fail identically,
+            // so surface that original decode error instead.
+            Err(ClientError::Request(format!(
+                "response did not match the expected shape: {error}"
+            )))
         }
         Err(progenitor_client::Error::UnexpectedResponse(response))
             if response.status().is_success() =>
@@ -778,7 +779,7 @@ mod tests {
 
         mock.assert_async().await;
         assert!(
-            matches!(error, ClientError::Response(ref error) if error.to_string().contains("expected ident")),
+            matches!(error, ClientError::Request(ref message) if message.contains("expected ident")),
             "expected decode error, received {error}",
         );
     }

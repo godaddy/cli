@@ -202,7 +202,7 @@ mod tests {
                 instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
                     id: Some(id.to_owned()),
                     selected: Some(true),
-                    billing_address: Default::default(),
+                    ..Default::default()
                 }],
             }),
             ..Default::default()

@@ -293,7 +293,7 @@ pub(crate) fn payment_selection_body(instrument_id: &str) -> Result<UcpRefsSchem
         instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
             id: Some(instrument_id.to_owned()),
             selected: Some(true),
-            billing_address: Default::default(),
+            ..Default::default()
         }],
     }))
 }
@@ -310,6 +310,10 @@ fn preserved_payment_body(
             id: Some(payment_id),
             selected: Some(true),
             billing_address: payment.billing_address.clone(),
+            // A payment handler can require these to route the instrument;
+            // an unchanged checkout update must echo them back unchanged.
+            handler_id: payment.handler_id.clone(),
+            type_: payment.type_.clone(),
         }],
     }))
 }
@@ -641,11 +645,32 @@ mod tests {
                 instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
                     id: Some("payment-1".to_owned()),
                     selected: Some(true),
-                    billing_address: Default::default(),
+                    handler_id: Some("com.godaddy.payments".to_owned()),
+                    type_: Some("card".to_owned()),
+                    ..Default::default()
                 }],
             }),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn update_preserves_the_selected_instrument_handler_routing_metadata_when_unchanged() {
+        let body = CheckoutInput {
+            buyer_email: Some("updated@example.test".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("buyer-only update should be valid");
+
+        let instrument = &body.0.payment.expect("payment").0.instruments[0];
+        assert_eq!(instrument.id, Some("payment-1".to_owned()));
+        assert_eq!(
+            instrument.handler_id,
+            Some("com.godaddy.payments".to_owned()),
+            "an unchanged selected instrument must keep its handler routing metadata"
+        );
+        assert_eq!(instrument.type_, Some("card".to_owned()));
     }
 
     #[test]
@@ -838,7 +863,7 @@ mod tests {
             require_selected_payment_instrument(&[PaymentInstrumentSelectedPaymentInstrument {
                 id: Some("payment-1".to_owned()),
                 selected: Some(true),
-                billing_address: Default::default(),
+                ..Default::default()
             }])
             .is_ok()
         );
@@ -848,12 +873,12 @@ mod tests {
                 PaymentInstrumentSelectedPaymentInstrument {
                     id: Some("payment-1".to_owned()),
                     selected: Some(true),
-                    billing_address: Default::default(),
+                    ..Default::default()
                 },
                 PaymentInstrumentSelectedPaymentInstrument {
                     id: Some("payment-2".to_owned()),
                     selected: Some(false),
-                    billing_address: Default::default(),
+                    ..Default::default()
                 },
             ])
             .is_err()

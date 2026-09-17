@@ -15,7 +15,7 @@ use shopping_client::types::{
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::client::decode;
+use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{client_err, make_client};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
 
@@ -92,7 +92,11 @@ async fn refresh_categories(
     .unwrap_or_else(|| SearchCatalogResponse::SearchResponse(SearchResponse(Default::default())));
     let response = match response {
         SearchCatalogResponse::SearchResponse(response) => response.0,
-        SearchCatalogResponse::ErrorResponse(_) => CatalogSearchSearchResponse::default(),
+        SearchCatalogResponse::ErrorResponse(payload) => {
+            return Err(client_err(ClientError::UnexpectedErrorPayload(
+                payload.into(),
+            )));
+        }
     };
     let categories = categories(&response);
     if let Some(path) = cache_path

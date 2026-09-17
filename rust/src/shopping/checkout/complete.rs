@@ -381,7 +381,7 @@ mod tests {
         PaymentInstrumentSelectedPaymentInstrument {
             id: Some(id.to_owned()),
             selected: Some(selected),
-            billing_address: Default::default(),
+            ..Default::default()
         }
     }
 
