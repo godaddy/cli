@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.18](https://github.com/godaddy/cli/compare/v0.2.17...v0.2.18) (2026-09-17)
+
+
+### Features
+
+* **repo:** generate CODEOWNERS from a reviewer config and align source layout with product ownership ([#265](https://github.com/godaddy/cli/issues/265)) ([0f85459](https://github.com/godaddy/cli/commit/0f854596158c190f8a5f67cf4bb7c8ce16f702b6))
+
+
+### Bug Fixes
+
+* **api-catalog:** refresh upstream specs, fix duplicated bulk-operations path prefix ([#268](https://github.com/godaddy/cli/issues/268)) ([29bc626](https://github.com/godaddy/cli/commit/29bc626aa382bc593859b3843b1140ae8bf1b90f))
+
+
+### Documentation
+
+* Update email guide to call shopping CL for email purchase ([#271](https://github.com/godaddy/cli/issues/271)) ([ea97ddf](https://github.com/godaddy/cli/commit/ea97ddfdf5766684dd2a2a8bbac4631e5ef048e2))
+
 ## [0.2.17](https://github.com/godaddy/cli/compare/v0.2.16...v0.2.17) (2026-09-16)
 
 
