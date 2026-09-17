@@ -11,7 +11,7 @@ use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
-    CheckoutInput, client_err, make_client, payment_selection_body,
+    CheckoutInput, client_err, make_client, payment_selection_body, reject_response_errors,
     require_selected_payment_instrument, selected_payment_id, update_response,
 };
 use crate::shopping::human::{
@@ -39,6 +39,42 @@ struct Args {
 
 fn completion_error(error: ClientError) -> cli_engine::CliCoreError {
     crate::error::GddyError::from(error).into_cli_error()
+}
+
+async fn lookup_product_actions(
+    client: &shopping_client::Client,
+    product_ids: Vec<String>,
+) -> cli_engine::Result<Vec<cli_engine::NextAction>> {
+    let response = crate::shopping::client::decode::<LookupCatalogResponse>(
+        client
+            .lookup_catalog()
+            .body(LookupRequest(CatalogLookupLookupRequest {
+                ids: product_ids,
+                ..Default::default()
+            }))
+            .send()
+            .await,
+    )
+    .await
+    .map_err(client_err)?;
+    interpret_lookup_response(response)
+}
+
+fn interpret_lookup_response(
+    response: Option<LookupCatalogResponse>,
+) -> cli_engine::Result<Vec<cli_engine::NextAction>> {
+    match response {
+        Some(LookupCatalogResponse::LookupResponse(response)) => {
+            reject_response_errors(&response.messages)?;
+            Ok(crate::shopping::product_actions::post_purchase_actions(
+                &response,
+            ))
+        }
+        Some(LookupCatalogResponse::ErrorResponse(payload)) => Err(client_err(
+            ClientError::UnexpectedErrorPayload(payload.into()),
+        )),
+        None => Ok(Vec::new()),
+    }
 }
 
 fn selected_payment_body(checkout: &Checkout) -> cli_engine::Result<UcpRefsSchemaPayment> {
@@ -191,34 +227,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let product_actions = if product_ids.is_empty() {
                 Vec::new()
             } else {
-                crate::shopping::client::decode::<LookupCatalogResponse>(
-                    client
-                        .lookup_catalog()
-                        .body(LookupRequest(CatalogLookupLookupRequest {
-                            ids: product_ids,
-                            ..Default::default()
-                        }))
-                        .send()
-                        .await,
-                )
-                .await
-                .map(|response| match response {
-                    Some(LookupCatalogResponse::LookupResponse(response)) => {
-                        crate::shopping::product_actions::post_purchase_actions(&response)
-                    }
-                    Some(LookupCatalogResponse::ErrorResponse(payload)) => {
-                        tracing::warn!(
-                            error = ?payload,
-                            "could not look up purchased product categories"
-                        );
+                lookup_product_actions(&client, product_ids)
+                    .await
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(error = %error, "could not look up purchased product categories");
                         Vec::new()
-                    }
-                    None => Vec::new(),
-                })
-                .unwrap_or_else(|error| {
-                    tracing::warn!(error = %error, "could not look up purchased product categories");
-                    Vec::new()
-                })
+                    })
             };
             let billing_address = billing_address(args.billing_address.as_deref())?;
             let mut body = if let Some(payment_instrument) = args.payment_instrument {
@@ -314,10 +328,52 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use serde_json::json;
     use shopping_client::types::{
-        Payment, PaymentInstrumentSelectedPaymentInstrument, ShoppingRequiredAgreement,
+        CatalogLookupLookupResponse, ErrorResponse, LookupResponse, Message, MessageError, Payment,
+        PaymentInstrumentSelectedPaymentInstrument, ShoppingRequiredAgreement,
     };
 
     use super::*;
+
+    #[test]
+    fn interprets_a_successful_lookup_without_error_messages() {
+        let actions = interpret_lookup_response(Some(LookupCatalogResponse::LookupResponse(
+            LookupResponse(CatalogLookupLookupResponse::default()),
+        )))
+        .expect("no error messages");
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn interprets_an_error_severity_message_in_a_successful_lookup_as_an_error() {
+        let response =
+            LookupCatalogResponse::LookupResponse(LookupResponse(CatalogLookupLookupResponse {
+                messages: vec![Message::Error(MessageError {
+                    content: Some("catalog lookup failed upstream".to_owned()),
+                    type_: Some("error".to_owned()),
+                    ..Default::default()
+                })],
+                ..Default::default()
+            }));
+        let error = interpret_lookup_response(Some(response))
+            .expect_err("an error-severity message must be reported");
+        assert!(error.to_string().contains("catalog lookup failed upstream"));
+    }
+
+    #[test]
+    fn interprets_a_typed_error_response_as_an_error() {
+        let response =
+            LookupCatalogResponse::ErrorResponse(ErrorResponse(json!({"code": "unavailable"})));
+        assert!(interpret_lookup_response(Some(response)).is_err());
+    }
+
+    #[test]
+    fn interprets_an_empty_response_as_no_actions() {
+        assert!(
+            interpret_lookup_response(None)
+                .expect("empty response")
+                .is_empty()
+        );
+    }
 
     fn required_agreement(
         key: &str,

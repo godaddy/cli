@@ -99,7 +99,8 @@ pub(crate) fn build_client(
 
 /// Decodes a generated operation's response, preserving the caller's typed
 /// response shape. `None` means the server returned a successful but empty
-/// body (some environments 202/204 certain checkout operations).
+/// body (some environments return a 202/204 with no body for certain
+/// checkout operations).
 pub(crate) async fn decode<T>(
     response: Result<progenitor_client::ResponseValue<T>, progenitor_client::Error<()>>,
 ) -> Result<Option<T>, ClientError>
@@ -115,10 +116,11 @@ where
             // Progenitor already tried to decode this exact payload into `T`
             // inside `.send()` and failed with `error` — retrying the same
             // bytes against the same type here would just fail identically,
-            // so surface that original decode error instead.
-            Err(ClientError::Request(format!(
-                "response did not match the expected shape: {error}"
-            )))
+            // so surface that original decode error instead. `Response`
+            // (not `Request`/`Network`) keeps this classified as a decode
+            // failure: the transport succeeded, the payload just didn't
+            // match the expected shape.
+            Err(ClientError::Response(error))
         }
         Err(progenitor_client::Error::UnexpectedResponse(response))
             if response.status().is_success() =>
@@ -897,7 +899,7 @@ mod tests {
 
         mock.assert_async().await;
         assert!(
-            matches!(error, ClientError::Request(ref message) if message.contains("expected ident")),
+            matches!(error, ClientError::Response(ref error) if error.to_string().contains("expected ident")),
             "expected decode error, received {error}",
         );
     }
