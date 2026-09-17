@@ -12,7 +12,7 @@ use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
     CheckoutInput, client_err, make_client, payment_selection_body,
-    require_selected_payment_instrument, selected_payment_id,
+    require_selected_payment_instrument, selected_payment_id, update_response,
 };
 use crate::shopping::human::{
     CHECKOUT_COMPLETE_VIEW_ID, checkout_completion_response, empty_acknowledgement_response,
@@ -270,7 +270,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &idempotency_key,
             )
             .await
-            .map_err(completion_error)?;
+            .map_err(completion_error)?
+            .map(update_response)
+            .transpose()?;
             let is_acknowledgement = completion.is_none();
             let order_id = completion
                 .as_ref()

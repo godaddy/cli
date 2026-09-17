@@ -4,7 +4,9 @@ use shopping_client::types::{CatalogLookupLookupRequest, LookupCatalogResponse, 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::{ClientError, decode};
-use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
+use crate::shopping::common::{
+    client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
+};
 use crate::shopping::human::{CATALOG_LOOKUP_VIEW_ID, catalog_lookup_response};
 
 output_schema!(CatalogLookupOutput {
@@ -61,6 +63,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     )));
                 }
             };
+            reject_response_errors(&response.messages)?;
             let response = serde_json::to_value(&response).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
                     "failed to encode catalog lookup response: {error}"

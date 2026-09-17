@@ -1,7 +1,9 @@
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{client_err, make_client, wait_duration, wait_for_order};
+use crate::shopping::client::get_order;
+use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{ORDER_VIEW_ID, order_response};
+use crate::shopping::order::wait::{wait_duration, wait_for_order};
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 
 output_schema!(OrderOutput {
@@ -51,10 +53,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await?;
                 order
             } else {
-                crate::shopping::client::get_order(&client, &args.id)
-                    .await
-                    .map_err(client_err)?
+                get_order(&client, &args.id).await.map_err(client_err)?
             };
+            reject_response_errors(&order.messages)?;
             let order = serde_json::to_value(&order).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
                     "failed to encode order response: {error}"

@@ -1,10 +1,8 @@
-use std::time::{Duration, Instant};
-
 use cli_engine::{CliCoreError, CommandContext, Result};
 use shopping_client::types::{
     Buyer, Checkout, CheckoutCompleteRequest, CheckoutCompleteRequestSchema,
     CheckoutWritableRequest, CheckoutWritableRequestSchema, Context, Item, LineItem, Message,
-    Order, Payment, PaymentInstrumentSelectedPaymentInstrument, UcpRefsSchemaAttribution,
+    Payment, PaymentInstrumentSelectedPaymentInstrument, UcpRefsSchemaAttribution,
     UcpRefsSchemaBuyer, UcpRefsSchemaContext, UcpRefsSchemaFulfillment, UcpRefsSchemaLineItem,
     UcpRefsSchemaPayment, UcpRefsSchemaSignals,
 };
@@ -43,12 +41,34 @@ fn error_message_content(message: &Message) -> Option<&str> {
         .flatten()
 }
 
+fn collect_error_messages(messages: &[Message]) -> Vec<&str> {
+    messages.iter().filter_map(error_message_content).collect()
+}
+
+/// `error_response` (the `oneOf` error variant every generated response
+/// enum carries) has no properties, and none of `Checkout`/`Order`/the
+/// catalog response types have any required fields — so untagged
+/// deserialization always matches the success variant first, even for a
+/// genuine API error payload, and the `ErrorResponse` match arms scattered
+/// through `client.rs`/the command handlers are defense-in-depth for a
+/// non-object payload, not this API's real error channel. In practice this
+/// contract signals an in-band failure via an error-severity entry in an
+/// otherwise-2xx response's `messages` array — this is the actual check
+/// that catches it.
+pub(crate) fn reject_response_errors(messages: &[Message]) -> Result<()> {
+    let errors = collect_error_messages(messages);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(GddyError::validation(errors.join(" ")).into_cli_error())
+    }
+}
+
+/// Checkout-specific wrapper with a remediation hint relevant to a checkout
+/// mutation — create/update/complete all share this, since a rejected
+/// write is fixed the same way regardless of which one produced it.
 pub(crate) fn update_response(checkout: Checkout) -> Result<Checkout> {
-    let errors = checkout
-        .messages
-        .iter()
-        .filter_map(error_message_content)
-        .collect::<Vec<_>>();
+    let errors = collect_error_messages(&checkout.messages);
     if errors.is_empty() {
         Ok(checkout)
     } else {
@@ -449,91 +469,11 @@ pub(crate) fn no_saved_payment_method_action(
         })
 }
 
-pub(crate) async fn wait_for_order(
-    client: &shopping_client::Client,
-    order_id: &str,
-    timeout: Duration,
-    env: &str,
-) -> Result<(Order, usize)> {
-    let started = Instant::now();
-    let mut attempts = 0;
-    let mut delay = Duration::from_secs(1);
-    loop {
-        attempts += 1;
-        match crate::shopping::client::get_order(client, order_id).await {
-            Ok(order) => return Ok((order, attempts)),
-            Err(error) if error.is_retryable_order_read() && started.elapsed() < timeout => {
-                let remaining = timeout.saturating_sub(started.elapsed());
-                let retry_delay = error.retry_after().unwrap_or(delay).min(remaining);
-                if retry_delay.is_zero() {
-                    return Err(exhausted_order_read_error(
-                        error, order_id, attempts, timeout, env,
-                    ));
-                }
-                tracing::debug!(
-                    order_id,
-                    attempts,
-                    ?retry_delay,
-                    "order is not visible yet; retrying"
-                );
-                tokio::time::sleep(retry_delay).await;
-                delay = delay.saturating_mul(2).min(Duration::from_secs(4));
-            }
-            Err(error) => {
-                return Err(exhausted_order_read_error(
-                    error, order_id, attempts, timeout, env,
-                ));
-            }
-        }
-    }
-}
-
-fn exhausted_order_read_error(
-    error: ClientError,
-    order_id: &str,
-    attempts: usize,
-    timeout: Duration,
-    env: &str,
-) -> CliCoreError {
-    if matches!(error, ClientError::Http { status: 404, .. }) {
-        order_not_visible_error(order_id, attempts, timeout, env)
-    } else {
-        client_err(error)
-    }
-}
-
-fn order_not_visible_error(
-    order_id: &str,
-    attempts: usize,
-    timeout: Duration,
-    env: &str,
-) -> CliCoreError {
-    GddyError::not_found(format!(
-        "order {order_id:?} was not visible after {attempts} attempts over {} seconds",
-        timeout.as_secs_f32()
-    ))
-    .with_fix(format!(
-        "Run: gddy {}",
-        crate::shopping::command_for_env(env, format!("order get {order_id} --wait"))
-    ))
-    .into_cli_error()
-}
-
-pub(crate) fn wait_duration(seconds: Option<u8>) -> Result<Duration> {
-    const DEFAULT: Duration = Duration::from_secs(15);
-    match seconds {
-        None => Ok(DEFAULT),
-        Some(seconds @ 1..=60) => Ok(Duration::from_secs(u64::from(seconds))),
-        Some(_) => Err(
-            GddyError::validation("--wait-timeout must be between 1 and 60 seconds")
-                .into_cli_error(),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use shopping_client::types::{ComGodaddyShoppingInputSchemaInputValue, MessageError};
+    use shopping_client::types::{
+        ComGodaddyShoppingInputSchemaInputValue, MessageError, MessageWarning,
+    };
 
     use super::*;
     use crate::shopping::command_for_env;
@@ -874,6 +814,29 @@ mod tests {
     }
 
     #[test]
+    fn reject_response_errors_surfaces_error_severity_messages_only() {
+        let messages = vec![
+            Message::Warning(MessageWarning {
+                content: Some("a warning, not an error".to_owned()),
+                type_: Some("warning".to_owned()),
+                ..Default::default()
+            }),
+            Message::Error(MessageError {
+                content: Some("catalog search failed upstream".to_owned()),
+                type_: Some("error".to_owned()),
+                ..Default::default()
+            }),
+        ];
+
+        let error = reject_response_errors(&messages)
+            .expect_err("an error-severity message must be reported");
+        assert!(error.to_string().contains("catalog search failed upstream"));
+        assert!(!error.to_string().contains("a warning, not an error"));
+
+        assert!(reject_response_errors(&[]).is_ok());
+    }
+
+    #[test]
     fn requires_exactly_one_payment_instrument() {
         assert!(
             require_selected_payment_instrument(&[PaymentInstrumentSelectedPaymentInstrument {
@@ -907,48 +870,5 @@ mod tests {
             command_for_env("test", "order get order-1 --wait"),
             "shopping order get order-1 --wait"
         );
-    }
-
-    #[test]
-    fn exhausted_order_read_maps_only_404_to_not_found() {
-        let not_found = exhausted_order_read_error(
-            ClientError::Http {
-                status: 404,
-                body: "not found".to_owned(),
-                retry_after: None,
-            },
-            "order-1",
-            1,
-            Duration::ZERO,
-            "test",
-        );
-        let rate_limited = exhausted_order_read_error(
-            ClientError::Http {
-                status: 429,
-                body: "rate limited".to_owned(),
-                retry_after: None,
-            },
-            "order-1",
-            1,
-            Duration::ZERO,
-            "test",
-        );
-
-        assert!(not_found.to_string().contains("was not visible"));
-        assert!(!rate_limited.to_string().contains("was not visible"));
-        assert!(rate_limited.to_string().contains("429"));
-    }
-
-    #[test]
-    fn validates_wait_timeout_range() {
-        assert_eq!(
-            wait_duration(None).expect("default"),
-            Duration::from_secs(15)
-        );
-        assert_eq!(
-            wait_duration(Some(1)).expect("lower bound"),
-            Duration::from_secs(1)
-        );
-        assert!(wait_duration(Some(0)).is_err());
     }
 }

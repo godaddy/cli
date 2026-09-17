@@ -16,7 +16,7 @@ use shopping_client::types::{
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::{ClientError, decode};
-use crate::shopping::common::{client_err, make_client};
+use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
 
 const CATALOG_CATEGORY_LIMIT: u8 = 50;
@@ -98,6 +98,7 @@ async fn refresh_categories(
             )));
         }
     };
+    reject_response_errors(&response.messages)?;
     let categories = categories(&response);
     if let Some(path) = cache_path
         && let Err(error) = save_cache(path, &categories, Utc::now())

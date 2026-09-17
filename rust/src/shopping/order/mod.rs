@@ -1,4 +1,5 @@
 pub(super) mod get;
+pub(super) mod wait;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 

@@ -588,6 +588,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn documents_that_an_error_shaped_payload_resolves_to_the_success_variant() {
+        // `error_response` has no properties and `Checkout` has none required,
+        // so untagged deserialization matches `Checkout` first for *any*
+        // JSON object, including a genuine API error — the `ErrorResponse`
+        // arms throughout this module are defense-in-depth for a non-object
+        // payload, not the primary way this API's in-band errors get caught.
+        let error_payload = json!({"error": "something went wrong", "code": "invalid_checkout"});
+        let decoded: GetCheckoutResponse =
+            serde_json::from_value(error_payload).expect("should decode as *something*");
+        assert!(matches!(decoded, GetCheckoutResponse::Checkout(_)));
+    }
+
     #[tokio::test]
     async fn accepts_empty_success_responses() {
         let server = MockServer::start_async().await;

@@ -5,7 +5,7 @@ use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
-    reject_multiple_payment_instruments,
+    reject_multiple_payment_instruments, update_response,
 };
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response, empty_acknowledgement_response};
 
@@ -110,7 +110,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &uuid::Uuid::new_v4().to_string(),
             )
             .await
-            .map_err(client_err)?;
+            .map_err(client_err)?
+            .map(update_response)
+            .transpose()?;
             let is_acknowledgement = checkout.is_none();
             let ready_for_complete = checkout
                 .as_ref()

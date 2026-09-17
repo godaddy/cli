@@ -7,7 +7,9 @@ use shopping_client::types::{
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::client::{ClientError, decode};
-use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
+use crate::shopping::common::{
+    client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
+};
 use crate::shopping::human::{CATALOG_GET_VIEW_ID, catalog_product_response};
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
@@ -61,6 +63,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     )));
                 }
             };
+            reject_response_errors(&response.messages)?;
             let actions = next_actions(&response, &ctx.middleware.env);
             let response = serde_json::to_value(&response).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
