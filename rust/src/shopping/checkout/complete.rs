@@ -222,6 +222,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
+            reject_response_errors(&checkout.messages)?;
             agreement_gate(&checkout, args.agree)?;
             let product_ids = crate::shopping::product_actions::purchased_product_ids(&checkout);
             let product_actions = if product_ids.is_empty() {

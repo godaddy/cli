@@ -4,7 +4,7 @@ use shopping_client::types::Checkout;
 
 use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{client_err, make_client};
+use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
 fn encode_checkout(checkout: &Checkout) -> Result<Value> {
@@ -42,6 +42,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
+            reject_response_errors(&checkout.messages)?;
             let ready_for_complete = checkout.status.as_deref() == Some("ready_for_complete");
             let actions = if ready_for_complete {
                 vec![

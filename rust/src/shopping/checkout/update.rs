@@ -4,7 +4,7 @@ use shopping_client::types::Checkout;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
-    reject_multiple_payment_instruments, update_response,
+    reject_multiple_payment_instruments, reject_response_errors, update_response,
 };
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
@@ -128,6 +128,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let current_checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
+            reject_response_errors(&current_checkout.messages)?;
             let previously_selected_payment =
                 crate::shopping::common::selected_payment_id(&current_checkout).map(str::to_owned);
             let requested_payment_instrument = input.payment_instrument.clone();
@@ -166,6 +167,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
+            reject_response_errors(&checkout.messages)?;
             validate_selected_payment(
                 &checkout,
                 previously_selected_payment.as_deref(),
