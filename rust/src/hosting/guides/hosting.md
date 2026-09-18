@@ -65,7 +65,7 @@ gddy hosting subscription get --app-id <app-id>
 If not, list subscriptions and attach the app to one with open slots (`availableSlots > 0`).
 
 ```sh
-gddy hosting subscription list
+gddy hosting subscription list --hosting-product=WEB_HOSTING
 gddy hosting subscription attach --app-id <app-id> --subscription-id <subscription-id>
 ```
 
