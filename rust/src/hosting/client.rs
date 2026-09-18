@@ -1,3 +1,7 @@
+use hosting_client::types::{
+    AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
+    HostingProduct, ImportGitHubSourceRequest, RestartRequest,
+};
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
@@ -182,7 +186,7 @@ impl HostingClient {
         let client = self.api()?;
         let mut request = client
             .list_apps()
-            .app_type(hosting_client::types::AppType::from(app_type.to_owned()));
+            .app_type(AppType::from(app_type.to_owned()));
         if let Some(token) = page_token {
             request = request.page_token(token.to_owned());
         }
@@ -201,11 +205,11 @@ impl HostingClient {
 
     pub async fn create_app(&self, app_type: &str, body: Value) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let body: hosting_client::types::CreateAppRequest = deserialize(body)?;
+        let body: CreateAppRequest = deserialize(body)?;
         response(
             client
                 .create_app()
-                .app_type(hosting_client::types::AppType::from(app_type.to_owned()))
+                .app_type(AppType::from(app_type.to_owned()))
                 .body(body)
                 .send()
                 .await,
@@ -230,7 +234,7 @@ impl HostingClient {
 
     pub async fn restart_app(&self, app_id: &str, variant: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let body: hosting_client::types::RestartRequest = deserialize(json!({
+        let body: RestartRequest = deserialize(json!({
             "variant": variant,
         }))?;
         response(
@@ -304,7 +308,7 @@ impl HostingClient {
         branch: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let body = hosting_client::types::ImportGitHubSourceRequest {
+        let body = ImportGitHubSourceRequest {
             repository_full_name: Some(repo.to_owned()),
             branch: Some(branch.to_owned()),
         };
@@ -387,7 +391,7 @@ impl HostingClient {
         let client = self.api()?;
         let mut request = client.list_secrets().app_id(app_id);
         if let Some(variant) = variant {
-            request = request.variant(hosting_client::types::Environment::from(variant.to_owned()));
+            request = request.variant(Environment::from(variant.to_owned()));
         }
         response(request.send().await).await
     }
@@ -474,7 +478,7 @@ impl HostingClient {
 
     pub async fn attach_domain(&self, app_id: &str, hostname: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let body: hosting_client::types::AttachDomainRequest = deserialize(json!({
+        let body: AttachDomainRequest = deserialize(json!({
             "hostname": hostname,
         }))?;
         response(
@@ -508,9 +512,9 @@ impl HostingClient {
         hosting_product: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let request = client.list_subscriptions().hosting_product(
-            hosting_client::types::HostingProduct::from(hosting_product.to_owned()),
-        );
+        let request = client
+            .list_subscriptions()
+            .hosting_product(HostingProduct::from(hosting_product.to_owned()));
         let _ = (page_token, limit);
         response(request.send().await).await
     }
@@ -533,7 +537,7 @@ impl HostingClient {
         subscription_id: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let body: hosting_client::types::AttachSubscriptionRequest = deserialize(json!({
+        let body: AttachSubscriptionRequest = deserialize(json!({
             "subscriptionId": subscription_id,
         }))?;
         response(
