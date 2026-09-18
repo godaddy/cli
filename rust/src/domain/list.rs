@@ -21,7 +21,8 @@ const DEFAULT_VISIBLE_GROUPS: [&str; 3] = ["PENDING", "REGISTERED", "PENDING_TER
 /// v3's max `pageSize` (the spec's `maximum: 200`). Requesting it on every
 /// page minimizes round trips against an API observed to rate-limit as
 /// tightly as 5 requests per period.
-const MAX_PAGE_SIZE: u64 = 200;
+const MAX_PAGE_SIZE: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(200).expect("MAX_PAGE_SIZE is nonzero");
 
 /// Defensive cap on pages fetched for one invocation. No real account should
 /// ever approach `MAX_PAGE_SIZE * MAX_PAGES` (10,000) domains; hitting this
@@ -166,11 +167,10 @@ async fn fetch_domains(
     stop_at: Option<usize>,
     debug: bool,
 ) -> Result<Vec<types::Domain>> {
-    let page_size = std::num::NonZeroU64::new(MAX_PAGE_SIZE).expect("nonzero constant");
     let mut items = Vec::new();
     let mut page_token = None;
     for _ in 0..MAX_PAGES {
-        let mut req = client.list_domains().page_size(page_size);
+        let mut req = client.list_domains().page_size(MAX_PAGE_SIZE);
         if !statuses.is_empty() {
             // `statuses` is `style: form, explode: false` — one
             // comma-joined value, not repeated `statuses=` pairs

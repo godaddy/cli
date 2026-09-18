@@ -22,6 +22,17 @@ pub(crate) fn register_human_views(ctx: &mut ModuleContext<'_>) {
     views.register_func(ORDER_VIEW_ID, render_order);
 }
 
+/// A distinct human-mode result for when the API accepted a request but
+/// returned no resource to describe (some environments return a 202/204
+/// with no body for certain checkout operations) —
+/// `render_checkout`/`render_checkout_completion` print `message` directly
+/// instead of rendering a normal-looking but entirely blank checkout or
+/// completion summary, which would look like a real (if empty) result
+/// rather than "no data came back."
+pub(crate) fn empty_acknowledgement_response(message: &str) -> Value {
+    json!({"acknowledged": message})
+}
+
 pub(crate) fn catalog_search_response(response: &Value) -> Value {
     project_catalog_products(response)
 }
@@ -456,12 +467,6 @@ fn selected_payment_instrument(checkout: &Value) -> Option<&Value> {
         })
 }
 
-pub(crate) fn selected_payment_id(checkout: &Value) -> Option<&str> {
-    selected_payment_instrument(checkout)
-        .and_then(|instrument| instrument.get("id"))?
-        .as_str()
-}
-
 fn required_agreements(checkout: &Value) -> Vec<Value> {
     checkout
         .get("required_agreements")
@@ -501,6 +506,9 @@ fn checkout_links(checkout: &Value) -> Vec<Value> {
 }
 
 fn render_checkout(cart: &Value) -> String {
+    if let Some(message) = cart.get("acknowledged").and_then(Value::as_str) {
+        return format!("{message}\n");
+    }
     if let Some(action) = cart.get("action").and_then(Value::as_str) {
         let body = cart.get("body").cloned().unwrap_or(Value::Null);
         return format!(
@@ -676,6 +684,9 @@ pub(crate) fn checkout_completion_response(completion: &Value) -> Value {
 }
 
 fn render_checkout_completion(completion: &Value) -> String {
+    if let Some(message) = completion.get("acknowledged").and_then(Value::as_str) {
+        return format!("{message}\n");
+    }
     if let Some(action) = completion.get("action").and_then(Value::as_str) {
         return format!("{action}\nCart: {}\n", text(completion, "id", ""));
     }
@@ -861,5 +872,20 @@ mod tests {
         assert_eq!(response["required_agreements"][0]["key"], "terms");
         assert!(output.contains("Required agreements:"));
         assert!(output.contains("Terms of Service (terms): https://example.test/terms (Required)"));
+    }
+
+    #[test]
+    fn empty_acknowledgement_renders_its_message_instead_of_a_blank_checkout() {
+        let response = empty_acknowledgement_response("no data yet");
+
+        assert_eq!(render_checkout(&response), "no data yet\n");
+        assert_eq!(render_checkout_completion(&response), "no data yet\n");
+        // A blank checkout/completion summary must never be mistaken for
+        // this distinct "nothing came back" case.
+        assert_ne!(render_checkout(&response), render_checkout(&Value::Null));
+        assert_ne!(
+            render_checkout_completion(&response),
+            render_checkout_completion(&Value::Null)
+        );
     }
 }
