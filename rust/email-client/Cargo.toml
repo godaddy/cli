@@ -1,6 +1,6 @@
 [package]
 name = "email-client"
-version = "0.2.20"
+version = "0.2.21"
 edition = "2024"
 license = "Proprietary"
 description = "Generated GoDaddy Business Email Management API client (mailbox list/get/create/eligibility), produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
