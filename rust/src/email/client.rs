@@ -1,142 +1,141 @@
-use reqwest::{Client, Method};
-use serde_json::{Value, json};
+use email_client::types;
 
-use crate::http::make_http_client;
-
-const BASE_PATH: &str = "/v1/email";
+const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
     Http { status: u16, body: String },
     #[error("network error: {0}")]
-    Network(#[from] reqwest::Error),
+    Network(String),
+    #[error("request error: {0}")]
+    Request(String),
+    #[error("failed to decode Email API response: {0}")]
+    Response(#[from] serde_json::Error),
+    #[error("failed to construct Email API client: {0}")]
+    Build(#[from] email_client::BuildError),
 }
 
 impl From<ClientError> for crate::error::GddyError {
     fn from(value: ClientError) -> Self {
         match value {
             ClientError::Http { status, body } => Self::from_http(status, body, "email"),
-            ClientError::Network(e) => {
-                Self::network(format!("network error: {e}")).with_system("email")
+            ClientError::Network(error) | ClientError::Request(error) => {
+                Self::network(error).with_system("email")
+            }
+            ClientError::Response(error) => {
+                Self::unexpected(format!("failed to decode Email API response: {error}"))
+                    .with_system("email")
+            }
+            ClientError::Build(error) => {
+                Self::config(format!("failed to construct Email API client: {error}"))
+                    .with_system("email")
             }
         }
     }
 }
 
 pub struct EmailClient {
-    client: Client,
-    base_url: String,
-    token: String,
+    client: email_client::Client,
 }
 
 impl EmailClient {
-    pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Self {
-        Self {
-            client: make_http_client(),
-            base_url: base_url.into(),
-            token: token.into(),
-        }
+    pub fn new(base_url: impl AsRef<str>, token: impl AsRef<str>) -> Result<Self, ClientError> {
+        let client = email_client::client_with_auth(
+            base_url.as_ref(),
+            &format!("Bearer {}", token.as_ref()),
+            USER_AGENT,
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .map_err(ClientError::Build)?;
+        Ok(Self { client })
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{BASE_PATH}{path}", self.base_url)
-    }
-
-    fn new_request_id() -> String {
-        uuid::Uuid::new_v4().to_string()
-    }
-
-    async fn send_json(
+    pub async fn list_mailboxes(
         &self,
-        method: Method,
-        path: &str,
-        query: &[(&str, String)],
-        headers: &[(&str, String)],
-        body: Option<Value>,
-    ) -> Result<Value, ClientError> {
-        let mut req = self
+        status: Option<&str>,
+        page: u32,
+        page_size: u32,
+        field: Option<&str>,
+    ) -> Result<types::MailboxList, ClientError> {
+        let mut request = self
             .client
-            .request(method, self.url(path))
-            .bearer_auth(&self.token)
-            .header("x-request-id", Self::new_request_id());
-        for (key, value) in query {
-            req = req.query(&[(key, value)]);
+            .list_mailboxes()
+            .page(u64::from(page))
+            .page_size(u64::from(page_size));
+        if let Some(status) = status {
+            request = request.status(status.to_owned());
         }
-        for (key, value) in headers {
-            req = req.header(*key, value);
+        if let Some(field) = field {
+            request = request.field(field.to_owned());
         }
-        if let Some(body) = body {
-            req = req.json(&body);
-        }
-        let request = req.build()?;
-        cli_engine::transport::debug_log_reqwest_request(&request);
-        let resp = self.client.execute(request).await?;
-
-        let status = resp.status();
-        let headers = resp.headers().clone();
-        let bytes = resp.bytes().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
-
-        let status = status.as_u16();
-        if status == 204 {
-            return Ok(json!(null));
-        }
-        if !(200..300).contains(&status) {
-            return Err(ClientError::Http {
-                status,
-                body: String::from_utf8_lossy(&bytes).into_owned(),
-            });
-        }
-        if bytes.is_empty() {
-            return Ok(json!(null));
-        }
-        serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
-            status,
-            body: format!(
-                "invalid JSON response: {e} (body: {})",
-                String::from_utf8_lossy(&bytes)
-            ),
-        })
+        response(request.send().await).await
     }
 
-    pub async fn list_mailboxes(&self, query: &[(&str, String)]) -> Result<Value, ClientError> {
-        self.send_json(Method::GET, "/mailboxes", query, &[], None)
-            .await
-    }
-
-    pub async fn get_mailbox(&self, mailbox_id: &str) -> Result<Value, ClientError> {
-        self.send_json(
-            Method::GET,
-            &format!("/mailboxes/{mailbox_id}"),
-            &[],
-            &[],
-            None,
+    pub async fn get_mailbox(&self, mailbox_id: &str) -> Result<types::Mailbox, ClientError> {
+        response(
+            self.client
+                .get_mailbox()
+                .mailbox_id(mailbox_id)
+                .send()
+                .await,
         )
         .await
     }
 
-    pub async fn create_mailbox(&self, body: Value) -> Result<Value, ClientError> {
+    pub async fn create_mailbox(
+        &self,
+        body: types::CreateMailboxBody,
+    ) -> Result<types::CreateMailboxResponse, ClientError> {
         let idempotency_key = uuid::Uuid::new_v4().to_string();
-        self.send_json(
-            Method::POST,
-            "/mailboxes",
-            &[],
-            &[("Idempotency-Key", idempotency_key)],
-            Some(body),
+        response(
+            self.client
+                .create_mailbox()
+                .idempotency_key(idempotency_key)
+                .body(body)
+                .send()
+                .await,
         )
         .await
     }
 
-    pub async fn check_eligibility(&self, email: &str) -> Result<Value, ClientError> {
-        self.send_json(
-            Method::GET,
-            "/check-mailbox-eligibility",
-            &[("email", email.to_owned())],
-            &[],
-            None,
+    pub async fn check_eligibility(
+        &self,
+        email: &str,
+    ) -> Result<types::EligibilityResult, ClientError> {
+        response(
+            self.client
+                .check_mailbox_eligibility()
+                .email(email)
+                .send()
+                .await,
         )
         .await
+    }
+}
+
+async fn response<T>(
+    result: Result<progenitor_client::ResponseValue<T>, email_client::Error<types::Error>>,
+) -> Result<T, ClientError> {
+    match result {
+        Ok(response) => Ok(response.into_inner()),
+        Err(email_client::Error::ErrorResponse(response)) => {
+            let status = response.status().as_u16();
+            let body = serde_json::to_string(response.as_ref()).unwrap_or_default();
+            Err(ClientError::Http { status, body })
+        }
+        Err(email_client::Error::UnexpectedResponse(response)) => {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            Err(ClientError::Http { status, body })
+        }
+        Err(email_client::Error::CommunicationError(error)) => {
+            Err(ClientError::Network(error.to_string()))
+        }
+        Err(email_client::Error::InvalidResponsePayload(_, error)) => {
+            Err(ClientError::Response(error))
+        }
+        Err(error) => Err(ClientError::Request(error.to_string())),
     }
 }
 
@@ -148,7 +147,24 @@ mod tests {
     use super::*;
 
     fn client(base_url: &str) -> EmailClient {
-        EmailClient::new(base_url, "test-token")
+        EmailClient::new(base_url, "test-token").expect("client should build")
+    }
+
+    fn new_mailbox_body(email: &str) -> types::CreateMailboxBody {
+        types::CreateMailboxBody {
+            account_id: None,
+            consents: vec![],
+            created_at: None,
+            display_name: None,
+            email_address: email.to_owned(),
+            first_name: None,
+            last_name: None,
+            links: vec![],
+            mailbox_id: None,
+            mailbox_type: None,
+            status: None,
+            updated_at: None,
+        }
     }
 
     #[tokio::test]
@@ -161,39 +177,49 @@ mod tests {
                     .header("authorization", "Bearer test-token")
                     .query_param("status", "ACTIVE")
                     .query_param("page", "1");
-                then.status(200).json_body(json!({ "mailboxes": [] }));
+                then.status(200).json_body(json!({ "items": [] }));
             })
             .await;
 
-        let body = client(&server.base_url())
-            .list_mailboxes(&[("status", "ACTIVE".to_owned()), ("page", "1".to_owned())])
+        let list = client(&server.base_url())
+            .list_mailboxes(Some("ACTIVE"), 1, 100, None)
             .await
             .expect("list mailboxes");
 
         mock.assert_async().await;
-        assert_eq!(body["mailboxes"], json!([]));
+        assert!(list.items.is_empty());
     }
 
     #[tokio::test]
-    async fn get_mailbox_sends_bearer_auth() {
+    async fn get_mailbox_sends_bearer_auth_and_parses_typed_status() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
                 when.method(GET)
                     .path("/v1/email/mailboxes/mbx-456")
                     .header("authorization", "Bearer test-token");
-                then.status(200)
-                    .json_body(json!({ "mailboxId": "mbx-456", "status": "CONFIRMED" }));
+                then.status(200).json_body(json!({
+                    "mailboxId": "mbx-456",
+                    "emailAddress": "someone@example.com",
+                    "status": "COMPLETED"
+                }));
             })
             .await;
 
-        let body = client(&server.base_url())
+        let mailbox = client(&server.base_url())
             .get_mailbox("mbx-456")
             .await
             .expect("get mailbox");
 
         mock.assert_async().await;
-        assert_eq!(body["mailboxId"], "mbx-456");
+        assert_eq!(
+            mailbox.mailbox_id.map(|id| id.to_string()),
+            Some("mbx-456".to_owned())
+        );
+        assert_eq!(
+            mailbox.status.map(|status| status.to_string()),
+            Some("COMPLETED".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -205,18 +231,24 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .header("authorization", "Bearer test-token")
                     .json_body(json!({ "emailAddress": "someone@example.com" }));
-                then.status(202)
-                    .json_body(json!({ "mailboxId": "mbx-456", "status": "EXECUTING" }));
+                then.status(202).json_body(json!({
+                    "mailboxId": "mbx-456",
+                    "emailAddress": "someone@example.com",
+                    "status": "EXECUTING"
+                }));
             })
             .await;
 
-        let body = client(&server.base_url())
-            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
+        let created = client(&server.base_url())
+            .create_mailbox(new_mailbox_body("someone@example.com"))
             .await
             .expect("create mailbox");
 
         mock.assert_async().await;
-        assert_eq!(body["status"], "EXECUTING");
+        assert_eq!(
+            created.status.map(|status| status.to_string()),
+            Some("EXECUTING".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -232,13 +264,13 @@ mod tests {
             })
             .await;
 
-        let body = client(&server.base_url())
+        let result = client(&server.base_url())
             .check_eligibility("someone@example.com")
             .await
             .expect("check eligibility");
 
         mock.assert_async().await;
-        assert_eq!(body["isEligible"], true);
+        assert!(result.is_eligible);
     }
 
     #[tokio::test]
@@ -249,13 +281,15 @@ mod tests {
                 when.method(POST)
                     .path("/v1/email/mailboxes")
                     .header_exists("idempotency-key");
-                then.status(202)
-                    .json_body(json!({ "mailboxId": "mbx-456", "status": "EXECUTING" }));
+                then.status(202).json_body(json!({
+                    "mailboxId": "mbx-456",
+                    "status": "EXECUTING"
+                }));
             })
             .await;
 
         client(&server.base_url())
-            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
+            .create_mailbox(new_mailbox_body("someone@example.com"))
             .await
             .expect("create mailbox");
 
@@ -278,7 +312,7 @@ mod tests {
             .await;
 
         let err = client(&server.base_url())
-            .create_mailbox(json!({ "emailAddress": "someone@example.com" }))
+            .create_mailbox(new_mailbox_body("someone@example.com"))
             .await
             .expect_err("business-rule failure should surface as an error");
 

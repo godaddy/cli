@@ -10,33 +10,6 @@ use domains_client::types;
 
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 
-/// Bridges domains-client's request/response observations into cli-engine's
-/// `--debug transport` logger. domains-client defines the `TransportObserver`
-/// extension point itself and has no compile-time dependency on cli-engine —
-/// this crate *pushes* the logging behavior in, rather than domains-client
-/// *pulling* it from the engine.
-struct CliEngineTransportObserver;
-
-impl domains_client::TransportObserver for CliEngineTransportObserver {
-    fn on_request(&self, request: &reqwest::Request) {
-        cli_engine::transport::debug_log_reqwest_request(request);
-    }
-
-    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap) {
-        cli_engine::transport::debug_log_reqwest_response(status, headers, &[]);
-    }
-}
-
-static TRANSPORT_OBSERVER_INIT: std::sync::Once = std::sync::Once::new();
-
-fn ensure_transport_observer_registered() {
-    TRANSPORT_OBSERVER_INIT.call_once(|| {
-        domains_client::set_transport_observer(Some(std::sync::Arc::new(
-            CliEngineTransportObserver,
-        )));
-    });
-}
-
 /// The ISO-4217 minor-unit exponent for a currency — how many implied decimal
 /// places a [`types::SimpleMoney`] `value` carries (the v3 spec defers money
 /// formatting to ISO 4217). Sourced from the `iso_currency` crate's maintained
@@ -246,7 +219,7 @@ pub(crate) fn make_client_with_cred(
     env: &str,
     cred: &Credential,
 ) -> Result<domains_client::Client> {
-    ensure_transport_observer_registered();
+    crate::http::ensure_generated_client_transport_observer_registered();
     let config = environments::resolve(env)?;
     let authorization = format!("Bearer {}", cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();

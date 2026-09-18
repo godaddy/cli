@@ -148,6 +148,7 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
         "customer-profiles",
         include_str!("../../schemas/api/customer-profiles.json"),
     ),
+    ("email", include_str!("../../schemas/api/email.json")),
     (
         "fulfillments",
         include_str!("../../schemas/api/fulfillments.json"),
