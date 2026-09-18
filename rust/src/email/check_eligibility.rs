@@ -1,7 +1,7 @@
 use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
-use serde_json::Value;
+use email_client::types;
 
 use crate::email::{client_err, make_client};
 use crate::next_action::next_action;
@@ -21,6 +21,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_system("email")
         .with_tier(Tier::Read)
+        .with_json_schema::<types::EligibilityResult>()
         .with_scopes(&[EMAIL_READ]),
         |ctx, args: CheckEligibilityArgs| async move {
             let client = make_client(&ctx, &[EMAIL_READ]).await?;
@@ -29,7 +30,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             let next_actions = eligibility_next_actions(&args.email, &data);
-            Ok(CommandResult::new(data).with_next_actions(next_actions))
+            let value = serde_json::to_value(&data).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize eligibility result: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }
@@ -38,20 +42,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
 /// `--consent` flags) only when the response names an eligible account —
 /// with no eligible account there is nothing to create. Always includes a
 /// pointer at the `email` guide for what an account ID actually is.
-fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
+fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec<NextAction> {
     let mut actions = Vec::new();
 
-    if let Some(account) = first_eligible_account(data)
-        && let Some(account_id) = account.get("accountId").and_then(Value::as_str)
-    {
+    if let Some(account) = data.eligible_accounts.first() {
         let mut command = "email create --email <email> --account-id <account-id>".to_owned();
-        for requirement_type in requirement_types(account) {
-            command.push_str(&format!(" --consent {requirement_type}"));
+        for requirement in &account.requirements {
+            command.push_str(&format!(" --consent {}", requirement.type_));
         }
         actions.push(
             next_action(command, "Create a mailbox for this address")
                 .with_param("email", NextActionParam::value(email.to_owned()))
-                .with_param("account-id", NextActionParam::value(account_id.to_owned())),
+                .with_param(
+                    "account-id",
+                    NextActionParam::value(account.account_id.to_string()),
+                ),
         );
     }
 
@@ -59,30 +64,8 @@ fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
     actions
 }
 
-// Every field here is read out of an untyped `serde_json::Value`, as is every
-// other `EmailClient` response in this module — panel-v3-api has no published
-// OpenAPI spec yet. Once it does, a generated typed client (mirroring
-// `domains_client`) would remove this class of bug; not actionable today.
-fn first_eligible_account(data: &Value) -> Option<&Value> {
-    data.get("eligibleAccounts")?.as_array()?.first()
-}
-
-fn requirement_types(account: &Value) -> Vec<&str> {
-    account
-        .get("requirements")
-        .and_then(Value::as_array)
-        .map(|reqs| {
-            reqs.iter()
-                .filter_map(|r| r.get("type").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
@@ -92,12 +75,22 @@ mod tests {
         assert_eq!(spec.metadata().scopes, vec![EMAIL_READ.to_string()]);
     }
 
+    fn eligible_account(requirements: Vec<types::AgreementRequirement>) -> types::EligibleAccount {
+        types::EligibleAccount {
+            account_id: types::Uuid("acct-1".to_owned()),
+            account_name: None,
+            default: false,
+            mailbox_type: types::MailboxType("TITAN".to_owned()),
+            requirements,
+        }
+    }
+
     #[test]
     fn next_actions_prefill_email_and_account_id_when_present() {
-        let data = json!({
-            "isEligible": true,
-            "eligibleAccounts": [{ "accountId": "acct-1", "requirements": [] }]
-        });
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![])],
+        };
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
         assert_eq!(
@@ -109,12 +102,10 @@ mod tests {
 
     #[test]
     fn next_actions_omit_create_when_no_eligible_accounts() {
-        let data = json!({
-            "isEligible": false,
-            "ineligibilityReasons": [
-                { "type": "NO_ELIGIBLE_ACCOUNT", "message": "No eligible account was found." }
-            ]
-        });
+        let data = types::EligibilityResult {
+            is_eligible: false,
+            eligible_accounts: vec![],
+        };
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].command, "gddy guide email");
@@ -122,13 +113,14 @@ mod tests {
 
     #[test]
     fn next_actions_include_consent_flags_for_outstanding_requirements() {
-        let data = json!({
-            "isEligible": true,
-            "eligibleAccounts": [{
-                "accountId": "acct-1",
-                "requirements": [{ "type": "FREETRIAL_AUTORENEW" }]
-            }]
-        });
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![types::AgreementRequirement {
+                reference: None,
+                title: None,
+                type_: "FREETRIAL_AUTORENEW".to_owned(),
+            }])],
+        };
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
         assert_eq!(

@@ -1,0 +1,778 @@
+{
+  "$defs": {
+    "AgreementRequirement": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/agreement-requirement.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A legal agreement the customer must accept before provisioning a mailbox.",
+      "properties": {
+        "reference": {
+          "description": "Pointer to the full agreement text. May be a URI or a plain string identifier.",
+          "example": "https://www.godaddy.com/agreements/showdoc?pageid=TITAN_FREE_TRIAL",
+          "type": "string"
+        },
+        "title": {
+          "description": "Human-readable agreement title.",
+          "example": "Titan free trial auto renew",
+          "type": "string"
+        },
+        "type": {
+          "description": "Agreement identifier to submit in the consents field of POST /mailboxes.",
+          "example": "TITAN_FREE_TRIAL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Agreement Requirement",
+      "type": "object"
+    },
+    "ConsentRequest": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/consent-request.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An agreement the customer is accepting at mailbox creation time. The type must match one of the requirement types returned by GET /check-mailbox-eligibility for the chosen account.\n",
+      "properties": {
+        "type": {
+          "description": "Agreement identifier matching the type from check-mailbox-eligibility requirements.",
+          "example": "FREETRIAL_AUTORENEW",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Consent Request",
+      "type": "object"
+    },
+    "ConsentedAgreement": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/consented-agreement.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A legal agreement consented to by the customer during mailbox provisioning.",
+      "properties": {
+        "agreed": {
+          "description": "Whether the customer consented to this agreement.",
+          "example": true,
+          "type": "boolean"
+        },
+        "type": {
+          "description": "Agreement identifier echoed from the consents submitted in the request.",
+          "example": "TITAN_FREE_TRIAL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "agreed"
+      ],
+      "title": "Consented Agreement",
+      "type": "object"
+    },
+    "EligibilityResult": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/eligibility-result.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Result of a check-mailbox-eligibility request. Indicates whether a mailbox can be provisioned for the given email address and what entitlements are available.\n",
+      "properties": {
+        "eligibleAccounts": {
+          "description": "Available accounts that can be used to provision a mailbox.",
+          "items": {
+            "$ref": "#/$defs/EligibleAccount"
+          },
+          "type": "array"
+        },
+        "isEligible": {
+          "description": "Whether a mailbox can be provisioned for this email address.",
+          "example": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "isEligible"
+      ],
+      "title": "Eligibility Result",
+      "type": "object"
+    },
+    "EligibleAccount": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/eligible-account.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An account that can be used to provision a mailbox for a given email address, returned by GET /check-mailbox-eligibility. Pass the accountId to POST /mailboxes to provision against this account.\n",
+      "properties": {
+        "accountId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "accountName": {
+          "description": "Human-readable product name for the account.",
+          "example": "Professional Email",
+          "type": "string"
+        },
+        "default": {
+          "description": "Whether this is the recommended account. Use this accountId in POST /mailboxes when no specific account is preferred.\n",
+          "example": true,
+          "type": "boolean"
+        },
+        "mailboxType": {
+          "$ref": "#/$defs/MailboxType"
+        },
+        "requirements": {
+          "description": "Agreements that must be submitted in the consents field of POST /mailboxes before a mailbox can be provisioned for this account.\n",
+          "items": {
+            "$ref": "#/$defs/AgreementRequirement"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accountId",
+        "mailboxType",
+        "default",
+        "requirements"
+      ],
+      "title": "Eligible Account",
+      "type": "object"
+    },
+    "Error": {
+      "$ref": "#/$defs/error"
+    },
+    "Mailbox": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/mailbox.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An email mailbox associated with a domain owned by the authenticated account. On creation (POST /mailboxes), provide emailAddress and optionally firstName, lastName, accountId, and consents. All other fields are server-assigned and returned in responses.\n",
+      "properties": {
+        "accountId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "consents": {
+          "description": "Agreements the customer has accepted, as required by GET /check-mailbox-eligibility.\n",
+          "example": [
+            {
+              "type": "FREETRIAL_AUTORENEW"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/ConsentRequest"
+          },
+          "type": "array",
+          "writeOnly": true
+        },
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "displayName": {
+          "description": "Human-readable display name for the mailbox owner, used as the From name in outgoing messages. Server-derived from firstName and lastName.\n",
+          "example": "John Doe",
+          "readOnly": true,
+          "type": "string",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "emailAddress": {
+          "description": "The full email address in user@domain format. Required on creation. Immutable after creation.",
+          "example": "john.doe@example.com",
+          "format": "email",
+          "type": "string",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "firstName": {
+          "description": "First name of the mailbox owner.",
+          "example": "John",
+          "type": "string",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "lastName": {
+          "description": "Last name of the mailbox owner.",
+          "example": "Doe",
+          "type": "string",
+          "x-sensitivity": {
+            "classification": "confidential"
+          }
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this mailbox. rel=self — the canonical URL for this mailbox resource.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "mailboxId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "mailboxType": {
+          "$ref": "#/$defs/MailboxType"
+        },
+        "status": {
+          "$ref": "#/$defs/MailboxStatus"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/date-time"
+        }
+      },
+      "title": "Mailbox",
+      "type": "object"
+    },
+    "MailboxList": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/mailbox-list.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Paged collection of mailboxes.",
+      "properties": {
+        "items": {
+          "description": "Mailboxes in the current page.",
+          "items": {
+            "$ref": "#/$defs/Mailbox"
+          },
+          "type": "array"
+        },
+        "links": {
+          "description": "HATEOAS navigation links. rel=self — the current page; rel=first — the first page; rel=last — the last page, present when totalRequired=true; rel=next — the next page, absent on the last page; rel=prev — the previous page, absent on the first page.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "type": "array"
+        },
+        "totalItems": {
+          "description": "Total number of matching mailboxes before paging. Present only when totalRequired=true.",
+          "type": "integer"
+        },
+        "totalPages": {
+          "description": "Total number of pages. Present only when totalRequired=true.",
+          "type": "integer"
+        }
+      },
+      "title": "Mailbox List",
+      "type": "object"
+    },
+    "MailboxStatus": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/mailbox-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The lifecycle status of a mailbox operation. EXECUTING — initial state; the provisioning request has been accepted and is actively being processed. COMPLETED — terminal success. FAILED — terminal failure. DELETED — permanently removed.\n",
+      "title": "Mailbox Status",
+      "type": "string"
+    },
+    "MailboxType": {
+      "$id": "https://godaddy.com/schemas/email/mailbox-management/mailbox-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The email service provider that backs the mailbox. Known values: TITAN — GoDaddy's Titan email platform.\n",
+      "title": "Mailbox Type",
+      "type": "string"
+    },
+    "date-time": {
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+      "maxLength": 64,
+      "minLength": 20,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+      "type": "string"
+    },
+    "error": {
+      "$id": "https://godaddy.com/schemas/common/error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
+      "description": "The error information.",
+      "properties": {
+        "correlationId": {
+          "description": "Internal identifier used for correlation purposes.",
+          "type": "string"
+        },
+        "details": {
+          "additionalItems": false,
+          "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+          "items": {
+            "$ref": "#/$defs/error-details"
+          },
+          "type": "array"
+        },
+        "informationLink": {
+          "description": "The URI for detailed information related to this error for the developer.",
+          "type": "string"
+        },
+        "links": {
+          "description": "An array of error-related HATEOAS links.",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "message": {
+          "description": "The message that describes the error.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The human-readable, unique name of the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "correlationId",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "error-details": {
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The error details. Required for client-side `4XX` errors.",
+      "properties": {
+        "description": {
+          "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value.",
+          "type": "string"
+        },
+        "field": {
+          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
+          "type": "string"
+        },
+        "issue": {
+          "description": "The unique fine-grained application-level error code.",
+          "type": "string"
+        },
+        "location": {
+          "default": "body",
+          "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the field that caused the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue"
+      ],
+      "title": "Error Details",
+      "type": "object"
+    },
+    "link-description": {
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+      "properties": {
+        "href": {
+          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+          "format": "uri",
+          "type": "string"
+        },
+        "method": {
+          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+          "type": "string"
+        },
+        "rel": {
+          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+          "type": "string"
+        },
+        "submissionMediaType": {
+          "default": "application/json",
+          "description": "The media type with which to submit data with the request.",
+          "type": "string"
+        },
+        "submissionSchema": {
+          "description": "The schema that describes the request data."
+        },
+        "targetMediaType": {
+          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+          "type": "string"
+        },
+        "targetSchema": {
+          "description": "The schema that describes the link target."
+        },
+        "title": {
+          "description": "The link title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link Description",
+      "type": "object"
+    },
+    "uuid": {
+      "$id": "https://godaddy.com/schemas/common/uuid.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "baseUrl": "https://api.godaddy.com/v1/email",
+  "description": "The GoDaddy Business Email Management API provides capabilities for listing\nand provisioning mailboxes for domains owned by the authenticated\naccount.\n\n## Namespace\n\nAll paths are under `/v1/email/`. The namespace is `email` (the business\ncapability); the core entity collection is `/mailboxes`.\n\n## Key Conventions\n\n**Asynchronous creation.** `POST /mailboxes` returns `202 Accepted` with the\nmailbox in its initial state (status: EXECUTING). Poll `GET /mailboxes/{mailboxId}`\nuntil status reaches COMPLETED or FAILED.\n",
+  "endpoints": [
+    {
+      "description": "Determines whether a mailbox can be provisioned for the given\nemail address and which entitlements are available to use.\n",
+      "method": "GET",
+      "operationId": "checkMailboxEligibility",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier. Propagated across services and echoed in the X-Request-Id response header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full email address to check (user@domain).",
+          "in": "query",
+          "name": "email",
+          "required": true,
+          "schema": {
+            "format": "email",
+            "type": "string",
+            "x-sensitivity": {
+              "classification": "confidential"
+            }
+          }
+        }
+      ],
+      "path": "/check-mailbox-eligibility",
+      "responses": {
+        "200": {
+          "description": "The email address is eligible for mailbox provisioning. Returns the available accounts and any agreement requirements.\n",
+          "schema": {
+            "$ref": "#/$defs/EligibilityResult"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field value.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The email address is not eligible for mailbox provisioning. The details array contains one or more ineligibility reasons.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "email.mailbox:read",
+        "email.mailbox:create"
+      ],
+      "summary": "Check if a mailbox can be provisioned"
+    },
+    {
+      "description": "Returns a paged list of email mailboxes for domains owned by the\nauthenticated account, across all supported email platforms.\n",
+      "method": "GET",
+      "operationId": "listMailboxes",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier. Propagated across services and echoed in the X-Request-Id response header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter mailboxes by operational status.",
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/MailboxStatus"
+          }
+        },
+        {
+          "description": "Page number (1-based). Defaults to 1.",
+          "in": "query",
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Number of mailboxes per page. Defaults to 25, maximum 100.",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 25,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Comma-separated list of top-level Mailbox fields to include in each response object. When omitted, all fields are returned.\n",
+          "in": "query",
+          "name": "field",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "When true, includes totalItems and totalPages in the response body and adds a last navigation link.\n",
+          "in": "query",
+          "name": "totalRequired",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "path": "/mailboxes",
+      "responses": {
+        "200": {
+          "description": "Paged list of mailboxes.",
+          "schema": {
+            "$ref": "#/$defs/MailboxList"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field value.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "email.mailbox:read"
+      ],
+      "summary": "List all email mailboxes"
+    },
+    {
+      "description": "Provisions a new email mailbox for a domain owned by the authenticated\naccount. Returns 202 Accepted with the mailbox in its initial state\n(status: EXECUTING). Poll GET /mailboxes/{mailboxId} until status\nreaches COMPLETED or FAILED.\n",
+      "method": "POST",
+      "operationId": "createMailbox",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier. Propagated across services and echoed in the X-Request-Id response header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated unique key (UUID recommended). Retrying a POST request with the same Idempotency-Key returns the original response without creating a duplicate mailbox.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "maxLength": 64,
+            "minLength": 16,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/mailboxes",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Mailbox"
+            },
+            {
+              "required": [
+                "emailAddress"
+              ]
+            }
+          ]
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Mailbox provisioning accepted.",
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/Mailbox"
+              },
+              {
+                "properties": {
+                  "agreements": {
+                    "description": "Agreements consented to during mailbox creation, echoing the consents submitted in the request body. Present only on the 202 creation response; not returned by GET /mailboxes or GET /mailboxes/{mailboxId}.\n",
+                    "items": {
+                      "$ref": "#/$defs/ConsentedAgreement"
+                    },
+                    "readOnly": true,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field value.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "Conflict — a mailbox with the requested email address already exists for this domain.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "Semantically invalid request — valid structure but violates a business rule, such as no available entitlements for the domain, or an unsupported domain type.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "email.mailbox:create"
+      ],
+      "summary": "Create a new email mailbox"
+    },
+    {
+      "description": "Returns the current state of a single mailbox. Poll this endpoint\nafter POST /mailboxes until status reaches COMPLETED or FAILED.\n",
+      "method": "GET",
+      "operationId": "getMailbox",
+      "parameters": [
+        {
+          "description": "Optional client-generated request correlation identifier. Propagated across services and echoed in the X-Request-Id response header.\n",
+          "in": "header",
+          "name": "X-Request-Id",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "The mailbox identifier returned from POST /mailboxes.",
+          "in": "path",
+          "name": "mailboxId",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/mailboxes/{mailboxId}",
+      "responses": {
+        "200": {
+          "description": "The requested mailbox.",
+          "schema": {
+            "$ref": "#/$defs/Mailbox"
+          }
+        },
+        "400": {
+          "description": "Malformed request syntax, missing required field, or invalid field value.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "Authenticated identity is not authorized to perform this operation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource was not found.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Too many requests — rate limit exceeded.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "email.mailbox:read",
+        "email.mailbox:create"
+      ],
+      "summary": "Get a single mailbox by ID"
+    }
+  ],
+  "name": "email",
+  "title": "GoDaddy Business Email Management API",
+  "version": "1.0.0"
+}
