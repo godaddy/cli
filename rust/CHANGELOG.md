@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.20](https://github.com/godaddy/cli/compare/v0.2.19...v0.2.20) (2026-09-18)
+
+
+### Bug Fixes
+
+* **hosting:** use WEB_HOSTING as hosting-product flag in next … ([#275](https://github.com/godaddy/cli/issues/275)) ([1d9c005](https://github.com/godaddy/cli/commit/1d9c005318bbbb2b871aaf66b131bf9ef8b91adb))
+* **shopping:** restore product description field and use typed Shopping client throughout ([#272](https://github.com/godaddy/cli/issues/272)) ([38a2424](https://github.com/godaddy/cli/commit/38a2424b86fb8ef3e9447045b086330af006de35))
+
+
+### Code Refactoring
+
+* **hosting:** Generate spec-driven hosting schema for catalog and create HTTP client from schema ([#276](https://github.com/godaddy/cli/issues/276)) ([5320554](https://github.com/godaddy/cli/commit/5320554f17ce97a627a45541dfc13917bfe37034))
+
 ## [0.2.19](https://github.com/godaddy/cli/compare/v0.2.18...v0.2.19) (2026-09-17)
 
 
