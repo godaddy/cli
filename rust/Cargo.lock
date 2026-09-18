@@ -1353,6 +1353,7 @@ dependencies = [
  "fancy-regex",
  "flate2",
  "globset",
+ "hosting-client",
  "httpmock",
  "iso_currency",
  "open",
@@ -1504,6 +1505,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "hosting-client"
+version = "0.2.19"
+dependencies = [
+ "bytes",
+ "futures",
+ "httpmock",
+ "openapiv3",
+ "prettyplease",
+ "progenitor",
+ "progenitor-client",
+ "reqwest 0.13.4",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -30,6 +30,10 @@
       "repository": "commerce.fulfillments-specification"
     },
     {
+      "domain": "hosting",
+      "repository": "hosting.application-lifecycle-specification"
+    },
+    {
       "domain": "location-addresses",
       "repository": "location.addresses-specification"
     },
