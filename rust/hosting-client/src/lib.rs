@@ -17,6 +17,10 @@ pub enum BuildError {
     Header(#[from] reqwest::header::InvalidHeaderValue),
     #[error("failed to build HTTP client: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("invalid base URL: {0}")]
+    InvalidBaseUrl(#[from] url::ParseError),
+    #[error("insecure base URL scheme '{scheme}': HTTPS is required")]
+    InsecureBaseUrlScheme { scheme: String },
 }
 
 /// Observes generated requests/responses without this crate depending on
@@ -77,6 +81,20 @@ pub fn client_with_auth(
 ) -> Result<Client, BuildError> {
     use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
+    let parsed_base_url = reqwest::Url::parse(base_url)?;
+    match parsed_base_url.scheme() {
+        "https" => {}
+        // httpmock (and other local stubs) speak HTTP on loopback only.
+        "http" if parsed_base_url
+            .host_str()
+            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "::1")) => {}
+        scheme => {
+            return Err(BuildError::InsecureBaseUrlScheme {
+                scheme: scheme.to_owned(),
+            });
+        }
+    }
+
     let mut headers = HeaderMap::new();
     headers.insert(AUTHORIZATION, HeaderValue::from_str(authorization)?);
     headers.insert(
@@ -88,4 +106,32 @@ pub fn client_with_auth(
         .default_headers(headers)
         .build()?;
     Ok(Client::new_with_client(base_url, http))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(base_url: &str) -> Result<Client, BuildError> {
+        client_with_auth(base_url, "Bearer tok", "godaddy-cli/test", "req-1")
+    }
+
+    #[test]
+    fn accepts_https_base_url() {
+        build("https://api.godaddy.com").expect("https is allowed");
+    }
+
+    #[test]
+    fn accepts_loopback_http_for_tests() {
+        build("http://127.0.0.1:9").expect("loopback http is allowed");
+    }
+
+    #[test]
+    fn rejects_remote_http_base_url() {
+        let error = build("http://example.com").expect_err("remote http is rejected");
+        assert!(matches!(
+            error,
+            BuildError::InsecureBaseUrlScheme { ref scheme } if scheme == "http"
+        ));
+    }
 }
