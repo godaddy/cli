@@ -74,6 +74,12 @@ impl HostingClient {
         uuid::Uuid::new_v4().to_string()
     }
 
+    /// Marker written to the `--debug transport` trace in place of a response
+    /// body that carries a secret, so a minted token can never reach the debug
+    /// output. The request breadcrumb and the response status/headers still log.
+    const REDACTED_RESPONSE_BODY: &'static [u8] =
+        b"<redacted: response body withheld (contains a credential)>";
+
     fn api(&self) -> Result<hosting_client::Client, ClientError> {
         hosting_client::client_with_auth(
             &self.base_url,
@@ -141,6 +147,24 @@ impl HostingClient {
 
     // Spec has no request body; Akamai still 411s a POST with no Content-Length.
     async fn post_empty_json(&self, path: &str) -> Result<Value, ClientError> {
+        self.post_empty_json_inner(path, true).await
+    }
+
+    /// Like [`post_empty_json`](Self::post_empty_json), but the response body is
+    /// withheld from the `--debug transport` trace. Use for endpoints whose
+    /// response carries a secret — e.g. the agent-token mint, whose body is a
+    /// bearer token. cli-engine redacts sensitive *headers* but prints bodies
+    /// verbatim and offers no body-redaction hook, so the suppression happens
+    /// here, at the one call site that needs it.
+    async fn post_empty_json_secret_response(&self, path: &str) -> Result<Value, ClientError> {
+        self.post_empty_json_inner(path, false).await
+    }
+
+    async fn post_empty_json_inner(
+        &self,
+        path: &str,
+        log_response_body: bool,
+    ) -> Result<Value, ClientError> {
         let request = self
             .http
             .request(Method::POST, self.url(path))
@@ -162,7 +186,19 @@ impl HostingClient {
             .bytes()
             .await
             .map_err(|e| ClientError::Network(e.to_string()))?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+        // Under `--debug transport` cli-engine prints response bodies verbatim
+        // (only sensitive headers are redacted). For a secret-bearing response
+        // hand the logger a fixed marker instead of the real bytes, so a minted
+        // token cannot leak into the trace; status and headers still log.
+        cli_engine::transport::debug_log_reqwest_response(
+            status,
+            &headers,
+            if log_response_body {
+                bytes.as_ref()
+            } else {
+                Self::REDACTED_RESPONSE_BODY
+            },
+        );
 
         let status = status.as_u16();
         if !(200..300).contains(&status) {
@@ -246,6 +282,22 @@ impl HostingClient {
                 .await,
         )
         .await
+    }
+
+    /// Mint a short-lived agent token for the app and return the agent's
+    /// assigned URL alongside it. Response shape: `{ agentUrl, token, expires? }`.
+    /// The `db tunnel` caller mints this token with a dedicated
+    /// `hosting.database:tunnel` scope in addition to `hosting.deployment:execute`,
+    /// so publish authority alone does not yield a database-tunnel agent token.
+    ///
+    /// This mint lives under the Node.js-specific `/v1/hosting/nodejs` path
+    /// rather than the flattened `/v1/hosting` base the other methods use, so it
+    /// is spelled out with a leading `/nodejs` segment to reach the server route.
+    pub async fn get_agent_token(&self, app_id: &str) -> Result<Value, ClientError> {
+        // Secret response: the body is a minted bearer token, so it must never
+        // reach the `--debug transport` trace (cli-engine would print it in full).
+        self.post_empty_json_secret_response(&format!("/nodejs/apps/{app_id}/agent-token"))
+            .await
     }
 
     pub async fn list_deployments(
