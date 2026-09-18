@@ -2,6 +2,7 @@ mod dereference;
 mod domains_merge;
 mod github;
 mod graphql;
+mod hosting_merge;
 mod manifest;
 mod openapi;
 mod shopping_merge;
@@ -107,6 +108,14 @@ fn main() -> Result<()> {
             &shopping_merge::shopping_client_oas3_path(),
         )
         .context("failed to refresh shopping-client codegen spec")?;
+    }
+    if let Some(hosting_source) = sources.iter().find(|s| s.domain == "hosting") {
+        hosting_merge::refresh(
+            &hosting_source.spec_file,
+            common_types,
+            &hosting_merge::hosting_client_oas3_path(),
+        )
+        .context("failed to refresh hosting-client codegen spec")?;
     }
 
     sources.extend(local_spec_sources(&source_manifest)?);

@@ -144,8 +144,13 @@ async fn get_app_status_hits_correct_path() {
     let mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/apps/app-1/status");
-            then.status(200)
-                .json_body(json!({ "preview": "ACTIVE", "publish": "IDLE" }));
+            then.status(200).json_body(json!({
+                "status": "ACTIVE",
+                "variants": [
+                    { "variant": "PREVIEW", "status": "ACTIVE" },
+                    { "variant": "PUBLISH", "status": "IDLE" }
+                ]
+            }));
         })
         .await;
 
@@ -155,7 +160,7 @@ async fn get_app_status_hits_correct_path() {
         .expect("get app status");
 
     mock.assert_async().await;
-    assert!(body.get("preview").is_some());
+    assert!(body.get("variants").is_some());
 }
 
 #[tokio::test]
@@ -206,7 +211,8 @@ async fn get_deployment_hits_correct_path() {
         .mock_async(|when, then| {
             when.method(GET)
                 .path("/v1/hosting/apps/app-1/deployments/dep-1");
-            then.status(200).json_body(json!({ "id": "dep-1" }));
+            then.status(200)
+                .json_body(json!({ "deploymentId": "dep-1" }));
         })
         .await;
 
@@ -216,17 +222,19 @@ async fn get_deployment_hits_correct_path() {
         .expect("get deployment");
 
     mock.assert_async().await;
-    assert_eq!(body["id"], "dep-1");
+    assert_eq!(body["deploymentId"], "dep-1");
 }
 
 #[tokio::test]
-async fn create_deployment_posts_with_no_body() {
+async fn create_deployment_posts_empty_json_body() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(POST).path("/v1/hosting/apps/app-1/deployments");
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/deployments")
+                .json_body(json!({}));
             then.status(202)
-                .json_body(json!({ "id": "dep-1", "status": "PENDING" }));
+                .json_body(json!({ "deploymentId": "dep-1", "status": "PENDING" }));
         })
         .await;
 
@@ -245,7 +253,7 @@ async fn get_operation_hits_correct_path() {
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/app-operations/op-1");
             then.status(200)
-                .json_body(json!({ "id": "op-1", "status": "COMPLETED" }));
+                .json_body(json!({ "operationId": "op-1", "status": "COMPLETED" }));
         })
         .await;
 
@@ -255,7 +263,7 @@ async fn get_operation_hits_correct_path() {
         .expect("get operation");
 
     mock.assert_async().await;
-    assert_eq!(body["id"], "op-1");
+    assert_eq!(body["operationId"], "op-1");
 }
 
 #[tokio::test]
@@ -389,7 +397,10 @@ async fn get_runtime_hits_correct_path() {
     let mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/apps/app-1/runtime");
-            then.status(200).json_body(json!({ "status": "RUNNING" }));
+            then.status(200).json_body(json!([{
+                "runtime": "NODEJS",
+                "version": "22.11.0"
+            }]));
         })
         .await;
 

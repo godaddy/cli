@@ -7,6 +7,28 @@ use crate::hosting::client::{ClientError, HostingClient};
 use crate::http::api_url_for_env;
 use crate::output_schema::output_schema;
 
+struct CliEngineTransportObserver;
+
+impl hosting_client::TransportObserver for CliEngineTransportObserver {
+    fn on_request(&self, request: &reqwest::Request) {
+        cli_engine::transport::debug_log_reqwest_request(request);
+    }
+
+    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap) {
+        cli_engine::transport::debug_log_reqwest_response(status, headers, &[]);
+    }
+}
+
+static TRANSPORT_OBSERVER_INIT: std::sync::Once = std::sync::Once::new();
+
+fn ensure_transport_observer_registered() {
+    TRANSPORT_OBSERVER_INIT.call_once(|| {
+        hosting_client::set_transport_observer(Some(std::sync::Arc::new(
+            CliEngineTransportObserver,
+        )));
+    });
+}
+
 output_schema!(HostingAppSummary {
     "id": "string";
     "name": "string";
@@ -168,6 +190,7 @@ pub async fn make_client(
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
+    ensure_transport_observer_registered();
     Ok(HostingClient::new(base_url, token))
 }
 
