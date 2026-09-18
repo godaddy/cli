@@ -51,9 +51,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 fn publish_err(e: ClientError) -> cli_engine::CliCoreError {
     match &e {
-        ClientError::Http { status, .. } if *status == 422 => {
-            client_err_with_fix(e, "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
-        }
+        ClientError::Http { status, .. } if *status == 422 => client_err_with_fix(
+            e,
+            "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING",
+        ),
         _ => client_err(e),
     }
 }
