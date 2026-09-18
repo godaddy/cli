@@ -768,61 +768,22 @@ mod tests {
         assert!(matches!(error, ClientError::EmptyResponse));
     }
 
-    #[tokio::test]
-    async fn mutations_reject_a_nonempty_checkout_response_without_an_id() {
-        let server = MockServer::start_async().await;
-        let create = server
-            .mock_async(|when, then| {
-                when.method(POST).path("/v1/shopping/checkout-sessions");
-                then.status(200).json_body(json!({}));
-            })
-            .await;
-        let update = server
-            .mock_async(|when, then| {
-                when.method(PUT)
-                    .path("/v1/shopping/checkout-sessions/checkout-123");
-                then.status(200).json_body(json!({}));
-            })
-            .await;
-        let complete = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path("/v1/shopping/checkout-sessions/checkout-123/complete");
-                then.status(200).json_body(json!({}));
-            })
-            .await;
+    #[test]
+    fn mutations_reject_a_nonempty_checkout_response_without_an_id() {
+        macro_rules! assert_id_less_response_is_rejected {
+            ($response:ty) => {
+                let response = serde_json::from_value::<$response>(json!({}))
+                    .expect("an empty object should decode through the untagged response");
+                assert!(matches!(
+                    checkout_or_none(Some(response)),
+                    Err(ClientError::EmptyResponse)
+                ));
+            };
+        }
 
-        let shopping = client(&server.base_url());
-        let create_error = create_checkout(
-            &shopping,
-            CheckoutWritableRequest(Default::default()),
-            "customer-key",
-        )
-        .await
-        .expect_err("a nonempty create response without an id is invalid");
-        let update_error = update_checkout(
-            &shopping,
-            "checkout-123",
-            CheckoutWritableRequest(Default::default()),
-            "customer-key",
-        )
-        .await
-        .expect_err("a nonempty update response without an id is invalid");
-        let complete_error = complete_checkout(
-            &shopping,
-            "checkout-123",
-            CheckoutCompleteRequest(Default::default()),
-            "customer-key",
-        )
-        .await
-        .expect_err("a nonempty completion response without an id is invalid");
-
-        create.assert_async().await;
-        update.assert_async().await;
-        complete.assert_async().await;
-        assert!(matches!(create_error, ClientError::EmptyResponse));
-        assert!(matches!(update_error, ClientError::EmptyResponse));
-        assert!(matches!(complete_error, ClientError::EmptyResponse));
+        assert_id_less_response_is_rejected!(CreateCheckoutResponse);
+        assert_id_less_response_is_rejected!(UpdateCheckoutResponse);
+        assert_id_less_response_is_rejected!(CompleteCheckoutResponse);
     }
 
     #[tokio::test]
