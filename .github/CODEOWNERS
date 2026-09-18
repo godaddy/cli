@@ -26,9 +26,11 @@ rust/domains-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mgu
 rust/src/domain/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
 
 # email — gddy email commands
+rust/email-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @sgimpel-godaddy @srao-godaddy
 rust/src/email/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @sgimpel-godaddy @srao-godaddy
 
 # hosting — gddy hosting commands
+rust/hosting-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @apetrovic-godaddy @jhenderson1-godaddy
 rust/src/hosting/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @apetrovic-godaddy @jhenderson1-godaddy
 
 # ecomm — gddy payment_methods and shopping commands

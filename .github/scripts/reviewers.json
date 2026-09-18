@@ -32,7 +32,7 @@
     {
       "comment": "gddy email commands",
       "label": "email",
-      "patterns": ["rust/src/email/**"],
+      "patterns": ["rust/email-client/**", "rust/src/email/**"],
       "users": [
         "sgimpel-godaddy",
         "srao-godaddy"
@@ -41,7 +41,7 @@
     {
       "comment": "gddy hosting commands",
       "label": "hosting",
-      "patterns": ["rust/src/hosting/**"],
+      "patterns": ["rust/hosting-client/**", "rust/src/hosting/**"],
       "users": [
         "apetrovic-godaddy",
         "jhenderson1-godaddy"
