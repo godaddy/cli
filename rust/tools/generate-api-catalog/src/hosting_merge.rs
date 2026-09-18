@@ -58,7 +58,6 @@ pub(crate) fn refresh(
     prefix_paths(&mut spec)?;
     prefer_json_source_import(&mut spec);
     drop_json_patch_operations(&mut spec);
-    unrequire_query_parameters(&mut spec);
     remove_protocol_header_parameters(&mut spec);
     retain_2xx_responses(&mut spec);
     strip_type_null_schemas(&mut spec);
@@ -241,30 +240,6 @@ fn prefer_json_source_import(spec: &mut Value) {
 /// JSON Patch (RFC 6902) needs `application/json-patch+json`. Progenitor
 /// serializes those bodies as ordinary JSON, so PATCH app/secrets stay on
 /// the handwritten client.
-fn unrequire_query_parameters(spec: &mut Value) {
-    let Some(paths) = spec.pointer_mut("/paths").and_then(Value::as_object_mut) else {
-        return;
-    };
-    for item in paths.values_mut().filter_map(Value::as_object_mut) {
-        for method in ["get", "post", "put", "delete", "patch"] {
-            let Some(parameters) = item
-                .get_mut(method)
-                .and_then(|operation| operation.get_mut("parameters"))
-                .and_then(Value::as_array_mut)
-            else {
-                continue;
-            };
-            for parameter in parameters {
-                if parameter.get("in").and_then(Value::as_str) == Some("query")
-                    && let Some(object) = parameter.as_object_mut()
-                {
-                    object.insert("required".to_owned(), Value::Bool(false));
-                }
-            }
-        }
-    }
-}
-
 fn drop_json_patch_operations(spec: &mut Value) {
     let Some(paths) = spec.pointer_mut("/paths").and_then(Value::as_object_mut) else {
         return;

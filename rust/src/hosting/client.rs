@@ -505,16 +505,13 @@ impl HostingClient {
         &self,
         page_token: Option<&str>,
         limit: Option<u32>,
-        hosting_product: Option<&str>,
+        hosting_product: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let mut request = client.list_subscriptions();
+        let request = client.list_subscriptions().hosting_product(
+            hosting_client::types::HostingProduct::from(hosting_product.to_owned()),
+        );
         let _ = (page_token, limit);
-        if let Some(product) = hosting_product {
-            request = request.hosting_product(hosting_client::types::HostingProduct::from(
-                product.to_owned(),
-            ));
-        }
         response(request.send().await).await
     }
 

@@ -476,14 +476,16 @@ async fn list_subscriptions_hits_correct_path() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(GET).path("/v1/hosting/subscriptions");
+            when.method(GET)
+                .path("/v1/hosting/subscriptions")
+                .query_param("hostingProduct", "WEB_HOSTING");
             then.status(200)
                 .json_body(json!({ "items": [], "links": [] }));
         })
         .await;
 
     client(&server.base_url())
-        .list_subscriptions(None, None, None)
+        .list_subscriptions(None, None, "WEB_HOSTING")
         .await
         .expect("list subscriptions");
 

@@ -1368,7 +1368,7 @@
           {
             "in": "query",
             "name": "appType",
-            "required": false,
+            "required": true,
             "schema": {
               "$ref": "#/components/schemas/AppType"
             }
@@ -1441,7 +1441,7 @@
           {
             "in": "query",
             "name": "appType",
-            "required": false,
+            "required": true,
             "schema": {
               "$ref": "#/components/schemas/AppType"
             }
@@ -2596,7 +2596,7 @@
           {
             "in": "query",
             "name": "hostingProduct",
-            "required": false,
+            "required": true,
             "schema": {
               "$ref": "#/components/schemas/HostingProduct"
             }

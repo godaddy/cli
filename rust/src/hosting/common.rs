@@ -215,6 +215,23 @@ impl HostingAppType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum HostingProduct {
+    #[value(name = "WEB_HOSTING")]
+    WebHosting,
+    #[value(name = "MANAGED_WORDPRESS")]
+    ManagedWordpress,
+}
+
+impl HostingProduct {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WebHosting => "WEB_HOSTING",
+            Self::ManagedWordpress => "MANAGED_WORDPRESS",
+        }
+    }
+}
+
 /// Extracts the `pageToken` value from `links[rel=next].href` in a paged response.
 pub fn next_page_token(response: &Value) -> Option<String> {
     let links = response.get("links")?.as_array()?;
@@ -262,6 +279,19 @@ mod tests {
     fn hosting_app_type_rejects_unknown() {
         assert!(HostingAppType::from_str("UNKNOWN", true).is_err());
         assert!(HostingAppType::from_str("", true).is_err());
+    }
+
+    #[test]
+    fn hosting_product_parses_known_values() {
+        assert_eq!(
+            HostingProduct::from_str("WEB_HOSTING", true).expect("WEB_HOSTING"),
+            HostingProduct::WebHosting
+        );
+        assert_eq!(
+            HostingProduct::from_str("managed_wordpress", true).expect("managed_wordpress"),
+            HostingProduct::ManagedWordpress
+        );
+        assert_eq!(HostingProduct::WebHosting.as_str(), "WEB_HOSTING");
     }
 
     #[test]
