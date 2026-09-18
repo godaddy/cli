@@ -7,14 +7,20 @@ use std::{
 use chrono::{DateTime, Utc};
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
+use shopping_client::types::{
+    CatalogSearchSearchRequest, CatalogSearchSearchResponse, PaginationRequest,
+    SearchCatalogResponse, SearchRequest,
+};
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{client_err, make_client};
+use crate::shopping::client::{ClientError, decode};
+use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
 
-const CATALOG_CATEGORY_LIMIT: u8 = 50;
+const CATALOG_CATEGORY_LIMIT: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(50).expect("CATALOG_CATEGORY_LIMIT is nonzero");
 const CACHE_FILE_NAME: &str = "shopping-catalog-categories.json";
 const CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -67,10 +73,32 @@ async fn refresh_categories(
     cache_path: Option<&Path>,
 ) -> cli_engine::Result<Vec<String>> {
     let client = make_client(ctx).await?;
-    let response = client
-        .catalog_search(json!({"pagination": {"limit": CATALOG_CATEGORY_LIMIT}}))
-        .await
-        .map_err(client_err)?;
+    let request = CatalogSearchSearchRequest {
+        pagination: Some(PaginationRequest {
+            limit: CATALOG_CATEGORY_LIMIT,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let response = decode::<SearchCatalogResponse>(
+        client
+            .search_catalog()
+            .body(SearchRequest(request))
+            .send()
+            .await,
+    )
+    .await
+    .map_err(client_err)?
+    .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
+    let response = match response {
+        SearchCatalogResponse::SearchResponse(response) => response.0,
+        SearchCatalogResponse::ErrorResponse(payload) => {
+            return Err(client_err(ClientError::UnexpectedErrorPayload(
+                payload.into(),
+            )));
+        }
+    };
+    reject_response_errors(&response.messages)?;
     let categories = categories(&response);
     if let Some(path) = cache_path
         && let Err(error) = save_cache(path, &categories, Utc::now())
@@ -126,20 +154,12 @@ fn save_cache(
     cli_engine::fs::write_string_atomic(path, &contents)
 }
 
-fn categories(response: &Value) -> Vec<String> {
+fn categories(response: &CatalogSearchSearchResponse) -> Vec<String> {
     response
-        .get("products")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .flat_map(|product| {
-            product
-                .get("categories")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-        })
-        .filter_map(|category| category.get("value").and_then(Value::as_str))
+        .products
+        .iter()
+        .flat_map(|product| product.categories.iter())
+        .filter_map(|category| category.value.as_deref())
         .filter(|category| !category.eq_ignore_ascii_case("domain"))
         .map(str::to_owned)
         .collect::<BTreeSet<_>>()
@@ -150,21 +170,39 @@ fn categories(response: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use chrono::TimeDelta;
-    use serde_json::json;
+    use shopping_client::types::{Category, Product};
 
-    use super::{CACHE_TTL, Cache, cache_env_name, categories, load_fresh_cache, save_cache};
+    use super::{
+        CACHE_TTL, Cache, CatalogSearchSearchResponse, cache_env_name, categories,
+        load_fresh_cache, save_cache,
+    };
+
+    fn product_with_categories(categories: &[&str]) -> Product {
+        Product {
+            categories: categories
+                .iter()
+                .map(|value| Category {
+                    value: Some((*value).to_owned()),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn derives_sorted_unique_non_domain_categories_from_products() {
+        let response = CatalogSearchSearchResponse {
+            products: vec![
+                product_with_categories(&["webHosting", "email"]),
+                product_with_categories(&["email", "domain"]),
+                product_with_categories(&["DOMAIN", "sslCertificate"]),
+                Product::default(),
+            ],
+            ..Default::default()
+        };
         assert_eq!(
-            categories(&json!({
-                "products": [
-                    {"categories": [{"value": "webHosting"}, {"value": "email"}]},
-                    {"categories": [{"value": "email"}, {"value": "domain"}]},
-                    {"categories": [{"value": "DOMAIN"}, {"value": "sslCertificate"}]},
-                    {"categories": [{"label": "No value"}]}
-                ]
-            })),
+            categories(&response),
             vec!["email", "sslCertificate", "webHosting"]
         );
     }

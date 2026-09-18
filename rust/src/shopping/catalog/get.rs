@@ -1,9 +1,15 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
-use serde_json::{Value, json};
+use shopping_client::types::{
+    CatalogLookupGetProductRequest, CatalogLookupGetProductResponse, GetProductRequest,
+    GetProductResponse,
+};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::shopping::common::{client_err, currency_code, make_client, merge_context_currency};
+use crate::shopping::client::{ClientError, decode};
+use crate::shopping::common::{
+    client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
+};
 use crate::shopping::human::{CATALOG_GET_VIEW_ID, catalog_product_response};
 use crate::shopping::{SHOPPING_SCOPES, command_for_env};
 
@@ -33,11 +39,38 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<CatalogProductOutput>()
             .with_view_id(CATALOG_GET_VIEW_ID),
         |ctx, args: Args| async move {
-            let mut body = json!({"id": args.id});
-            merge_context_currency(&mut body, args.currency.as_deref())?;
+            let mut request = CatalogLookupGetProductRequest {
+                id: Some(args.id),
+                ..Default::default()
+            };
+            merge_context_currency(&mut request.context, args.currency.as_deref());
             let client = make_client(&ctx).await?;
-            let response = client.catalog_product(body).await.map_err(client_err)?;
+            let response = decode::<GetProductResponse>(
+                client
+                    .get_product()
+                    .body(GetProductRequest(request))
+                    .send()
+                    .await,
+            )
+            .await
+            .map_err(client_err)?
+            .ok_or_else(|| client_err(ClientError::EmptyResponse))?;
+            let response = match response {
+                GetProductResponse::CatalogLookupGetProductResponse(response) => response,
+                GetProductResponse::ErrorResponse(payload) => {
+                    return Err(client_err(ClientError::UnexpectedErrorPayload(
+                        payload.into(),
+                    )));
+                }
+            };
+            reject_response_errors(&response.messages)?;
             let actions = next_actions(&response, &ctx.middleware.env);
+            let response = serde_json::to_value(&response).map_err(|error| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to encode catalog product response: {error}"
+                ))
+                .into_cli_error()
+            })?;
             let output = if ctx.middleware.output_format == "human" {
                 catalog_product_response(&response)
             } else {
@@ -48,33 +81,31 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-fn next_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
-    let Some(product) = response.get("product") else {
+fn next_actions(
+    response: &CatalogLookupGetProductResponse,
+    env: &str,
+) -> Vec<cli_engine::NextAction> {
+    let Some(product) = response.product.as_ref() else {
         return Vec::new();
     };
-    let Some((variant_id, currency)) =
-        product
-            .get("variants")
-            .and_then(Value::as_array)
-            .and_then(|variants| {
-                variants.iter().find_map(|variant| {
-                    let available = variant
-                        .pointer("/availability/available")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false);
-                    let id = variant.get("id").and_then(Value::as_str)?;
-                    available.then(|| {
-                        (
-                            id,
-                            variant
-                                .pointer("/price/currency")
-                                .and_then(Value::as_str)
-                                .unwrap_or("USD"),
-                        )
-                    })
-                })
-            })
-    else {
+    let Some((variant_id, currency)) = product.variants.iter().find_map(|variant| {
+        let available = variant
+            .availability
+            .as_ref()
+            .and_then(|availability| availability.available)
+            .unwrap_or(false);
+        let id = variant.id.as_deref()?;
+        available.then(|| {
+            (
+                id,
+                variant
+                    .price
+                    .as_ref()
+                    .and_then(|price| price.currency.as_deref())
+                    .unwrap_or("USD"),
+            )
+        })
+    }) else {
         return Vec::new();
     };
     vec![
@@ -92,6 +123,12 @@ fn next_actions(response: &Value, env: &str) -> Vec<cli_engine::NextAction> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+    use shopping_client::types::{
+        CatalogLookupGetProductResponse, CatalogLookupGetProductResponseProduct, Price, Variant,
+        VariantAvailability,
+    };
+
     use super::*;
     use crate::shopping::human::catalog_product_response;
 
@@ -109,7 +146,26 @@ mod tests {
             "ucp": {"do_not_render": true}
         });
         let output = catalog_product_response(&response);
-        let actions = next_actions(&response, "test");
+
+        let typed_response = CatalogLookupGetProductResponse {
+            product: Some(CatalogLookupGetProductResponseProduct {
+                variants: vec![Variant {
+                    id: Some("variant-1".to_owned()),
+                    availability: Some(VariantAvailability {
+                        available: Some(true),
+                        ..Default::default()
+                    }),
+                    price: Some(Price {
+                        currency: Some("USD".to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let actions = next_actions(&typed_response, "test");
 
         assert_eq!(output["title"], "Product");
         assert_eq!(output["variants"][0]["price"], "USD 71.88");

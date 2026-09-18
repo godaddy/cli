@@ -65,7 +65,7 @@ gddy hosting subscription get --app-id <app-id>
 If not, list subscriptions and attach the app to one with open slots (`availableSlots > 0`).
 
 ```sh
-gddy hosting subscription list
+gddy hosting subscription list --hosting-product=WEB_HOSTING
 gddy hosting subscription attach --app-id <app-id> --subscription-id <subscription-id>
 ```
 
@@ -118,7 +118,7 @@ Upload source again (step 2), wait for the import to complete, then run `deploym
 | `hosting app status` | Runtime status for PREVIEW and PUBLISH |
 | `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment |
 | `hosting log list` | Fetch log entries (filter by `--variant`, `--level`, `--since`) |
-| `hosting secrets create/update/delete/list` | Manage per-environment secrets |
+| `hosting secrets create/update/delete/list/sync` | Manage per-environment secrets |
 | `hosting domain attach/get/detach/list` | Custom domains. Get returns DNS targets for external DNS |
 | `hosting runtime get` | View the Node.js runtime version |
 | `hosting source github` | Deploy code from a repo already linked in the hosting UI (`source` is GitHub on `app get`) |

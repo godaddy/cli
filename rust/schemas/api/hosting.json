@@ -1,0 +1,3726 @@
+{
+  "$defs": {
+    "AppOperation": {
+      "$id": "https://godaddy.com/schemas/hosting/models/app-operation.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An asynchronous application-creation operation. `POST /apps` returns this resource before an `appId` has been assigned. Poll `GET /app-operations/{operationId}` until `status` reaches `COMPLETED` or `FAILED`. On `COMPLETED`, `app` contains an `AppOperationApplication` — the creation-time subset of the created application — with `status` guaranteed to be `ACTIVE`, so the application is ready to use. Use its `id` for all subsequent calls.\n",
+      "properties": {
+        "app": {
+          "description": "The created application, in its creation-time subset shape. Present when `status` is `COMPLETED`. Null otherwise. Follow `links[rel=self]` on it, or call `GET /apps/{appId}`, for the full `Application`.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AppOperationApplication"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "error": {
+          "description": "Populated when `status` is `FAILED`. Describes why the application could not be created.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the operation (`GET /app-operations/{operationId}`), suitable as a poll target.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "operationId": {
+          "description": "Server-assigned operation identifier.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/OperationStatus"
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "links"
+      ],
+      "title": "AppOperation",
+      "type": "object"
+    },
+    "AppOperationApplication": {
+      "$id": "https://godaddy.com/schemas/hosting/models/app-operation-application.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The creation-time view of an application, embedded in `AppOperation.app` when the operation reaches `COMPLETED`. It is a deliberate subset of `Application`: only the fields settled at creation are present. Read the full resource with `GET /apps/{appId}` — or follow `links[rel=self]` — once you need `name`, `appType`, `urls` or `updatedAt`.\n",
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "id": {
+          "description": "Server-assigned identifier of the created application, in the same form as `Application.id`. Use it for all subsequent calls.\n",
+          "examples": [
+            "NODEJS-aBcDeFgHiJ"
+          ],
+          "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+          "readOnly": true,
+          "type": "string"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for the created application. `rel=self` is the canonical URL of the application (`GET /apps/{appId}`).\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "region": {
+          "description": "Datacenter region the application was provisioned into. Omitted when the platform does not report one. Today `na` and `eu` are emitted; this is not a closed set, so treat an unlisted value as valid.\n",
+          "examples": [
+            "na",
+            "eu"
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/AppStatus"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "createdAt",
+        "links"
+      ],
+      "title": "AppOperationApplication",
+      "type": "object"
+    },
+    "AppSource": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-source.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Indicates how the source code for an application was supplied.",
+      "examples": [
+        "ZIP",
+        "GITHUB"
+      ],
+      "title": "AppSource",
+      "type": "string"
+    },
+    "AppState": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-state.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Which environment of the application the attached subscription is currently backing. `PUBLISHED` means the application has been published and the subscription covers the live environment; `PREVIEW` means only the preview environment is in use. This tracks the same environment axis as `Environment`, which grows as new variants come online. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "PUBLISHED",
+        "PREVIEW"
+      ],
+      "title": "AppState",
+      "type": "string"
+    },
+    "AppStatus": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Lifecycle state of a hosted application. When `POST /apps` is used, the application is `ACTIVE` by the time the `AppOperation` reaches `COMPLETED` — no secondary poll of `GET /apps/{appId}` is required. `FAILED` is a terminal state indicating that provisioning did not complete successfully. `DELETING` is a transient state while the application is being removed. `SUSPENDED` indicates the application has been suspended. `UNKNOWN` is emitted by the service when the underlying hosting platform reports a status this API does not model; treat it as \"state not determinable\" rather than as a healthy application. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "CREATING",
+        "ACTIVE",
+        "FAILED",
+        "DELETING",
+        "SUSPENDED",
+        "UNKNOWN"
+      ],
+      "title": "AppStatus",
+      "type": "string"
+    },
+    "AppType": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The product type for a hosted application. Required on list and create operations. Each application id is prefixed with its application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier (e.g. `NODEJS-v1StcMHAbqMs`), so item-scoped requests do not require this parameter. Additional product types will be added to this enum as they come online. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "NODEJS"
+      ],
+      "title": "AppType",
+      "type": "string"
+    },
+    "Application": {
+      "$id": "https://godaddy.com/schemas/hosting/models/application.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A hosted application. After creation, `status` will be `CREATING`. Poll `GET /apps/{appId}` until it reaches `ACTIVE` or `FAILED`.\n",
+      "properties": {
+        "appType": {
+          "$ref": "#/$defs/AppType"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "id": {
+          "description": "Server-assigned identifier. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then a product-specific suffix. For `NODEJS`, the suffix is a 10-character nanoid (e.g. `NODEJS-aBcDeFgHiJ`).\nThe prefix lets you identify the product type from the id without an extra lookup. Immutable.\n",
+          "examples": [
+            "NODEJS-aBcDeFgHiJ"
+          ],
+          "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+          "readOnly": true,
+          "type": "string"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the application (`GET /apps/{appId}`).\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "name": {
+          "description": "Human-readable display name for the application.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "region": {
+          "description": "Datacenter region the application is provisioned into, in the same form as `AppOperationApplication.region`. Emitted today only on the items of `GET /apps`; omitted on `GET /apps/{appId}` and whenever the platform does not report one. Today `na` and `eu` are emitted; this is not a closed set, so treat an unlisted value as valid.\n",
+          "examples": [
+            "na",
+            "eu"
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/AppSource"
+        },
+        "sourceDetails": {
+          "description": "Present when source is GITHUB. Null when ZIP or no import has been performed.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GitHubSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "status": {
+          "$ref": "#/$defs/AppStatus"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "urls": {
+          "description": "Public URLs assigned to this application.",
+          "properties": {
+            "preview": {
+              "description": "URL for the preview environment. Null until provisioning completes.\n",
+              "format": "uri",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "publish": {
+              "description": "URL for the published environment. Null until a domain is attached.\n",
+              "format": "uri",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "readOnly": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "appType",
+        "status",
+        "urls",
+        "createdAt",
+        "updatedAt",
+        "links"
+      ],
+      "title": "Application",
+      "type": "object"
+    },
+    "ApplicationStatus": {
+      "$id": "https://godaddy.com/schemas/hosting/models/application-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Detailed runtime status of an application, including per-environment state. Use as the poll target after `POST /apps/{appId}/restarts`.\n",
+      "properties": {
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the application status (`GET /apps/{appId}/status`), suitable as a poll target after a restart.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/AppStatus"
+        },
+        "variants": {
+          "description": "Per-environment lifecycle detail.",
+          "items": {
+            "$ref": "#/$defs/EnvironmentVariant"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "variants",
+        "links"
+      ],
+      "title": "ApplicationStatus",
+      "type": "object"
+    },
+    "AttachDomainRequest": {
+      "properties": {
+        "hostname": {
+          "description": "The fully-qualified domain name to attach.",
+          "examples": [
+            "www.example.com"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "hostname"
+      ],
+      "type": "object"
+    },
+    "AttachState": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/attach-state.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Current state of a subscription attachment on an application. `ACTIVE` means the subscription is attached and the plan is in good standing. `SUSPENDED` means the plan has lapsed but the attachment record still exists.\n\n`CANCELLED` is reserved and is not emitted today: it is intended for a cancelled subscription whose attachment record is still returned, so clients could distinguish that state from no attachment ever having existed. The service currently returns `ACTIVE` or `SUSPENDED` only. The member is declared so that clients written against this specification already tolerate it when it does begin to appear.\n",
+      "enum": [
+        "ACTIVE",
+        "SUSPENDED",
+        "CANCELLED"
+      ],
+      "title": "AttachState",
+      "type": "string"
+    },
+    "AttachSubscriptionRequest": {
+      "properties": {
+        "subscriptionId": {
+          "description": "The id of the subscription to attach.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscriptionId"
+      ],
+      "type": "object"
+    },
+    "CdnStatus": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/cdn-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "CDN provisioning state for a domain attachment. `INIT` means CDN setup has not started. `PENDING` means provisioning is in progress. `ACTIVE` means the CDN is serving the domain. `ERROR` means provisioning failed. `DELETED` means the CDN configuration has been removed. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "INIT",
+        "PENDING",
+        "ACTIVE",
+        "ERROR",
+        "DELETED"
+      ],
+      "title": "CdnStatus",
+      "type": "string"
+    },
+    "CreateAppRequest": {
+      "properties": {
+        "name": {
+          "description": "Human-readable display name for the application.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Deployment": {
+      "$id": "https://godaddy.com/schemas/hosting/models/deployment.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An asynchronous deployment operation. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` reaches `COMPLETED` or `FAILED`.\n",
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "deploymentId": {
+          "description": "Server-assigned deployment identifier.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "error": {
+          "description": "Populated when `status` is `FAILED`. Describes why the deployment did not complete.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "gitHash": {
+          "description": "The Git commit hash deployed. Null when no source has been imported yet.\n",
+          "readOnly": true,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the deployment (`GET /apps/{appId}/deployments/{deploymentId}`), suitable as a poll target.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "logs": {
+          "description": "Build and publish log lines captured for this deployment, oldest first. Omitted when no lines have been captured yet. This is a convenience excerpt; read the full stream with `GET /apps/{appId}/deployments/{deploymentId}/logs`.\n",
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/OperationStatus"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/date-time"
+        }
+      },
+      "required": [
+        "deploymentId",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "links"
+      ],
+      "title": "Deployment",
+      "type": "object"
+    },
+    "DeploymentLogs": {
+      "$id": "https://godaddy.com/schemas/hosting/models/deployment-logs.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The full build and publish log stream captured for a single deployment. Returned by `GET /apps/{appId}/deployments/{deploymentId}/logs`.\n\nThis is build output, not application runtime output: logs emitted by the running application are read from `GET /apps/{appId}/logs` as structured `LogEntry` objects. Here the lines are opaque strings, as the builder wrote them.\n",
+      "properties": {
+        "deploymentId": {
+          "description": "Identifier of the deployment these lines belong to. Matches `Deployment.deploymentId`.\n",
+          "readOnly": true,
+          "type": "string"
+        },
+        "lines": {
+          "description": "Log lines in the order the builder emitted them, oldest first. Empty while the deployment is still `PENDING`, or when no output was captured.\n",
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. `rel=self` is the canonical URL of the log stream.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        }
+      },
+      "required": [
+        "deploymentId",
+        "lines",
+        "links"
+      ],
+      "title": "DeploymentLogs",
+      "type": "object"
+    },
+    "Domain": {
+      "$id": "https://godaddy.com/schemas/hosting/models/domain.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A custom domain attached to an application. After calling `POST /apps/{appId}/domains`, poll `GET /apps/{appId}/domains/{domainId}` until `verificationStatus` reaches `ACTIVE` or `FAILED`.\n",
+      "properties": {
+        "anycastIp": {
+          "description": "IPv4 address to use as the domain's A record once ownership is verified and routing is ready. Null until that address is available.\n",
+          "examples": [
+            "192.0.2.10"
+          ],
+          "readOnly": true,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cdnStatus": {
+          "description": "CDN provisioning state for this domain. Null when CDN state has not been reported yet.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CdnStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "certificateValidationCname": {
+          "description": "Target hostname for the `_acme-challenge` CNAME used to prove domain ownership for certificate issuance. Null until issuance starts.\n",
+          "examples": [
+            "_acme-challenge.example.com.validation.example.net"
+          ],
+          "readOnly": true,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "domainId": {
+          "description": "Server-assigned domain attachment identifier.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "domainType": {
+          "$ref": "#/$defs/DomainType"
+        },
+        "hostname": {
+          "description": "The fully-qualified domain name.",
+          "examples": [
+            "www.example.com"
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the domain attachment (`GET /apps/{appId}/domains/{domainId}`), suitable as a poll target.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/$defs/DomainRole"
+        },
+        "verificationStatus": {
+          "$ref": "#/$defs/DomainVerificationStatus"
+        }
+      },
+      "required": [
+        "domainId",
+        "hostname",
+        "role",
+        "verificationStatus",
+        "certificateValidationCname",
+        "anycastIp",
+        "cdnStatus",
+        "domainType",
+        "links"
+      ],
+      "title": "Domain",
+      "type": "object"
+    },
+    "DomainRole": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/domain-role.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Whether a domain is the primary domain for the application or an additional alias.\n",
+      "enum": [
+        "PRIMARY",
+        "ADDITIONAL"
+      ],
+      "title": "DomainRole",
+      "type": "string"
+    },
+    "DomainType": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/domain-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "How the domain was attached. `CUSTOM` is a customer-owned hostname. `PREFIX` is a platform-managed subdomain.\n",
+      "enum": [
+        "PREFIX",
+        "CUSTOM"
+      ],
+      "title": "DomainType",
+      "type": "string"
+    },
+    "DomainVerificationStatus": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/domain-verification-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Current DNS verification state of a domain attachment. `PENDING` means the domain has not yet been confirmed as pointing to the application. `ACTIVE` means DNS is verified and the domain is live. `DELETING` means removal is in progress. `FAILED` means verification did not complete. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "PENDING",
+        "ACTIVE",
+        "DELETING",
+        "FAILED"
+      ],
+      "title": "DomainVerificationStatus",
+      "type": "string"
+    },
+    "Environment": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/environment.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A hosted application's runtime environment. `PREVIEW` is the staging variant used to validate a deployment before it is promoted; `PUBLISH` is the live variant that serves production traffic. In responses, clients must tolerate values not listed here — this enumeration may gain members as new variants come online. In requests it is closed: a value outside this list is rejected with `400`.\n",
+      "examples": [
+        "PREVIEW",
+        "PUBLISH"
+      ],
+      "title": "Environment",
+      "type": "string"
+    },
+    "EnvironmentVariant": {
+      "$id": "https://godaddy.com/schemas/hosting/models/environment-variant.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Runtime state of a single environment (`PREVIEW` or `PUBLISH`) within an application.\n",
+      "properties": {
+        "lifecycleState": {
+          "description": "Lifecycle state of this environment. Product-specific; other values may appear.\n",
+          "examples": [
+            "PROVISIONED",
+            "PROVISIONING",
+            "SUSPENDED"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "description": "Runtime status of this environment. Product-specific; other values may appear.\n",
+          "examples": [
+            "RUNNING",
+            "RESTARTING",
+            "STOPPED"
+          ],
+          "type": "string"
+        },
+        "variant": {
+          "$ref": "#/$defs/Environment"
+        }
+      },
+      "required": [
+        "variant",
+        "status"
+      ],
+      "title": "EnvironmentVariant",
+      "type": "object"
+    },
+    "Error": {
+      "$ref": "#/$defs/error"
+    },
+    "GitHubSource": {
+      "$id": "https://godaddy.com/schemas/hosting/models/github-source.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "branch": {
+          "description": "Branch to import from.",
+          "type": "string"
+        },
+        "repositoryFullName": {
+          "description": "Repository in owner/repo format.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repositoryFullName",
+        "branch"
+      ],
+      "title": "GitHubSource",
+      "type": "object"
+    },
+    "HostingProduct": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/hosting-product.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The hosting product a subscription applies to. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "WEB_HOSTING",
+        "MANAGED_WORDPRESS"
+      ],
+      "title": "HostingProduct",
+      "type": "string"
+    },
+    "HostingSubscription": {
+      "$id": "https://godaddy.com/schemas/hosting/models/hosting-subscription.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A hosting subscription belonging to the authenticated user, including how many application slots have been used and the total available.\n",
+      "properties": {
+        "attachedCount": {
+          "description": "Number of application slots currently in use.",
+          "minimum": 0,
+          "readOnly": true,
+          "type": "integer"
+        },
+        "availableSlots": {
+          "description": "Number of application slots still free on this subscription (`slotLimit` minus `attachedCount`).\n",
+          "minimum": 0,
+          "readOnly": true,
+          "type": "integer"
+        },
+        "hostingProduct": {
+          "$ref": "#/$defs/HostingProduct"
+        },
+        "label": {
+          "description": "Human-readable label for this subscription, suitable for display in a subscription picker.\n",
+          "readOnly": true,
+          "type": "string"
+        },
+        "links": {
+          "description": "Reserved for future per-subscription HATEOAS links; currently always an empty array. The collection's `rel=self` (`GET /subscriptions`) lives on the `PagedSubscriptions` envelope, not here.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "paidThroughDate": {
+          "$ref": "#/$defs/date-time"
+        },
+        "slotLimit": {
+          "description": "Total number of application slots available on this subscription.",
+          "minimum": 0,
+          "readOnly": true,
+          "type": "integer"
+        },
+        "status": {
+          "description": "Billing status of this subscription. `ACTIVE` means the plan is in good standing; `SUSPENDED` means it has lapsed. Product-specific; other values may appear.\n",
+          "examples": [
+            "ACTIVE",
+            "SUSPENDED"
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "subscriptionId": {
+          "description": "Opaque subscription identifier.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "tier": {
+          "description": "Plan tier of this subscription. Product-specific; other values may appear.\n",
+          "examples": [
+            "ECONOMY",
+            "DELUXE",
+            "ULTIMATE"
+          ],
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscriptionId",
+        "hostingProduct",
+        "tier",
+        "label",
+        "status",
+        "attachedCount",
+        "slotLimit",
+        "availableSlots",
+        "links"
+      ],
+      "title": "HostingSubscription",
+      "type": "object"
+    },
+    "ImportGitHubSourceRequest": {
+      "properties": {
+        "branch": {
+          "description": "Branch to import from.",
+          "examples": [
+            "main"
+          ],
+          "type": "string"
+        },
+        "repositoryFullName": {
+          "description": "Repository in `owner/repo` format.",
+          "examples": [
+            "acme-corp/my-node-app"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "repositoryFullName",
+        "branch"
+      ],
+      "type": "object"
+    },
+    "ImportType": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/import-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Indicates how the source code for an import was supplied. `ZIP` means the source was uploaded as a zip archive. `GITHUB` means the source was pulled from a GitHub repository.\n",
+      "enum": [
+        "ZIP",
+        "GITHUB"
+      ],
+      "title": "ImportType",
+      "type": "string"
+    },
+    "LogEntry": {
+      "$id": "https://godaddy.com/schemas/hosting/models/log-entry.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A single normalized log line from an application. The v2 endpoint always returns entries in this shape; entries that cannot be mapped to the normalized level or source values are silently dropped.\n",
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "message": {
+          "description": "The raw log content.",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/LogSource"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/date-time"
+        }
+      },
+      "required": [
+        "timestamp",
+        "level",
+        "source",
+        "message"
+      ],
+      "title": "LogEntry",
+      "type": "object"
+    },
+    "LogLevel": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/log-level.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Normalized severity level of a log entry. Entries whose raw level cannot be mapped to one of the values defined today are dropped, so no entry is returned carrying a level outside this list. This enumeration may still gain members in a future version of this specification; clients must tolerate values not listed here.\n",
+      "examples": [
+        "INFO",
+        "WARN",
+        "ERROR"
+      ],
+      "title": "LogLevel",
+      "type": "string"
+    },
+    "LogSource": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/log-source.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Origin stream of a log entry. Entries whose raw source cannot be mapped to one of the values defined today are dropped, so no entry is returned carrying a source outside this list. This enumeration may still gain members in a future version of this specification; clients must tolerate values not listed here.\n",
+      "examples": [
+        "STDOUT",
+        "STDERR"
+      ],
+      "title": "LogSource",
+      "type": "string"
+    },
+    "OperationStatus": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/operation-status.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Progress state of an asynchronous operation. Poll the URL returned in `links[rel=self]` until the status reaches `COMPLETED` or `FAILED`. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "PENDING",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "FAILED"
+      ],
+      "title": "OperationStatus",
+      "type": "string"
+    },
+    "PagedApplications": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/PagedList"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/Application"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "PagedDeployments": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/PagedList"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/Deployment"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "PagedDomains": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/PagedList"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/Domain"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Domain attachments for an application. Returned as a single page in current implementations; navigate future pages via `links[rel=next]` if it is present in the response.\n"
+    },
+    "PagedList": {
+      "properties": {
+        "items": {
+          "type": "array"
+        },
+        "links": {
+          "description": "HATEOAS navigation links. May include `rel=self`, `rel=next`, `rel=prev`, `rel=first`, and `rel=last` depending on the current page position. Clients should navigate by following `links[rel=next].href` rather than constructing URLs manually.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "type": "array"
+        },
+        "totalItems": {
+          "description": "Total number of items across all pages. Only populated when `totalRequired=true`.\n",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "totalPages": {
+          "description": "Total number of pages. Only populated when `totalRequired=true`.\n",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "PagedLogEntries": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/PagedList"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/LogEntry"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "PagedSubscriptions": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/PagedList"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/HostingSubscription"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Hosting subscriptions belonging to the authenticated user. Returned as a single page in current implementations; navigate future pages via `links[rel=next]` if it is present in the response.\n"
+    },
+    "Pagination_pageSize": {
+      "default": 25,
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "Pagination_pageToken": {
+      "type": "string"
+    },
+    "Pagination_totalRequired": {
+      "default": false,
+      "type": "boolean"
+    },
+    "RestartRequest": {
+      "properties": {
+        "variant": {
+          "$ref": "#/$defs/Environment"
+        }
+      },
+      "required": [
+        "variant"
+      ],
+      "type": "object"
+    },
+    "RuntimeVersion": {
+      "$id": "https://godaddy.com/schemas/hosting/models/runtime-version.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The version of a single runtime component for an application.",
+      "properties": {
+        "runtime": {
+          "description": "Identifies which runtime this entry describes.",
+          "examples": [
+            "NODE",
+            "PHP",
+            "WORDPRESS"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "description": "Version of the runtime in use.",
+          "examples": [
+            "20",
+            "22",
+            "8.3",
+            "6.5"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "version"
+      ],
+      "title": "RuntimeVersion",
+      "type": "object"
+    },
+    "ScopedSecretSet": {
+      "$id": "https://godaddy.com/schemas/hosting/models/scoped-secret-set.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Secrets for an application organised by storage scope: a shared bucket and per-variant buckets. Secret values are write-only and are never returned.\n\nThis is deliberately not the flat `items` list returned by `GET /apps/{appId}/secrets`: that endpoint deduplicates the two scopes into a single view, whereas this representation reports each scope separately so a client can see exactly where each secret is stored. A shared secret and a variant secret of the same name are distinct entries here.\n",
+      "properties": {
+        "shared": {
+          "description": "Secrets visible to both the `PREVIEW` and `PUBLISH` variants.\n",
+          "properties": {
+            "secrets": {
+              "description": "Shared-scope secret metadata. Empty when none are set.",
+              "items": {
+                "$ref": "#/$defs/Secret"
+              },
+              "type": "array"
+            }
+          },
+          "readOnly": true,
+          "required": [
+            "secrets"
+          ],
+          "type": "object"
+        },
+        "variants": {
+          "description": "Secrets scoped to a single environment variant, keyed by variant. A key is omitted when that variant has no variant-scoped secrets.\n",
+          "properties": {
+            "preview": {
+              "description": "Secrets scoped to the `PREVIEW` variant.",
+              "properties": {
+                "secrets": {
+                  "items": {
+                    "$ref": "#/$defs/Secret"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "secrets"
+              ],
+              "type": "object"
+            },
+            "publish": {
+              "description": "Secrets scoped to the `PUBLISH` variant.",
+              "properties": {
+                "secrets": {
+                  "items": {
+                    "$ref": "#/$defs/Secret"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "secrets"
+              ],
+              "type": "object"
+            }
+          },
+          "readOnly": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "shared",
+        "variants"
+      ],
+      "title": "ScopedSecretSet",
+      "type": "object"
+    },
+    "Secret": {
+      "$id": "https://godaddy.com/schemas/hosting/models/secret.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Metadata for an environment secret. Secret values are write-only and are never returned in any response.\n\nSecrets are stored in two scopes: `shared` (visible to both preview and publish variants) and per-variant (`preview` or `publish`). When the same secret name exists in both a shared scope and a variant scope, the list endpoint returns it once with the shared metadata taking precedence. To write a secret into a specific scope, use `PATCH /apps/{appId}/secrets` with a path under `/shared/secrets`, `/variants/preview/secrets`, or `/variants/publish/secrets`.\n",
+      "properties": {
+        "createdAt": {
+          "description": "The time the secret was created. Null when the backend does not record a creation timestamp.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "name": {
+          "description": "The secret key name as it appears in the application environment.",
+          "type": "string"
+        },
+        "systemManaged": {
+          "description": "`true` for secrets injected by the platform. System-managed secrets cannot be updated or deleted.\n",
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "description": "The time the secret value was last updated. Null if never updated since creation.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        }
+      },
+      "required": [
+        "name",
+        "systemManaged"
+      ],
+      "title": "Secret",
+      "type": "object"
+    },
+    "SecretList": {
+      "$id": "https://godaddy.com/schemas/hosting/models/secret-list.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The full set of secrets for an application, returned as a single page. Each application is capped at 50 secrets, so no `links[rel=next]` is emitted and no cursor is required.\n",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Secret"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "SecretList",
+      "type": "object"
+    },
+    "SourceImport": {
+      "$id": "https://godaddy.com/schemas/hosting/models/source-import.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An asynchronous source-code import operation. Use `POST /apps/{appId}/imports` to start an import. Send a ZIP archive as `multipart/form-data`, or send a GitHub repository reference as `application/json`. The `importType` field in the response tells you which kind this is. Poll `GET /apps/{appId}/imports/{importId}` until `status` reaches `COMPLETED` or `FAILED`.\n",
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/date-time"
+        },
+        "error": {
+          "description": "Populated when `status` is `FAILED`. Describes why the import did not complete.\n",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "readOnly": true
+        },
+        "gitHash": {
+          "description": "The Git commit hash produced by this import. Populated on `COMPLETED` for `GITHUB` imports. Null otherwise.\n",
+          "readOnly": true,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "importId": {
+          "description": "Server-assigned import identifier.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "importType": {
+          "$ref": "#/$defs/ImportType"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the source import (`GET /apps/{appId}/imports/{importId}`), suitable as a poll target.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/OperationStatus"
+        }
+      },
+      "required": [
+        "importId",
+        "importType",
+        "status",
+        "createdAt",
+        "links"
+      ],
+      "title": "SourceImport",
+      "type": "object"
+    },
+    "SubscriptionAttachment": {
+      "$id": "https://godaddy.com/schemas/hosting/models/subscription-attachment.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The subscription currently attached to an application. Returned by `GET /apps/{appId}/subscription` and `PUT /apps/{appId}/subscription`.\n",
+      "properties": {
+        "appState": {
+          "$ref": "#/$defs/AppState"
+        },
+        "attachState": {
+          "$ref": "#/$defs/AttachState"
+        },
+        "hostingProduct": {
+          "$ref": "#/$defs/HostingProduct"
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the attachment (`GET /apps/{appId}/subscription`).\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "subscriptionId": {
+          "description": "The identifier of the attached subscription. Null when an attachment record exists without an associated subscription (a legacy shape the platform still permits); always non-null in the response to `PUT /apps/{appId}/subscription`.\n",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "subscriptionId",
+        "hostingProduct",
+        "attachState",
+        "appState",
+        "links"
+      ],
+      "title": "SubscriptionAttachment",
+      "type": "object"
+    },
+    "date-time": {
+      "$id": "https://godaddy.com/schemas/common/date-time.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A date and time, in [Internet date and time format](https://tools.ietf.org/html/rfc3339#section-5.6). Note: The regular expression provides static schematic guidance but does not reject all invalid dates.",
+      "maxLength": 64,
+      "minLength": 20,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])[T,t]([0-1][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)([.][0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$",
+      "type": "string"
+    },
+    "error": {
+      "$id": "https://godaddy.com/schemas/common/error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "definitions": {
+        "error-details": {
+          "$ref": "#/$defs/error-details"
+        },
+        "link-description": {
+          "$ref": "#/$defs/link-description"
+        }
+      },
+      "description": "The error information.",
+      "properties": {
+        "correlationId": {
+          "description": "Internal identifier used for correlation purposes.",
+          "type": "string"
+        },
+        "details": {
+          "additionalItems": false,
+          "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+          "items": {
+            "$ref": "#/$defs/error-details"
+          },
+          "type": "array"
+        },
+        "informationLink": {
+          "description": "The URI for detailed information related to this error for the developer.",
+          "type": "string"
+        },
+        "links": {
+          "description": "An array of error-related HATEOAS links.",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "message": {
+          "description": "The message that describes the error.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The human-readable, unique name of the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "correlationId",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "error-details": {
+      "$id": "https://godaddy.com/schemas/common/error-details.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The error details. Required for client-side `4XX` errors.",
+      "properties": {
+        "description": {
+          "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value.",
+          "type": "string"
+        },
+        "field": {
+          "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
+          "type": "string"
+        },
+        "issue": {
+          "description": "The unique fine-grained application-level error code.",
+          "type": "string"
+        },
+        "location": {
+          "default": "body",
+          "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the field that caused the error.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue"
+      ],
+      "title": "Error Details",
+      "type": "object"
+    },
+    "link-description": {
+      "$id": "https://godaddy.com/schemas/common/link-description.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+      "properties": {
+        "href": {
+          "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+          "format": "uri",
+          "type": "string"
+        },
+        "method": {
+          "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+          "type": "string"
+        },
+        "rel": {
+          "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+          "type": "string"
+        },
+        "submissionMediaType": {
+          "default": "application/json",
+          "description": "The media type with which to submit data with the request.",
+          "type": "string"
+        },
+        "submissionSchema": {
+          "description": "The schema that describes the request data."
+        },
+        "targetMediaType": {
+          "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+          "type": "string"
+        },
+        "targetSchema": {
+          "description": "The schema that describes the link target."
+        },
+        "title": {
+          "description": "The link title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link Description",
+      "type": "object"
+    },
+    "patch": {
+      "$id": "https://godaddy.com/schemas/common/patch.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The JSON patch object to apply partial updates to resources.",
+      "properties": {
+        "from": {
+          "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
+          "type": "string"
+        },
+        "op": {
+          "description": "The operation to complete.",
+          "enum": [
+            "add",
+            "remove",
+            "replace",
+            "move",
+            "copy",
+            "test"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "The JSON pointer to the target document location at which to complete the operation.",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ],
+          "description": "The value to apply. The `remove` operation does not require a value.",
+          "nullable": true
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "Patch",
+      "type": "object"
+    },
+    "patch-request": {
+      "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "An array of JSON patch objects to apply partial updates to resources.",
+      "items": {
+        "$ref": "#/$defs/patch"
+      },
+      "title": "Patch Request",
+      "type": "array"
+    }
+  },
+  "baseUrl": "https://api.godaddy.com/v1/hosting",
+  "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
+  "endpoints": [
+    {
+      "description": "Returns the current state of an application-creation operation. Use this as the poll target after `POST /apps` until `status` reaches `COMPLETED` or `FAILED`. On `COMPLETED`, the response includes the created `Application` with `status: ACTIVE`.\n",
+      "method": "GET",
+      "operationId": "getAppOperation",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "The operation identifier returned by `POST /apps`.",
+          "in": "path",
+          "name": "operationId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/app-operations/{operationId}",
+      "responses": {
+        "200": {
+          "description": "Operation details.",
+          "schema": {
+            "$ref": "#/$defs/AppOperation"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get an application-creation operation"
+    },
+    {
+      "description": "Returns a paginated list of applications for the authenticated user. `appType` is required. Cross-product listing will be supported in a future version.\n",
+      "method": "GET",
+      "operationId": "listApps",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Product type to scope the operation to.",
+          "in": "query",
+          "name": "appType",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/AppType"
+          }
+        },
+        {
+          "description": "Opaque pagination cursor. Clients should navigate by following `links[rel=next].href` from the previous response rather than constructing URLs manually; this parameter is documented so that the endpoint's contract is discoverable.\n",
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_pageToken"
+          }
+        },
+        {
+          "description": "Maximum number of items to return.",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_pageSize"
+          }
+        },
+        {
+          "description": "When `true`, populate `totalItems` in the response. This may impact response time on large collections.\n",
+          "in": "query",
+          "name": "totalRequired",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_totalRequired"
+          }
+        }
+      ],
+      "path": "/apps",
+      "responses": {
+        "200": {
+          "description": "Paginated list of applications.",
+          "schema": {
+            "$ref": "#/$defs/PagedApplications"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "List applications"
+    },
+    {
+      "description": "Creates a new hosted application. Because no `appId` exists until provisioning has assigned one, this endpoint returns `202 Accepted` with an `AppOperation` resource carrying an `operationId`. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`. On `COMPLETED` the operation result includes the created `Application` with `status: ACTIVE`; use its `id` for any further calls.\n\nCurrently only `NODEJS` applications can be created through this endpoint. The request body is product-specific; the fields below apply to Node.js. Support for additional product types will be documented when those paths are available.\n",
+      "method": "POST",
+      "operationId": "createApp",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Product type to scope the operation to.",
+          "in": "query",
+          "name": "appType",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/AppType"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/CreateAppRequest"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Application creation accepted. Poll `links[rel=self]` until `status` is `COMPLETED` or `FAILED`.",
+          "schema": {
+            "$ref": "#/$defs/AppOperation"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:create"
+      ],
+      "summary": "Create an application"
+    },
+    {
+      "description": "Returns the current state of an application.\n",
+      "method": "GET",
+      "operationId": "getApp",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "responses": {
+        "200": {
+          "description": "Application details.",
+          "schema": {
+            "$ref": "#/$defs/Application"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get an application"
+    },
+    {
+      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present.\n\nOnly the `replace` operation is supported, and only against the `/name` and `/rootPath` paths. Any other op or path returns `400 Bad Request`.\n\n- `/name` — human-readable display name. String, 1–200 characters. - `/rootPath` — subdirectory within the repository to treat as\n  the application root. Write-only; not returned on the\n  `Application` resource.\n\n\nCurrently only supported for `NODEJS` applications. Additional product-specific paths will be documented when those paths are available.\n",
+      "method": "PATCH",
+      "operationId": "updateApp",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "requestBody": {
+        "contentType": "application/json-patch+json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/patch-request"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Updated application.",
+          "schema": {
+            "$ref": "#/$defs/Application"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:update"
+      ],
+      "summary": "Update an application"
+    },
+    {
+      "description": "Permanently deletes the application, its deployments, imported source, secrets, and attached domains. This action cannot be undone. Returns `204 No Content` on success.\n",
+      "method": "DELETE",
+      "operationId": "deleteApp",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}",
+      "responses": {
+        "204": {
+          "description": "Application deleted."
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:delete"
+      ],
+      "summary": "Delete an application"
+    },
+    {
+      "description": "Returns deployments for the application, newest first. Use this to inspect deployment history or find the most recent successful build.\n",
+      "method": "GET",
+      "operationId": "listDeployments",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Opaque pagination cursor. Clients should navigate by following `links[rel=next].href` from the previous response rather than constructing URLs manually; this parameter is documented so that the endpoint's contract is discoverable.\n",
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_pageToken"
+          }
+        },
+        {
+          "description": "Maximum number of items to return.",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_pageSize"
+          }
+        },
+        {
+          "description": "When `true`, populate `totalItems` in the response. This may impact response time on large collections.\n",
+          "in": "query",
+          "name": "totalRequired",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_totalRequired"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments",
+      "responses": {
+        "200": {
+          "description": "Paginated list of deployments, newest first.",
+          "schema": {
+            "$ref": "#/$defs/PagedDeployments"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "List deployments"
+    },
+    {
+      "description": "Builds the latest imported source and deploys it to the publish environment. Returns `202 Accepted`. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` is `COMPLETED` or `FAILED`.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): a deployment builds the imported source and publishes it through the Node.js application agent, which other hosting products do not have. Other product types return `501`.\n",
+      "method": "POST",
+      "operationId": "createDeployment",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments",
+      "responses": {
+        "202": {
+          "description": "Deployment accepted. Poll `links[rel=self]` until status is terminal.",
+          "schema": {
+            "$ref": "#/$defs/Deployment"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.deployment:execute"
+      ],
+      "summary": "Trigger a deployment"
+    },
+    {
+      "description": "Returns the current state of a deployment. Use as the poll target after `POST /apps/{appId}/deployments` until `status` reaches `COMPLETED` or `FAILED`.\n",
+      "method": "GET",
+      "operationId": "getDeployment",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Deployment identifier returned in the `deploymentId` field of `POST /apps/{appId}/deployments`.",
+          "in": "path",
+          "name": "deploymentId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments/{deploymentId}",
+      "responses": {
+        "200": {
+          "description": "Deployment details.",
+          "schema": {
+            "$ref": "#/$defs/Deployment"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get a deployment"
+    },
+    {
+      "description": "Returns the full build and publish log stream captured for a deployment, as an ordered array of opaque lines. `Deployment.logs` carries the same lines when they are available on the deployment itself; this operation is the canonical source and is safe to call while the deployment is still in progress.\n\nThese are builder logs. Logs emitted by the running application are read from `GET /apps/{appId}/logs`, which returns structured `LogEntry` objects instead.\n",
+      "method": "GET",
+      "operationId": "getDeploymentLogs",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Deployment identifier returned in the `deploymentId` field of `POST /apps/{appId}/deployments`.",
+          "in": "path",
+          "name": "deploymentId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/deployments/{deploymentId}/logs",
+      "responses": {
+        "200": {
+          "description": "Full log stream for the deployment.",
+          "schema": {
+            "$ref": "#/$defs/DeploymentLogs"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get deployment build logs"
+    },
+    {
+      "description": "Returns the domains currently attached to this application, including their DNS verification state.\n",
+      "method": "GET",
+      "operationId": "listDomains",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/domains",
+      "responses": {
+        "200": {
+          "description": "Domains attached to this application.",
+          "schema": {
+            "$ref": "#/$defs/PagedDomains"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.domain:read"
+      ],
+      "summary": "List attached domains"
+    },
+    {
+      "description": "Attaches a custom domain to the application and initiates DNS verification. Returns `202 Accepted`. Poll `GET /apps/{appId}/domains/{domainId}` until `verificationStatus` is `ACTIVE` or `FAILED`.\n",
+      "method": "POST",
+      "operationId": "attachDomain",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/domains",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/AttachDomainRequest"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Domain attachment accepted. Poll `links[rel=self]` until `verificationStatus` is `ACTIVE` or `FAILED`.",
+          "schema": {
+            "$ref": "#/$defs/Domain"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.domain:write"
+      ],
+      "summary": "Attach a domain"
+    },
+    {
+      "description": "Returns the current state of a domain attachment, including `verificationStatus`. Use as the poll target after `POST /apps/{appId}/domains`.\n",
+      "method": "GET",
+      "operationId": "getDomain",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Domain attachment identifier returned in the `domainId` field of `POST /apps/{appId}/domains`.",
+          "in": "path",
+          "name": "domainId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/domains/{domainId}",
+      "responses": {
+        "200": {
+          "description": "Domain attachment details.",
+          "schema": {
+            "$ref": "#/$defs/Domain"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.domain:read"
+      ],
+      "summary": "Get a domain attachment"
+    },
+    {
+      "description": "Detaches a custom domain from the application. DNS records at the registrar are not modified. Returns `204 No Content` on success.\n",
+      "method": "DELETE",
+      "operationId": "detachDomain",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Domain attachment identifier returned in the `domainId` field of `POST /apps/{appId}/domains`.",
+          "in": "path",
+          "name": "domainId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/domains/{domainId}",
+      "responses": {
+        "204": {
+          "description": "Domain detached."
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.domain:write"
+      ],
+      "summary": "Remove a domain attachment"
+    },
+    {
+      "description": "Imports source code for an application. The `Content-Type` header determines the import type:\n- `multipart/form-data`: upload a ZIP archive directly. - `application/json`: upload from a connected GitHub repository.\nReturns `202 Accepted` with a `SourceImport` resource. The `importType` field identifies what was submitted. Poll `GET /apps/{appId}/imports/{importId}` until `status` is `COMPLETED` or `FAILED`.\n",
+      "method": "POST",
+      "operationId": "createSourceImport",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/imports",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/ImportGitHubSourceRequest"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Import accepted. Poll `links[rel=self]` until status is terminal.",
+          "schema": {
+            "$ref": "#/$defs/SourceImport"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.source:write"
+      ],
+      "summary": "Import source code"
+    },
+    {
+      "description": "Returns the current state of a source import. Use as the poll target after `POST /apps/{appId}/imports` until `status` reaches `COMPLETED` or `FAILED`.\n",
+      "method": "GET",
+      "operationId": "getSourceImport",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Import identifier returned in the `importId` field of `POST /apps/{appId}/imports`.",
+          "in": "path",
+          "name": "importId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/imports/{importId}",
+      "responses": {
+        "200": {
+          "description": "Source import details.",
+          "schema": {
+            "$ref": "#/$defs/SourceImport"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.source:read"
+      ],
+      "summary": "Get a source import"
+    },
+    {
+      "description": "Returns log entries for the application, newest first. The v2 endpoint always returns entries in the normalized shape defined by `LogEntry`: `timestamp`, `level` (`INFO`/`WARN`/`ERROR`), `source` (`STDOUT`/`STDERR`), and `message`. Entries whose raw level or source cannot be mapped to one of the values defined today are dropped, so no entry is returned carrying a value outside `LogLevel` or `LogSource`. Both enumerations may gain members in a future version of this specification, so clients must not fail on a value they do not recognise.\n\n`variant` selects the environment (`PREVIEW` or `PUBLISH`), matching the `variant` field used by the restart request body. The service still honours two earlier spellings, `target` and `environment`, both deprecated; the precedence is `variant` > `target` > `environment`, and the first one supplied wins while the others are ignored. When none is supplied the environment defaults to `PREVIEW`. New clients should send `variant` only. `since` limits results to entries at or after the given timestamp; defaults to 24 hours ago and cannot exceed 7 days. `level` filters entries by severity after retrieval.\n",
+      "method": "GET",
+      "operationId": "getLogs",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Environment to retrieve logs from. The canonical parameter; it takes precedence over the deprecated `target` and `environment`. Defaults to `PREVIEW` when none of the three is supplied.\n",
+          "in": "query",
+          "name": "variant",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Environment"
+          }
+        },
+        {
+          "description": "Deprecated — use `variant`. Still accepted by the service. Ignored when `variant` is supplied; takes precedence over the deprecated `environment`.\n",
+          "in": "query",
+          "name": "target",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Environment"
+          }
+        },
+        {
+          "description": "Deprecated — use `variant`, where `production` corresponds to `PUBLISH`. Still accepted by the service, in this legacy lower-case vocabulary. Ignored when `variant` or `target` is supplied.\n",
+          "in": "query",
+          "name": "environment",
+          "required": false,
+          "schema": {
+            "enum": [
+              "preview",
+              "production"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "description": "Return only entries at or after this ISO 8601 timestamp (must include timezone offset). Defaults to 24 hours ago. Cannot exceed 7 days in the past.\n",
+          "in": "query",
+          "name": "since",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/date-time"
+          }
+        },
+        {
+          "description": "Filter logs by source stream. Defaults to all streams.",
+          "in": "query",
+          "name": "source",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/LogSource"
+          }
+        },
+        {
+          "description": "Filter logs by severity level.",
+          "in": "query",
+          "name": "level",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/LogLevel"
+          }
+        },
+        {
+          "description": "Opaque pagination cursor. Clients should navigate by following `links[rel=next].href` from the previous response rather than constructing URLs manually; this parameter is documented so that the endpoint's contract is discoverable.\n",
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Pagination_pageToken"
+          }
+        },
+        {
+          "description": "Maximum number of log entries to return.",
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "default": 100,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/logs",
+      "responses": {
+        "200": {
+          "description": "Log entries, newest first.",
+          "schema": {
+            "$ref": "#/$defs/PagedLogEntries"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.log:read"
+      ],
+      "summary": "Get application logs"
+    },
+    {
+      "description": "Triggers a restart of the specified environment (`PREVIEW` or `PUBLISH`). Returns `202 Accepted`. Poll `GET /apps/{appId}/status` until the targeted variant reaches a stable state.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): restarts act on the `PREVIEW` and `PUBLISH` environment variants, which are specific to the Node.js runtime model. Other product types return `501`.\n",
+      "method": "POST",
+      "operationId": "createAppRestart",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/restarts",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/RestartRequest"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Restart accepted. Poll `links[rel=self]` until the targeted variant reaches a stable state.",
+          "schema": {
+            "$ref": "#/$defs/ApplicationStatus"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.deployment:execute"
+      ],
+      "summary": "Restart an application environment"
+    },
+    {
+      "description": "Returns the runtime version configuration for the application. Each entry identifies a runtime component (e.g. `NODE`, `PHP`, `WORDPRESS`) and its current version.\n",
+      "method": "GET",
+      "operationId": "getRuntime",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/runtime",
+      "responses": {
+        "200": {
+          "description": "Runtime version configuration for the application.",
+          "schema": {
+            "items": {
+              "$ref": "#/$defs/RuntimeVersion"
+            },
+            "type": "array"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get runtime configuration"
+    },
+    {
+      "description": "Returns secret metadata. Values are never included in responses. Returns a deduplicated flat list — when the same secret name exists in both a shared scope and a variant scope, it appears once.\n",
+      "method": "GET",
+      "operationId": "listSecrets",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "The environment variant to target. Defaults to `PREVIEW`.\n",
+          "in": "query",
+          "name": "variant",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Environment"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/secrets",
+      "responses": {
+        "200": {
+          "description": "Secret metadata list.",
+          "schema": {
+            "$ref": "#/$defs/SecretList"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.secret:read"
+      ],
+      "summary": "List secrets"
+    },
+    {
+      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present. The combined total number of operations must not exceed 50. Existing secrets not referenced in the request are left unchanged.\n\nSupported operations are `add`, `replace`, and `remove`. Any other op returns `400 Bad Request`. Paths identify a secret by name within a storage scope (a write-addressing convention; not array indexes into the `ScopedSecretSet` response):\n\n- `/shared/secrets/{name}` — shared across `PREVIEW` and\n  `PUBLISH`\n- `/variants/preview/secrets/{name}` — `PREVIEW` only - `/variants/publish/secrets/{name}` — `PUBLISH` only\n\nEncode `/` in a secret name as `~1` per RFC 6901. Secret names must start with a letter and contain only letters, digits, `/`, `_`, `+`, `=`, `.`, `@`, or `-`. Reserved environment variable names are rejected. System-managed and reserved secrets cannot be updated or deleted.\n\nFor `add` and `replace`, `value` is the secret string (max 8 KB). `remove` does not take a value. A request that would leave the application with more than 50 secrets across all scopes returns `400 Bad Request`.\n\nThe response is the full secret set grouped by scope (`ScopedSecretSet`), with each scope's secrets as an array of `Secret` objects — not the flat `items` list returned by `GET /apps/{appId}/secrets`.\n",
+      "method": "PATCH",
+      "operationId": "updateSecrets",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": false,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/secrets",
+      "requestBody": {
+        "contentType": "application/json-patch+json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/patch-request"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "The secret set after the update, grouped by scope. Not the flat `items` list returned by `GET /apps/{appId}/secrets`.\n",
+          "schema": {
+            "$ref": "#/$defs/ScopedSecretSet"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.secret:write"
+      ],
+      "summary": "Update secrets"
+    },
+    {
+      "description": "Returns per-environment lifecycle detail. Use as the poll target after `POST /apps/{appId}/restarts`.\n",
+      "method": "GET",
+      "operationId": "getAppStatus",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/status",
+      "responses": {
+        "200": {
+          "description": "Application status.",
+          "schema": {
+            "$ref": "#/$defs/ApplicationStatus"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get application runtime status"
+    },
+    {
+      "description": "Returns the subscription currently attached to this application. Returns `404` if no subscription has ever been attached.\n",
+      "method": "GET",
+      "operationId": "getSubscriptionAttachment",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/subscription",
+      "responses": {
+        "200": {
+          "description": "Current subscription attachment.",
+          "schema": {
+            "$ref": "#/$defs/SubscriptionAttachment"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.subscription:read"
+      ],
+      "summary": "Get the subscription attached to an application"
+    },
+    {
+      "description": "Attaches a hosting subscription to the application. The subscription must have at least one free slot. If not, a `409` is returned with `details[].issue` `NO_CAPACITY`.\n",
+      "method": "PUT",
+      "operationId": "attachSubscription",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/subscription",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/AttachSubscriptionRequest"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Subscription attached.",
+          "schema": {
+            "$ref": "#/$defs/SubscriptionAttachment"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.subscription:write"
+      ],
+      "summary": "Attach a subscription to an application"
+    },
+    {
+      "description": "Returns hosting subscriptions for the authenticated user, including slot usage. Use this to find a `subscriptionId` when attaching a subscription to an application. `hostingProduct` is required. Cross-product listing will be supported in a future version.\n\nThe parameter has three outcomes. Omitting it, or sending a value outside `HostingProduct`, returns `400` with `details[].issue` `VALIDATION_FAILED`. Sending a product the enum admits but this deployment does not serve returns `501` with `details[].issue` `NOT_APPLICABLE` — never `400`. Sending a product this deployment serves returns `200`.\n",
+      "method": "GET",
+      "operationId": "listSubscriptions",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Hosting product to scope the operation to. This filter is required rather than optional: an optional filter introduced after general availability would have to default to `WEB_HOSTING` for ever, or the set of subscriptions returned would silently change for clients that omit it. It is made required now, while this spec is still Beta.\n",
+          "in": "query",
+          "name": "hostingProduct",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/HostingProduct"
+          }
+        }
+      ],
+      "path": "/subscriptions",
+      "responses": {
+        "200": {
+          "description": "Hosting subscriptions.",
+          "schema": {
+            "$ref": "#/$defs/PagedSubscriptions"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.subscription:read"
+      ],
+      "summary": "List hosting subscriptions"
+    }
+  ],
+  "name": "hosting",
+  "title": "Hosting API",
+  "version": "1.0.0"
+}

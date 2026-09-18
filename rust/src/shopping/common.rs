@@ -1,36 +1,76 @@
-use std::time::{Duration, Instant};
-
 use cli_engine::{CliCoreError, CommandContext, Result};
-use serde_json::{Map, Value, json};
+use shopping_client::types::{
+    Buyer, Checkout, CheckoutCompleteRequest, CheckoutCompleteRequestSchema,
+    CheckoutWritableRequest, CheckoutWritableRequestSchema, Context, Item, LineItem, Message,
+    Payment, PaymentInstrumentSelectedPaymentInstrument, UcpRefsSchemaAttribution,
+    UcpRefsSchemaBuyer, UcpRefsSchemaContext, UcpRefsSchemaFulfillment, UcpRefsSchemaLineItem,
+    UcpRefsSchemaPayment, UcpRefsSchemaSignals,
+};
 
 use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::client::{ClientError, ShoppingClient};
+use crate::shopping::client::{ClientError, build_client};
 
-pub(crate) async fn make_client(ctx: &CommandContext) -> Result<ShoppingClient> {
+pub(crate) async fn make_client(ctx: &CommandContext) -> Result<shopping_client::Client> {
     let required: Vec<String> = SHOPPING_SCOPES
         .iter()
         .map(|scope| (*scope).to_owned())
         .collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
-    ShoppingClient::new(base_url, token).map_err(client_err)
+    build_client(base_url, token).map_err(client_err)
 }
 
 pub(crate) fn client_err(error: ClientError) -> CliCoreError {
     GddyError::from(error).into_cli_error()
 }
 
-pub(crate) fn update_response(checkout: Value) -> Result<Value> {
-    let errors = checkout
-        .get("messages")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|message| message.get("type").and_then(Value::as_str) == Some("error"))
-        .filter_map(|message| message.get("content").and_then(Value::as_str))
-        .collect::<Vec<_>>();
+/// Extracts a message's `type`/`content` regardless of which untagged
+/// `Message` variant deserialization happened to pick — the generated
+/// `Error`/`Warning`/`Info` variants all have entirely optional fields, so
+/// they don't reliably discriminate by shape alone.
+fn error_message_content(message: &Message) -> Option<&str> {
+    let (type_, content) = match message {
+        Message::Error(message) => (&message.type_, &message.content),
+        Message::Warning(message) => (&message.type_, &message.content),
+        Message::Info(message) => (&message.type_, &message.content),
+    };
+    (type_.as_deref() == Some("error")).then(|| {
+        content
+            .as_deref()
+            .unwrap_or("Shopping API reported an error")
+    })
+}
+
+fn collect_error_messages(messages: &[Message]) -> Vec<&str> {
+    messages.iter().filter_map(error_message_content).collect()
+}
+
+/// `error_response` (the `oneOf` error variant every generated response
+/// enum carries) has no properties, and none of `Checkout`/`Order`/the
+/// catalog response types have any required fields — so untagged
+/// deserialization always matches the success variant first, even for a
+/// genuine API error payload, and the `ErrorResponse` match arms scattered
+/// through `client.rs`/the command handlers are defense-in-depth for a
+/// non-object payload, not this API's real error channel. In practice this
+/// contract signals an in-band failure via an error-severity entry in an
+/// otherwise-2xx response's `messages` array — this is the actual check
+/// that catches it.
+pub(crate) fn reject_response_errors(messages: &[Message]) -> Result<()> {
+    let errors = collect_error_messages(messages);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(GddyError::validation(errors.join(" ")).into_cli_error())
+    }
+}
+
+/// Checkout-specific wrapper with a remediation hint relevant to a checkout
+/// mutation — create/update/complete all share this, since a rejected
+/// write is fixed the same way regardless of which one produced it.
+pub(crate) fn update_response(checkout: Checkout) -> Result<Checkout> {
+    let errors = collect_error_messages(&checkout.messages);
     if errors.is_empty() {
         Ok(checkout)
     } else {
@@ -54,7 +94,7 @@ pub(crate) struct CheckoutInput {
 }
 
 impl CheckoutInput {
-    pub(crate) fn create_body(&self) -> Result<Value> {
+    pub(crate) fn create_body(&self) -> Result<CheckoutWritableRequest> {
         if self.items.is_empty() {
             return Err(
                 GddyError::validation("checkout create requires at least one --item")
@@ -64,7 +104,7 @@ impl CheckoutInput {
         self.body()
     }
 
-    pub(crate) fn update_body(&self, checkout: &Value) -> Result<Value> {
+    pub(crate) fn update_body(&self, checkout: &Checkout) -> Result<CheckoutWritableRequest> {
         if !self.has_update() {
             return Err(GddyError::validation(
                 "checkout update requires at least one item, buyer, currency, or payment-method change",
@@ -72,34 +112,44 @@ impl CheckoutInput {
             .into_cli_error());
         }
 
-        let mut body = writable_checkout_body(checkout)?;
+        let mut body = checkout_to_writable(checkout)?;
         if !self.items.is_empty() {
-            body.insert("line_items".to_owned(), line_items(&self.items)?);
+            body.line_items = line_items(&self.items)?;
         }
         if let Some(currency) = &self.currency {
-            body["context"]["currency"] = Value::String(currency.to_owned());
+            let context = body
+                .context
+                .get_or_insert_with(|| UcpRefsSchemaContext(Default::default()));
+            context.0.currency = Some(currency.to_owned());
         }
         if self.has_buyer_update() {
             let buyer = body
-                .entry("buyer".to_owned())
-                .or_insert_with(|| Value::Object(Map::new()))
-                .as_object_mut()
-                .expect("writable checkout buyer is an object");
-            insert_optional_nonblank(buyer, "first_name", self.buyer_first_name.as_deref())?;
-            insert_optional_nonblank(buyer, "last_name", self.buyer_last_name.as_deref())?;
-            insert_optional_nonblank(buyer, "email", self.buyer_email.as_deref())?;
-            insert_optional_nonblank(buyer, "phone_number", self.buyer_phone.as_deref())?;
+                .buyer
+                .get_or_insert_with(|| UcpRefsSchemaBuyer(Default::default()));
+            insert_optional_nonblank(
+                &mut buyer.0.first_name,
+                "first_name",
+                self.buyer_first_name.as_deref(),
+            )?;
+            insert_optional_nonblank(
+                &mut buyer.0.last_name,
+                "last_name",
+                self.buyer_last_name.as_deref(),
+            )?;
+            insert_optional_nonblank(&mut buyer.0.email, "email", self.buyer_email.as_deref())?;
+            insert_optional_nonblank(
+                &mut buyer.0.phone_number,
+                "phone_number",
+                self.buyer_phone.as_deref(),
+            )?;
         }
         if let Some(payment_instrument) = &self.payment_instrument {
-            body.insert(
-                "payment".to_owned(),
-                payment_selection_body(nonblank_value(
-                    Some(payment_instrument),
-                    "--payment-instrument must be non-empty",
-                )?),
-            );
+            body.payment = Some(payment_selection_body(nonblank_value(
+                Some(payment_instrument),
+                "--payment-instrument must be non-empty",
+            )?)?);
         }
-        Ok(Value::Object(body))
+        Ok(CheckoutWritableRequest(body))
     }
 
     fn has_update(&self) -> bool {
@@ -116,7 +166,7 @@ impl CheckoutInput {
             || self.buyer_phone.is_some()
     }
 
-    pub(crate) fn completion_body(&self) -> Result<Value> {
+    pub(crate) fn completion_body(&self) -> Result<CheckoutCompleteRequest> {
         if !self.items.is_empty()
             || self.currency.is_some()
             || self.buyer_first_name.is_some()
@@ -133,145 +183,177 @@ impl CheckoutInput {
             self.payment_instrument.as_deref(),
             "--payment-instrument must be non-empty",
         )?;
-        Ok(json!({
-            "payment": {"instruments": [{"id": payment_instrument, "selected": true}]}
+        Ok(CheckoutCompleteRequest(CheckoutCompleteRequestSchema {
+            payment: Some(payment_selection_body(payment_instrument)?),
+            ..Default::default()
         }))
     }
 
-    fn body(&self) -> Result<Value> {
-        let mut body = Map::new();
+    fn body(&self) -> Result<CheckoutWritableRequest> {
+        let mut body = CheckoutWritableRequestSchema::default();
         if !self.items.is_empty() {
-            body.insert("line_items".to_owned(), line_items(&self.items)?);
+            body.line_items = line_items(&self.items)?;
         }
         if let Some(currency) = &self.currency {
-            body.insert("context".to_owned(), json!({"currency": currency}));
+            body.context = Some(UcpRefsSchemaContext(Context {
+                currency: Some(currency.to_owned()),
+                ..Default::default()
+            }));
         }
-        let mut buyer = Map::new();
-        insert_optional_nonblank(&mut buyer, "first_name", self.buyer_first_name.as_deref())?;
-        insert_optional_nonblank(&mut buyer, "last_name", self.buyer_last_name.as_deref())?;
-        insert_optional_nonblank(&mut buyer, "email", self.buyer_email.as_deref())?;
-        insert_optional_nonblank(&mut buyer, "phone_number", self.buyer_phone.as_deref())?;
-        if !buyer.is_empty() {
-            body.insert("buyer".to_owned(), Value::Object(buyer));
+        let mut buyer = Buyer::default();
+        insert_optional_nonblank(
+            &mut buyer.first_name,
+            "first_name",
+            self.buyer_first_name.as_deref(),
+        )?;
+        insert_optional_nonblank(
+            &mut buyer.last_name,
+            "last_name",
+            self.buyer_last_name.as_deref(),
+        )?;
+        insert_optional_nonblank(&mut buyer.email, "email", self.buyer_email.as_deref())?;
+        insert_optional_nonblank(
+            &mut buyer.phone_number,
+            "phone_number",
+            self.buyer_phone.as_deref(),
+        )?;
+        if self.has_buyer_update() {
+            body.buyer = Some(UcpRefsSchemaBuyer(buyer));
         }
         if let Some(payment_instrument) = &self.payment_instrument {
-            body.insert(
-                "payment".to_owned(),
-                json!({"instruments": [{"id": nonblank_value(Some(payment_instrument), "--payment-instrument must be non-empty")?, "selected": true}]}),
-            );
+            body.payment = Some(payment_selection_body(nonblank_value(
+                Some(payment_instrument),
+                "--payment-instrument must be non-empty",
+            )?)?);
         }
-        Ok(Value::Object(body))
+        Ok(CheckoutWritableRequest(body))
     }
 }
 
-fn writable_checkout_body(checkout: &Value) -> Result<Map<String, Value>> {
+/// Projects a fetched `Checkout` into the shape the write endpoints expect.
+/// The two are wire-compatible (each writable field wraps the exact same
+/// inner type the read side uses, e.g. `UcpRefsSchemaBuyer(pub Buyer)`), so
+/// this is a direct field mapping — no dynamic JSON involved.
+///
+/// `checkout.line_items` may legitimately be empty (e.g. every item was
+/// removed) — `client::get_checkout` already rejects a malformed/empty API
+/// response before a `Checkout` ever reaches here, so an empty cart at this
+/// point is real, not a sign of missing data.
+fn checkout_to_writable(checkout: &Checkout) -> Result<CheckoutWritableRequestSchema> {
     let line_items = checkout
-        .get("line_items")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            GddyError::unexpected("checkout response did not include line items").into_cli_error()
-        })?
+        .line_items
         .iter()
         .map(writable_line_item)
         .collect::<Result<Vec<_>>>()?;
-    let mut body = Map::new();
-    body.insert("line_items".to_owned(), Value::Array(line_items));
-    let mut context = checkout
-        .get("context")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    if !context.contains_key("currency")
-        && let Some(currency) = checkout.get("currency").and_then(Value::as_str)
+    let mut context = checkout.context.clone().unwrap_or_default();
+    if context.currency.is_none()
+        && let Some(currency) = checkout.currency.as_deref()
     {
-        context.insert("currency".to_owned(), Value::String(currency.to_owned()));
+        context.currency = Some(currency.to_owned());
     }
-    body.insert("context".to_owned(), Value::Object(context));
-    if let Some(buyer) = checkout.get("buyer").and_then(Value::as_object) {
-        body.insert("buyer".to_owned(), Value::Object(buyer.clone()));
-    }
-    for key in ["attribution", "fulfillment", "signals"] {
-        if let Some(value) = checkout.get(key) {
-            body.insert(key.to_owned(), value.clone());
-        }
-    }
-    if let Some(payment) = selected_payment(checkout) {
-        body.insert("payment".to_owned(), preserved_payment_body(payment)?);
-    }
-    Ok(body)
+    let payment = match selected_payment(checkout) {
+        Some(payment) => Some(preserved_payment_body(payment)?),
+        None => None,
+    };
+    Ok(CheckoutWritableRequestSchema {
+        attribution: checkout.attribution.clone().map(UcpRefsSchemaAttribution),
+        buyer: checkout.buyer.clone().map(UcpRefsSchemaBuyer),
+        context: Some(UcpRefsSchemaContext(context)),
+        fulfillment: checkout.fulfillment.clone().map(UcpRefsSchemaFulfillment),
+        line_items,
+        payment,
+        signals: checkout.signals.clone().map(UcpRefsSchemaSignals),
+    })
 }
 
-fn writable_line_item(line_item: &Value) -> Result<Value> {
+fn writable_line_item(line_item: &LineItem) -> Result<UcpRefsSchemaLineItem> {
     let item_id = line_item
-        .pointer("/item/id")
-        .and_then(Value::as_str)
+        .item
+        .as_ref()
+        .and_then(|item| item.id.clone())
         .ok_or_else(|| {
             GddyError::unexpected("checkout response contained a line item without an item ID")
                 .into_cli_error()
         })?;
-    let quantity = line_item
-        .get("quantity")
-        .and_then(Value::as_u64)
-        .filter(|quantity| *quantity > 0)
-        .ok_or_else(|| {
-            GddyError::unexpected("checkout response contained a line item without a quantity")
-                .into_cli_error()
-        })?;
-    let mut writable = Map::from_iter([
-        ("item".to_owned(), json!({"id": item_id})),
-        ("quantity".to_owned(), json!(quantity)),
-    ]);
-    for key in ["id", "parent_id", "input"] {
-        if let Some(value) = line_item.get(key) {
-            writable.insert(key.to_owned(), value.clone());
-        }
-    }
-    Ok(Value::Object(writable))
+    let quantity = line_item.quantity.ok_or_else(|| {
+        GddyError::unexpected("checkout response contained a line item without a quantity")
+            .into_cli_error()
+    })?;
+    Ok(UcpRefsSchemaLineItem(LineItem {
+        id: line_item.id.clone(),
+        included_products: Vec::new(),
+        input: line_item.input.clone(),
+        item: Some(Item {
+            id: Some(item_id),
+            ..Default::default()
+        }),
+        parent_id: line_item.parent_id.clone(),
+        quantity: Some(quantity),
+        totals: Vec::new(),
+    }))
 }
 
-fn selected_payment(checkout: &Value) -> Option<&Value> {
-    checkout
-        .pointer("/payment/instruments")
-        .and_then(Value::as_array)
-        .and_then(|instruments| {
-            instruments.iter().find(|instrument| {
-                instrument.get("selected").and_then(Value::as_bool) == Some(true)
-            })
-        })
+fn selected_payment(checkout: &Checkout) -> Option<&PaymentInstrumentSelectedPaymentInstrument> {
+    checkout.payment.as_ref().and_then(|payment| {
+        payment
+            .instruments
+            .iter()
+            .find(|instrument| instrument.selected == Some(true))
+    })
 }
 
-fn payment_selection_body(instrument_id: &str) -> Value {
-    json!({"instruments": [{"id": instrument_id, "selected": true}]})
+pub(crate) fn selected_payment_id(checkout: &Checkout) -> Option<&str> {
+    selected_payment(checkout).and_then(|payment| payment.id.as_deref())
 }
 
-fn preserved_payment_body(payment: &Value) -> Result<Value> {
-    let payment_id = payment.get("id").and_then(Value::as_str).ok_or_else(|| {
+pub(crate) fn payment_selection_body(instrument_id: &str) -> Result<UcpRefsSchemaPayment> {
+    Ok(UcpRefsSchemaPayment(Payment {
+        instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
+            id: Some(instrument_id.to_owned()),
+            selected: Some(true),
+            ..Default::default()
+        }],
+    }))
+}
+
+fn preserved_payment_body(
+    payment: &PaymentInstrumentSelectedPaymentInstrument,
+) -> Result<UcpRefsSchemaPayment> {
+    let payment_id = payment.id.clone().ok_or_else(|| {
         GddyError::unexpected("checkout response contained a selected payment method without an ID")
             .into_cli_error()
     })?;
-    let mut instrument = Map::new();
-    for key in ["id", "selected", "handler_id", "type", "billing_address"] {
-        if let Some(value) = payment.get(key) {
-            instrument.insert(key.to_owned(), value.clone());
-        }
-    }
-    instrument.insert("id".to_owned(), Value::String(payment_id.to_owned()));
-    instrument.insert("selected".to_owned(), Value::Bool(true));
-    Ok(json!({"instruments": Value::Array(vec![Value::Object(instrument)])}))
+    Ok(UcpRefsSchemaPayment(Payment {
+        instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
+            id: Some(payment_id),
+            selected: Some(true),
+            billing_address: payment.billing_address.clone(),
+            // A payment handler can require these to route the instrument;
+            // an unchanged checkout update must echo them back unchanged.
+            handler_id: payment.handler_id.clone(),
+            type_: payment.type_.clone(),
+        }],
+    }))
 }
 
-fn line_items(items: &[String]) -> Result<Value> {
+fn line_items(items: &[String]) -> Result<Vec<UcpRefsSchemaLineItem>> {
     items
         .iter()
         .map(|item| {
             let (id, quantity) = parse_item(item)?;
-            Ok(json!({"item": {"id": id}, "quantity": quantity}))
+            Ok(UcpRefsSchemaLineItem(LineItem {
+                item: Some(Item {
+                    id: Some(id.to_owned()),
+                    ..Default::default()
+                }),
+                quantity: Some(quantity),
+                ..Default::default()
+            }))
         })
-        .collect::<Result<Vec<_>>>()
-        .map(Value::Array)
+        .collect()
 }
 
-fn parse_item(value: &str) -> Result<(&str, u64)> {
+fn parse_item(value: &str) -> Result<(&str, std::num::NonZeroU64)> {
     let value = value.trim();
     let (id, quantity) = match value.rsplit_once('=') {
         Some((id, quantity)) => {
@@ -285,7 +367,13 @@ fn parse_item(value: &str) -> Result<(&str, u64)> {
         }
         None => (value, 1),
     };
-    if id.trim().is_empty() || quantity == 0 {
+    let quantity = std::num::NonZeroU64::new(quantity).ok_or_else(|| {
+        GddyError::validation(format!(
+            "invalid --item {value:?}: item ID must be non-empty and quantity must be positive"
+        ))
+        .into_cli_error()
+    })?;
+    if id.trim().is_empty() {
         return Err(GddyError::validation(format!(
             "invalid --item {value:?}: item ID must be non-empty and quantity must be positive"
         ))
@@ -302,20 +390,23 @@ fn nonblank_value<'a>(value: Option<&'a str>, error: &str) -> Result<&'a str> {
 }
 
 fn insert_optional_nonblank(
-    object: &mut Map<String, Value>,
+    field: &mut Option<String>,
     key: &str,
     value: Option<&str>,
 ) -> Result<()> {
     if let Some(value) = value {
-        object.insert(
-            key.to_owned(),
-            json!(nonblank_value(
-                Some(value),
-                &format!("--buyer-{key} must be non-empty")
-            )?),
+        *field = Some(
+            nonblank_value(Some(value), &format!("--buyer-{key} must be non-empty"))?.to_owned(),
         );
     }
     Ok(())
+}
+
+pub(crate) fn merge_context_currency(context: &mut Option<Context>, currency: Option<&str>) {
+    let Some(currency) = currency else {
+        return;
+    };
+    context.get_or_insert_with(Default::default).currency = Some(currency.to_owned());
 }
 
 pub(crate) fn currency_code(value: &str) -> std::result::Result<String, String> {
@@ -326,28 +417,9 @@ pub(crate) fn currency_code(value: &str) -> std::result::Result<String, String> 
         .ok_or_else(|| "currency must be a valid ISO 4217 code".to_owned())
 }
 
-pub(crate) fn merge_context_currency(request: &mut Value, currency: Option<&str>) -> Result<()> {
-    let Some(currency) = currency else {
-        return Ok(());
-    };
-    let object = request
-        .as_object_mut()
-        .expect("checkout request is an object");
-    let context = object.entry("context").or_insert_with(|| json!({}));
-    let context = context
-        .as_object_mut()
-        .ok_or_else(|| GddyError::validation("context must be a JSON object").into_cli_error())?;
-    context.insert("currency".to_owned(), Value::String(currency.to_owned()));
-    Ok(())
-}
-
-pub(crate) fn reject_multiple_payment_instruments(body: &Value) -> Result<()> {
-    let Some(instruments) = body.pointer("/payment/instruments") else {
-        return Ok(());
-    };
-    let instruments = instruments.as_array().ok_or_else(|| {
-        GddyError::validation("payment.instruments must be a JSON array").into_cli_error()
-    })?;
+pub(crate) fn reject_multiple_payment_instruments(
+    instruments: &[PaymentInstrumentSelectedPaymentInstrument],
+) -> Result<()> {
     if instruments.len() > 1 {
         return Err(GddyError::validation(
             "only one payment instrument may be specified for a checkout session",
@@ -360,16 +432,15 @@ pub(crate) fn reject_multiple_payment_instruments(body: &Value) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
-    reject_multiple_payment_instruments(body)?;
-    let instruments = body
-        .pointer("/payment/instruments")
-        .and_then(Value::as_array);
-    if let Some([instrument]) = instruments.map(Vec::as_slice)
-        && instrument.get("selected").and_then(Value::as_bool) == Some(true)
+pub(crate) fn require_selected_payment_instrument(
+    instruments: &[PaymentInstrumentSelectedPaymentInstrument],
+) -> Result<()> {
+    reject_multiple_payment_instruments(instruments)?;
+    if let [instrument] = instruments
+        && instrument.selected == Some(true)
         && instrument
-            .get("id")
-            .and_then(Value::as_str)
+            .id
+            .as_deref()
             .is_some_and(|id| !id.trim().is_empty())
     {
         Ok(())
@@ -383,13 +454,13 @@ pub(crate) fn require_selected_payment_instrument(body: &Value) -> Result<()> {
 }
 
 pub(crate) fn no_saved_payment_method_action(
-    checkout: &Value,
+    checkout: &Checkout,
     account_url: &str,
 ) -> Option<cli_engine::NextAction> {
     checkout
-        .pointer("/payment/instruments")
-        .and_then(Value::as_array)
-        .is_some_and(Vec::is_empty)
+        .payment
+        .as_ref()
+        .is_some_and(|payment| payment.instruments.is_empty())
         .then(|| {
             next_action(
                 "payment-methods add",
@@ -400,91 +471,11 @@ pub(crate) fn no_saved_payment_method_action(
         })
 }
 
-pub(crate) async fn wait_for_order(
-    client: &ShoppingClient,
-    order_id: &str,
-    timeout: Duration,
-    env: &str,
-) -> Result<(Value, usize)> {
-    let started = Instant::now();
-    let mut attempts = 0;
-    let mut delay = Duration::from_secs(1);
-    loop {
-        attempts += 1;
-        match client.get_order(order_id).await {
-            Ok(order) => return Ok((order, attempts)),
-            Err(error) if error.is_retryable_order_read() && started.elapsed() < timeout => {
-                let remaining = timeout.saturating_sub(started.elapsed());
-                let retry_delay = error.retry_after().unwrap_or(delay).min(remaining);
-                if retry_delay.is_zero() {
-                    return Err(exhausted_order_read_error(
-                        error, order_id, attempts, timeout, env,
-                    ));
-                }
-                tracing::debug!(
-                    order_id,
-                    attempts,
-                    ?retry_delay,
-                    "order is not visible yet; retrying"
-                );
-                tokio::time::sleep(retry_delay).await;
-                delay = delay.saturating_mul(2).min(Duration::from_secs(4));
-            }
-            Err(error) => {
-                return Err(exhausted_order_read_error(
-                    error, order_id, attempts, timeout, env,
-                ));
-            }
-        }
-    }
-}
-
-fn exhausted_order_read_error(
-    error: ClientError,
-    order_id: &str,
-    attempts: usize,
-    timeout: Duration,
-    env: &str,
-) -> CliCoreError {
-    if matches!(error, ClientError::Http { status: 404, .. }) {
-        order_not_visible_error(order_id, attempts, timeout, env)
-    } else {
-        client_err(error)
-    }
-}
-
-fn order_not_visible_error(
-    order_id: &str,
-    attempts: usize,
-    timeout: Duration,
-    env: &str,
-) -> CliCoreError {
-    GddyError::not_found(format!(
-        "order {order_id:?} was not visible after {attempts} attempts over {} seconds",
-        timeout.as_secs_f32()
-    ))
-    .with_fix(format!(
-        "Run: gddy {}",
-        crate::shopping::command_for_env(env, format!("order get {order_id} --wait"))
-    ))
-    .into_cli_error()
-}
-
-pub(crate) fn wait_duration(seconds: Option<u8>) -> Result<Duration> {
-    const DEFAULT: Duration = Duration::from_secs(15);
-    match seconds {
-        None => Ok(DEFAULT),
-        Some(seconds @ 1..=60) => Ok(Duration::from_secs(u64::from(seconds))),
-        Some(_) => Err(
-            GddyError::validation("--wait-timeout must be between 1 and 60 seconds")
-                .into_cli_error(),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use shopping_client::types::{
+        ComGodaddyShoppingInputSchemaInputValue, MessageError, MessageWarning,
+    };
 
     use super::*;
     use crate::shopping::command_for_env;
@@ -502,18 +493,42 @@ mod tests {
         .create_body()
         .expect("structured input should build");
 
+        assert_eq!(body.0.line_items.len(), 2);
         assert_eq!(
-            body,
-            json!({
-                "line_items": [
-                    {"item": {"id": "product-a"}, "quantity": 2},
-                    {"item": {"id": "product-b"}, "quantity": 1}
-                ],
-                "context": {"currency": "GBP"},
-                "buyer": {"first_name": "Jane", "email": "jane@example.test"},
-                "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
-            })
+            body.0.line_items[0]
+                .0
+                .item
+                .as_ref()
+                .and_then(|item| item.id.clone()),
+            Some("product-a".to_owned())
         );
+        assert_eq!(body.0.line_items[0].0.quantity.map(|q| q.get()), Some(2));
+        assert_eq!(body.0.line_items[1].0.quantity.map(|q| q.get()), Some(1));
+        assert_eq!(
+            body.0
+                .context
+                .as_ref()
+                .and_then(|context| context.0.currency.clone()),
+            Some("GBP".to_owned())
+        );
+        assert_eq!(
+            body.0
+                .buyer
+                .as_ref()
+                .and_then(|buyer| buyer.0.first_name.clone()),
+            Some("Jane".to_owned())
+        );
+        assert_eq!(
+            body.0
+                .buyer
+                .as_ref()
+                .and_then(|buyer| buyer.0.email.clone()),
+            Some("jane@example.test".to_owned())
+        );
+        let instruments = &body.0.payment.expect("payment").0.instruments;
+        assert_eq!(instruments.len(), 1);
+        assert_eq!(instruments[0].id, Some("payment-1".to_owned()));
+        assert_eq!(instruments[0].selected, Some(true));
     }
 
     #[test]
@@ -536,20 +551,64 @@ mod tests {
         );
     }
 
-    fn checkout() -> Value {
-        json!({
-            "line_items": [{
-                "id": "line-1",
-                "item": {"id": "product-1", "title": "Product"},
-                "quantity": 2,
-                "input": {"domain": "example.com"},
-                "included_products": [{"id": "included-product"}],
-                "totals": [{"type": "total", "amount": 100}]
+    fn checkout() -> Checkout {
+        Checkout {
+            line_items: vec![LineItem {
+                id: Some("line-1".to_owned()),
+                item: Some(Item {
+                    id: Some("product-1".to_owned()),
+                    title: Some("Product".to_owned()),
+                    ..Default::default()
+                }),
+                quantity: std::num::NonZeroU64::new(2),
+                input: Some(ComGodaddyShoppingInputSchemaInputValue(
+                    serde_json::json!({"domain": "example.com"}),
+                )),
+                included_products: vec![],
+                totals: vec![],
+                parent_id: None,
             }],
-            "context": {"currency": "USD", "language": "en"},
-            "buyer": {"first_name": "Jane", "last_name": "Doe", "email": "jane@example.test"},
-            "payment": {"instruments": [{"id": "payment-1", "selected": true, "description": "Visa"}]}
-        })
+            context: Some(Context {
+                currency: Some("USD".to_owned()),
+                language: Some("en".to_owned()),
+                ..Default::default()
+            }),
+            buyer: Some(Buyer {
+                first_name: Some("Jane".to_owned()),
+                last_name: Some("Doe".to_owned()),
+                email: Some("jane@example.test".to_owned()),
+                phone_number: None,
+            }),
+            payment: Some(Payment {
+                instruments: vec![PaymentInstrumentSelectedPaymentInstrument {
+                    id: Some("payment-1".to_owned()),
+                    selected: Some(true),
+                    handler_id: Some("com.godaddy.payments".to_owned()),
+                    type_: Some("card".to_owned()),
+                    ..Default::default()
+                }],
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn update_preserves_the_selected_instrument_handler_routing_metadata_when_unchanged() {
+        let body = CheckoutInput {
+            buyer_email: Some("updated@example.test".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("buyer-only update should be valid");
+
+        let instrument = &body.0.payment.expect("payment").0.instruments[0];
+        assert_eq!(instrument.id, Some("payment-1".to_owned()));
+        assert_eq!(
+            instrument.handler_id,
+            Some("com.godaddy.payments".to_owned()),
+            "an unchanged selected instrument must keep its handler routing metadata"
+        );
+        assert_eq!(instrument.type_, Some("card".to_owned()));
     }
 
     #[test]
@@ -562,20 +621,33 @@ mod tests {
         .update_body(&checkout())
         .expect("buyer and payment updates should be valid");
 
+        assert_eq!(body.0.line_items.len(), 1);
+        let line_item = &body.0.line_items[0].0;
+        assert_eq!(line_item.id, Some("line-1".to_owned()));
         assert_eq!(
-            body,
-            json!({
-                "line_items": [{
-                    "id": "line-1",
-                    "item": {"id": "product-1"},
-                    "quantity": 2,
-                    "input": {"domain": "example.com"}
-                }],
-                "context": {"currency": "USD", "language": "en"},
-                "buyer": {"first_name": "Jane", "last_name": "Doe", "email": "updated@example.test"},
-                "payment": {"instruments": [{"id": "payment-2", "selected": true}]}
-            })
+            line_item.item.as_ref().and_then(|item| item.id.clone()),
+            Some("product-1".to_owned())
         );
+        assert!(
+            line_item
+                .item
+                .as_ref()
+                .is_some_and(|item| item.title.is_none())
+        );
+        assert!(line_item.totals.is_empty());
+        assert_eq!(
+            body.0
+                .context
+                .as_ref()
+                .and_then(|context| context.0.currency.clone()),
+            Some("USD".to_owned())
+        );
+        let buyer = body.0.buyer.expect("buyer").0;
+        assert_eq!(buyer.first_name, Some("Jane".to_owned()));
+        assert_eq!(buyer.last_name, Some("Doe".to_owned()));
+        assert_eq!(buyer.email, Some("updated@example.test".to_owned()));
+        let instruments = body.0.payment.expect("payment").0.instruments;
+        assert_eq!(instruments[0].id, Some("payment-2".to_owned()));
     }
 
     #[test]
@@ -588,9 +660,25 @@ mod tests {
         .update_body(&checkout())
         .expect("currency change with explicit payment should be valid");
 
-        assert_eq!(body["context"]["currency"], "GBP");
-        assert_eq!(body["payment"]["instruments"][0]["id"], "payment-2");
-        assert_eq!(body["line_items"][0]["item"]["id"], "product-1");
+        assert_eq!(
+            body.0
+                .context
+                .as_ref()
+                .and_then(|context| context.0.currency.clone()),
+            Some("GBP".to_owned())
+        );
+        assert_eq!(
+            body.0.payment.as_ref().expect("payment").0.instruments[0].id,
+            Some("payment-2".to_owned())
+        );
+        assert_eq!(
+            body.0.line_items[0]
+                .0
+                .item
+                .as_ref()
+                .and_then(|item| item.id.clone()),
+            Some("product-1".to_owned())
+        );
     }
 
     #[test]
@@ -601,24 +689,59 @@ mod tests {
         }
         .update_body(&checkout())
         .expect("item replacement should be valid");
+        assert_eq!(body.0.line_items.len(), 1);
         assert_eq!(
-            body["line_items"],
-            json!([{"item": {"id": "product-2"}, "quantity": 3}])
+            body.0.line_items[0]
+                .0
+                .item
+                .as_ref()
+                .and_then(|item| item.id.clone()),
+            Some("product-2".to_owned())
         );
-        assert_eq!(body["buyer"]["email"], "jane@example.test");
-        assert_eq!(body["payment"]["instruments"][0]["id"], "payment-1");
+        assert_eq!(body.0.line_items[0].0.quantity.map(|q| q.get()), Some(3));
+        assert_eq!(
+            body.0
+                .buyer
+                .as_ref()
+                .and_then(|buyer| buyer.0.email.clone()),
+            Some("jane@example.test".to_owned())
+        );
+        assert_eq!(
+            body.0.payment.expect("payment").0.instruments[0].id,
+            Some("payment-1".to_owned())
+        );
     }
 
     #[test]
-    fn update_rejects_no_changes_or_incomplete_checkout_responses() {
+    fn update_rejects_when_no_changes_are_requested() {
         assert!(CheckoutInput::default().update_body(&checkout()).is_err());
-        assert!(
-            CheckoutInput {
-                buyer_email: Some("jane@example.test".to_owned()),
-                ..CheckoutInput::default()
-            }
-            .update_body(&json!({}))
-            .is_err()
+    }
+
+    #[test]
+    fn update_allows_a_legitimately_empty_cart() {
+        // `client::get_checkout` already rejects a malformed/empty API
+        // response before a real caller ever reaches `update_body`, so an
+        // empty `line_items` here represents a checkout whose items were
+        // all removed, not missing data — it must still be updatable.
+        let empty_cart = Checkout {
+            id: Some("checkout-1".to_owned()),
+            line_items: vec![],
+            ..checkout()
+        };
+        let body = CheckoutInput {
+            buyer_email: Some("jane@example.test".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&empty_cart)
+        .expect("an empty cart should still accept a buyer update");
+
+        assert!(body.0.line_items.is_empty());
+        assert_eq!(
+            body.0
+                .buyer
+                .as_ref()
+                .and_then(|buyer| buyer.0.email.clone()),
+            Some("jane@example.test".to_owned())
         );
     }
 
@@ -631,17 +754,19 @@ mod tests {
         .completion_body()
         .expect("completion body should build");
 
-        assert_eq!(
-            body,
-            json!({
-                "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
-            })
-        );
+        let instruments = body.0.payment.expect("payment").0.instruments;
+        assert_eq!(instruments[0].id, Some("payment-1".to_owned()));
+        assert_eq!(instruments[0].selected, Some(true));
     }
 
     #[test]
     fn adds_payment_method_actions_for_resolved_environment_urls() {
-        let empty_instruments = json!({"payment": {"instruments": []}});
+        let empty_instruments = Checkout {
+            payment: Some(Payment {
+                instruments: vec![],
+            }),
+            ..Default::default()
+        };
         for account_url in [
             "https://account.godaddy.com",
             "https://account.test-godaddy.com",
@@ -657,44 +782,97 @@ mod tests {
             );
         }
         assert!(
-            no_saved_payment_method_action(&json!({"payment": {}}), "https://account.godaddy.com")
+            no_saved_payment_method_action(
+                &Checkout {
+                    payment: Some(Payment::default()),
+                    ..Default::default()
+                },
+                "https://account.godaddy.com"
+            )
+            .is_some()
+        );
+        assert!(
+            no_saved_payment_method_action(&Checkout::default(), "https://account.godaddy.com")
                 .is_none()
         );
     }
 
     #[test]
     fn reports_api_update_errors() {
+        let checkout = Checkout {
+            messages: vec![Message::Error(MessageError {
+                content: Some("invalid payment".to_owned()),
+                type_: Some("error".to_owned()),
+                ..Default::default()
+            })],
+            ..Default::default()
+        };
         assert!(
-            update_response(json!({
-                "messages": [{"type": "error", "content": "invalid payment"}]
-            }))
-            .expect_err("API error should be reported")
-            .to_string()
-            .contains("invalid payment")
+            update_response(checkout)
+                .expect_err("API error should be reported")
+                .to_string()
+                .contains("invalid payment")
         );
+    }
+
+    #[test]
+    fn reject_response_errors_surfaces_error_severity_messages_only() {
+        let messages = vec![
+            Message::Warning(MessageWarning {
+                content: Some("a warning, not an error".to_owned()),
+                type_: Some("warning".to_owned()),
+                ..Default::default()
+            }),
+            Message::Error(MessageError {
+                content: Some("catalog search failed upstream".to_owned()),
+                type_: Some("error".to_owned()),
+                ..Default::default()
+            }),
+        ];
+
+        let error = reject_response_errors(&messages)
+            .expect_err("an error-severity message must be reported");
+        assert!(error.to_string().contains("catalog search failed upstream"));
+        assert!(!error.to_string().contains("a warning, not an error"));
+
+        assert!(reject_response_errors(&[]).is_ok());
+    }
+
+    #[test]
+    fn reject_response_errors_reports_an_error_message_even_without_content() {
+        let messages = vec![Message::Error(MessageError {
+            content: None,
+            type_: Some("error".to_owned()),
+            ..Default::default()
+        })];
+
+        assert!(reject_response_errors(&messages).is_err());
     }
 
     #[test]
     fn requires_exactly_one_payment_instrument() {
         assert!(
-            require_selected_payment_instrument(&json!({
-                "payment": {"instruments": [{"id": "payment-1", "selected": true}]}
-            }))
+            require_selected_payment_instrument(&[PaymentInstrumentSelectedPaymentInstrument {
+                id: Some("payment-1".to_owned()),
+                selected: Some(true),
+                ..Default::default()
+            }])
             .is_ok()
         );
+        assert!(require_selected_payment_instrument(&[]).is_err());
         assert!(
-            require_selected_payment_instrument(&json!({
-                "payment": {"instruments": []}
-            }))
-            .is_err()
-        );
-        assert!(
-            require_selected_payment_instrument(&json!({
-                "payment": {"instruments": [
-                    {"id": "payment-1", "selected": true},
-                    {"id": "payment-2", "selected": false}
-                ]}
-            }))
+            require_selected_payment_instrument(&[
+                PaymentInstrumentSelectedPaymentInstrument {
+                    id: Some("payment-1".to_owned()),
+                    selected: Some(true),
+                    ..Default::default()
+                },
+                PaymentInstrumentSelectedPaymentInstrument {
+                    id: Some("payment-2".to_owned()),
+                    selected: Some(false),
+                    ..Default::default()
+                },
+            ])
             .is_err()
         );
     }
@@ -705,48 +883,5 @@ mod tests {
             command_for_env("test", "order get order-1 --wait"),
             "shopping order get order-1 --wait"
         );
-    }
-
-    #[test]
-    fn exhausted_order_read_maps_only_404_to_not_found() {
-        let not_found = exhausted_order_read_error(
-            ClientError::Http {
-                status: 404,
-                body: "not found".to_owned(),
-                retry_after: None,
-            },
-            "order-1",
-            1,
-            Duration::ZERO,
-            "test",
-        );
-        let rate_limited = exhausted_order_read_error(
-            ClientError::Http {
-                status: 429,
-                body: "rate limited".to_owned(),
-                retry_after: None,
-            },
-            "order-1",
-            1,
-            Duration::ZERO,
-            "test",
-        );
-
-        assert!(not_found.to_string().contains("was not visible"));
-        assert!(!rate_limited.to_string().contains("was not visible"));
-        assert!(rate_limited.to_string().contains("429"));
-    }
-
-    #[test]
-    fn validates_wait_timeout_range() {
-        assert_eq!(
-            wait_duration(None).expect("default"),
-            Duration::from_secs(15)
-        );
-        assert_eq!(
-            wait_duration(Some(1)).expect("lower bound"),
-            Duration::from_secs(1)
-        );
-        assert!(wait_duration(Some(0)).is_err());
     }
 }

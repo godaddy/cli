@@ -998,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "domains-client"
-version = "0.2.19"
+version = "0.2.20"
 dependencies = [
  "bytes",
  "futures",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "generate-api-catalog"
-version = "0.2.19"
+version = "0.2.20"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "godaddy-cli"
-version = "0.2.19"
+version = "0.2.20"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1395,6 +1395,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "globset",
+ "hosting-client",
  "httpmock",
  "iso_currency",
  "open",
@@ -1547,6 +1548,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "hosting-client"
+version = "0.2.20"
+dependencies = [
+ "bytes",
+ "futures",
+ "httpmock",
+ "openapiv3",
+ "prettyplease",
+ "progenitor",
+ "progenitor-client",
+ "reqwest 0.13.4",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -3712,7 +3734,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shopping-client"
-version = "0.2.19"
+version = "0.2.20"
 dependencies = [
  "bytes",
  "futures",

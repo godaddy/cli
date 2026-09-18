@@ -8,8 +8,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("get", "Get application runtime configuration")
             .with_long(
-                "Get the runtime name and version for a hosting application \
-                 (e.g. runtime=nodejs, version=22).",
+                "Get the runtime name and version for a hosting application. \
+                 The API returns an array of runtime/version objects \
+                 (e.g. runtime=NODEJS, version=22.11.0).",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)

@@ -3,15 +3,17 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::hosting::common::{HostingSubscriptionList, client_err, make_client, next_page_token};
+use crate::hosting::common::{
+    HostingProduct, HostingSubscriptionList, client_err, make_client, next_page_token,
+};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
 #[derive(Debug, Clone, clap::Args)]
 struct SubscriptionListArgs {
-    /// Filter by hosting product (WEB_HOSTING or MANAGED_WORDPRESS).
-    #[arg(long, value_name = "PRODUCT")]
-    hosting_product: Option<String>,
+    /// Hosting product to list (WEB_HOSTING or MANAGED_WORDPRESS).
+    #[arg(long, value_name = "PRODUCT", ignore_case = true)]
+    hosting_product: HostingProduct,
 
     /// Maximum number of subscriptions to return. Omit to return all.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
@@ -26,7 +28,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "List hosting plan subscriptions available to attach to applications. \
-             Results are autopaginated.",
+             --hosting-product is required. Results are autopaginated.",
         )
         .with_system("hosting")
         .with_tier(Tier::Read)
@@ -35,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<HostingSubscriptionList>(),
         |ctx, args: SubscriptionListArgs| async move {
             let limit = args.limit;
-            let hosting_product = args.hosting_product.as_deref();
+            let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
 
             let mut all_items: Vec<Value> = Vec::new();

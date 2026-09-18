@@ -144,8 +144,13 @@ async fn get_app_status_hits_correct_path() {
     let mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/apps/app-1/status");
-            then.status(200)
-                .json_body(json!({ "preview": "ACTIVE", "publish": "IDLE" }));
+            then.status(200).json_body(json!({
+                "status": "ACTIVE",
+                "variants": [
+                    { "variant": "PREVIEW", "status": "ACTIVE" },
+                    { "variant": "PUBLISH", "status": "IDLE" }
+                ]
+            }));
         })
         .await;
 
@@ -155,7 +160,7 @@ async fn get_app_status_hits_correct_path() {
         .expect("get app status");
 
     mock.assert_async().await;
-    assert!(body.get("preview").is_some());
+    assert!(body.get("variants").is_some());
 }
 
 #[tokio::test]
@@ -206,7 +211,8 @@ async fn get_deployment_hits_correct_path() {
         .mock_async(|when, then| {
             when.method(GET)
                 .path("/v1/hosting/apps/app-1/deployments/dep-1");
-            then.status(200).json_body(json!({ "id": "dep-1" }));
+            then.status(200)
+                .json_body(json!({ "deploymentId": "dep-1" }));
         })
         .await;
 
@@ -216,17 +222,19 @@ async fn get_deployment_hits_correct_path() {
         .expect("get deployment");
 
     mock.assert_async().await;
-    assert_eq!(body["id"], "dep-1");
+    assert_eq!(body["deploymentId"], "dep-1");
 }
 
 #[tokio::test]
-async fn create_deployment_posts_with_no_body() {
+async fn create_deployment_posts_empty_json_body() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(POST).path("/v1/hosting/apps/app-1/deployments");
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/deployments")
+                .json_body(json!({}));
             then.status(202)
-                .json_body(json!({ "id": "dep-1", "status": "PENDING" }));
+                .json_body(json!({ "deploymentId": "dep-1", "status": "PENDING" }));
         })
         .await;
 
@@ -245,7 +253,7 @@ async fn get_operation_hits_correct_path() {
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/app-operations/op-1");
             then.status(200)
-                .json_body(json!({ "id": "op-1", "status": "COMPLETED" }));
+                .json_body(json!({ "operationId": "op-1", "status": "COMPLETED" }));
         })
         .await;
 
@@ -255,7 +263,7 @@ async fn get_operation_hits_correct_path() {
         .expect("get operation");
 
     mock.assert_async().await;
-    assert_eq!(body["id"], "op-1");
+    assert_eq!(body["operationId"], "op-1");
 }
 
 #[tokio::test]
@@ -340,25 +348,24 @@ async fn list_secrets_sends_variant_query_param() {
 }
 
 #[tokio::test]
-async fn sync_secrets_sends_body() {
+async fn patch_secrets_sends_json_patch() {
     let server = MockServer::start_async().await;
-    let body = json!({
-        "variant": "PREVIEW",
-        "operations": { "additions": [{ "name": "MY_SECRET", "value": "val" }] }
-    });
+    let patch = json!([{ "op": "add", "path": "/MY_SECRET", "value": "val" }]);
     let mock = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/hosting/apps/app-1/sync-secrets")
-                .json_body(body.clone());
+            when.method(PATCH)
+                .path("/v1/hosting/apps/app-1/secrets")
+                .query_param("variant", "PREVIEW")
+                .header("content-type", "application/json-patch+json")
+                .json_body(patch.clone());
             then.status(200).json_body(json!({ "items": [] }));
         })
         .await;
 
     client(&server.base_url())
-        .sync_secrets("app-1", body)
+        .patch_secrets("app-1", "PREVIEW", patch)
         .await
-        .expect("sync secrets");
+        .expect("patch secrets");
 
     mock.assert_async().await;
 }
@@ -390,7 +397,10 @@ async fn get_runtime_hits_correct_path() {
     let mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/v1/hosting/apps/app-1/runtime");
-            then.status(200).json_body(json!({ "status": "RUNNING" }));
+            then.status(200).json_body(json!([{
+                "runtime": "NODEJS",
+                "version": "22.11.0"
+            }]));
         })
         .await;
 
@@ -466,14 +476,16 @@ async fn list_subscriptions_hits_correct_path() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(GET).path("/v1/hosting/subscriptions");
+            when.method(GET)
+                .path("/v1/hosting/subscriptions")
+                .query_param("hostingProduct", "WEB_HOSTING");
             then.status(200)
                 .json_body(json!({ "items": [], "links": [] }));
         })
         .await;
 
     client(&server.base_url())
-        .list_subscriptions(None, None, None)
+        .list_subscriptions(None, None, "WEB_HOSTING")
         .await
         .expect("list subscriptions");
 

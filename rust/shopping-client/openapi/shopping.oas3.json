@@ -71,6 +71,9 @@
         "$id": "https://ucp.dev/schemas/shopping/types/adjustment.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "description": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -841,6 +844,24 @@
         "title": "Context",
         "type": "object"
       },
+      "description": {
+        "$id": "https://ucp.dev/schemas/shopping/types/description.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "minProperties": 1,
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "plain": {
+            "type": "string"
+          }
+        },
+        "title": "Description",
+        "type": "object"
+      },
       "detail_option_value": {
         "$id": "https://ucp.dev/schemas/shopping/types/detail_option_value.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -951,6 +972,9 @@
         "$id": "https://ucp.dev/schemas/shopping/types/expectation.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "description": {
+            "type": "string"
+          },
           "destination": {
             "$ref": "#/components/schemas/postal_address"
           },
@@ -1118,6 +1142,10 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
+          "description": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
           "fulfillable_on": {
             "type": "string",
             "ucp_request": "omit"
@@ -1162,6 +1190,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "carrier": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "id": {
@@ -1292,6 +1323,10 @@
             "type": "string",
             "ucp_request": "omit"
           },
+          "description": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
           "earliest_fulfillment_time": {
             "type": "string",
             "ucp_request": "omit"
@@ -1322,9 +1357,6 @@
       },
       "get_product_request": {
         "$ref": "#/components/schemas/catalog_lookup_get_product_request"
-      },
-      "get_product_response": {
-        "$ref": "#/components/schemas/catalog_lookup_get_product_response"
       },
       "hosting_schema": {
         "$id": "https://godaddy.com/ucp/schemas/product-metadata/hosting.schema.json",
@@ -1963,11 +1995,17 @@
                 "additionalProperties": true,
                 "type": "object"
               },
+              "handler_id": {
+                "type": "string"
+              },
               "id": {
                 "type": "string"
               },
               "selected": {
                 "type": "boolean"
+              },
+              "type": {
+                "type": "string"
               }
             },
             "type": "object"
@@ -2076,6 +2114,9 @@
               "$ref": "#/components/schemas/category"
             },
             "type": "array"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
           },
           "handle": {
             "type": "string"
@@ -3072,6 +3113,9 @@
             },
             "type": "array"
           },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
           "handle": {
             "type": "string"
           },
@@ -3334,7 +3378,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/get_product_response"
+                      "$ref": "#/components/schemas/catalog_lookup_get_product_response"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"

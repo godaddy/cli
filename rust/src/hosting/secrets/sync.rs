@@ -1,9 +1,12 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use crate::error::GddyError;
 use crate::hosting::common::{HostingSecretSummary, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SECRET_WRITE as SECRET_WRITE;
+
+use super::patch::{build_secret_patch, parse_name_value_pairs, parse_names};
 
 #[derive(Debug, Clone, clap::Args)]
 struct SecretSyncArgs {
@@ -51,10 +54,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     match s {
                         None => Ok(None),
                         Some(raw) => serde_json::from_str::<Value>(&raw).map(Some).map_err(|e| {
-                            crate::error::GddyError::validation(format!(
-                                "--{flag} is not valid JSON: {e}"
-                            ))
-                            .into_cli_error()
+                            GddyError::validation(format!("--{flag} is not valid JSON: {e}"))
+                                .into_cli_error()
                         }),
                     }
                 };
@@ -64,31 +65,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let deletions = parse_json_array(args.deletions, "deletions")?;
 
             if additions.is_none() && updates.is_none() && deletions.is_none() {
-                return Err(crate::error::GddyError::validation(
+                return Err(GddyError::validation(
                     "at least one of --additions, --updates, or --deletions is required",
                 )
                 .into_cli_error());
             }
 
-            let mut operations = serde_json::Map::new();
-            if let Some(v) = additions {
-                operations.insert("additions".to_owned(), v);
-            }
-            if let Some(v) = updates {
-                operations.insert("updates".to_owned(), v);
-            }
-            if let Some(v) = deletions {
-                operations.insert("deletions".to_owned(), v);
-            }
+            let additions = parse_name_value_pairs(additions, "additions")
+                .map_err(GddyError::into_cli_error)?;
+            let updates =
+                parse_name_value_pairs(updates, "updates").map_err(GddyError::into_cli_error)?;
+            let deletions =
+                parse_names(deletions, "deletions").map_err(GddyError::into_cli_error)?;
 
-            let body = json!({
-                "variant": args.variant,
-                "operations": Value::Object(operations),
-            });
+            let patch = build_secret_patch(&additions, &updates, &deletions)
+                .map_err(GddyError::into_cli_error)?;
 
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .sync_secrets(&app_id, body)
+                .patch_secrets(&app_id, &args.variant, patch)
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
