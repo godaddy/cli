@@ -85,9 +85,10 @@ pub fn client_with_auth(
     match parsed_base_url.scheme() {
         "https" => {}
         // httpmock (and other local stubs) speak HTTP on loopback only.
-        "http" if parsed_base_url
-            .host_str()
-            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "::1")) => {}
+        "http"
+            if parsed_base_url
+                .host_str()
+                .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "::1")) => {}
         scheme => {
             return Err(BuildError::InsecureBaseUrlScheme {
                 scheme: scheme.to_owned(),
