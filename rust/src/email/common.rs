@@ -8,10 +8,11 @@ use crate::email::client::{ClientError, EmailClient};
 use crate::error::GddyError;
 
 pub(crate) async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<EmailClient> {
+    crate::http::ensure_generated_client_transport_observer_registered();
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
-    Ok(EmailClient::new(base_url, token))
+    EmailClient::new(base_url, token).map_err(|e| GddyError::from(e).into_cli_error())
 }
 
 /// Maps a [`ClientError`] to a [`CliCoreError`], rendering the panel API's
@@ -24,7 +25,10 @@ pub(crate) fn client_err(e: ClientError) -> CliCoreError {
         ClientError::Http { status, body } => {
             GddyError::from_http(status, format_api_error_body(&body), "email").into_cli_error()
         }
-        ClientError::Network(_) => GddyError::from(e).into_cli_error(),
+        ClientError::Network(_)
+        | ClientError::Request(_)
+        | ClientError::Response(_)
+        | ClientError::Build(_) => GddyError::from(e).into_cli_error(),
     }
 }
 
@@ -38,7 +42,10 @@ pub(crate) fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> Cli
                 .with_fix(fix)
                 .into_cli_error()
         }
-        ClientError::Network(_) => GddyError::from(e).into_cli_error(),
+        ClientError::Network(_)
+        | ClientError::Request(_)
+        | ClientError::Response(_)
+        | ClientError::Build(_) => GddyError::from(e).into_cli_error(),
     }
 }
 
