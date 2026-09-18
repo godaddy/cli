@@ -331,7 +331,7 @@
       "type": "object"
     },
     "BulkOperation": {
-      "$id": "https://godaddy.com/schemas/commerce/bulk-ingestions/bulk-operation.v1",
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A bulk operation object",
       "properties": {
@@ -344,9 +344,15 @@
         "createdAt": {
           "$ref": "#/$defs/date-time"
         },
+        "endCursor": {
+          "description": "Optional Query-Transform-Set pagination cursor persisted while the\ntarget worker pages through query results. Used to resume discovery\nafter retries; clients typically treat this as read-only progress\nmetadata.\n",
+          "nullable": true,
+          "type": "string"
+        },
         "entityType": {
           "default": "PRODUCT",
-          "description": "The type of the entity, currently only accepts PRODUCT",
+          "deprecated": true,
+          "description": "Deprecated. Not returned by the Bulk Operations API runtime and should\nnot be relied on by clients. Historically documented as PRODUCT.\n",
           "type": "string"
         },
         "errorCount": {
@@ -364,12 +370,32 @@
         },
         "method": {
           "default": "PATCH",
-          "description": "The method of the bulk operation, currently accepts PATCH, PUT, and \nDELETE\n",
+          "description": "The HTTP method for REST bulk operations. Supported values: PATCH, PUT,\nDELETE. Optional for GraphQL bulk operations.\n",
           "type": "string"
+        },
+        "mutation": {
+          "description": "Optional GraphQL mutation for legacy GraphQL bulk operations that supply\nmutationVariables as an array. Present only for GraphQL transports;\nomit/ignore for REST bulk operations. Prefer operation for\nQuery-Transform-Set requests.\n",
+          "type": "string"
+        },
+        "mutationVariables": {
+          "description": "Optional array of GraphQL mutation variable objects for legacy GraphQL\nbulk operations. Present only for GraphQL transports; omit/ignore for\nREST bulk operations. Prefer operation.mutationVariables for\nQuery-Transform-Set requests.\n",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "$ref": "#/$defs/BulkOperationOperation"
         },
         "processedCount": {
           "default": 0,
           "description": "The processed count of the bulk operation",
+          "type": "integer"
+        },
+        "queuedCount": {
+          "default": 0,
+          "description": "Optional count of items queued so far during Query-Transform-Set\ndiscovery. Used with endCursor to resume pagination without\nre-creating already queued items; clients typically treat this as\nread-only progress metadata.\n",
           "type": "integer"
         },
         "resourceId": {
@@ -382,7 +408,12 @@
           "type": "string"
         },
         "results": {
-          "description": "The results for this individual bulk operation request, only used \nwhen the bulk operation is processed synchronously\n",
+          "description": "Results returned when the bulk operation is processed synchronously.\nEach entry corresponds to one target item. Structure mirrors the\ndownstream request/response for that item.\n",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "readOnly": true,
           "type": "array"
         },
         "status": {
@@ -402,49 +433,353 @@
       "title": "Bulk Operation",
       "type": "object"
     },
-    "BulkOperationItem": {
-      "$id": "https://godaddy.com/schemas/commerce/bulk-ingestions/bulk-operation-item.v1",
+    "BulkOperationCreate": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-create.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A bulk operation item object",
+      "description": "Request body for creating a bulk operation. Supports existing REST bulk\noperations and GraphQL variants. Existing REST clients that omit `type`\nremain valid when `method` is provided. GraphQL variants require\n`type: graphql` and are distinguished by `operation` (QTS) versus\ntop-level `mutation`/`mutationVariables` (legacy). An OpenAPI\ndiscriminator on `type` alone cannot separate the two GraphQL shapes\nbecause both use the same `type` value.\n",
+      "oneOf": [
+        {
+          "description": "REST bulk operation create request. Clients may omit type or set\ntype to rest. `method` is required so this variant does not match\nGraphQL payloads.\n",
+          "properties": {
+            "body": {
+              "additionalProperties": true,
+              "description": "The body of the bulk operation request",
+              "example": {
+                "name": "Product 1"
+              },
+              "type": "object"
+            },
+            "filter": {
+              "description": "The optional filter of the bulk operation, should follow\n[OData URL Convention for filtering](http://docs.oasis-open.org/odata/odata/v4.01/cs01/part2-url-conventions/odata-v4.01-cs01-part2-url-conventions.html#sec_SystemQueryOptionfilter)\n",
+              "example": "status eq 'IDLE'",
+              "type": "string"
+            },
+            "href": {
+              "description": "Canonical URL of the bulk operation. Prefer this field over the\nlegacy url alias.\n",
+              "example": "/v1/commerce/stores/:storeId/products/:productId",
+              "type": "string"
+            },
+            "method": {
+              "description": "The HTTP method of the bulk operation. Supported values: PATCH, PUT,\nDELETE.\n",
+              "example": "PATCH",
+              "type": "string"
+            },
+            "query": {
+              "description": "The optional query of the bulk operation",
+              "example": "type=PHYSICAL",
+              "type": "string"
+            },
+            "type": {
+              "description": "Optional bulk operation transport type. Supported values: rest.\nWhen omitted, the request is treated as a REST bulk operation.\n",
+              "example": "rest",
+              "type": "string"
+            },
+            "url": {
+              "description": "Legacy alias for href. Prefer href. When both are provided, href\ntakes precedence.\n",
+              "example": "/v1/commerce/stores/:storeId/products/:productId",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method"
+          ],
+          "title": "RestBulkOperationCreate",
+          "type": "object"
+        },
+        {
+          "description": "GraphQL Query-Transform-Set bulk operation. Queries target resources,\noptionally transforms values, then executes a mutation per item.\n",
+          "properties": {
+            "href": {
+              "description": "Downstream GraphQL endpoint path. `:storeId` is substituted with the\npath store ID when present.\n",
+              "example": "/v2/commerce/stores/:storeId/catalog-subgraph",
+              "type": "string"
+            },
+            "operation": {
+              "$ref": "#/$defs/BulkOperationOperation"
+            },
+            "type": {
+              "description": "Bulk operation transport type. Supported value for this variant:\ngraphql.\n",
+              "example": "graphql",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "href",
+            "operation"
+          ],
+          "title": "GraphQLQueryTransformSetCreate",
+          "type": "object"
+        },
+        {
+          "description": "Legacy GraphQL bulk operation that supplies mutation variables up front.\nPrefer the operation variant for Query-Transform-Set flows.\n",
+          "properties": {
+            "href": {
+              "description": "Downstream GraphQL endpoint path. Optional for legacy GraphQL\ncreate; `:storeId` is substituted with the path store ID when\npresent. Prefer providing href for clarity.\n",
+              "example": "/v2/commerce/stores/:storeId/catalog-subgraph",
+              "type": "string"
+            },
+            "mutation": {
+              "description": "GraphQL mutation executed for each mutationVariables entry",
+              "minLength": 1,
+              "type": "string"
+            },
+            "mutationVariables": {
+              "description": "Array of mutation variable objects, one per target item",
+              "example": [
+                {
+                  "id": "price-1",
+                  "input": {
+                    "currencyCode": "USD"
+                  }
+                },
+                {
+                  "id": "price-2",
+                  "input": {
+                    "currencyCode": "USD"
+                  }
+                }
+              ],
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "type": {
+              "description": "Bulk operation transport type. Supported value for this variant:\ngraphql.\n",
+              "example": "graphql",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "mutation",
+            "mutationVariables"
+          ],
+          "title": "GraphQLLegacyCreate",
+          "type": "object"
+        }
+      ],
+      "title": "Create Bulk Operation"
+    },
+    "BulkOperationError": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-error.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Error object returned for a failed bulk operation item from the bulk\noperation errors endpoint.\n",
       "properties": {
-        "bulkOperationId": {
-          "$ref": "#/$defs/uuid"
-        },
-        "canceledAt": {
-          "$ref": "#/$defs/date-time"
-        },
-        "createdAt": {
-          "$ref": "#/$defs/date-time"
-        },
-        "error": {
-          "$ref": "#/$defs/error"
-        },
-        "href": {
-          "description": "The href of the bulk operation",
-          "example": "/v1/commerce/stores/:storeId/products/:productId",
+        "correlationId": {
+          "description": "Correlation identifier for the request",
           "type": "string"
         },
-        "id": {
-          "$ref": "#/$defs/uuid"
+        "details": {
+          "additionalProperties": true,
+          "description": "Error details for the failed item. May include downstream error fields\nsuch as message or graphQLErrors, and mutationVariablesResolved when the\nitem was created from a Query-Transform-Set operation.\n",
+          "properties": {
+            "graphQLErrors": {
+              "description": "Optional GraphQL errors returned by the downstream API",
+              "items": {},
+              "type": "array"
+            },
+            "message": {
+              "description": "Downstream or item-level error message when available",
+              "type": "string"
+            },
+            "mutationVariablesResolved": {
+              "additionalProperties": true,
+              "description": "Fully resolved mutation variables after template substitution and\ntransforms for the failed item, when available.\n",
+              "example": {
+                "id": "price-789",
+                "input": {
+                  "value": 850
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
         },
-        "processedAt": {
-          "$ref": "#/$defs/date-time"
-        },
-        "resourceId": {
-          "description": "The unique identifier for the resource",
+        "informationLink": {
+          "description": "Optional link to additional error documentation",
           "type": "string"
         },
-        "status": {
-          "default": "PROCESSING",
-          "description": "The status of the bulk operation item, can be PROCESSING, COMPLETED, \nCANCELED, or FAILED\n",
+        "links": {
+          "description": "Optional HATEOAS links related to the error",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "Human-readable error message for the failed item",
+          "example": "Bulk operation item price-789 failed.",
           "type": "string"
         },
-        "updatedAt": {
-          "$ref": "#/$defs/date-time"
+        "name": {
+          "description": "The error name, for example BulkOperationError",
+          "example": "BulkOperationError",
+          "type": "string"
         }
       },
-      "title": "Bulk Operation Item",
+      "title": "Bulk Operation Error",
       "type": "object"
+    },
+    "BulkOperationOperation": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-operation.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Query-Transform-Set (QTS) GraphQL operation definition. The service queries\nresources, optionally transforms field values, substitutes template variables\ninto mutationVariables, then executes the mutation per target item.\n",
+      "properties": {
+        "mutation": {
+          "description": "GraphQL mutation executed once per resolved target item",
+          "example": "mutation UpdateSkuPrice($id: String!, $input: MutationUpdateSkuPriceInput!) {\n  updateSkuPrice(id: $id, input: $input) {\n    id value { value currencyCode }\n  }\n}\n",
+          "minLength": 1,
+          "type": "string"
+        },
+        "mutationVariables": {
+          "additionalProperties": true,
+          "description": "Mutation variables template. String values may reference extracted or\ntransformed fields with `${fieldName}` placeholders (for example\n`${priceId}`, `${newPrice}`). Placeholders are substituted per item\nbefore the mutation is executed.\n",
+          "example": {
+            "id": "${priceId}",
+            "input": {
+              "value": {
+                "currencyCode": "${currencyCode}",
+                "value": "${newPrice}"
+              }
+            }
+          },
+          "type": "object"
+        },
+        "query": {
+          "description": "GraphQL query used to discover target resources and extract field values.\nThe query should support cursor pagination via first/after (or equivalent)\nwhen operating over large result sets.\n",
+          "example": "query skuPrices($skuStatus: SKUStatusFilter, $first: Int, $after: String) {\n  skuPrices(skuStatus: $skuStatus, first: $first, after: $after) {\n    edges { node { id value { value currencyCode } } }\n    pageInfo { hasNextPage endCursor }\n  }\n}\n",
+          "minLength": 1,
+          "type": "string"
+        },
+        "queryFields": {
+          "description": "Fields extracted from each query result row. Each fieldName must be unique.\npath is an RFC 9535 JSONPath into the query response; the optional root\nprefix `$`. may be omitted (for example `edges[*].node.id`).\n",
+          "items": {
+            "properties": {
+              "fieldName": {
+                "description": "Name of the extracted field available for transforms and templates",
+                "example": "priceId",
+                "type": "string"
+              },
+              "path": {
+                "description": "RFC 9535 JSONPath into the query response. Use `[*]` to select every\narray element. Examples: `edges[*].node.id`, `edges[*].node.value.value`.\n",
+                "example": "edges[*].node.id",
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "fieldName",
+              "path"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "queryVariables": {
+          "additionalProperties": true,
+          "description": "Optional variables passed to the GraphQL query. Typically includes filters\nand pagination arguments such as first and after.\n",
+          "example": {
+            "after": null,
+            "first": 100,
+            "skuStatus": {
+              "in": [
+                "ACTIVE",
+                "DRAFT"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "transforms": {
+          "description": "Optional ordered transforms that compute new field values from queryFields\n(or previous transform outputs). Each output name must be unique and must\nnot collide with a queryFields fieldName. Each input must reference a\nqueryField name or a previous transform output.\n",
+          "items": {
+            "properties": {
+              "input": {
+                "description": "Source field name (queryField or prior transform output)",
+                "example": "currentPrice",
+                "type": "string"
+              },
+              "operations": {
+                "description": "Ordered operations applied to the input value. Supported operation\ntypes are percentageChange, percentageGrossChange, add, round, and\nroundToIncrement.\n",
+                "items": {
+                  "example": {
+                    "type": "percentageChange",
+                    "value": "-15"
+                  },
+                  "properties": {
+                    "increment": {
+                      "description": "Positive increment in minor currency units for\nroundToIncrement (for example 5 nickel, 25 quarter, 50\nhalf-dollar, 100 dollar).\n",
+                      "example": 25,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "mode": {
+                      "$ref": "#/$defs/BulkOperationRoundingMode"
+                    },
+                    "type": {
+                      "$ref": "#/$defs/BulkOperationTransformType"
+                    },
+                    "value": {
+                      "description": "Decimal string operand for percentageChange,\npercentageGrossChange, or add. Wire format is a string\n(for example `\"15\"`, `\"-4.5\"`, or `\".5\"`); numeric JSON\nliterals are rejected. For percentage operations, this is\nthe percentage rate (positive or negative). For add, this\nis the fixed amount added to the input (negative\nsubtracts). Same pattern as common-types percentage.\n",
+                      "example": "-15",
+                      "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "output": {
+                "description": "Destination field name produced by this transform",
+                "example": "newPrice",
+                "type": "string"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "operations"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "query",
+        "queryFields",
+        "mutation",
+        "mutationVariables"
+      ],
+      "title": "Bulk Operation GraphQL Operation",
+      "type": "object"
+    },
+    "BulkOperationRoundingMode": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-rounding-mode.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Rounding mode for roundToIncrement. Supported values:\nnearest (default), down, up.\n",
+      "example": "nearest",
+      "title": "Bulk Operation Rounding Mode",
+      "type": "string"
+    },
+    "BulkOperationTransformType": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-transform-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Transform operation type applied in a Query-Transform-Set operations chain.\nSupported values:\npercentageChange — standard signed percentage change using\n`input * (1 + value/100)`, where `value` is this operation's percentage rate\n(for example +10 markup or -15 discount);\npercentageGrossChange — gross-up/revert transform where `value` is the\npercentage rate: when `value >= 0`, `input / (1 - value/100)`; when\n`value < 0`, `input * (1 + value/100)` (for cash discounting enable/disable);\nadd — fixed-amount change using `input + value` (use a negative `value` to\nsubtract);\nround — round to the nearest whole cent;\nroundToIncrement — round to a positive increment with an optional mode.\n",
+      "example": "percentageChange",
+      "title": "Bulk Operation Transform Type",
+      "type": "string"
     },
     "Bulkingestion": {
       "$id": "https://godaddy.com/schemas/commerce/bulk-ingestions/bulk-ingestion.v1",
@@ -597,11 +932,7 @@
     "JSONPatch": {
       "properties": {
         "op": {
-          "enum": [
-            "replace",
-            "remove",
-            "add"
-          ],
+          "description": "JSON Patch operation. Supported values: replace, remove, add.\n",
           "type": "string"
         },
         "path": {
@@ -764,11 +1095,325 @@
     }
   },
   "baseUrl": "https://api.godaddy.com/v1/commerce",
-  "description": "Bulk Operations API handles the asynchronous processing of any \nbulk action, such as an ingestion or export, across Commerce platform.\n",
+  "description": "Bulk Operations API handles the asynchronous processing of any\nbulk action, such as an ingestion, export, or GraphQL\nQuery-Transform-Set mutation, across Commerce platform.\n",
   "endpoints": [
     {
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions",
+      "operationId": "listBulkExports",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "in": "query",
+          "name": "filter",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "pageSize",
+          "required": false,
+          "schema": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "pageToken",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-exports",
+      "responses": {
+        "200": {
+          "description": "Get bulk exports",
+          "schema": {
+            "description": "A list of bulk exports",
+            "properties": {
+              "bulkExports": {
+                "description": "The bulk exports",
+                "items": {
+                  "$ref": "#/$defs/BulkExport"
+                },
+                "type": "array"
+              },
+              "links": {
+                "description": "The links",
+                "items": {
+                  "$ref": "#/$defs/link-description"
+                },
+                "type": "array"
+              },
+              "pageToken": {
+                "description": "The page token",
+                "type": "string"
+              }
+            },
+            "title": "Bulk Exports",
+            "type": "object"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:read"
+      ],
+      "summary": "Get bulk exports"
+    },
+    {
+      "method": "POST",
+      "operationId": "createBulkExport",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-exports",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": false,
+        "schema": {
+          "$ref": "#/$defs/BulkExport"
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Create bulk export",
+          "schema": {
+            "description": "A bulk export object",
+            "properties": {
+              "bulkExport": {
+                "$ref": "#/$defs/BulkExport"
+              },
+              "links": {
+                "description": "Links to the newly created bulk export.",
+                "items": {
+                  "$ref": "#/$defs/link-description"
+                },
+                "type": "array"
+              }
+            },
+            "title": "Bulk Export",
+            "type": "object"
+          }
+        },
+        "400": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:write"
+      ],
+      "summary": "Create bulk export"
+    },
+    {
+      "method": "GET",
+      "operationId": "getBulkExport",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "The Bulk Export ID",
+          "in": "path",
+          "name": "bulkExportId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-exports/{bulkExportId}",
+      "responses": {
+        "200": {
+          "description": "Get bulk export",
+          "schema": {
+            "bulkExport": {
+              "$ref": "#/$defs/BulkExport"
+            },
+            "links": {
+              "description": "Links to self and, if available, next step.",
+              "items": {
+                "$ref": "#/$defs/link-description"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:read"
+      ],
+      "summary": "Get bulk export"
+    },
+    {
+      "method": "POST",
+      "operationId": "cancelBulkExport",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "The Bulk Export ID",
+          "in": "path",
+          "name": "bulkExportId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-exports/{bulkExportId}/cancelations",
+      "responses": {
+        "200": {
+          "description": "Bulk export cancelled",
+          "schema": {
+            "bulkExport": {
+              "$ref": "#/$defs/BulkExport"
+            },
+            "links": {
+              "description": "Link to the cancelled bulk export.",
+              "items": {
+                "$ref": "#/$defs/link-description"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "400": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:write"
+      ],
+      "summary": "Cancel bulk export"
+    },
+    {
+      "method": "GET",
+      "operationId": "getBulkExportDownloads",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "The Bulk Export ID",
+          "in": "path",
+          "name": "bulkExportId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "The export type, required to get bulk export downloads",
+          "in": "query",
+          "name": "exportType",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-exports/{bulkExportId}/downloads",
+      "responses": {
+        "200": {
+          "description": "Bulk export with download links",
+          "schema": {
+            "bulkExport": {
+              "$ref": "#/$defs/BulkExport"
+            },
+            "links": {
+              "description": "Links to self and download.",
+              "items": {
+                "$ref": "#/$defs/link-description"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "400": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:read"
+      ],
+      "summary": "Get bulk export downloads"
+    },
+    {
+      "method": "GET",
+      "operationId": "listBulkIngestions",
       "parameters": [
         {
           "description": "The Store ID",
@@ -841,20 +1486,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestions"
     },
     {
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions",
+      "operationId": "createBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -909,20 +1550,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:create"
+      ],
       "summary": "Create bulk ingestion"
     },
     {
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId",
+      "operationId": "getBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -956,20 +1593,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestion"
     },
     {
       "method": "PATCH",
-      "operationId": "patch_stores_storeId_bulk_ingestions_bulkIngestionId",
+      "operationId": "updateBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1041,20 +1674,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:update"
+      ],
       "summary": "Update bulk ingestion"
     },
     {
       "method": "DELETE",
-      "operationId": "delete_stores_storeId_bulk_ingestions_bulkIngestionId",
+      "operationId": "deleteBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1085,20 +1714,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:delete"
+      ],
       "summary": "Delete bulk ingestion"
     },
     {
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_cancelations",
+      "operationId": "cancelBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1138,20 +1763,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:delete"
+      ],
       "summary": "Cancel bulk ingestion"
     },
     {
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_errors",
+      "operationId": "listBulkIngestionErrors",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1204,20 +1825,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestion errors"
     },
     {
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_executions",
+      "operationId": "executeBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1257,21 +1874,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:execute"
+      ],
       "summary": "Execute bulk ingestion"
     },
     {
       "description": "Returns a time-limited download link for the bulk ingestion errors CSV file. The CSV contains the original row data with `error_field` and `error_message` columns appended for each error.",
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_ingestion_errors",
+      "operationId": "downloadBulkIngestionErrorsCsv",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1316,20 +1929,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestion errors download link"
     },
     {
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_items",
+      "operationId": "listBulkIngestionItems",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1382,20 +1991,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestion items"
     },
     {
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_items_index_validations",
+      "operationId": "validateBulkIngestionItem",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1443,21 +2048,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:execute"
+      ],
       "summary": "Validate bulk ingestion by index"
     },
     {
       "description": "Create, update, or delete a batch of overrides for a bulk ingestion",
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_override_batches",
+      "operationId": "createBulkIngestionOverrideBatch",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1538,20 +2139,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:create"
+      ],
       "summary": "Create, update, or delete a batch of overrides"
     },
     {
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_overrides",
+      "operationId": "listBulkIngestionOverrides",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1604,21 +2201,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get bulk ingestion overrides"
     },
     {
       "description": "Update an existing override or insert a new one if \nit does not already exist. Body must include a JSON\npatch object.\n",
       "method": "PUT",
-      "operationId": "put_stores_storeId_bulk_ingestions_bulkIngestionId_overrides",
+      "operationId": "putBulkIngestionOverrides",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1665,21 +2258,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:update"
+      ],
       "summary": "Upsert an override"
     },
     {
       "description": "Get a list of overrides based on its index.\n",
       "method": "GET",
-      "operationId": "get_stores_storeId_bulk_ingestions_bulkIngestionId_overrides_index",
+      "operationId": "getBulkIngestionOverride",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1739,20 +2328,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:read"
+      ],
       "summary": "Get overrides by index"
     },
     {
       "method": "DELETE",
-      "operationId": "delete_stores_storeId_bulk_ingestions_bulkIngestionId_overrides_index",
+      "operationId": "deleteBulkIngestionOverride",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1795,20 +2380,16 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:delete"
+      ],
       "summary": "Delete overrides by index"
     },
     {
       "method": "POST",
-      "operationId": "post_stores_storeId_bulk_ingestions_bulkIngestionId_validations",
+      "operationId": "validateBulkIngestion",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1848,20 +2429,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-ingestion:execute"
+      ],
       "summary": "Validate bulk ingestion"
     },
     {
+      "description": "List bulk operations for a store. Supports optional OData-style\n`filter`, `pageSize`, and `pageToken`.\n\nFilter guidance:\n- Equality/inequality (`eq` / `ne`) is commonly used with `status`\n  (for example `status eq 'PROCESSING'` or\n  `status ne 'CANCELED,COMPLETED,FAILED'`). Multiple status values\n  may be comma-separated.\n- Range filters (`ge` / `le`) are supported only on `createdAt` and\n  require ISO 8601 timestamps (for example\n  `createdAt ge '2026-01-01T00:00:00Z'`).\n- Results are returned newest-first.\n",
       "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_exports",
+      "operationId": "listBulkOperations",
       "parameters": [
         {
           "description": "The Store ID",
@@ -1899,17 +2477,17 @@
           }
         }
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-exports",
+      "path": "/stores/{storeId}/bulk-operations",
       "responses": {
         "200": {
-          "description": "Get bulk exports",
+          "description": "Successfully retrieved bulk operations",
           "schema": {
-            "description": "A list of bulk exports",
+            "description": "A list of bulk operations",
             "properties": {
-              "bulkExports": {
-                "description": "The bulk exports",
+              "bulkOperations": {
+                "description": "The bulk operations",
                 "items": {
-                  "$ref": "#/$defs/BulkExport"
+                  "$ref": "#/$defs/BulkOperation"
                 },
                 "type": "array"
               },
@@ -1925,66 +2503,7 @@
                 "type": "string"
               }
             },
-            "title": "Bulk Exports",
-            "type": "object"
-          }
-        },
-        "404": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Get bulk exports"
-    },
-    {
-      "method": "POST",
-      "operationId": "post_v1_commerce_stores_storeId_bulk_exports",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        }
-      ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-exports",
-      "requestBody": {
-        "contentType": "application/json",
-        "required": false,
-        "schema": {
-          "$ref": "#/$defs/BulkExport"
-        }
-      },
-      "responses": {
-        "201": {
-          "description": "Create bulk export",
-          "schema": {
-            "description": "A bulk export object",
-            "properties": {
-              "bulkExport": {
-                "$ref": "#/$defs/BulkExport"
-              },
-              "links": {
-                "description": "Links to the newly created bulk export.",
-                "items": {
-                  "$ref": "#/$defs/link-description"
-                },
-                "type": "array"
-              }
-            },
-            "title": "Bulk Export",
+            "title": "Bulk Operations",
             "type": "object"
           }
         },
@@ -1994,257 +2513,22 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Create bulk export"
-    },
-    {
-      "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_exports_bulkExportId",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        },
-        {
-          "description": "The Bulk Export ID",
-          "in": "path",
-          "name": "bulkExportId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        }
-      ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}",
-      "responses": {
-        "200": {
-          "description": "Get bulk export",
-          "schema": {
-            "bulkExport": {
-              "$ref": "#/$defs/BulkExport"
-            },
-            "links": {
-              "description": "Links to self and, if available, next step.",
-              "items": {
-                "$ref": "#/$defs/link-description"
-              },
-              "type": "array"
-            }
-          }
-        },
         "404": {
           "description": "Error",
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
-      "summary": "Get bulk export"
-    },
-    {
-      "method": "POST",
-      "operationId": "post_v1_commerce_stores_storeId_bulk_exports_bulkExportId_cancelations",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        },
-        {
-          "description": "The Bulk Export ID",
-          "in": "path",
-          "name": "bulkExportId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        }
+      "scopes": [
+        "commerce.bulk-operation:read"
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}/cancelations",
-      "responses": {
-        "200": {
-          "description": "Bulk export cancelled",
-          "schema": {
-            "bulkExport": {
-              "$ref": "#/$defs/BulkExport"
-            },
-            "links": {
-              "description": "Link to the cancelled bulk export.",
-              "items": {
-                "$ref": "#/$defs/link-description"
-              },
-              "type": "array"
-            }
-          }
-        },
-        "400": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "404": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Cancel bulk export"
-    },
-    {
-      "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_exports_bulkExportId_downloads",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        },
-        {
-          "description": "The Bulk Export ID",
-          "in": "path",
-          "name": "bulkExportId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        },
-        {
-          "description": "The export type, required to get bulk export downloads",
-          "in": "query",
-          "name": "exportType",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-exports/{bulkExportId}/downloads",
-      "responses": {
-        "200": {
-          "description": "Bulk export with download links",
-          "schema": {
-            "bulkExport": {
-              "$ref": "#/$defs/BulkExport"
-            },
-            "links": {
-              "description": "Links to self and download.",
-              "items": {
-                "$ref": "#/$defs/link-description"
-              },
-              "type": "array"
-            }
-          }
-        },
-        "400": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "404": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [],
-      "summary": "Get bulk export downloads"
-    },
-    {
-      "description": "Get bulk operations of a store",
-      "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_operations",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        }
-      ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-operations",
-      "responses": {
-        "200": {
-          "description": "Successfully retrieved bulk operations",
-          "schema": {
-            "properties": {
-              "bulkOperation": {
-                "description": "The bulk operations",
-                "items": {
-                  "$ref": "#/$defs/BulkOperation"
-                },
-                "type": "array"
-              }
-            },
-            "type": "object"
-          }
-        },
-        "400": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [],
       "summary": "Get bulk operations"
     },
     {
-      "description": "Create a new bulk operation",
+      "description": "Create a new bulk operation. Existing REST create requests remain\nsupported. GraphQL clients may submit a Query-Transform-Set\n`operation` payload or a legacy `mutation`/`mutationVariables`\npayload.\n\nQuery-Transform-Set requests (`operation` present) acquire a scoped\nlock per store href and mutation target. Concurrent QTS operations\nfor the same store and mutation target may be rejected with\n409 Conflict.\n\nGraphQL create payloads (mutation/mutationVariables/operation) must\nstay under the 256KB EventBridge limit or the request is rejected\nwith 400 Bad Request.\n",
       "method": "POST",
-      "operationId": "post_v1_commerce_stores_storeId_bulk_operations",
+      "operationId": "createBulkOperation",
       "parameters": [
         {
           "description": "The Store ID",
@@ -2256,41 +2540,12 @@
           }
         }
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-operations",
+      "path": "/stores/{storeId}/bulk-operations",
       "requestBody": {
         "contentType": "application/json",
         "required": true,
         "schema": {
-          "properties": {
-            "body": {
-              "description": "The body of the bulk operation request",
-              "example": {
-                "name": "Product 1"
-              },
-              "type": "object"
-            },
-            "filter": {
-              "description": "The optional filter of the bulk operation, should follow\n[OData URL Convention for filtering](http://docs.oasis-open.org/odata/odata/v4.01/cs01/part2-url-conventions/odata-v4.01-cs01-part2-url-conventions.html#sec_SystemQueryOptionfilter)\n",
-              "example": "status eq 'IDLE'",
-              "type": "string"
-            },
-            "href": {
-              "description": "The URL of the bulk operation",
-              "example": "/v1/commerce/stores/:storeId/products/:productId",
-              "type": "string"
-            },
-            "method": {
-              "description": "The method of the bulk operation",
-              "example": "PATCH",
-              "type": "string"
-            },
-            "query": {
-              "description": "The optional query of the bulk operation",
-              "example": "type=PHYSICAL",
-              "type": "string"
-            }
-          },
-          "type": "object"
+          "$ref": "#/$defs/BulkOperationCreate"
         }
       },
       "responses": {
@@ -2311,20 +2566,28 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Internal server error",
+        "409": {
+          "description": "Conflict with the current resource state",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "422": {
+          "description": "Error",
           "schema": {
             "$ref": "#/$defs/error"
           }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-operation:write"
+      ],
       "summary": "Create a bulk operation"
     },
     {
       "description": "Get a bulk operation by ID",
       "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_operations_bulkOperationId",
+      "operationId": "getBulkOperation",
       "parameters": [
         {
           "description": "The Store ID",
@@ -2345,7 +2608,7 @@
           }
         }
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}",
+      "path": "/stores/{storeId}/bulk-operations/{bulkOperationId}",
       "responses": {
         "200": {
           "description": "Successfully retrieved bulk operation",
@@ -2364,20 +2627,22 @@
             "$ref": "#/$defs/error"
           }
         },
-        "500": {
-          "description": "Internal server error",
+        "404": {
+          "description": "Error",
           "schema": {
             "$ref": "#/$defs/error"
           }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-operation:read"
+      ],
       "summary": "Get a bulk operation"
     },
     {
-      "description": "Cancel an ongoing bulk operation",
+      "description": "Cancel an ongoing bulk operation. This is a state transition; the\noperation remains retrievable via GET with status CANCELED.\nA dedicated POST .../cancellations controller resource is a follow-up\nalignment with bulk-ingestions/bulk-exports.\n",
       "method": "DELETE",
-      "operationId": "delete_v1_commerce_stores_storeId_bulk_operations_bulkOperationId",
+      "operationId": "cancelBulkOperation",
       "parameters": [
         {
           "description": "The Store ID",
@@ -2398,9 +2663,9 @@
           }
         }
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}",
+      "path": "/stores/{storeId}/bulk-operations/{bulkOperationId}",
       "responses": {
-        "204": {
+        "200": {
           "description": "Bulk operation cancelled",
           "schema": {
             "properties": {
@@ -2416,21 +2681,17 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-operation:write"
+      ],
       "summary": "Cancel a bulk operation"
     },
     {
-      "description": "Get errors during a bulk operation",
+      "description": "Get errors during a bulk operation. For Query-Transform-Set\noperations, error details may include mutationVariablesResolved so\nclients can identify failed targets and retry them.\n",
       "method": "GET",
-      "operationId": "get_v1_commerce_stores_storeId_bulk_operations_bulkOperationId_errors",
+      "operationId": "listBulkOperationErrors",
       "parameters": [
         {
           "description": "The Store ID",
@@ -2469,7 +2730,7 @@
           }
         }
       ],
-      "path": "/v1/commerce/stores/{storeId}/bulk-operations/{bulkOperationId}/errors",
+      "path": "/stores/{storeId}/bulk-operations/{bulkOperationId}/errors",
       "responses": {
         "200": {
           "description": "Successfully retrieved bulk operation errors",
@@ -2477,7 +2738,7 @@
             "properties": {
               "errors": {
                 "items": {
-                  "$ref": "#/$defs/BulkOperationItem"
+                  "$ref": "#/$defs/BulkOperationError"
                 },
                 "type": "array"
               },
@@ -2501,15 +2762,11 @@
           "schema": {
             "$ref": "#/$defs/error"
           }
-        },
-        "500": {
-          "description": "Internal server error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
         }
       },
-      "scopes": [],
+      "scopes": [
+        "commerce.bulk-operation:read"
+      ],
       "summary": "Get bulk operation errors"
     }
   ],

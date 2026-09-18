@@ -67,6 +67,10 @@ mod tests {
 
     #[test]
     fn prod_account_url_via_environments_module() {
+        // `environments::resolve` validates every field (not just
+        // account_url), so this races against any test elsewhere in the
+        // crate that mutates a GDDY_* override var — see `ENV_LOCK`'s doc.
+        let _g = environments::test_support::ENV_LOCK.blocking_lock();
         let env = environments::resolve("prod").expect("prod resolves");
         assert_eq!(
             format!("{}/payment-methods/add-payment?plid=1", env.account_url),
@@ -76,6 +80,9 @@ mod tests {
 
     #[test]
     fn ote_account_url_via_environments_module() {
+        // See `prod_account_url_via_environments_module` for why this takes
+        // `ENV_LOCK`.
+        let _g = environments::test_support::ENV_LOCK.blocking_lock();
         let env = environments::resolve("ote").expect("ote resolves");
         assert_eq!(
             format!("{}/payment-methods/add-payment?plid=1", env.account_url),

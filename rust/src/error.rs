@@ -42,7 +42,7 @@ mod fixes {
     pub(super) const NETWORK_SERVER: &str =
         "The API is currently failing server-side. Retry, or check service health/incidents.";
     pub(super) const NETWORK_GRAPHQL: &str = "Check GraphQL query, variables, and operationName. Inspect error.details.response.errors for resolver/validation details.";
-    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting nodejs app list";
+    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting app list";
     /// Live `api call` 404: the requested URL/resource was not found (not a catalog miss).
     pub(super) const NOT_FOUND_API: &str =
         "Check the request path and parameters. Inspect the response body for details.";
@@ -320,7 +320,7 @@ mod tests {
         assert!(
             hosting_missing
                 .error_fix()
-                .is_some_and(|f| f.contains("hosting nodejs app list")),
+                .is_some_and(|f| f.contains("hosting app list")),
             "{:?}",
             hosting_missing.error_fix()
         );

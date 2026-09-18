@@ -2,9 +2,9 @@ mod dereference;
 mod domains_merge;
 mod github;
 mod graphql;
-mod hosting_spec;
 mod manifest;
 mod openapi;
+mod shopping_merge;
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -70,11 +70,6 @@ fn resolve_output_dir() -> PathBuf {
     manifest_dir.join("../../schemas/api")
 }
 
-fn resolve_hosting_spec_path() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.join("../../schemas/openapi/hosting-nodejs-public-v1.yaml")
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -82,8 +77,6 @@ fn resolve_hosting_spec_path() -> PathBuf {
 fn main() -> Result<()> {
     let output_dir = resolve_output_dir();
     std::fs::create_dir_all(&output_dir).context("failed to create output dir")?;
-
-    hosting_spec::refresh(&resolve_hosting_spec_path())?;
 
     let source_manifest = load_source_manifest()?;
     eprintln!("Discovering specification repositories...");
@@ -107,6 +100,14 @@ fn main() -> Result<()> {
         )
         .context("failed to refresh domains-client codegen spec")?;
     }
+    if let Some(shopping_source) = sources.iter().find(|s| s.domain == "shopping") {
+        shopping_merge::refresh(
+            &shopping_source.spec_file,
+            common_types,
+            &shopping_merge::shopping_client_oas3_path(),
+        )
+        .context("failed to refresh shopping-client codegen spec")?;
+    }
 
     sources.extend(local_spec_sources(&source_manifest)?);
 
@@ -121,7 +122,7 @@ fn main() -> Result<()> {
     let mut active_files: HashSet<String> = HashSet::new();
     let mut total_endpoints = 0usize;
 
-    for source in &sources {
+    for source in sources.iter().filter(|source| source.catalog) {
         eprintln!(
             "Processing {} ({}/{})...",
             source.domain, source.repo_name, source.spec_version

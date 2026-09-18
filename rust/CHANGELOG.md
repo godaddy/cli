@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.2.19](https://github.com/godaddy/cli/compare/v0.2.18...v0.2.19) (2026-09-17)
+
+
+### Miscellaneous
+
+* **hosting:** Implement shopping hint in hosting guide when custome… ([#273](https://github.com/godaddy/cli/issues/273)) ([5b60267](https://github.com/godaddy/cli/commit/5b6026709893b6695d73bba40733e153342e2ba3))
+
+## [0.2.18](https://github.com/godaddy/cli/compare/v0.2.17...v0.2.18) (2026-09-17)
+
+
+### Features
+
+* **repo:** generate CODEOWNERS from a reviewer config and align source layout with product ownership ([#265](https://github.com/godaddy/cli/issues/265)) ([0f85459](https://github.com/godaddy/cli/commit/0f854596158c190f8a5f67cf4bb7c8ce16f702b6))
+
+
+### Bug Fixes
+
+* **api-catalog:** refresh upstream specs, fix duplicated bulk-operations path prefix ([#268](https://github.com/godaddy/cli/issues/268)) ([29bc626](https://github.com/godaddy/cli/commit/29bc626aa382bc593859b3843b1140ae8bf1b90f))
+
+
+### Documentation
+
+* Update email guide to call shopping CL for email purchase ([#271](https://github.com/godaddy/cli/issues/271)) ([ea97ddf](https://github.com/godaddy/cli/commit/ea97ddfdf5766684dd2a2a8bbac4631e5ef048e2))
+
+## [0.2.17](https://github.com/godaddy/cli/compare/v0.2.16...v0.2.17) (2026-09-16)
+
+
+### Features
+
+* **shopping:** add Order Management API commands ([#253](https://github.com/godaddy/cli/issues/253)) ([2611a7a](https://github.com/godaddy/cli/commit/2611a7a9aa7dc1c73134b0229848bf545b83f453))
+
+## [0.2.16](https://github.com/godaddy/cli/compare/v0.2.15...v0.2.16) (2026-09-16)
+
+
+### Bug Fixes
+
+* **domain:** unblock domain purchase for PAT-authenticated requests ([#264](https://github.com/godaddy/cli/issues/264)) ([bea9293](https://github.com/godaddy/cli/commit/bea9293a68414e92c4f735d6549a51070786a09b))
+
+## [0.2.15](https://github.com/godaddy/cli/compare/v0.2.14...v0.2.15) (2026-09-16)
+
+
+### Features
+
+* Add CLI command groups for Hosting API ([#248](https://github.com/godaddy/cli/issues/248)) ([0c5cea0](https://github.com/godaddy/cli/commit/0c5cea0dc58124238f6343b2ecf7efa207c4a5e6))
+
+## [0.2.14](https://github.com/godaddy/cli/compare/v0.2.13...v0.2.14) (2026-09-15)
+
+
+### Features
+
+* **platform:** add init from-existing flag to sync app config into godaddy.toml ([#254](https://github.com/godaddy/cli/issues/254)) ([4715518](https://github.com/godaddy/cli/commit/4715518e8fd859b8ab19d9b6e45e55103aa7039f))
+
+
+### Bug Fixes
+
+* **deps:** update rustls to patch TLS 1.3 handshake advisory ([#258](https://github.com/godaddy/cli/issues/258)) ([9124112](https://github.com/godaddy/cli/commit/9124112a33cb8319e4776feaf647866d5dd07414))
+* **dns:** enforce TLSA/CAA required fields for lower-case --type ([#256](https://github.com/godaddy/cli/issues/256)) ([bc308dc](https://github.com/godaddy/cli/commit/bc308dc3927ad14eeab4ca5ae8730120f4969031))
+
+## [0.2.13](https://github.com/godaddy/cli/compare/v0.2.12...v0.2.13) (2026-09-10)
+
+
+### Features
+
+* **dns:** add HTTPS, SVCB, and TLSA record support ([#246](https://github.com/godaddy/cli/issues/246)) ([ba6eace](https://github.com/godaddy/cli/commit/ba6eace045f9944a81c4be103f3bb0a38b68b6d8))
+* **platform:** add store app enablements command ([#251](https://github.com/godaddy/cli/issues/251)) ([b931877](https://github.com/godaddy/cli/commit/b931877db9f44fa93538b371da43908d5433a60a))
+
+
+### Bug Fixes
+
+* **api-catalog:** resync spec drift and support TLSA DNS records ([#244](https://github.com/godaddy/cli/issues/244)) ([fccd2fd](https://github.com/godaddy/cli/commit/fccd2fd24ff253d13475b195f826ce2aaa2db1de))
+* **api-catalog:** resync spec drift and test the whole workspace in CI ([#241](https://github.com/godaddy/cli/issues/241)) ([efe8749](https://github.com/godaddy/cli/commit/efe8749a93f038435820fb63387d038a64c7770b))
+* **email:** Updating to align with productivity panel api ([#245](https://github.com/godaddy/cli/issues/245)) ([d5bb34d](https://github.com/godaddy/cli/commit/d5bb34dbcb978e36acb7a3df1de05eb0564e486e))
+
+
+### Documentation
+
+* Updated the email guide ([#252](https://github.com/godaddy/cli/issues/252)) ([7139908](https://github.com/godaddy/cli/commit/7139908a7a330b2fc677f2bc845eaecb4ff0e4e2))
+
 ## [0.2.12](https://github.com/godaddy/cli/compare/v0.2.11...v0.2.12) (2026-09-01)
 
 

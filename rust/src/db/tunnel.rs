@@ -33,11 +33,11 @@ use tokio_tungstenite::tungstenite::http::{HeaderValue, header::AUTHORIZATION};
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config};
 
-use crate::application::client::api_url_for_env;
 use crate::error::GddyError;
-use crate::hosting::nodejs::client::HostingClient;
+use crate::hosting::client::HostingClient;
+use crate::http::api_url_for_env;
 use crate::scopes::HOSTING_DATABASE_TUNNEL as DATABASE_TUNNEL;
-use crate::scopes::HOSTING_DEPLOY_EXECUTE as DEPLOY_EXECUTE;
+use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 /// A connected agent WebSocket (TLS for `wss`, plain for `ws`).
 type AgentSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;

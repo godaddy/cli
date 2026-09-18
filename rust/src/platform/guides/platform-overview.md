@@ -46,14 +46,18 @@ Bundles, security-scans, and uploads the extensions declared in `godaddy.toml`, 
 ```sh
 gddy platform app enable <name> --store-id <storeId>
 gddy platform app disable <name> --store-id <storeId>
+gddy platform app enablements --store-id <storeId>
 ```
 
-Makes the application (and everything in its latest release — actions, subscriptions, extensions, settings) available on, or removes it from, one store. Settings have no inheritance across releases: a store already enabled against an older release does not pick up settings added by a newer one until `enable` is re-run for that store.
+`enable` / `disable` make the application (and everything in its latest release — actions, subscriptions, extensions, settings) available on, or remove it from, one store. Settings have no inheritance across releases: a store already enabled against an older release does not pick up settings added by a newer one until `enable` is re-run for that store.
+
+`enablements` is the read counterpart: it lists which applications are currently enabled on that store (empty list if none). Use it to verify an `enable` or audit what is bound to a store. Default output fields are `name`, `status`, and `releaseVersion` (the enabled release’s version string — not the full release object). Pass `--fields id,label` or `--fields all` to include the application id and/or label. App listing (`list` / `info`) is separate — those show developer apps in App Registry, not per-store enablements.
 
 ## Other useful commands
 
 - `gddy platform app validate <name>` — check *remote* application state (URL/proxy-url set, not INACTIVE), as opposed to `config validate`'s local manifest check.
-- `gddy platform app info --name <name>` / `list` — inspect a single app or list all of them.
+- `gddy platform app info --name <name>` / `list` — inspect a single app or list all of them (developer catalog, not store enablements).
+- `gddy platform app enablements --store-id <storeId>` — list apps enabled on a store (defaults: name, status, releaseVersion).
 - `gddy platform app archive <name>` — irreversible; confirm the name with `list` first.
 - `gddy platform actions` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
 

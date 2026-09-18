@@ -13,9 +13,8 @@ This is a command-line application. Source code is written in Rust and lives und
 - **Format**: `cargo fmt`
 - **Check**: `cargo check --workspace`
 - **Refresh API specs**: `cargo run -p generate-api-catalog`
-  — set `SKIP_DOMAINS_REFRESH`/`SKIP_HOSTING_REFRESH` to skip either pull for
-  local iteration without network access; `HOSTING_SPEC_URL`/`HOSTING_SPEC_PATH`
-  override where the hosting-nodejs spec comes from.
+  — set `SKIP_DOMAINS_REFRESH` to skip the domains-client spec pull for
+  local iteration without network access.
 
 ## Verification Checklist (required before finishing work)
 
@@ -43,6 +42,11 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
   - Use `.expect("reason")` instead of `.unwrap()`
   - No `println!`/`eprintln!` — use `tracing` or `cli-engine` event streams
 - Keep functions focused; avoid premature abstractions.
+
+## Shopping post-purchase actions
+
+- `rust/src/shopping/product_actions.rs` maps Shopping line-item categories to post-purchase CLI guidance.
+- When adding a product purchasable through `shopping` that has a follow-up CLI flow, add its category-to-guide action there and cover it with a unit test. Keep the action list limited to product-specific next steps.
 
 ## Command Patterns (Required)
 
