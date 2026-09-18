@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.21](https://github.com/godaddy/cli/compare/v0.2.20...v0.2.21) (2026-09-18)
+
+
+### Bug Fixes
+
+* **email:** Email purchase as next action in eligibility check ([#281](https://github.com/godaddy/cli/issues/281)) ([4ee8b41](https://github.com/godaddy/cli/commit/4ee8b4149eacebb12386b9694d22388092646e8c))
+
+
+### Miscellaneous
+
+* **hosting:** import types at top of hosting client file ([#278](https://github.com/godaddy/cli/issues/278)) ([fd8e024](https://github.com/godaddy/cli/commit/fd8e024ff0982ae6bdd180889de5faed2a910ee4))
+
 ## [0.2.20](https://github.com/godaddy/cli/compare/v0.2.19...v0.2.20) (2026-09-18)
 
 
