@@ -41,6 +41,11 @@
       "title": "Fulfillment Service",
       "endpointCount": 4
     },
+    "hosting": {
+      "file": "hosting.json",
+      "title": "Hosting API",
+      "endpointCount": 25
+    },
     "location-addresses": {
       "file": "location-addresses.json",
       "title": "Addresses API",
