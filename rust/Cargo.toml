@@ -6,7 +6,15 @@ description = "GoDaddy developer CLI"
 license = "Proprietary"
 
 [workspace]
-members = [".", "tools/generate-api-catalog", "domains-client", "hosting-client", "shopping-client"]
+members = [
+    ".",
+    "tools/generate-api-catalog",
+    "domains-client",
+    "hosting-client",
+    "shopping-client",
+    "email-client",
+    "generated-client-support",
+]
 
 [[bin]]
 name = "gddy"
@@ -23,6 +31,8 @@ clap = { version = "4.5", features = ["std", "string", "derive"] }
 cli-engine = { version = "0.9.5", features = ["pkce-auth"] }
 dirs = "6"
 domains-client = { path = "domains-client" }
+email-client = { path = "email-client" }
+generated-client-support = { path = "generated-client-support" }
 hosting-client = { path = "hosting-client" }
 shopping-client = { path = "shopping-client" }
 fancy-regex = "0.14"

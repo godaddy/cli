@@ -15,6 +15,37 @@ pub fn make_http_client() -> Client {
         .expect("failed to build HTTP client")
 }
 
+/// Bridges `generated-client-support::TransportObserver` (shared by every
+/// progenitor-generated client crate: `domains-client`, `shopping-client`,
+/// `email-client`, ...) into cli-engine's `--debug transport` logger. One
+/// registration for every generated client, rather than one per command
+/// module — they'd all just forward to the same
+/// `cli_engine::transport::debug_log_reqwest_*` calls anyway.
+struct CliEngineTransportObserver;
+
+impl generated_client_support::TransportObserver for CliEngineTransportObserver {
+    fn on_request(&self, request: &reqwest::Request) {
+        cli_engine::transport::debug_log_reqwest_request(request);
+    }
+
+    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap) {
+        cli_engine::transport::debug_log_reqwest_response(status, headers, &[]);
+    }
+}
+
+static GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT: std::sync::Once = std::sync::Once::new();
+
+/// Registers the shared transport observer the first time any generated
+/// client is constructed. Idempotent and cheap to call from every
+/// `make_client`-style helper (`domain`, `email`, `shopping`, ...).
+pub(crate) fn ensure_generated_client_transport_observer_registered() {
+    GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT.call_once(|| {
+        generated_client_support::set_transport_observer(Some(std::sync::Arc::new(
+            CliEngineTransportObserver,
+        )));
+    });
+}
+
 /// The API base URL for `env`.
 ///
 /// # Errors
