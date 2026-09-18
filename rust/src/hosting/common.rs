@@ -304,7 +304,7 @@ mod tests {
                 status: 422,
                 body: r#"{"message":"This app must be attached to a Web Hosting plan to publish.","details":[{"issue":"WH_PLAN_REQUIRED"}]}"#.to_owned(),
             },
-            "Run: gddy hosting subscription list",
+            "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING",
         );
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
         assert_eq!(
@@ -315,7 +315,7 @@ mod tests {
         );
         assert_eq!(
             envelope.fix.as_deref(),
-            Some("Run: gddy hosting subscription list")
+            Some("Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
         );
     }
 
