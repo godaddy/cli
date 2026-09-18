@@ -1,6 +1,6 @@
 [package]
 name = "hosting-client"
-version = "0.2.19"
+version = "0.2.20"
 edition = "2024"
 license = "Proprietary"
 description = "Generated GoDaddy Hosting API client, produced from the vendored OpenAPI 3.0 spec by progenitor at build time."
