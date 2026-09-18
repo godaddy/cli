@@ -340,25 +340,24 @@ async fn list_secrets_sends_variant_query_param() {
 }
 
 #[tokio::test]
-async fn sync_secrets_sends_body() {
+async fn patch_secrets_sends_json_patch() {
     let server = MockServer::start_async().await;
-    let body = json!({
-        "variant": "PREVIEW",
-        "operations": { "additions": [{ "name": "MY_SECRET", "value": "val" }] }
-    });
+    let patch = json!([{ "op": "add", "path": "/MY_SECRET", "value": "val" }]);
     let mock = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/hosting/apps/app-1/sync-secrets")
-                .json_body(body.clone());
+            when.method(PATCH)
+                .path("/v1/hosting/apps/app-1/secrets")
+                .query_param("variant", "PREVIEW")
+                .header("content-type", "application/json-patch+json")
+                .json_body(patch.clone());
             then.status(200).json_body(json!({ "items": [] }));
         })
         .await;
 
     client(&server.base_url())
-        .sync_secrets("app-1", body)
+        .patch_secrets("app-1", "PREVIEW", patch)
         .await
-        .expect("sync secrets");
+        .expect("patch secrets");
 
     mock.assert_async().await;
 }

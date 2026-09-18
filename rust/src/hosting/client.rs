@@ -114,20 +114,30 @@ impl HostingClient {
 
     // JSON Patch (RFC 6902) requires application/json-patch+json, which reqwest's
     // .json() won't set. Serialize manually and force the content-type header.
-    async fn send_patch(&self, path: &str, body: Value) -> Result<Value, ClientError> {
+    async fn send_patch(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        body: Value,
+    ) -> Result<Value, ClientError> {
         let body_str = serde_json::to_string(&body).map_err(|e| ClientError::Http {
             status: 0,
             body: format!("failed to serialize patch: {e}"),
         })?;
 
-        let request = self
+        let mut req = self
             .client
             .request(Method::PATCH, self.url(path))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id())
             .header("content-type", "application/json-patch+json")
-            .body(body_str)
-            .build()?;
+            .body(body_str);
+
+        for (key, value) in query {
+            req = req.query(&[(key, value)]);
+        }
+
+        let request = req.build()?;
         cli_engine::transport::debug_log_reqwest_request(&request);
         let resp = self.client.execute(request).await?;
 
@@ -185,7 +195,8 @@ impl HostingClient {
     }
 
     pub async fn update_app(&self, app_id: &str, patch: Value) -> Result<Value, ClientError> {
-        self.send_patch(&format!("/apps/{app_id}"), patch).await
+        self.send_patch(&format!("/apps/{app_id}"), &[], patch)
+            .await
     }
 
     pub async fn delete_app(&self, app_id: &str) -> Result<Value, ClientError> {
@@ -352,12 +363,16 @@ impl HostingClient {
         .await
     }
 
-    pub async fn sync_secrets(&self, app_id: &str, body: Value) -> Result<Value, ClientError> {
-        self.send_json(
-            Method::POST,
-            &format!("/apps/{app_id}/sync-secrets"),
-            &[],
-            Some(body),
+    pub async fn patch_secrets(
+        &self,
+        app_id: &str,
+        variant: &str,
+        patch: Value,
+    ) -> Result<Value, ClientError> {
+        self.send_patch(
+            &format!("/apps/{app_id}/secrets"),
+            &[("variant", variant.to_owned())],
+            patch,
         )
         .await
     }
