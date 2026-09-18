@@ -35,7 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         client_err_with_fix(
                             e,
                             "Run: 'gddy shopping catalog search --query titan' \
-                             to see available email plans, then select one to continue.",
+                             to see available email plans, select one to purchase, then retry.",
                         )
                     }
                     _ => client_err(e),
@@ -143,7 +143,7 @@ mod tests {
                 body: body.to_owned(),
             },
             "Run: 'gddy shopping catalog search --query titan' \
-             to see available email plans, then select one to continue.",
+             to see available email plans, select one to purchase, then retry.",
         );
         let envelope = build_error_envelope(&err, "email");
         assert!(
