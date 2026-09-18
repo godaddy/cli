@@ -6,7 +6,7 @@ mod create;
 mod get;
 mod list;
 
-pub(crate) use common::{client_err, client_err_with_fix, make_client};
+pub(crate) use common::{body_has_issue, client_err, client_err_with_fix, make_client};
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 

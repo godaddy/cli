@@ -4,7 +4,7 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::email::client::ClientError;
-use crate::email::{client_err, client_err_with_fix, make_client};
+use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_CREATE;
 
@@ -74,6 +74,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let client = make_client(&ctx, &[EMAIL_CREATE]).await?;
             let body = request_body(&args);
             let data = client.create_mailbox(body).await.map_err(|e| match &e {
+                ClientError::Http { status, body }
+                    if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                {
+                    client_err_with_fix(
+                        e,
+                        "Run: 'gddy shopping catalog search --query titan' \
+                         to see available email plans, then select one to continue.",
+                    )
+                }
                 ClientError::Http { status, .. } if *status == 400 || *status == 422 => {
                     client_err_with_fix(
                         e,
@@ -136,5 +145,28 @@ mod tests {
     fn create_next_actions_empty_when_mailbox_id_absent() {
         let data = json!({ "status": "EXECUTING" });
         assert!(create_next_actions(&data).is_empty());
+    }
+
+    #[test]
+    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Run: 'gddy shopping catalog search --query titan' \
+             to see available email plans, then select one to continue.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("shopping catalog search")),
+            "{envelope:?}"
+        );
     }
 }
