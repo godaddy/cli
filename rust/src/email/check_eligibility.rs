@@ -3,7 +3,8 @@ use cli_engine::{
 };
 use serde_json::Value;
 
-use crate::email::{client_err, make_client};
+use crate::email::client::ClientError;
+use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_READ;
 
@@ -27,7 +28,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let data = client
                 .check_eligibility(&args.email)
                 .await
-                .map_err(client_err)?;
+                .map_err(|e| match &e {
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Run: 'gddy shopping catalog search --query titan' \
+                             to see available email plans, select one to purchase, then retry.",
+                        )
+                    }
+                    _ => client_err(e),
+                })?;
             let next_actions = eligibility_next_actions(&args.email, &data);
             Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
@@ -118,6 +130,29 @@ mod tests {
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].command, "gddy guide email");
+    }
+
+    #[test]
+    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Run: 'gddy shopping catalog search --query titan' \
+             to see available email plans, select one to purchase, then retry.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("shopping catalog search")),
+            "{envelope:?}"
+        );
     }
 
     #[test]
