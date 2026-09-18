@@ -39,7 +39,8 @@ use crate::http::api_url_for_env;
 use crate::scopes::HOSTING_DATABASE_TUNNEL as DATABASE_TUNNEL;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
-/// A connected agent WebSocket (TLS for `wss`, plain for `ws`).
+/// A connected agent WebSocket. Always TLS: `build_tunnel_ws_url` admits only
+/// `wss`, so the plain arm of `MaybeTlsStream` is never taken.
 type AgentSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Bytes read from the local MySQL client per WebSocket frame. Kept well under
@@ -528,7 +529,14 @@ fn is_loopback_host(host: &str) -> bool {
 }
 
 /// Turn an agent base URL + app id into the WebSocket tunnel URL, mapping
-/// `http`→`ws` and `https`→`wss` and replacing the path with the tunnel route.
+/// `https`→`wss` (the scheme tungstenite requires) and replacing the path with
+/// the tunnel route.
+///
+/// Cleartext `http`/`ws` is rejected, not downgraded to `ws`. The agent URL is
+/// service-supplied — it comes only from the mint response — so a plaintext
+/// value means a mis-provisioned or compromised control plane, not an operator
+/// choice. Tunnelling it anyway would put the minted bearer token and every
+/// MySQL byte on the wire in the clear, so fail closed instead.
 fn build_tunnel_ws_url(agent_url: &str, app_id: &str) -> Result<String, GddyError> {
     validate_app_id(app_id)?;
     let parsed = url::Url::parse(agent_url).map_err(|e| {
@@ -537,11 +545,10 @@ fn build_tunnel_ws_url(agent_url: &str, app_id: &str) -> Result<String, GddyErro
         ))
     })?;
     let ws_scheme = match parsed.scheme() {
-        "http" | "ws" => "ws",
         "https" | "wss" => "wss",
         other => {
             return Err(GddyError::network(format!(
-                "agent URL has an unsupported scheme '{other}': expected http, https, ws, or wss"
+                "agent URL has an insecure or unsupported scheme '{other}': expected https or wss"
             )));
         }
     };
@@ -590,9 +597,20 @@ mod tests {
     use super::build_tunnel_ws_url;
 
     #[test]
-    fn builds_ws_url_from_http_agent_with_port() {
-        let url = build_tunnel_ws_url("http://127.0.0.1:4000", "abcdef1234").expect("valid url");
-        assert_eq!(url, "ws://127.0.0.1:4000/apps/abcdef1234/database/tunnel");
+    fn rejects_plaintext_schemes() {
+        // The agent URL comes from the service, never the operator, so a
+        // cleartext value is a control-plane fault — reject it rather than
+        // relay the bearer token and MySQL bytes in the clear.
+        for url in [
+            "http://127.0.0.1:4000",
+            "ws://localhost:8080",
+            "http://agent.host.example",
+        ] {
+            assert!(
+                build_tunnel_ws_url(url, "abcdef1234").is_err(),
+                "expected {url:?} to be rejected"
+            );
+        }
     }
 
     #[test]
@@ -606,12 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_ws_and_wss_schemes() {
-        assert!(
-            build_tunnel_ws_url("ws://localhost:8080", "abcdef1234")
-                .expect("valid")
-                .starts_with("ws://")
-        );
+    fn preserves_wss_scheme() {
         assert!(
             build_tunnel_ws_url("wss://host.example", "abcdef1234")
                 .expect("valid")
@@ -634,13 +647,13 @@ mod tests {
 
     #[test]
     fn rejects_missing_host() {
-        assert!(build_tunnel_ws_url("http://", "abcdef1234").is_err());
+        assert!(build_tunnel_ws_url("https://", "abcdef1234").is_err());
     }
 
     #[test]
     fn rejects_bad_app_id() {
-        assert!(build_tunnel_ws_url("http://host:3306", "").is_err());
-        assert!(build_tunnel_ws_url("http://host:3306", "a/b").is_err());
+        assert!(build_tunnel_ws_url("https://host:3306", "").is_err());
+        assert!(build_tunnel_ws_url("https://host:3306", "a/b").is_err());
     }
 
     #[test]
@@ -649,7 +662,7 @@ mod tests {
         // id reaches the agent-token path or the WebSocket route.
         for bad in ["abc#x", "abc?x", "abc x", "abc%2f", "a.b", "a:b"] {
             assert!(
-                build_tunnel_ws_url("http://host:3306", bad).is_err(),
+                build_tunnel_ws_url("https://host:3306", bad).is_err(),
                 "expected {bad:?} to be rejected"
             );
         }
