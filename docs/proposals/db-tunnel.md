@@ -68,9 +68,22 @@ Key properties, all enforced in code:
 | `--app-id <APP_ID>` | yes | — | The application/site to tunnel to. The CLI mints a token for this app and connects to its assigned agent. |
 | `--port <PORT>` | no | `3306` | Local TCP port MySQL clients connect to. |
 | `--listen-host <HOST>` | no | `127.0.0.1` | Local interface to bind. |
+| `--allow-non-loopback` | no | off | Permit a non-loopback bind (for example `0.0.0.0`); off by default. See **Bind safety** below. |
+
+**Bind safety.** The local port relays straight to the app's live database and
+performs no authentication of its own, so binding it past loopback would put
+that database on the network. The command binds `127.0.0.1` by default and
+**refuses** a non-loopback `--listen-host` unless `--allow-non-loopback` is also
+passed; that check runs before a token is minted or a port is bound, so the
+refusal is immediate and fails closed. When a non-loopback bind is opted into,
+the command emits a prominent warning naming the exposed interface. On every run
+it also warns that the tunnel reaches the app's **live** database — queries run
+against production data, with no staging copy and no undo.
 
 The command authenticates with the CLI's own GoDaddy OAuth credential, stepped
-up to the same scope that publishing a hosting deployment requires. It first
+up to a dedicated database-tunnel scope *in addition to* the scope that
+publishing a hosting deployment requires — so publish authority alone does not
+grant database access. It first
 asks the hosting API for the app's assigned agent URL and a short-lived token,
 then opens the tunnel to that URL, presenting the token as
 `Authorization: Bearer`. Neither the agent URL nor the token is a user-supplied
@@ -79,8 +92,8 @@ to wire up by hand.
 
 ```console
 $ gddy db tunnel --app-id <app-id>
-# then, in another shell:
-$ mysql -h 127.0.0.1 -P 3306 -u <user> -p
+# then, in another shell (connect with TLS so the local hop is encrypted too):
+$ mysql --ssl-mode=REQUIRED -h 127.0.0.1 -P 3306 -u <user> -p
 ```
 
 ### Input validation and URL derivation
@@ -141,11 +154,14 @@ downstream result frame is not rejected mid-query.
 ### Events
 
 Progress is streamed as JSON events: an `authorize` step (`started`/`completed`)
-around the token mint, `listening` (bound address, agent URL, app id), a `hint`
-with the `mysql -h …` line, `connection` events (`open`/`close`/`error`, with
-per-connection byte counts and a close reason), a `warning` on a failed
-`accept`, a `shutdown` step on Ctrl-C, and a terminal `result` carrying the app
-id and total accepted connections. Terminal errors reuse
+around the token mint, `listening` (bound address, agent URL, app id), a
+`warning` that the tunnel reaches the app's **live** database (emitted on every
+run) and, when a non-loopback interface was opted into, a second `warning`
+naming that interface, a `hint` carrying a TLS-enabled `mysql --ssl-mode=REQUIRED
+…` line, `connection` events (`open`/`close`/`error`, with per-connection byte
+counts and a close reason), a further `warning` on a failed `accept`, a
+`shutdown` step on Ctrl-C, and a terminal `result` carrying the app id and total
+accepted connections. Terminal errors reuse
 `cli_engine::build_error_envelope` via `tunnel_error_event`, so `code`,
 `message`, and `fix` match what a non-streaming command would render.
 `map_ws_err` turns handshake failures into status-aware fixes
@@ -175,9 +191,11 @@ that the CLI simply presents to the agent.
 
 Authorization is checked in depth:
 
-1. **OAuth scope at the mint endpoint.** The mint call requires the same OAuth
-   scope that publishing a hosting deployment does, and is rate-limited. An
-   unauthenticated or under-scoped caller never reaches the mint logic.
+1. **OAuth scope at the mint endpoint.** The mint call requires a dedicated
+   database-tunnel scope *in addition to* the scope that publishing a hosting
+   deployment does, and is rate-limited — so authority to publish a deployment
+   does not by itself authorize a database tunnel. An unauthenticated or
+   under-scoped caller never reaches the mint logic.
 2. **App ownership at the hosting API.** The app is resolved scoped to the
    authenticated customer; an app the caller does not own is not found, and the
    request fails **before** any token is minted.
@@ -197,8 +215,9 @@ The CLI holds only its GoDaddy **OAuth2 access token**. It never mints, parses,
 stores, or pastes the app-scoped token the tunnel uses; it receives that token
 from the hosting API at mint time and holds it in memory only for the lifetime
 of the tunnel. Because the identity exchange and token signing are entirely
-server-side, changing how the token is minted — including tightening its scope
-later — needs **no CLI change**.
+server-side, changing how the app-scoped token is minted or signed needs **no
+CLI change** — the OAuth scopes the CLI steps up to and presents at the mint
+endpoint are the one part declared CLI-side.
 
 ## Security model
 
@@ -206,15 +225,25 @@ later — needs **no CLI change**.
   and port and dials them; it never writes credentials into the relayed stream.
   The MySQL client authenticates directly against the database, so end-to-end
   MySQL auth and TLS (including `require_secure_transport=ON`) are preserved.
+- **Encrypt the session at the client.** The tunnel terminates no TLS; it
+  forwards whatever the client sends. If the client connects without TLS, the
+  local hop between the client and the listener — and the hop from the agent to
+  the database — carry the MySQL session in the clear, exposing credentials and
+  query traffic to anything able to observe those segments. Connect the client
+  with TLS enabled (for example `mysql --ssl-mode=REQUIRED`); the MySQL session
+  is then encrypted end-to-end, from the client through to the database, across
+  every hop. A database can compel this with `require_secure_transport=ON`.
 - **The destination is pinned server-side.** The client supplies no target host
   — only `--app-id`. The agent derives the DB target from the app's own
   configuration, so there is no SSRF surface.
-- **Ownership is enforced in depth**, not just at the edge: an OAuth scope gate
-  and a customer-scoped app lookup before a token is minted, and a
-  token-vs-path app check at the agent before it dials.
+- **Ownership is enforced in depth**, not just at the edge: a dedicated
+  database-tunnel OAuth scope gate (distinct from deploy authority) and a
+  customer-scoped app lookup before a token is minted, and a token-vs-path app
+  check at the agent before it dials.
 - **The token is minted per-run and never persisted.** The CLI requests a
-  short-lived token when the command starts and holds it only in memory for the
-  lifetime of the tunnel; there is nothing to paste, store, or rotate by hand.
+  short-lived token (the hosting API mints it with roughly a one-hour lifetime)
+  when the command starts and holds it only in memory for the lifetime of the
+  tunnel; there is nothing to paste, store, or rotate by hand.
 - **Blast-radius limits.** The mint endpoint is rate-limited; the agent bounds
   idle and total connection duration, caps concurrent tunnels per app and in
   total, and enforces a bounded per-frame size.
@@ -243,9 +272,11 @@ later — needs **no CLI change**.
 - **Server-side mint that also returns the agent URL.** Keeps the app-scoped
   token's signing authority server-side, reuses the platform's existing mint
   primitive, and gives the CLI a one-command UX with nothing to paste.
-- **Reuse the deployment scope.** Tunneling to an app's DB is a comparable level
-  of access to publishing a deployment, so no new OAuth scope needs to be
-  provisioned.
+- **Dedicated database-tunnel scope.** Raw database read/write is a materially
+  broader grant than publishing a deployment, so the mint endpoint requires a
+  dedicated OAuth scope in addition to deploy authority rather than reusing the
+  deployment scope alone. Publish authority by itself does not grant database
+  access.
 - **Ships gated off.** The CLI command is hidden at the GA default and revealed
   only in experimental environments, and the server side is dark-launched, so
   the feature can land and be validated without exposure.
@@ -265,12 +296,14 @@ once the server pieces are enabled in a given environment.
 
 ## Deferred work
 
-- **Token lifetime.** The token is minted once when the command starts and
-  reused for every WebSocket for the tunnel's lifetime (the mint response's
-  expiry is not yet consumed). A tunnel left open past the token's TTL keeps
-  serving its existing connections, but a *new* MySQL connection opened after
-  expiry fails the agent handshake with `401` and the command must be restarted.
-  Pre-emptive re-mint on expiry is a deliberate follow-up.
+- **Pre-emptive re-mint.** The hosting API mints the tunnel token with a short
+  lifetime (roughly one hour). The CLI mints it once when the command starts and
+  reuses it for every WebSocket for the tunnel's lifetime; it does not yet read
+  the mint response's expiry to refresh the token ahead of time. A tunnel left
+  open past that lifetime keeps serving its **existing** connections, but a *new*
+  MySQL connection opened after expiry fails the agent handshake with `401` and
+  the command must be restarted. Consuming the returned expiry to re-mint before
+  it lapses is a deliberate follow-up.
 - **Full-path verification.** The CLI relay and URL/error mapping are
   unit-tested, and the tunnel has been exercised end-to-end against the agent
   handler in isolation. A run through the deployed mint endpoint and the
@@ -288,5 +321,5 @@ once the server pieces are enabled in a given environment.
   (`get_agent_token`) POSTs with bearer auth and parses `{ agentUrl, token }`
   from the response.
 - **CLI gating test** (`rust/src/main.rs`): `db` hidden at the GA default and,
-  once revealed, `db tunnel --help` exposing its `--app-id`, `--port`, and
-  `--listen-host` flags.
+  once revealed, `db tunnel --help` exposing its `--app-id`, `--port`,
+  `--listen-host`, and `--allow-non-loopback` flags.

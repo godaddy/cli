@@ -215,7 +215,10 @@ impl HostingClient {
 
     /// Mint a short-lived agent token for the app and return the agent's
     /// assigned URL alongside it. Response shape: `{ agentUrl, token, expires? }`.
-    /// Requires the same `hosting.paas.deploy:execute` scope as `publish_app`.
+    /// The `db tunnel` caller mints this token with a dedicated
+    /// `hosting.database:tunnel` scope in addition to
+    /// `hosting.paas.deploy:execute`, so publish authority alone does not yield
+    /// a database-tunnel agent token.
     pub async fn get_agent_token(&self, app_id: &str) -> Result<Value, ClientError> {
         // Secret response: the body is a minted bearer token, so it must never
         // reach the `--debug transport` trace (cli-engine would print it in full).

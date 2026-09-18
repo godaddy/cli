@@ -10,9 +10,12 @@
 //!
 //! Auth: the CLI mints a short-lived agent token from the hosting API
 //! (`POST /v1/hosting/nodejs/apps/:id/agent-token`) using your GoDaddy OAuth
-//! credential, then connects to the agent URL that call returns, sending the
-//! minted token as `Authorization: Bearer`. The agent URL and token both come
-//! from the service — neither is a user-supplied flag.
+//! credential, stepped up to a dedicated `hosting.database:tunnel` scope *in
+//! addition to* deploy-execute — so authority to publish a deployment does not
+//! by itself grant raw database read/write. It then connects to the agent URL
+//! that call returns, sending the minted token as `Authorization: Bearer`. The
+//! agent URL and token both come from the service — neither is a user-supplied
+//! flag.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,6 +36,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 use crate::application::client::api_url_for_env;
 use crate::error::GddyError;
 use crate::hosting::nodejs::client::HostingClient;
+use crate::scopes::HOSTING_DATABASE_TUNNEL as DATABASE_TUNNEL;
 use crate::scopes::HOSTING_DEPLOY_EXECUTE as DEPLOY_EXECUTE;
 
 /// A connected agent WebSocket (TLS for `wss`, plain for `ws`).
@@ -91,13 +95,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
              \tmysql -h 127.0.0.1 -P 3306 -u <user> -p\n\n\
              MySQL authentication and TLS are negotiated end-to-end with the \
              database — the tunnel forwards bytes only and never injects or \
-             inspects credentials. The CLI authorizes with your GoDaddy \
-             credentials and connects to the app's assigned agent automatically. \
-             Runs until interrupted (Ctrl-C).",
+             inspects credentials. Because the tunnel does not terminate TLS, \
+             connect your client with TLS enabled (for example \
+             `--ssl-mode=REQUIRED`) so the session is encrypted across the local \
+             hop as well; the database may require it. The CLI authorizes with \
+             your GoDaddy credentials and connects to the app's assigned agent \
+             automatically. Runs until interrupted (Ctrl-C).",
         )
         .with_system("database")
         .with_tier(Tier::Mutate)
-        .with_scopes(&[DEPLOY_EXECUTE]),
+        .with_scopes(&[DEPLOY_EXECUTE, DATABASE_TUNNEL]),
         |ctx, args: TunnelArgs, sender: StreamSender| async move {
             run_tunnel(&ctx, args, &sender).await
         },
@@ -229,7 +236,7 @@ async fn run_tunnel(
         .send(json!({
             "type": "hint",
             "message": format!(
-                "Connect a MySQL client: mysql -h {} -P {} -u <user> -p",
+                "Connect a MySQL client with TLS so the local hop is encrypted, e.g.: mysql --ssl-mode=REQUIRED -h {} -P {} -u <user> -p",
                 args.listen_host, args.port
             ),
         }))
@@ -288,14 +295,15 @@ async fn run_tunnel(
 }
 
 /// Mint a short-lived agent token for `app_id` via the hosting API and return
-/// `(agent_url, token)`. Uses the CLI's OAuth credential stepped up to the
-/// deploy-execute scope — the same authorization `hosting nodejs deployment
-/// publish` requires — so no separate site JWT is needed.
+/// `(agent_url, token)`. Steps the CLI's OAuth credential up to *both*
+/// deploy-execute and the dedicated `hosting.database:tunnel` scope: authority
+/// to publish a deployment does not by itself grant database access, so opening
+/// a tunnel requires the separate database-tunnel grant as well.
 async fn mint_agent_token(
     ctx: &CommandContext,
     app_id: &str,
 ) -> cli_engine::Result<(String, String)> {
-    let required = vec![DEPLOY_EXECUTE.to_owned()];
+    let required = vec![DEPLOY_EXECUTE.to_owned(), DATABASE_TUNNEL.to_owned()];
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
     let client = HostingClient::new(base_url, token);

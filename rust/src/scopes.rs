@@ -121,6 +121,12 @@ declare_scopes! {
     HOSTING_SECRETS_WRITE => "hosting.paas.secrets:write",
     /// Read Node.js Hosting app logs (`hosting nodejs app logs`).
     HOSTING_LOGS_READ => "hosting.paas.logs:read",
+    /// Open a raw MySQL-over-WebSocket tunnel to a Node.js Hosting app's
+    /// database (`db tunnel`). Required *in addition to*
+    /// [`HOSTING_DEPLOY_EXECUTE`], so that authority to publish a deployment
+    /// does not by itself grant raw database read/write — opening a tunnel
+    /// needs this dedicated grant as well.
+    HOSTING_DATABASE_TUNNEL => "hosting.database:tunnel",
 
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
     EMAIL_READ => "email.mailbox:read",
@@ -223,6 +229,11 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_GITHUB_EXECUTE,
         description: "Connect GitHub and import code for your Node.js Hosting apps",
+        default: false,
+    },
+    ScopeInfo {
+        scope: HOSTING_DATABASE_TUNNEL,
+        description: "Open a MySQL tunnel to a Node.js Hosting app's database",
         default: false,
     },
     ScopeInfo {
