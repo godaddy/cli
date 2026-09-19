@@ -8,7 +8,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
 use super::records::{
-    RecordOptions, RecordWriteArgs, fetch_records, record_value, validate_caa_fields,
+    RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
     validate_svcb_fields, validate_tlsa_fields,
 };
 
@@ -140,20 +140,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .with_fix(fix)
                     .into_cli_error());
             }
-            // (record_id, current value) per existing record — `plan_set` pairs a
-            // desired value with the record already holding it before falling back
-            // to position, so a retained value is never re-created.
-            let existing_pairs: Vec<(String, String)> = existing
-                .iter()
-                .filter_map(|r| {
-                    Some((
-                        r.record_id.clone()?,
-                        record_value(r).unwrap_or_default().to_owned(),
-                    ))
-                })
-                .collect();
-
-            let plan = plan_set(&existing_pairs, &data);
+            let desired = v3_records(&name, &record_type, &data, &opts);
+            let plan = plan_set(&existing, &desired);
             if ctx.dry_run() {
                 return Ok(CommandResult::new(dry_run_set_preview(
                     &domain,
