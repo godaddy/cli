@@ -3,6 +3,7 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
 };
+use platform_app_client::enabled_store_applications::EnabledStoreApplicationsEnabledStoreApplications;
 use serde_json::{Value, json};
 
 use super::schemas::StoreEnablement;
@@ -31,23 +32,16 @@ fn view_columns() -> Vec<TableColumn> {
 /// Lifts `release.version` to top-level `releaseVersion` so defaults can show
 /// the version string without embedding the whole `release` object (dotted
 /// `--fields` paths like `release.version` are not supported).
-fn flatten_enablements(data: Value) -> Value {
-    let Some(rows) = data.as_array() else {
-        return json!([]);
-    };
+fn flatten_enablements(rows: Vec<EnabledStoreApplicationsEnabledStoreApplications>) -> Value {
     let flattened: Vec<Value> = rows
-        .iter()
+        .into_iter()
         .map(|row| {
-            let release_version = row
-                .pointer("/release/version")
-                .cloned()
-                .unwrap_or(Value::Null);
             json!({
-                "id": row.get("id").cloned().unwrap_or(Value::Null),
-                "name": row.get("name").cloned().unwrap_or(Value::Null),
-                "label": row.get("label").cloned().unwrap_or(Value::Null),
-                "status": row.get("status").cloned().unwrap_or(Value::Null),
-                "releaseVersion": release_version,
+                "id": row.id,
+                "name": row.name,
+                "label": row.label,
+                "status": row.status,
+                "releaseVersion": row.release.map(|r| r.version),
             })
         })
         .collect();
@@ -111,9 +105,27 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use cli_engine::{Cli, CliConfig, Stage};
-    use serde_json::json;
+    use platform_app_client::enabled_store_applications::{
+        ApplicationStatus, EnabledStoreApplicationsEnabledStoreApplications,
+        EnabledStoreApplicationsEnabledStoreApplicationsRelease,
+    };
 
     use super::{command, flatten_enablements};
+
+    fn row(release: Option<&str>) -> EnabledStoreApplicationsEnabledStoreApplications {
+        EnabledStoreApplicationsEnabledStoreApplications {
+            id: "app-1".to_owned(),
+            name: "my-app".to_owned(),
+            label: "My App".to_owned(),
+            status: ApplicationStatus::ACTIVE,
+            release: release.map(|version| {
+                EnabledStoreApplicationsEnabledStoreApplicationsRelease {
+                    id: "rel-1".to_owned(),
+                    version: version.to_owned(),
+                }
+            }),
+        }
+    }
 
     #[test]
     fn command_requires_store_id_flag() {
@@ -143,16 +155,10 @@ mod tests {
 
     #[test]
     fn flatten_enablements_lifts_release_version_only() {
-        let input = json!([{
-            "id": "app-1",
-            "name": "my-app",
-            "label": "My App",
-            "status": "ACTIVE",
-            "release": { "id": "rel-1", "version": "1.2.3" }
-        }]);
+        let flattened = flatten_enablements(vec![row(Some("1.2.3"))]);
         assert_eq!(
-            flatten_enablements(input),
-            json!([{
+            flattened,
+            serde_json::json!([{
                 "id": "app-1",
                 "name": "my-app",
                 "label": "My App",
@@ -164,14 +170,8 @@ mod tests {
 
     #[test]
     fn flatten_enablements_null_release_version_when_missing() {
-        let input = json!([{ "id": "app-1", "name": "my-app", "status": "ACTIVE" }]);
-        assert_eq!(flatten_enablements(input)[0]["releaseVersion"], json!(null));
-    }
-
-    #[test]
-    fn flatten_enablements_null_label_when_missing() {
-        let input = json!([{ "id": "app-1", "name": "my-app", "status": "ACTIVE" }]);
-        assert_eq!(flatten_enablements(input)[0]["label"], json!(null));
+        let flattened = flatten_enablements(vec![row(None)]);
+        assert_eq!(flattened[0]["releaseVersion"], serde_json::json!(null));
     }
 
     #[tokio::test]

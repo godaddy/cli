@@ -1,6 +1,11 @@
 {
-  "generated": "2026-09-18T19:23:39.098256354+00:00",
+  "generated": "2026-09-18T22:12:16.502715618+00:00",
   "domains": {
+    "app-registry": {
+      "file": "app-registry.json",
+      "title": "app-registry GraphQL API",
+      "endpointCount": 1
+    },
     "bulk-operations": {
       "file": "bulk-operations.json",
       "title": "Bulk Operations API",

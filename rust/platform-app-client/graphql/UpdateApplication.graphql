@@ -1,0 +1,13 @@
+mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) {
+  updateApplication(id: $id, input: $input) {
+    id
+    clientId
+    label
+    name
+    description
+    status
+    url
+    proxyUrl
+    authorizationScopes
+  }
+}

@@ -67,12 +67,13 @@ fn github_client() -> Result<reqwest::blocking::Client> {
 fn list_repos_for_owner_path(
     client: &reqwest::blocking::Client,
     owner_path: &str,
+    org: &str,
 ) -> Result<Vec<GithubRepo>> {
     let mut repos = Vec::new();
     let mut page = 1u32;
     loop {
         let url = format!(
-            "{GITHUB_API_BASE}/{owner_path}/{GITHUB_ORG}/repos?per_page={GITHUB_PAGE_SIZE}&page={page}&type=public&sort=full_name&direction=asc"
+            "{GITHUB_API_BASE}/{owner_path}/{org}/repos?per_page={GITHUB_PAGE_SIZE}&page={page}&type=public&sort=full_name&direction=asc"
         );
         let resp = client
             .get(&url)
@@ -96,13 +97,13 @@ fn list_repos_for_owner_path(
     Ok(repos)
 }
 
-fn list_org_repos(client: &reqwest::blocking::Client) -> Vec<GithubRepo> {
-    match list_repos_for_owner_path(client, "orgs") {
+fn list_org_repos(client: &reqwest::blocking::Client, org: &str) -> Vec<GithubRepo> {
+    match list_repos_for_owner_path(client, "orgs", org) {
         Ok(repos) if !repos.is_empty() => return repos,
         Ok(_) => {}
         Err(e) => eprintln!("WARNING: GitHub orgs API failed: {e}"),
     }
-    match list_repos_for_owner_path(client, "users") {
+    match list_repos_for_owner_path(client, "users", org) {
         Ok(repos) => repos,
         Err(e) => {
             eprintln!("WARNING: GitHub users API also failed: {e}");
@@ -227,6 +228,29 @@ fn clone_repo(clone_url: &str, target: &Path, git_ref: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// Short commit SHA `repo_dir` is checked out at — used as the `spec_version`
+/// for a `specPath`-driven source, which (unlike a `-specification` repo's
+/// `v{N}` directory) carries no version number of its own; the SHA at least
+/// records which commit a vendored spec came from. Falls back to `"HEAD"` if
+/// `git` can't resolve it (shouldn't happen against a repo we just cloned).
+fn git_short_sha(repo_dir: &Path) -> String {
+    git_command()
+        .args([
+            "-C",
+            &repo_dir.to_string_lossy(),
+            "rev-parse",
+            "--short",
+            "HEAD",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "HEAD".to_owned())
+}
+
 fn parse_repo_overrides() -> Option<Vec<String>> {
     let raw = std::env::var("API_CATALOG_REPOS").ok()?;
     let repos: Vec<String> = raw
@@ -261,9 +285,7 @@ pub(crate) fn discover_spec_sources(
     manifest: &CatalogSourceManifest,
 ) -> Result<(Vec<SpecSource>, PathBuf)> {
     let client = github_client()?;
-    let all_repos = list_org_repos(&client);
-    let repo_map: HashMap<&str, &GithubRepo> =
-        all_repos.iter().map(|r| (r.name.as_str(), r)).collect();
+    let mut repos_by_org: HashMap<String, Vec<GithubRepo>> = HashMap::new();
 
     let overrides = parse_repo_overrides();
     let ref_overrides = parse_repo_ref_overrides();
@@ -307,22 +329,47 @@ pub(crate) fn discover_spec_sources(
 
     for source in selected {
         let repo_name = &source.repository;
-        let clone_url = if let Some(repo) = repo_map.get(repo_name.as_str()) {
+        let org = source.org.as_str();
+        let repos = repos_by_org
+            .entry(org.to_owned())
+            .or_insert_with(|| list_org_repos(&client, org));
+        let clone_url = if let Some(repo) = repos.iter().find(|r| r.name == *repo_name) {
             if repo.archived || repo.disabled || repo.private {
                 bail!("catalog source repository '{repo_name}' is unavailable");
             }
             repo.clone_url.clone()
         } else {
-            format!("https://github.com/{GITHUB_ORG}/{repo_name}.git")
+            format!("https://github.com/{org}/{repo_name}.git")
         };
-        let repo_dir = tmpdir.join(repo_name);
-        let git_ref = ref_overrides.get(repo_name.as_str()).map(String::as_str);
+        // Nested under `org` (not just `repo_name`) so two sources named the
+        // same repo in different orgs — now possible since `org` is
+        // per-source — don't clone into, and clobber, the same temp path.
+        let repo_dir = tmpdir.join(org).join(repo_name);
+        // `org/repo` first — the unambiguous form once a repo name can exist
+        // in more than one org — falling back to the legacy bare-`repo` key
+        // so existing `API_CATALOG_REPO_REFS` overrides keep working.
+        let org_qualified_name = format!("{org}/{repo_name}");
+        let git_ref = ref_overrides
+            .get(org_qualified_name.as_str())
+            .or_else(|| ref_overrides.get(repo_name.as_str()))
+            .map(String::as_str);
 
         clone_repo(&clone_url, &repo_dir, git_ref)
             .with_context(|| format!("failed to clone declared catalog source '{repo_name}'"))?;
 
-        let (version, spec_file, graphql_only) = find_latest_spec_file(&repo_dir)
-            .with_context(|| format!("catalog source '{repo_name}' has no versioned spec file"))?;
+        let (version, spec_file, graphql_only) = match &source.spec_path {
+            Some(explicit) => {
+                let path = repo_dir.join(explicit);
+                if !path.exists() {
+                    bail!("catalog source '{repo_name}' has no spec file at '{explicit}'");
+                }
+                let graphql_only = path.extension().and_then(|e| e.to_str()) == Some("graphql");
+                (git_short_sha(&repo_dir), path, graphql_only)
+            }
+            None => find_latest_spec_file(&repo_dir).with_context(|| {
+                format!("catalog source '{repo_name}' has no versioned spec file")
+            })?,
+        };
 
         let domain = source.domain.clone();
         if !used_domains.insert(domain.clone()) {

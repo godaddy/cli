@@ -135,6 +135,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let env = ctx.middleware.env.clone();
             let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
             let base_url = tap_deploy_err(&sender, api_url_for_env(&env)).await?;
+            // Bypasses `super::make_client` (streaming commands build their
+            // own client), so the transport-observer registration it would
+            // otherwise do has to happen here instead.
+            crate::http::ensure_generated_client_transport_observer_registered();
             let client = ApplicationClient::new(base_url, token);
 
             sender
@@ -162,7 +166,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             sender
                 .send(json!({ "type": "step", "name": "application.lookup", "status": "started" }))
                 .await;
-            let app_data = tap_deploy_err(
+            let app = tap_deploy_err(
                 &sender,
                 client
                     .get_application_with_releases(&name)
@@ -170,14 +174,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .map_err(super::client_err),
             )
             .await?;
-            let app = &app_data["application"];
-            if app.is_null() {
+            let Some(app) = app else {
                 let err =
                     crate::error::GddyError::not_found(format!("application '{name}' not found"))
                         .into_cli_error();
                 return Err(fail_deploy(&sender, err).await);
-            }
-            let application_id = app["id"].as_str().unwrap_or("").to_owned();
+            };
+            let application_id = app.id.clone();
             sender
                 .send(json!({ "type": "step", "name": "application.lookup", "status": "completed", "id": application_id }))
                 .await;
@@ -186,11 +189,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             sender
                 .send(json!({ "type": "step", "name": "release.lookup", "status": "started" }))
                 .await;
-            let release_id = app["releases"]["edges"]
-                .as_array()
-                .and_then(|edges| edges.first())
-                .and_then(|e| e["node"]["id"].as_str())
-                .map(str::to_owned);
+            let release_id = app
+                .releases
+                .and_then(|connection| connection.edges)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .find_map(|edge| edge.node)
+                .map(|node| node.id);
             let Some(release_id) = release_id else {
                 let err = cli_engine::CliCoreError::message(format!(
                     "application '{name}' has no releases — create one first with: gddy platform app release --application-id {application_id} --version 0.0.1"
@@ -309,12 +315,19 @@ async fn sync_manifest_metadata(
     Ok(())
 }
 
-fn manifest_metadata_input(config: &crate::config::Config) -> Value {
-    json!({
-        "url": config.url,
-        "proxyUrl": config.proxy_url,
-        "authorizationScopes": config.authorization_scopes,
-    })
+fn manifest_metadata_input(
+    config: &crate::config::Config,
+) -> platform_app_client::update_application::MutationUpdateApplicationInput {
+    platform_app_client::update_application::MutationUpdateApplicationInput {
+        url: Some(config.url.clone()),
+        proxy_url: Some(config.proxy_url.clone()),
+        authorization_scopes: Some(config.authorization_scopes.clone()),
+        label: None,
+        description: None,
+        distribution_type: None,
+        name: None,
+        redirect_uris: None,
+    }
 }
 
 #[cfg(test)]
@@ -445,12 +458,13 @@ mod tests {
 
         let input = super::manifest_metadata_input(&config);
 
-        assert_eq!(input["url"], "https://app.example.com");
-        assert_eq!(input["proxyUrl"], "https://api.example.com");
+        assert_eq!(input.url, Some("https://app.example.com".to_owned()));
+        assert_eq!(input.proxy_url, Some("https://api.example.com".to_owned()));
         assert_eq!(
-            input["authorizationScopes"],
-            serde_json::json!(["openid", "profile"])
+            input.authorization_scopes,
+            Some(vec!["openid".to_owned(), "profile".to_owned()])
         );
-        assert!(input.get("status").is_none());
+        assert_eq!(input.label, None);
+        assert_eq!(input.name, None);
     }
 }

@@ -15,10 +15,18 @@ pub(crate) struct RemoteCatalogSource {
     pub(crate) repository: String,
     #[serde(default = "default_catalog")]
     pub(crate) catalog: bool,
+    #[serde(default = "default_org")]
+    pub(crate) org: String,
+    #[serde(default, rename = "specPath")]
+    pub(crate) spec_path: Option<String>,
 }
 
 const fn default_catalog() -> bool {
     true
+}
+
+fn default_org() -> String {
+    "gdcorp-platform".to_owned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,8 +85,8 @@ mod tests {
         let manifest = load_source_manifest().expect("load source manifest");
         let expected = manifest.expected_domains();
 
-        assert_eq!(expected.len(), 23);
-        assert_eq!(manifest.remote.len(), 24);
+        assert_eq!(expected.len(), 24);
+        assert_eq!(manifest.remote.len(), 25);
         assert_eq!(
             manifest
                 .remote

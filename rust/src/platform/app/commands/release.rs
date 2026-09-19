@@ -3,6 +3,11 @@
 use std::path::Path;
 
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use platform_app_client::create_release::{
+    ApplicationActionCreateInput, ApplicationSettingCreateInput,
+    ApplicationSubscriptionCreateInput, ApplicationUiExtensionCreateInput,
+    MutationCreateReleaseInput,
+};
 use serde_json::{Value, json};
 
 use super::schemas::ApplicationRelease;
@@ -20,18 +25,20 @@ fn ui_extension_entry(
     source: &str,
     kind: &str,
     targets: &[crate::config::ExtensionTarget],
-) -> cli_engine::Result<Value> {
+) -> cli_engine::Result<ApplicationUiExtensionCreateInput> {
     if targets.len() > 1 {
         return Err(cli_engine::CliCoreError::message(format!(
             "UI extension '{name}' has {} targets, but only one target is supported per extension during release",
             targets.len()
         )));
     }
-    let mut entry = json!({ "name": name, "handle": handle, "source": source, "type": kind });
-    if let Some(t) = targets.first() {
-        entry["target"] = json!(t.target);
-    }
-    Ok(entry)
+    Ok(ApplicationUiExtensionCreateInput {
+        name: Some(name.to_owned()),
+        handle: Some(handle.to_owned()),
+        source: Some(source.to_owned()),
+        type_: kind.to_owned(),
+        target: targets.first().map(|t| t.target.clone()),
+    })
 }
 
 /// Resolves a setting's presentation from `presentation` or `presentationFile`.
@@ -78,7 +85,7 @@ fn resolve_presentation(
 fn setting_entry(
     setting: &crate::config::SettingConfig,
     manifest_dir: &Path,
-) -> cli_engine::Result<Value> {
+) -> cli_engine::Result<ApplicationSettingCreateInput> {
     let presentation = resolve_presentation(setting, manifest_dir)?;
     let mut errors = Vec::new();
     validate_presentation(
@@ -110,39 +117,28 @@ fn setting_entry(
         }
     }
 
-    let mut entry = json!({
-        "groupSlug": setting.group,
-        "appSettingSlug": setting.slug,
-        "entryPath": setting.entry_path,
-        "presentation": presentation_json,
-    });
-    if let Some(title) = &setting.title {
-        entry["title"] = json!(title);
-    }
-    if let Some(description) = &setting.description {
-        entry["description"] = json!(description);
-    }
-    if let Some(icon) = &setting.icon {
-        entry["iconName"] = json!(icon.name);
-        entry["iconLibrary"] = json!(icon.library);
-    }
-    if let Some(order) = setting.order {
-        entry["order"] = json!(order);
-    }
-    if !setting.capabilities.is_empty() {
-        entry["capabilities"] = json!(setting.capabilities);
-    }
-    if let Some(metadata) = &setting.metadata {
-        entry["metadata"] = metadata.clone();
-    }
-    Ok(entry)
+    Ok(ApplicationSettingCreateInput {
+        group_slug: setting.group.clone(),
+        app_setting_slug: setting.slug.clone(),
+        entry_path: setting.entry_path.clone(),
+        presentation: presentation_json,
+        title: setting.title.clone(),
+        title_key: None,
+        description: setting.description.clone(),
+        description_key: None,
+        icon_name: setting.icon.as_ref().map(|icon| icon.name.clone()),
+        icon_library: setting.icon.as_ref().map(|icon| icon.library.clone()),
+        order: setting.order,
+        capabilities: (!setting.capabilities.is_empty()).then(|| setting.capabilities.clone()),
+        metadata: setting.metadata.clone(),
+    })
 }
 
 /// Map godaddy.toml `[[settings]]` placements to the release `settings` input.
 fn build_settings(
     config: &crate::config::Config,
     manifest_dir: &Path,
-) -> cli_engine::Result<Vec<Value>> {
+) -> cli_engine::Result<Vec<ApplicationSettingCreateInput>> {
     config
         .settings
         .iter()
@@ -172,7 +168,9 @@ fn load_manifest(path: &Path) -> cli_engine::Result<Option<crate::config::Config
 
 /// Map godaddy.toml extensions (embed / checkout / blocks) to the release
 /// `uiExtensions` input. Mirrors the TS release mapping (single target each).
-fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec<Value>> {
+fn build_ui_extensions(
+    config: &crate::config::Config,
+) -> cli_engine::Result<Vec<ApplicationUiExtensionCreateInput>> {
     let mut out = Vec::new();
     let Some(exts) = &config.extensions else {
         return Ok(out);
@@ -190,9 +188,13 @@ fn build_ui_extensions(config: &crate::config::Config) -> cli_engine::Result<Vec
     if let Some(b) = &exts.blocks {
         // Blocks carries no name/handle/targets in config; use the same fixed
         // identifiers the TS release path uses.
-        out.push(
-            json!({ "name": "Blocks", "handle": "blocks", "source": b.source, "type": "blocks" }),
-        );
+        out.push(ApplicationUiExtensionCreateInput {
+            name: Some("Blocks".to_owned()),
+            handle: Some("blocks".to_owned()),
+            source: Some(b.source.clone()),
+            type_: "blocks".to_owned(),
+            target: None,
+        });
     }
     Ok(out)
 }
@@ -230,10 +232,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let app_id = args.application_id;
             let version = args.version;
             let description = args.description;
-            let mut input = json!({ "applicationId": app_id, "version": version });
-            if let Some(desc) = description {
-                input["description"] = json!(desc);
-            }
 
             let config_path = crate::config::config_path(Some(&ctx.middleware.env));
             let manifest_dir = config_path.parent().unwrap_or_else(|| Path::new(""));
@@ -241,19 +239,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let (actions, subscriptions, ui_extensions, settings) =
                 match load_manifest(&config_path)? {
                     Some(config) => {
-                        let actions: Vec<Value> = config
+                        let actions: Vec<ApplicationActionCreateInput> = config
                             .actions
                             .iter()
-                            .map(|a| json!({ "name": a.name, "url": a.url }))
+                            .map(|a| ApplicationActionCreateInput {
+                                name: a.name.clone(),
+                                url: a.url.clone(),
+                            })
                             .collect();
-                        let subscriptions: Vec<Value> = config
+                        let subscriptions: Vec<ApplicationSubscriptionCreateInput> = config
                             .subscriptions
                             .as_ref()
                             .map(|s| {
                                 s.webhook
                                     .iter()
-                                    .map(|w| {
-                                        json!({ "name": w.name, "events": w.events, "url": w.url })
+                                    .map(|w| ApplicationSubscriptionCreateInput {
+                                        name: w.name.clone(),
+                                        events: w.events.clone(),
+                                        url: w.url.clone(),
                                     })
                                     .collect()
                             })
@@ -264,33 +267,49 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     }
                     None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
                 };
-            input["actions"] = json!(actions);
-            input["subscriptions"] = json!(subscriptions);
-            input["uiExtensions"] = json!(ui_extensions);
-            input["settings"] = json!(settings);
+
+            let input = MutationCreateReleaseInput {
+                application_id: app_id,
+                version,
+                description,
+                actions: Some(actions),
+                subscriptions: Some(subscriptions),
+                ui_extensions: Some(ui_extensions),
+                settings: Some(settings),
+                application_dependencies: None,
+                feature_dependencies: None,
+                mcp_servers: None,
+                native_extensions: None,
+            };
 
             let client = super::make_client(&ctx).await?;
-            let data = client
+            let release = client
                 .create_release(input)
                 .await
-                .map_err(super::client_err)?;
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected("createRelease returned no data".to_owned())
+                        .into_cli_error()
+                })?;
+            let data = serde_json::to_value(release).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode release: {e}"))
+                    .into_cli_error()
+            })?;
             // Release is keyed by `--application-id`, not name. Do not prefill
             // `name` from godaddy.toml — that manifest may belong to a different app.
             let name_param = NextActionParam::required();
-            Ok(
-                CommandResult::new(data["createRelease"].clone()).with_next_actions(vec![
-                    next_action(
-                        "platform app deploy --name <name>",
-                        "Deploy the released application",
-                    )
-                    .with_param("name", name_param.clone()),
-                    next_action(
-                        "platform app info --name <name>",
-                        "Inspect application and latest release",
-                    )
-                    .with_param("name", name_param),
-                ]),
-            )
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app deploy --name <name>",
+                    "Deploy the released application",
+                )
+                .with_param("name", name_param.clone()),
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect application and latest release",
+                )
+                .with_param("name", name_param),
+            ]))
         },
     )
 }
@@ -319,11 +338,11 @@ mod tests {
         // No targets: `target` is omitted.
         let none = super::ui_extension_entry("Widget", "widget", "src/w.ts", "embed", &[])
             .expect("entry builds");
-        assert_eq!(none["name"], "Widget");
-        assert_eq!(none["handle"], "widget");
-        assert_eq!(none["type"], "embed");
-        assert_eq!(none["source"], "src/w.ts");
-        assert!(none.get("target").is_none());
+        assert_eq!(none.name.as_deref(), Some("Widget"));
+        assert_eq!(none.handle.as_deref(), Some("widget"));
+        assert_eq!(none.type_, "embed");
+        assert_eq!(none.source.as_deref(), Some("src/w.ts"));
+        assert!(none.target.is_none());
 
         // Exactly one target: `target` is set to that value.
         let one = super::ui_extension_entry(
@@ -336,7 +355,7 @@ mod tests {
             }],
         )
         .expect("entry builds");
-        assert_eq!(one["target"], "checkout.block");
+        assert_eq!(one.target.as_deref(), Some("checkout.block"));
     }
 
     fn placement_only_setting() -> crate::config::SettingConfig {
@@ -436,31 +455,28 @@ mod tests {
         let mut setting = placement_only_setting();
         setting.presentation = Some(boolean_presentation());
         let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
-        assert_eq!(entry["groupSlug"], "tax-center");
-        assert_eq!(entry["appSettingSlug"], "godaddy-tax");
-        assert_eq!(entry["entryPath"], "/settings/godaddy-tax");
-        assert_eq!(entry["presentation"]["type"], "form");
-        assert_eq!(entry["presentation"]["schemaVersion"], "settings-form-v1");
+        assert_eq!(entry.group_slug, "tax-center");
+        assert_eq!(entry.app_setting_slug, "godaddy-tax");
+        assert_eq!(entry.entry_path, "/settings/godaddy-tax");
+        assert_eq!(entry.presentation["type"], "form");
+        assert_eq!(entry.presentation["schemaVersion"], "settings-form-v1");
         assert_eq!(
-            entry["presentation"]["sections"][0]["fields"][0]["type"],
+            entry.presentation["sections"][0]["fields"][0]["type"],
             "boolean"
         );
         assert!(
-            entry.get("capabilities").is_none(),
+            entry.capabilities.is_none(),
             "empty capabilities should be omitted"
         );
+        assert!(entry.icon_name.is_none(), "absent icon should be omitted");
         assert!(
-            entry.get("iconName").is_none(),
-            "absent icon should be omitted"
-        );
-        assert!(
-            entry["presentation"]["sections"][0]
+            entry.presentation["sections"][0]
                 .get("visibleWhen")
                 .is_none(),
             "absent section visibility should be omitted instead of serialized as null"
         );
         assert!(
-            entry["presentation"]["sections"][0]["fields"][0]
+            entry.presentation["sections"][0]["fields"][0]
                 .get("description")
                 .is_none(),
             "absent field properties should be omitted instead of serialized as null"
@@ -484,14 +500,17 @@ mod tests {
         };
         setting.presentation = Some(link_presentation());
         let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
-        assert_eq!(entry["groupSlug"], "payment-methods");
-        assert_eq!(entry["appSettingSlug"], "paypal-payments");
-        assert_eq!(entry["entryPath"], "/settings/paypal");
-        assert_eq!(entry["presentation"]["type"], "link");
-        assert_eq!(entry["presentation"]["schemaVersion"], "settings-link-v1");
-        assert_eq!(entry["presentation"]["label"], "Configure PayPal");
-        assert_eq!(entry["presentation"]["openMode"], "new-window");
-        assert_eq!(entry["capabilities"], serde_json::json!(["read", "open"]));
+        assert_eq!(entry.group_slug, "payment-methods");
+        assert_eq!(entry.app_setting_slug, "paypal-payments");
+        assert_eq!(entry.entry_path, "/settings/paypal");
+        assert_eq!(entry.presentation["type"], "link");
+        assert_eq!(entry.presentation["schemaVersion"], "settings-link-v1");
+        assert_eq!(entry.presentation["label"], "Configure PayPal");
+        assert_eq!(entry.presentation["openMode"], "new-window");
+        assert_eq!(
+            entry.capabilities,
+            Some(vec!["read".to_owned(), "open".to_owned()])
+        );
     }
 
     #[test]
@@ -523,13 +542,16 @@ mod tests {
         });
         setting.metadata = Some(serde_json::json!({ "provider": "godaddy-tax" }));
         let entry = super::setting_entry(&setting, std::path::Path::new("")).expect("entry builds");
-        assert_eq!(entry["title"], "GoDaddy Tax");
-        assert_eq!(entry["description"], "Tax settings");
-        assert_eq!(entry["order"], 10);
-        assert_eq!(entry["capabilities"], serde_json::json!(["read", "write"]));
-        assert_eq!(entry["iconName"], "percent");
-        assert_eq!(entry["iconLibrary"], "lucide");
-        assert_eq!(entry["metadata"]["provider"], "godaddy-tax");
+        assert_eq!(entry.title.as_deref(), Some("GoDaddy Tax"));
+        assert_eq!(entry.description.as_deref(), Some("Tax settings"));
+        assert_eq!(entry.order, Some(10));
+        assert_eq!(
+            entry.capabilities,
+            Some(vec!["read".to_owned(), "write".to_owned()])
+        );
+        assert_eq!(entry.icon_name.as_deref(), Some("percent"));
+        assert_eq!(entry.icon_library.as_deref(), Some("lucide"));
+        assert_eq!(entry.metadata.expect("metadata")["provider"], "godaddy-tax");
     }
 
     #[test]
@@ -539,7 +561,7 @@ mod tests {
 
         let entry = super::setting_entry(&setting, std::path::Path::new(""))
             .expect("list-group entry builds");
-        let list_group = &entry["presentation"]["sections"][0]["fields"][0];
+        let list_group = &entry.presentation["sections"][0]["fields"][0];
         assert!(
             list_group.get("minItems").is_none(),
             "absent list-group bounds should be omitted instead of serialized as null"
@@ -588,7 +610,7 @@ mod tests {
         let via_inline =
             super::setting_entry(&inline, std::path::Path::new("")).expect("entry builds inline");
 
-        assert_eq!(via_file["presentation"], via_inline["presentation"]);
+        assert_eq!(via_file.presentation, via_inline.presentation);
     }
 
     #[test]

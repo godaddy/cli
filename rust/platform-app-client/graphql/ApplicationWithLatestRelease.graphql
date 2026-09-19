@@ -1,0 +1,28 @@
+query ApplicationWithLatestRelease($name: String!) {
+  application(name: $name) {
+    id
+    label
+    name
+    description
+    status
+    url
+    proxyUrl
+    authorizationScopes
+    clientId
+    releases(first: 1, orderBy: { createdAt: DESC }) {
+      edges {
+        node {
+          id
+          version
+          description
+          createdAt
+          subscriptions {
+            name
+            url
+            events
+          }
+        }
+      }
+    }
+  }
+}

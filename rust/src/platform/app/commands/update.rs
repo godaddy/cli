@@ -1,7 +1,7 @@
 //! `gddy platform app update` — update label or description.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use serde_json::json;
+use platform_app_client::update_application::MutationUpdateApplicationInput;
 
 use super::schemas::ApplicationUpdate;
 use crate::next_action::{next_action, required_value};
@@ -51,36 +51,44 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
             .with_output_schema::<ApplicationUpdate>(),
         |context, args: UpdateArgs| async move {
-            let mut input = serde_json::Map::new();
-            if let Some(label) = args.fields.label {
-                input.insert("label".to_owned(), json!(label));
-            }
-            if let Some(description) = args.fields.description {
-                input.insert("description".to_owned(), json!(description));
-            }
+            let input = MutationUpdateApplicationInput {
+                label: args.fields.label,
+                description: args.fields.description,
+                authorization_scopes: None,
+                distribution_type: None,
+                name: None,
+                proxy_url: None,
+                redirect_uris: None,
+                url: None,
+            };
             let client = super::make_client(&context).await?;
-            let data = client
-                .update_application(&args.id, json!(input))
+            let app = client
+                .update_application(&args.id, input)
                 .await
-                .map_err(super::client_err)?;
-            let name = data["updateApplication"]["name"]
-                .as_str()
-                .unwrap_or("")
-                .to_owned();
-            Ok(
-                CommandResult::new(data["updateApplication"].clone()).with_next_actions(vec![
-                    next_action(
-                        "platform app info --name <name>",
-                        "Inspect updated application",
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "updateApplication returned no data".to_owned(),
                     )
-                    .with_param("name", required_value(&name)),
-                    next_action(
-                        "platform app deploy --name <name>",
-                        "Deploy updated application",
-                    )
-                    .with_param("name", required_value(&name)),
-                ]),
-            )
+                    .into_cli_error()
+                })?;
+            let name = app.name.clone();
+            let data = serde_json::to_value(&app).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect updated application",
+                )
+                .with_param("name", required_value(&name)),
+                next_action(
+                    "platform app deploy --name <name>",
+                    "Deploy updated application",
+                )
+                .with_param("name", required_value(&name)),
+            ]))
         },
     )
 }

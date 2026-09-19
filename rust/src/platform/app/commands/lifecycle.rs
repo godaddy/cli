@@ -1,7 +1,8 @@
 //! `gddy platform app enable`/`disable`/`archive` — application state transitions.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use serde_json::json;
+use platform_app_client::disable_application::MutationDisableStoreApplicationInput;
+use platform_app_client::enable_application::MutationEnableStoreApplicationInput;
 
 use super::schemas::{ApplicationArchive, ApplicationRef};
 use super::validate::ValidateArgs;
@@ -37,30 +38,41 @@ pub(super) fn enable_command() -> RuntimeCommandSpec {
             let name = args.name;
             let store_id = args.store_id;
             let client = super::make_client(&ctx).await?;
-            let data = client
-                .enable_application(json!({ "applicationName": name, "storeId": store_id }))
+            let app = client
+                .enable_application(MutationEnableStoreApplicationInput {
+                    application_name: name.clone(),
+                    store_id: store_id.clone(),
+                })
                 .await
-                .map_err(super::client_err)?;
-            Ok(
-                CommandResult::new(data["enableStoreApplication"].clone()).with_next_actions(vec![
-                    next_action(
-                        "platform app enablements --store-id <store-id>",
-                        "List applications enabled on this store",
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "enableStoreApplication returned no data".to_owned(),
                     )
-                    .with_param("store-id", required_value(&store_id)),
-                    next_action(
-                        "platform app disable <name> --store-id <store-id>",
-                        "Disable the application on the same store",
-                    )
-                    .with_param("name", required_value(&name))
-                    .with_param("store-id", required_value(&store_id)),
-                    next_action(
-                        "platform app info --name <name>",
-                        "Inspect application status",
-                    )
-                    .with_param("name", required_value(&name)),
-                ]),
-            )
+                    .into_cli_error()
+                })?;
+            let data = serde_json::to_value(app).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app enablements --store-id <store-id>",
+                    "List applications enabled on this store",
+                )
+                .with_param("store-id", required_value(&store_id)),
+                next_action(
+                    "platform app disable <name> --store-id <store-id>",
+                    "Disable the application on the same store",
+                )
+                .with_param("name", required_value(&name))
+                .with_param("store-id", required_value(&store_id)),
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect application status",
+                )
+                .with_param("name", required_value(&name)),
+            ]))
         },
     )
 }
@@ -82,32 +94,41 @@ pub(super) fn disable_command() -> RuntimeCommandSpec {
             let name = args.name;
             let store_id = args.store_id;
             let client = super::make_client(&ctx).await?;
-            let data = client
-                .disable_application(json!({ "applicationName": name, "storeId": store_id }))
+            let app = client
+                .disable_application(MutationDisableStoreApplicationInput {
+                    application_name: name.clone(),
+                    store_id: store_id.clone(),
+                })
                 .await
-                .map_err(super::client_err)?;
-            Ok(
-                CommandResult::new(data["disableStoreApplication"].clone()).with_next_actions(
-                    vec![
-                        next_action(
-                            "platform app enablements --store-id <store-id>",
-                            "List applications enabled on this store",
-                        )
-                        .with_param("store-id", required_value(&store_id)),
-                        next_action(
-                            "platform app enable <name> --store-id <store-id>",
-                            "Re-enable the application on the same store",
-                        )
-                        .with_param("name", required_value(&name))
-                        .with_param("store-id", required_value(&store_id)),
-                        next_action(
-                            "platform app info --name <name>",
-                            "Inspect application status",
-                        )
-                        .with_param("name", required_value(&name)),
-                    ],
-                ),
-            )
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "disableStoreApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
+            let data = serde_json::to_value(app).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app enablements --store-id <store-id>",
+                    "List applications enabled on this store",
+                )
+                .with_param("store-id", required_value(&store_id)),
+                next_action(
+                    "platform app enable <name> --store-id <store-id>",
+                    "Re-enable the application on the same store",
+                )
+                .with_param("name", required_value(&name))
+                .with_param("store-id", required_value(&store_id)),
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect application status",
+                )
+                .with_param("name", required_value(&name)),
+            ]))
         },
     )
 }
@@ -128,31 +149,37 @@ pub(super) fn archive_command() -> RuntimeCommandSpec {
         |ctx, args: ValidateArgs| async move {
             let name = args.name;
             let client = super::make_client(&ctx).await?;
-            let app_data = client
+            let app_id = client
                 .get_application(&name)
                 .await
-                .map_err(super::client_err)?;
-            let app_id = app_data["application"]["id"]
-                .as_str()
+                .map_err(super::client_err)?
                 .ok_or_else(|| {
                     crate::error::GddyError::not_found(format!("application '{name}' not found"))
                         .into_cli_error()
                 })?
-                .to_owned();
-            let data = client
+                .id;
+            let archived = client
                 .archive_application(&app_id)
                 .await
-                .map_err(super::client_err)?;
-            Ok(
-                CommandResult::new(data["archiveApplication"].clone()).with_next_actions(vec![
-                    next_action(
-                        "platform app info --name <name>",
-                        "Inspect archived application",
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "archiveApplication returned no data".to_owned(),
                     )
-                    .with_param("name", required_value(&name)),
-                    next_action("platform app list", "List all platform apps"),
-                ]),
-            )
+                    .into_cli_error()
+                })?;
+            let data = serde_json::to_value(archived).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect archived application",
+                )
+                .with_param("name", required_value(&name)),
+                next_action("platform app list", "List all platform apps"),
+            ]))
         },
     )
 }

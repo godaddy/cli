@@ -23,6 +23,11 @@ mod validate;
 async fn make_client(
     ctx: &cli_engine::CommandContext,
 ) -> cli_engine::Result<crate::platform::app::client::ApplicationClient> {
+    // Same idempotent registration `domain`/`email`/`shopping` do in their own
+    // `make_client` — without it, App Registry GraphQL traffic is invisible to
+    // `--debug transport` unless some other generated client happened to
+    // register the (process-wide) observer first.
+    crate::http::ensure_generated_client_transport_observer_registered();
     // Lazily resolve the credential; this triggers the auth flow only for
     // commands that actually call the API.
     let token = ctx.credential().await?.token;

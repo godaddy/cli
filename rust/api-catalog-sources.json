@@ -2,6 +2,12 @@
   "version": 1,
   "remote": [
     {
+      "domain": "app-registry",
+      "repository": "app-registry-api",
+      "org": "gdcorp-commerce",
+      "specPath": "apis/graphql/schema.graphql"
+    },
+    {
       "domain": "bulk-operations",
       "repository": "commerce.bulk-operations-specification"
     },

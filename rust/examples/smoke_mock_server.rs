@@ -63,13 +63,49 @@ fn create_release_response(req: &HttpMockRequest) -> HttpMockResponse {
         }
         _ => {}
     }
+
+    let settings: Vec<Value> = input["settings"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut setting)| {
+            let obj = setting.as_object_mut().expect("setting is an object");
+            obj.entry("id")
+                .or_insert_with(|| json!(format!("smoke-setting-{i}")));
+            obj.entry("capabilities").or_insert_with(|| json!([]));
+            if obj.get("capabilities") == Some(&Value::Null) {
+                obj.insert("capabilities".to_owned(), json!([]));
+            }
+            obj.entry("order").or_insert_with(|| json!(0));
+            if obj.get("order") == Some(&Value::Null) {
+                obj.insert("order".to_owned(), json!(0));
+            }
+            setting
+        })
+        .collect();
+    let ui_extensions: Vec<Value> = input["uiExtensions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut extension)| {
+            let obj = extension.as_object_mut().expect("extension is an object");
+            obj.entry("id")
+                .or_insert_with(|| json!(format!("smoke-ui-extension-{i}")));
+            obj.entry("type").or_insert_with(|| json!("embed"));
+            extension
+        })
+        .collect();
     let release = json!({
         "id": "smoke-release-id",
         "version": input.get("version").cloned().unwrap_or(json!("0.0.0")),
         "description": input.get("description").cloned().unwrap_or(Value::Null),
         "createdAt": "2026-01-01T00:00:00Z",
-        "uiExtensions": input.get("uiExtensions").cloned().unwrap_or(json!([])),
-        "settings": input.get("settings").cloned().unwrap_or(json!([])),
+        "uiExtensions": ui_extensions,
+        "settings": settings,
     });
     HttpMockResponse::builder()
         .status(200)
