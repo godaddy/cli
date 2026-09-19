@@ -44,7 +44,13 @@ pub(super) fn enable_command() -> RuntimeCommandSpec {
                     store_id: store_id.clone(),
                 })
                 .await
-                .map_err(super::client_err)?;
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "enableStoreApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
             let data = serde_json::to_value(app).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
                     .into_cli_error()
@@ -94,7 +100,13 @@ pub(super) fn disable_command() -> RuntimeCommandSpec {
                     store_id: store_id.clone(),
                 })
                 .await
-                .map_err(super::client_err)?;
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "disableStoreApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
             let data = serde_json::to_value(app).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
                     .into_cli_error()
@@ -149,7 +161,13 @@ pub(super) fn archive_command() -> RuntimeCommandSpec {
             let archived = client
                 .archive_application(&app_id)
                 .await
-                .map_err(super::client_err)?;
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "archiveApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
             let data = serde_json::to_value(archived).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
                     .into_cli_error()

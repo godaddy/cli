@@ -44,12 +44,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // types, which already get hand-written impls — a qualified path
         // collides with those impls instead of being skipped.
         options.set_response_derives("Clone,Debug,PartialEq,Serialize".to_owned());
-        // `Deserialize` on the input/variable side lets `client.rs` accept
-        // `serde_json::Value` at its own public boundary (unchanged from
-        // today, so no command-layer call site needs to change) and convert
-        // to a typed input via `serde_json::from_value` before sending —
-        // catching a malformed input at that conversion instead of a
-        // rejected GraphQL request.
+        // `Deserialize` on the input/variable side isn't needed by
+        // `client.rs` itself — every `ApplicationClient` method takes a
+        // typed input struct directly, not `serde_json::Value` — it's kept
+        // so this crate's own tests can build inputs from `json!(...)`
+        // literals instead of fully-spelled-out struct literals.
         options.set_variables_derives("Clone,Debug,Deserialize".to_owned());
         options.set_custom_scalars_module(syn1::parse_str("crate::scalars")?);
 

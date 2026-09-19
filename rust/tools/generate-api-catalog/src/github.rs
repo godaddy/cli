@@ -341,7 +341,10 @@ pub(crate) fn discover_spec_sources(
         } else {
             format!("https://github.com/{org}/{repo_name}.git")
         };
-        let repo_dir = tmpdir.join(repo_name);
+        // Nested under `org` (not just `repo_name`) so two sources named the
+        // same repo in different orgs — now possible since `org` is
+        // per-source — don't clone into, and clobber, the same temp path.
+        let repo_dir = tmpdir.join(org).join(repo_name);
         let git_ref = ref_overrides.get(repo_name.as_str()).map(String::as_str);
 
         clone_repo(&clone_url, &repo_dir, git_ref)

@@ -286,7 +286,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let release = client
                 .create_release(input)
                 .await
-                .map_err(super::client_err)?;
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected("createRelease returned no data".to_owned())
+                        .into_cli_error()
+                })?;
             let data = serde_json::to_value(release).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode release: {e}"))
                     .into_cli_error()

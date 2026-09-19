@@ -65,8 +65,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let app = client
                 .update_application(&args.id, input)
                 .await
-                .map_err(super::client_err)?;
-            let name = app.as_ref().map(|a| a.name.clone()).unwrap_or_default();
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "updateApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
+            let name = app.name.clone();
             let data = serde_json::to_value(&app).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
                     .into_cli_error()
