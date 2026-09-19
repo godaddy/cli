@@ -345,7 +345,14 @@ pub(crate) fn discover_spec_sources(
         // same repo in different orgs — now possible since `org` is
         // per-source — don't clone into, and clobber, the same temp path.
         let repo_dir = tmpdir.join(org).join(repo_name);
-        let git_ref = ref_overrides.get(repo_name.as_str()).map(String::as_str);
+        // `org/repo` first — the unambiguous form once a repo name can exist
+        // in more than one org — falling back to the legacy bare-`repo` key
+        // so existing `API_CATALOG_REPO_REFS` overrides keep working.
+        let org_qualified_name = format!("{org}/{repo_name}");
+        let git_ref = ref_overrides
+            .get(org_qualified_name.as_str())
+            .or_else(|| ref_overrides.get(repo_name.as_str()))
+            .map(String::as_str);
 
         clone_repo(&clone_url, &repo_dir, git_ref)
             .with_context(|| format!("failed to clone declared catalog source '{repo_name}'"))?;

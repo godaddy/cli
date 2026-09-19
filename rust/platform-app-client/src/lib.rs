@@ -123,7 +123,16 @@ impl Client {
                 ),
             })?;
         if let Some(errors) = parsed.errors.filter(|errors| !errors.is_empty()) {
-            return Err(ClientError::GraphQL(format!("{errors:?}")));
+            // `graphql_client::Error` has its own `Display` (`path:line:col:
+            // message`) — join that instead of `Debug`-formatting the whole
+            // struct, which included noisy `None`/empty `extensions` fields
+            // and wasn't stable across schema changes to those fields.
+            let joined = errors
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(ClientError::GraphQL(joined));
         }
         parsed
             .data

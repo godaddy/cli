@@ -17,6 +17,12 @@ use graphql_client_codegen::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let graphql_dir = Path::new("graphql");
     let schema_path = graphql_dir.join("schema.graphql");
+    // Directory-level, not just the schema file and each currently-existing
+    // operation doc below: a `rerun-if-changed` only watches paths that
+    // exist when this script runs, so without this a newly *added*
+    // `graphql/*.graphql` file wouldn't trigger a rebuild until some other
+    // watched file also changed.
+    println!("cargo:rerun-if-changed={}", graphql_dir.display());
     println!("cargo:rerun-if-changed={}", schema_path.display());
     println!("cargo:rerun-if-changed=build.rs");
 
