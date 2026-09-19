@@ -3,7 +3,12 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
 };
-use serde_json::{Value, json};
+use platform_app_client::application_with_latest_release::{
+    ApplicationWithLatestReleaseApplication,
+    ApplicationWithLatestReleaseApplicationReleasesEdgesNode,
+};
+use platform_app_client::create_application::MutationCreateApplicationInput;
+use serde_json::json;
 
 use super::schemas::ApplicationInit;
 use crate::next_action::{next_action, required_value};
@@ -66,43 +71,37 @@ struct InitArgs {
 /// The `releases(first: 1, orderBy: { createdAt: DESC })` node selected by
 /// `ApplicationClient::get_application_with_releases` e.g. the
 /// application's latest release, if it has one.
-fn latest_release(app: &Value) -> Option<&Value> {
-    app["releases"]["edges"]
-        .as_array()?
-        .first()
-        .map(|edge| &edge["node"])
+fn latest_release(
+    app: &ApplicationWithLatestReleaseApplication,
+) -> Option<&ApplicationWithLatestReleaseApplicationReleasesEdgesNode> {
+    app.releases
+        .as_ref()?
+        .edges
+        .as_ref()?
+        .first()?
+        .as_ref()?
+        .node
+        .as_ref()
 }
 
 /// Maps the latest release's `subscriptions` into local `SubscriptionConfig`
 /// entries, relativizing each webhook URL against `proxy_url` so it matches
 /// the `/webhooks/...` shape hand-authored entries use.
 fn subscriptions_from_latest_release(
-    app: &Value,
+    app: &ApplicationWithLatestReleaseApplication,
     proxy_url: &str,
 ) -> Vec<crate::config::SubscriptionConfig> {
-    latest_release(app)
-        .and_then(|node| node["subscriptions"].as_array())
-        .map(|subs| {
-            subs.iter()
-                .map(|sub| crate::config::SubscriptionConfig {
-                    name: sub["name"].as_str().unwrap_or("").to_owned(),
-                    events: sub["events"]
-                        .as_array()
-                        .map(|events| {
-                            events
-                                .iter()
-                                .filter_map(|e| e.as_str().map(str::to_owned))
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                    url: crate::config::relativize_webhook_url(
-                        sub["url"].as_str().unwrap_or(""),
-                        proxy_url,
-                    ),
-                })
-                .collect()
+    let Some(node) = latest_release(app) else {
+        return Vec::new();
+    };
+    node.subscriptions
+        .iter()
+        .map(|sub| crate::config::SubscriptionConfig {
+            name: sub.name.clone(),
+            events: sub.events.clone(),
+            url: crate::config::relativize_webhook_url(&sub.url, proxy_url),
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 /// A subscription's `(name, url, events)` reduced to a comparable signature,
@@ -171,30 +170,24 @@ async fn handle_from_existing(
     args: InitArgs,
 ) -> cli_engine::Result<CommandResult> {
     let client = super::make_client(ctx).await?;
-    let data = client
+    let app = client
         .get_application_with_releases(&name)
         .await
-        .map_err(super::client_err)?;
-    let app = &data["application"];
-    if app.is_null() {
-        return Err(
+        .map_err(super::client_err)?
+        .ok_or_else(|| {
             crate::error::GddyError::not_found(format!("application '{name}' not found"))
-                .into_cli_error(),
-        );
-    }
+                .into_cli_error()
+        })?;
 
-    let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
+    let client_id = app.client_id.clone().unwrap_or_default();
     let description = args
         .description
-        .or_else(|| app["description"].as_str().map(str::to_owned))
+        .or_else(|| app.description.clone())
         .unwrap_or_default();
-    let url = args
-        .url
-        .or_else(|| app["url"].as_str().map(str::to_owned))
-        .unwrap_or_default();
+    let url = args.url.or_else(|| app.url.clone()).unwrap_or_default();
     let proxy_url = args
         .proxy_url
-        .or_else(|| app["proxyUrl"].as_str().map(str::to_owned))
+        .or_else(|| app.proxy_url.clone())
         .unwrap_or_default();
     let scopes: Vec<String> = args
         .scopes
@@ -205,17 +198,7 @@ async fn handle_from_existing(
                 .map(str::to_owned)
                 .collect()
         })
-        .unwrap_or_else(|| {
-            app["authorizationScopes"]
-                .as_array()
-                .map(|scopes| {
-                    scopes
-                        .iter()
-                        .filter_map(|s| s.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default()
-        });
+        .unwrap_or_else(|| app.authorization_scopes.clone());
 
     for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
         if !crate::platform::app::public_url::is_public_routable_url(u) {
@@ -227,7 +210,7 @@ async fn handle_from_existing(
         }
     }
 
-    let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
+    let webhook_subscriptions = subscriptions_from_latest_release(&app, &proxy_url);
 
     // Preserve locally-authored fields the API doesn't track (actions,
     // dependencies, extensions, settings), if a godaddy.toml already exists;
@@ -249,9 +232,8 @@ async fn handle_from_existing(
 
     // Get latest release version from app; fall back to the local manifest's
     // version (e.g. an app with no release yet), then to a fresh-manifest default.
-    let version = latest_release(app)
-        .and_then(|node| node["version"].as_str())
-        .map(str::to_owned)
+    let version = latest_release(&app)
+        .map(|node| node.version.clone())
         .or_else(|| existing.as_ref().map(|c| c.version.clone()))
         .unwrap_or_else(|| "0.0.0".to_owned());
     let actions = existing
@@ -296,9 +278,9 @@ async fn handle_from_existing(
         .collect();
 
     Ok(CommandResult::new(json!({
-        "id": app["id"].as_str().unwrap_or("").to_owned(),
+        "id": app.id,
         "name": name,
-        "status": app["status"].as_str().unwrap_or("").to_owned(),
+        "status": app.status,
         "clientId": config.client_id,
         "url": url,
         "proxyUrl": proxy_url,
@@ -448,25 +430,31 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ensure_ready_for_app_init(&credential.token, &env, accept_agreements).await?;
 
             let client = super::make_client(&ctx).await?;
-            let data = client
-                .create_application(json!({
-                    "name": name,
-                    "label": label,
-                    "description": description,
-                    "url": url,
-                    "proxyUrl": proxy_url,
-                    "organizationId": &onboarding.org_id,
-                    "authorizationScopes": scopes,
-                }))
+            let app = client
+                .create_application(MutationCreateApplicationInput {
+                    name: name.clone(),
+                    label: label.clone(),
+                    description: Some(description.clone()),
+                    url: Some(url.clone()),
+                    proxy_url: Some(proxy_url.clone()),
+                    organization_id: Some(onboarding.org_id.clone()),
+                    authorization_scopes: Some(scopes.clone()),
+                    distribution_type: None,
+                    redirect_uris: None,
+                })
                 .await
-                .map_err(super::client_err)?;
-
-            let app = &data["createApplication"];
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "createApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
             // Credentials/secrets the API returns (all selected by create_application).
-            let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
-            let client_secret = app["clientSecret"].as_str().unwrap_or("").to_owned();
-            let secret = app["secret"].as_str().unwrap_or("").to_owned();
-            let public_key = app["publicKey"].as_str().unwrap_or("").to_owned();
+            let client_id = app.client_id.clone().unwrap_or_default();
+            let client_secret = app.client_secret.clone().unwrap_or_default();
+            let secret = app.secret.clone().unwrap_or_default();
+            let public_key = app.public_key.clone().unwrap_or_default();
 
             // Best-effort local writes: app create already succeeded. Only paths that
             // actually write are included in filesWritten.
@@ -521,11 +509,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            let app_id = app["id"].as_str().unwrap_or("").to_owned();
+            let app_id = app.id.clone();
             let result = json!({
                 "id": app_id,
                 "name": name,
-                "status": app["status"].as_str().unwrap_or("").to_owned(),
+                "status": app.status,
                 "clientId": client_id,
                 "orgId": onboarding.org_id,
                 "url": url,
@@ -561,6 +549,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use platform_app_client::application_with_latest_release::{
+        ApplicationWithLatestReleaseApplication,
+        ApplicationWithLatestReleaseApplicationReleasesEdges,
+        ApplicationWithLatestReleaseApplicationReleasesEdgesNode,
+    };
     use serde_json::json;
 
     use super::{
@@ -641,21 +634,66 @@ mod tests {
         assert_eq!(subscriptions_at_risk(&local, &remote), vec!["a"]);
     }
 
+    fn app_with_release_edges(
+        edges: Option<Vec<Option<ApplicationWithLatestReleaseApplicationReleasesEdges>>>,
+    ) -> ApplicationWithLatestReleaseApplication {
+        ApplicationWithLatestReleaseApplication {
+            id: "app-1".to_owned(),
+            label: "My App".to_owned(),
+            name: "my-app".to_owned(),
+            description: None,
+            status: platform_app_client::application_with_latest_release::ApplicationStatus::ACTIVE,
+            url: None,
+            proxy_url: None,
+            authorization_scopes: vec![],
+            client_id: None,
+            releases: Some(
+                platform_app_client::application_with_latest_release::ApplicationWithLatestReleaseApplicationReleases {
+                    edges,
+                },
+            ),
+        }
+    }
+
+    fn release_node(
+        version: &str,
+        subscriptions: Vec<
+            platform_app_client::application_with_latest_release::ApplicationWithLatestReleaseApplicationReleasesEdgesNodeSubscriptions,
+        >,
+    ) -> ApplicationWithLatestReleaseApplicationReleasesEdgesNode {
+        ApplicationWithLatestReleaseApplicationReleasesEdgesNode {
+            id: "rel-1".to_owned(),
+            version: version.to_owned(),
+            description: None,
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            subscriptions,
+        }
+    }
+
     #[test]
     fn subscriptions_from_latest_release_relativizes_urls() {
-        let app = json!({
-            "releases": {
-                "edges": [{
-                    "node": {
-                        "subscriptions": [{
-                            "name": "order-notifications",
-                            "url": "https://proxy.example.com/webhooks/orders",
-                            "events": ["commerce.order.created", "commerce.order.updated"],
-                        }]
-                    }
-                }]
-            }
-        });
+        use platform_app_client::application_with_latest_release::{
+            ApplicationWithLatestReleaseApplicationReleasesEdges,
+            ApplicationWithLatestReleaseApplicationReleasesEdgesNodeSubscriptions,
+        };
+
+        let app = app_with_release_edges(Some(vec![Some(
+            ApplicationWithLatestReleaseApplicationReleasesEdges {
+                node: Some(release_node(
+                    "1.0.0",
+                    vec![
+                        ApplicationWithLatestReleaseApplicationReleasesEdgesNodeSubscriptions {
+                            name: "order-notifications".to_owned(),
+                            url: "https://proxy.example.com/webhooks/orders".to_owned(),
+                            events: vec![
+                                "commerce.order.created".to_owned(),
+                                "commerce.order.updated".to_owned(),
+                            ],
+                        },
+                    ],
+                )),
+            },
+        )]));
         let subs = subscriptions_from_latest_release(&app, "https://proxy.example.com");
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].name, "order-notifications");
@@ -668,24 +706,28 @@ mod tests {
 
     #[test]
     fn subscriptions_from_latest_release_is_empty_without_releases() {
-        let app = json!({ "releases": { "edges": [] } });
+        let app = app_with_release_edges(Some(vec![]));
         assert!(subscriptions_from_latest_release(&app, "https://proxy.example.com").is_empty());
     }
 
     #[test]
     fn latest_release_exposes_the_release_version() {
-        let app = json!({
-            "releases": { "edges": [{ "node": { "version": "1.4.2" } }] }
-        });
+        use platform_app_client::application_with_latest_release::ApplicationWithLatestReleaseApplicationReleasesEdges;
+
+        let app = app_with_release_edges(Some(vec![Some(
+            ApplicationWithLatestReleaseApplicationReleasesEdges {
+                node: Some(release_node("1.4.2", vec![])),
+            },
+        )]));
         assert_eq!(
-            latest_release(&app).and_then(|node| node["version"].as_str()),
+            latest_release(&app).map(|node| node.version.as_str()),
             Some("1.4.2")
         );
     }
 
     #[test]
     fn latest_release_is_none_without_releases() {
-        let app = json!({ "releases": { "edges": [] } });
+        let app = app_with_release_edges(Some(vec![]));
         assert!(latest_release(&app).is_none());
     }
 

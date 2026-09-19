@@ -1,0 +1,15 @@
+query ApplicationsList($status: ApplicationStatusFilter) {
+  applications(status: $status) {
+    edges {
+      node {
+        id
+        label
+        name
+        description
+        status
+        url
+        proxyUrl
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+mutation ArchiveApplication($id: String!) {
+  archiveApplication(id: $id) {
+    id
+    label
+    name
+    status
+    createdAt
+    archivedAt
+  }
+}

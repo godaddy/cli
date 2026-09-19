@@ -1,0 +1,1617 @@
+type Application {
+  """The timestamp of when the Application was activated."""
+  activatedAt: DateTime
+
+  """The timestamp of when the Application was archived."""
+  archivedAt: DateTime
+
+  """
+  The authorization scopes that the OAuth2 client has access to and will use to call API endpoints.
+  """
+  authorizationScopes: [String!]!
+
+  """
+  Earliest linked OAuth client ID for this application by createdAt then id (includes NULL-secret and ARCHIVED apps).
+  """
+  clientId: ID
+
+  """
+  The primary OAuth client secret for this application. Only returned on application creation.
+  """
+  clientSecret: String
+
+  """The timestamp of when the Application was created."""
+  createdAt: DateTime!
+
+  """The timestamp of when the Application was deactivated."""
+  deactivatedAt: DateTime
+
+  """General information about your application."""
+  description: String
+
+  """The distribution type for this application."""
+  distributionType: DistributionType!
+
+  """The globally-unique ID of the Application."""
+  id: ID!
+
+  """A human-readable label of the Application for display purposes."""
+  label: String!
+
+  """
+  Paginated listings for this application. Requires read scope. When using the filter, `applicationIds` is ignored — results are always scoped to this application.
+  """
+  listings(
+    after: String
+    before: String
+
+    """Optional filter for the listings."""
+    filter: ApplicationListingFilterInput
+    first: Int
+    last: Int
+  ): ApplicationListingsConnection
+
+  """A url-friendly name for the Application."""
+  name: String!
+
+  """The ID of the organization that owns this Application."""
+  organizationId: ID!
+
+  """
+  The base URL of your application. This is the endpoint that the GoDaddy Commerce platform will call when integrated with actions.
+  """
+  proxyUrl: String
+
+  """
+  The public key (base64 encoded) for verifying action requests to your application.
+  """
+  publicKey: String
+
+  """
+  Additional OAuth redirect URIs on the application's OAuth client(s). URL-derived defaults (the application URL and {url}/api/godaddy/callback) are omitted so this list can be submitted unchanged on create or update.
+  """
+  redirectUris: [String!]!
+
+  """The releases of the Application."""
+  releases(
+    after: String
+    before: String
+    first: Int
+    last: Int
+
+    """The order in which to sort the releases."""
+    orderBy: ReleaseOrderBy
+
+    """Filter by release status."""
+    status: ReleaseStatusFilter
+  ): ApplicationReleasesConnection
+
+  """
+  The secret for verifying webhook requests to your application. Copy and secure this secret. You will not see it again.
+  """
+  secret: String
+
+  """The status of the application."""
+  status: ApplicationStatus!
+
+  """The timestamp of when the Application was updated."""
+  updatedAt: DateTime!
+
+  """The public website of the application."""
+  url: String
+}
+
+"""An action that can be executed by an application within the platform."""
+type ApplicationAction {
+  """The timestamp of when the action was created."""
+  createdAt: DateTime!
+
+  """The globally-unique ID of the action."""
+  id: String!
+
+  """A unique identifier for the action within the application."""
+  name: String!
+
+  """The timestamp of when the action was last updated."""
+  updatedAt: DateTime!
+
+  """The endpoint URL that will be called when this action is triggered."""
+  url: String!
+}
+
+"""Input for creating a new application action."""
+input ApplicationActionCreateInput {
+  """A unique identifier for the action within the application."""
+  name: String!
+
+  """
+  The path of the endpoint URL that will be called when this action is triggered.
+  """
+  url: String!
+}
+
+"""
+A dependency an application release declares on another application (the application's id, the name it was declared under, and its required/excluded/enabled state).
+"""
+type ApplicationDependency {
+  """
+  The immutable id of the application depended upon. Unaffected by renames of that application.
+  """
+  applicationId: ID!
+
+  """
+  The application name this dependency was declared under. A record of what was declared, not a live reference — it is not rewritten when the depended-upon application is renamed, so it can differ from that application's current name. Use `applicationId` to identify the application.
+  """
+  name: String!
+
+  """The declared state for this application dependency."""
+  state: ApplicationDependencyState!
+}
+
+"""
+Input for declaring a dependency on another application from a release.
+"""
+input ApplicationDependencyInput {
+  """
+  The name of the application depended upon. Must match a non-archived application.
+  """
+  name: String!
+
+  """The declared state for this application dependency."""
+  state: ApplicationDependencyState!
+}
+
+"""The state of an application dependency declaration."""
+enum ApplicationDependencyState {
+  """
+  The dependency application is enabled by default but can be overridden.
+  """
+  ENABLED
+
+  """
+  The dependency application is excluded and must not be enabled alongside this release.
+  """
+  EXCLUDED
+
+  """
+  The dependency application is required and cannot be disabled while this release is live.
+  """
+  REQUIRED
+}
+
+"""
+An enablement represents an application installed for a specific entity (e.g. a store).
+"""
+type ApplicationEnablement {
+  """When the enablement was created."""
+  createdAt: DateTime!
+
+  """When the application was disabled."""
+  disabledAt: DateTime
+
+  """When the application was enabled."""
+  enabledAt: DateTime
+
+  """The ID of the entity this application is enabled for."""
+  entityId: String!
+
+  """The type of entity (e.g. STORE)."""
+  entityType: String!
+
+  """The globally-unique ID of the enablement."""
+  id: String!
+
+  """When the enablement was last updated."""
+  updatedAt: DateTime!
+}
+
+"""A listing for an application."""
+type ApplicationListing {
+  """The ID of the application this listing belongs to."""
+  applicationId: ID!
+
+  """The timestamp when the listing was created."""
+  createdAt: DateTime!
+
+  """
+  Taxonomy facets for this listing (region, industry, category, tag, etc.).
+  """
+  facets: [ApplicationListingFacet!]!
+
+  """CDN URL of the confirmed HIGHLIGHT asset, or null if not uploaded."""
+  highlightImageUrl: String
+
+  """CDN URL of the confirmed ICON asset, or null if not uploaded."""
+  iconUrl: String
+
+  """The globally-unique ID of the listing."""
+  id: ID!
+
+  """A description for the listing (plain text, max 4000 chars)."""
+  listingDescription: String
+
+  """HTTPS URL for the privacy policy. Null when not set."""
+  privacyPolicyUrl: String
+
+  """CDN URLs of confirmed SCREENSHOT assets, ordered by sort_order."""
+  screenshotUrls: [String!]!
+
+  """The lifecycle status of the listing."""
+  status: ListingStatus!
+
+  """A short marketing pitch for the listing (plain text, max 160 chars)."""
+  tagline: String
+
+  """HTTPS URL for the terms and conditions. Null when not set."""
+  termsAndConditionsUrl: String
+
+  """The timestamp when the listing was last updated."""
+  updatedAt: DateTime!
+
+  """CDN URLs of confirmed VIDEO assets, ordered by sort_order."""
+  videoUrls: [String!]!
+
+  """The visibility of the listing."""
+  visibility: ListingVisibility!
+}
+
+"""A taxonomy facet attached to a listing."""
+type ApplicationListingFacet {
+  """The facet namespace (e.g. 'region', 'industry', 'category', 'tag')."""
+  namespace: String!
+
+  """The facet value (e.g. 'US', 'retail', 'ecommerce')."""
+  value: String!
+}
+
+"""
+Filter listings by facet. Returns listings that either have no facets in the given namespace (unrestricted), or have at least one facet in that namespace matching any of the provided values.
+"""
+input ApplicationListingFacetFilterInput {
+  """The facet namespace to filter on (e.g. 'region')."""
+  namespace: String!
+
+  """
+  Accepted facet values (OR semantics within this filter). An empty array is treated as a no-op for this facet filter, not as a filter that matches nothing.
+  """
+  values: [String!]!
+}
+
+"""A namespace + value pair for a listing facet."""
+input ApplicationListingFacetInput {
+  """The facet namespace (e.g. 'region', 'industry', 'category', 'tag')."""
+  namespace: String!
+
+  """The facet value."""
+  value: String!
+}
+
+"""Filter options for listing queries."""
+input ApplicationListingFilterInput {
+  """
+  Restrict results to listings for these application IDs (max 50, duplicates ignored).
+  """
+  applicationIds: [ID!]
+
+  """
+  Filter by taxonomy facets. All provided filters must match (AND semantics across namespaces).
+  """
+  facets: [ApplicationListingFacetFilterInput!]
+
+  """
+  Filter by listing lifecycle status. Defaults to ACTIVE for public LISTED discovery. Pass [ACTIVE, INACTIVE] to include deactivated listings (e.g. My Apps by applicationIds).
+  """
+  status: [ListingStatus!]
+
+  """
+  Filter by visibility. Defaults to [LISTED] for public discovery. Pass [LISTED, UNLISTED, HIDDEN] to see all listings for an owner context.
+  """
+  visibility: [ListingVisibility!]
+}
+
+"""Fields to create or update a listing."""
+input ApplicationListingInput {
+  """
+  Taxonomy facets for the listing. When provided, replaces all existing facets atomically.
+  """
+  facets: [ApplicationListingFacetInput!]
+
+  """A description for the listing (plain text, max 4000 chars)."""
+  listingDescription: String
+
+  """
+  HTTPS URL for the privacy policy (max 255 chars). Pass null or empty string to clear.
+  """
+  privacyPolicyUrl: String
+
+  """
+  The lifecycle status of the listing. Defaults to INACTIVE on create. ACTIVE requires listing description, privacy URL, terms URL, categories, industries, icon, and screenshots.
+  """
+  status: ListingStatus
+
+  """A short marketing pitch (plain text, max 160 chars)."""
+  tagline: String
+
+  """
+  HTTPS URL for the terms and conditions (max 255 chars). Pass null or empty string to clear.
+  """
+  termsAndConditionsUrl: String
+
+  """The visibility of the listing. Defaults to LISTED."""
+  visibility: ListingVisibility
+}
+
+type ApplicationListingsConnection {
+  edges: [ApplicationListingsConnectionEdge]
+  pageInfo: PageInfo!
+}
+
+type ApplicationListingsConnectionEdge {
+  cursor: String!
+  node: ApplicationListing
+}
+
+"""
+An MCP (Model Context Protocol) server registered with an application release.
+"""
+type ApplicationMcpServer {
+  """The timestamp of when the MCP server was created."""
+  createdAt: DateTime!
+
+  """The globally-unique ID of the MCP server."""
+  id: String!
+
+  """Additional configuration for the MCP server."""
+  metadata: JSONObject
+
+  """A unique identifier for the MCP server within the release."""
+  name: String!
+
+  """The MCP protocol version supported by this server."""
+  protocolVersion: String
+
+  """The timestamp of when the MCP server was last updated."""
+  updatedAt: DateTime!
+
+  """
+  The path of the endpoint URL that Traefik will route to (e.g., '/mcp/inventory').
+  """
+  url: String!
+}
+
+"""Input for creating a new MCP server registration."""
+input ApplicationMcpServerCreateInput {
+  """
+  Additional configuration for the MCP server (e.g., tool descriptions, capabilities).
+  """
+  metadata: JSONObject
+
+  """A unique identifier for the MCP server within the release."""
+  name: String!
+
+  """The MCP protocol version supported by this server."""
+  protocolVersion: String
+
+  """
+  The path of the endpoint URL that Traefik will route to (e.g., '/mcp/inventory').
+  """
+  url: String!
+}
+
+"""
+A native extension registered with an application release. The target platform is indicated by `platform`.
+"""
+type ApplicationNativeExtension {
+  """The ID of the associated application."""
+  applicationId: String!
+
+  """Support contact for the native extension."""
+  contact: String @deprecated(reason: "Support contact belongs at the application-registration level, not on an individual extension. Retained temporarily and will be removed once an application-level contact exists.")
+
+  """The timestamp of when the native extension was created."""
+  createdAt: DateTime!
+
+  """The globally-unique ID of the native extension."""
+  id: String!
+
+  """The display name of the native extension."""
+  name: String
+
+  """
+  The platform package identifier, in reverse-DNS form (e.g. 'com.example.app'). Optional: not every native deployment is installed through a package manager.
+  """
+  packageName: String
+
+  """The platform for this native extension."""
+  platform: NativeExtensionPlatform!
+
+  """The ID of the associated release."""
+  releaseId: String!
+
+  """The timestamp of when the native extension was last updated."""
+  updatedAt: DateTime!
+}
+
+"""Input for creating a new native extension."""
+input ApplicationNativeExtensionCreateInput {
+  """Support contact for the native extension."""
+  contact: String @deprecated(reason: "Support contact belongs at the application-registration level, not on an individual extension. Retained temporarily and will be removed once an application-level contact exists.")
+
+  """The display name of the native extension."""
+  name: String
+
+  """
+  The platform package identifier, in reverse-DNS form (e.g. 'com.example.app'). Optional: not every native deployment is installed through a package manager.
+  """
+  packageName: String
+
+  """The platform for this native extension."""
+  platform: NativeExtensionPlatform!
+}
+
+"""Fields by which applications can be ordered."""
+input ApplicationOrderBy {
+  """Order applications by creation date."""
+  createdAt: OrderByDirectionEnum
+
+  """Order applications by ID."""
+  id: OrderByDirectionEnum
+
+  """Order applications by name."""
+  name: OrderByDirectionEnum
+
+  """Order applications by last update date."""
+  updatedAt: OrderByDirectionEnum
+}
+
+type ApplicationRelease {
+  """The actions registered with this release."""
+  actions: [ApplicationAction!]!
+
+  """The timestamp of when the Application was activated."""
+  activatedAt: DateTime
+
+  """
+  The other applications this release depends on, and the state it declares for each.
+  """
+  applicationDependencies: [ApplicationDependency!]!
+
+  """The timestamp of when the Application was created."""
+  createdAt: DateTime!
+
+  """The timestamp of when the release was deactivated."""
+  deactivatedAt: DateTime
+
+  """
+  Information about the new release. Provide information about what has changed and any implications that it might have on your users.
+  """
+  description: String
+
+  """The feature dependencies declared by this release."""
+  featureDependencies: [FeatureDependency!]!
+
+  """The globally-unique ID of the release."""
+  id: String!
+
+  """The MCP servers registered with this release."""
+  mcpServers: [ApplicationMcpServer!]!
+
+  """The native extensions registered with this release."""
+  nativeExtensions: [ApplicationNativeExtension!]!
+
+  """The settings capabilities registered with this release."""
+  settings(
+    """Filter settings by Commerce settings group slug."""
+    groupSlug: String
+  ): [ApplicationSetting!]!
+
+  """The lifecycle status of the release."""
+  status: ApplicationReleaseStatus!
+
+  """The webhook subscriptions registered with this release."""
+  subscriptions: [ApplicationSubscription!]!
+
+  """The UI extensions registered with this release."""
+  uiExtensions(
+    """
+    Optional UI extension target filter. Supports has (single match) and hasAny (any match).
+    """
+    target: StringListFilter
+  ): [ApplicationUiExtension!]!
+
+  """The timestamp of when the Application was updated."""
+  updatedAt: DateTime!
+
+  """The version number of this release."""
+  version: String!
+}
+
+"""The status of an application release."""
+enum ApplicationReleaseStatus {
+  """Release is active and available for use."""
+  ACTIVE
+
+  """Release is created but not active."""
+  INACTIVE
+}
+
+type ApplicationReleasesConnection {
+  edges: [ApplicationReleasesConnectionEdge]
+  pageInfo: PageInfo!
+}
+
+type ApplicationReleasesConnectionEdge {
+  cursor: String!
+  node: ApplicationRelease
+}
+
+"""
+A settings capability registered with an application release and placed into a Commerce-owned settings group.
+"""
+type ApplicationSetting {
+  """The app-owned slug for this setting registration."""
+  appSettingSlug: String!
+
+  """Lifecycle capabilities supported by this setting."""
+  capabilities: [String!]!
+
+  """The timestamp of when the setting was created."""
+  createdAt: DateTime!
+
+  """Display description for this setting."""
+  description: String
+
+  """Localization key for the display description."""
+  descriptionKey: String
+
+  """The GPA settings namespace path that lifecycle endpoints live beneath."""
+  entryPath: String!
+
+  """The Commerce-owned settings group slug."""
+  groupSlug: String!
+
+  """Optional icon library for display."""
+  iconLibrary: String
+
+  """Optional icon name for display."""
+  iconName: String
+
+  """The globally-unique ID of the application setting."""
+  id: String!
+
+  """Additional app-defined settings metadata."""
+  metadata: JSONObject
+
+  """Sort order within the settings group."""
+  order: Int!
+
+  """The client-renderable presentation contract for this setting."""
+  presentation: JSONObject!
+
+  """Display title for this setting."""
+  title: String
+
+  """Localization key for the display title."""
+  titleKey: String
+
+  """The timestamp of when the setting was last updated."""
+  updatedAt: DateTime!
+}
+
+"""Input for creating a new application settings registration."""
+input ApplicationSettingCreateInput {
+  """The app-owned slug for this setting registration."""
+  appSettingSlug: String!
+
+  """
+  Lifecycle capabilities supported by this setting (read, write, validate, test, delete, open, config). config requires metadata.configKeys.
+  """
+  capabilities: [String!]
+
+  """Display description for this setting."""
+  description: String
+
+  """Localization key for the display description."""
+  descriptionKey: String
+
+  """The GPA settings namespace path that lifecycle endpoints live beneath."""
+  entryPath: String!
+
+  """The Commerce-owned settings group slug."""
+  groupSlug: String!
+
+  """Optional icon library for display."""
+  iconLibrary: String
+
+  """Optional icon name for display."""
+  iconName: String
+
+  """Additional app-defined settings metadata."""
+  metadata: JSONObject
+
+  """Sort order within the settings group."""
+  order: Int
+
+  """
+  The settings-form-v1 or settings-link-v1 presentation contract for this setting.
+  """
+  presentation: JSONObject!
+
+  """Display title for this setting."""
+  title: String
+
+  """Localization key for the display title."""
+  titleKey: String
+}
+
+"""The current status of an application in the platform."""
+enum ApplicationStatus {
+  """Application is active and can be used."""
+  ACTIVE
+
+  """Application has been archived and is no longer available."""
+  ARCHIVED
+
+  """Application has been blocked from use due to policy violations."""
+  BLOCKED
+
+  """Application is registered but not active."""
+  INACTIVE
+
+  """Application is being verified and is not yet active."""
+  VERIFYING
+}
+
+"""Filter applications by status."""
+input ApplicationStatusFilter {
+  """Filter by exact status match."""
+  eq: ApplicationStatus
+
+  """Filter by any of the specified statuses."""
+  in: [ApplicationStatus!]
+
+  """Filter by status not equal to the specified value."""
+  ne: ApplicationStatus
+}
+
+"""
+Webhook subscriptions that an application has opted to subscribe to. Each subscription has one or many events.
+"""
+type ApplicationSubscription {
+  """The timestamp of when the Application was created."""
+  createdAt: DateTime!
+
+  """A list of events that the subscription will receive."""
+  events: [String!]!
+
+  """The globally-unique ID of the release."""
+  id: String!
+
+  """The name of the webhook subscription"""
+  name: String!
+
+  """The timestamp of when the Application was updated."""
+  updatedAt: DateTime!
+
+  """The delivery URL of the webhook."""
+  url: String!
+}
+
+"""Input for creating a new application webhook subscription."""
+input ApplicationSubscriptionCreateInput {
+  """List of event types this subscription will receive."""
+  events: [String!]!
+
+  """A unique name for the subscription."""
+  name: String!
+
+  """The webhook URL that will receive the events."""
+  url: String!
+}
+
+"""
+A UI extension registered with an application release (e.g., embed, checkout, blocks).
+"""
+type ApplicationUiExtension {
+  """The base CDN URL for packaged UI extension assets."""
+  cdnUrl: String
+
+  """The timestamp of when the UI extension was created."""
+  createdAt: DateTime!
+
+  """The unique handle/identifier for the extension (e.g., 'my-extension')."""
+  handle: String
+
+  """The globally-unique ID of the UI extension."""
+  id: String!
+
+  """The display name of the extension."""
+  name: String
+
+  """
+  The source file path for the extension (e.g., 'extensions/my-ext/index.ts').
+  """
+  source: String
+
+  """
+  The target location for the extension (e.g., 'body.end', 'checkout.header').
+  """
+  target: String
+
+  """The type of UI extension (e.g., 'embed', 'checkout', 'blocks')."""
+  type: String!
+
+  """The timestamp of when the UI extension was last updated."""
+  updatedAt: DateTime!
+}
+
+"""Input for creating a new application UI extension."""
+input ApplicationUiExtensionCreateInput {
+  """
+  The unique handle/identifier for the extension (e.g., 'my-extension'). Optional for blocks extensions.
+  """
+  handle: String
+
+  """The display name of the extension. Optional for blocks extensions."""
+  name: String
+
+  """
+  The source file path for the extension (e.g., 'extensions/my-ext/index.ts'). Optional for blocks extensions.
+  """
+  source: String
+
+  """
+  The target location for the extension (e.g., 'body.end', 'checkout.header'). Required for targeted extensions, optional for block-type extensions.
+  """
+  target: String
+
+  """The type of UI extension (e.g., 'embed', 'checkout', 'blocks')."""
+  type: String!
+}
+
+"""Pre-signed upload URL and metadata for listing media."""
+type CreateMediaUploadUrlResponse {
+  expiresAt: DateTime!
+  maxSizeBytes: Int!
+  mediaObjectId: ID!
+  requiredHeaders: [String!]!
+  uploadUrl: String!
+}
+
+"""A date-time string in ISO 8601 format (e.g. 2022-01-01T00:00:00Z)."""
+scalar DateTime
+
+"""The distribution type for an application."""
+enum DistributionType {
+  """Application has custom distribution."""
+  CUSTOM
+
+  """Application is publicly available."""
+  PUBLIC
+}
+
+type EnabledApplication {
+  """The timestamp of when the Application was activated."""
+  activatedAt: DateTime
+
+  """The timestamp of when the Application was archived."""
+  archivedAt: DateTime
+
+  """
+  The authorization scopes that the OAuth2 client has access to and will use to call API endpoints.
+  """
+  authorizationScopes: [String!]!
+
+  """
+  Earliest linked OAuth client ID for this application by createdAt then id (includes NULL-secret and ARCHIVED apps).
+  """
+  clientId: ID
+
+  """
+  The primary OAuth client secret for this application. Only returned on application creation.
+  """
+  clientSecret: String
+
+  """The timestamp of when the Application was created."""
+  createdAt: DateTime!
+
+  """The timestamp of when the Application was deactivated."""
+  deactivatedAt: DateTime
+
+  """General information about your application."""
+  description: String
+
+  """The globally-unique ID of the Application."""
+  id: ID!
+
+  """A human-readable label of the Application for display purposes."""
+  label: String!
+
+  """A url-friendly name for the Application."""
+  name: String!
+
+  """The ID of the organization that owns this Application."""
+  organizationId: ID!
+
+  """
+  The base URL of your application. This is the endpoint that the GoDaddy Commerce platform will call when integrated with actions.
+  """
+  proxyUrl: String
+
+  """
+  The public key (base64 encoded) for verifying action requests to your application.
+  """
+  publicKey: String
+
+  """
+  Additional OAuth redirect URIs on the application's OAuth client(s). URL-derived defaults (the application URL and {url}/api/godaddy/callback) are omitted so this list can be submitted unchanged on create or update.
+  """
+  redirectUris: [String!]!
+
+  """The release/version enabled for this application"""
+  release: ApplicationRelease
+
+  """
+  The secret for verifying webhook requests to your application. Copy and secure this secret. You will not see it again.
+  """
+  secret: String
+
+  """The status of the application."""
+  status: ApplicationStatus!
+
+  """The timestamp of when the Application was updated."""
+  updatedAt: DateTime!
+
+  """The public website of the application."""
+  url: String
+}
+
+"""Fields by which enablements can be ordered."""
+input EnablementOrderBy {
+  """Order enablements by creation date."""
+  createdAt: OrderByDirectionEnum
+
+  """Order enablements by ID."""
+  id: OrderByDirectionEnum
+
+  """Order enablements by last update date."""
+  updatedAt: OrderByDirectionEnum
+}
+
+"""
+A feature dependency declared by an application release (a feature name and its required/excluded/enabled/disabled state).
+"""
+type FeatureDependency {
+  """The feature name from the available features list."""
+  name: String!
+
+  """The declared state for this feature."""
+  state: FeatureDependencyState!
+}
+
+"""Input for declaring a feature dependency on a release."""
+input FeatureDependencyInput {
+  """The feature name from the available features list."""
+  name: String!
+
+  """The declared state for this feature."""
+  state: FeatureDependencyState!
+}
+
+"""The state of a feature dependency declaration."""
+enum FeatureDependencyState {
+  """Feature is disabled by default but can be overridden."""
+  DISABLED
+
+  """Feature is enabled by default but can be overridden."""
+  ENABLED
+
+  """Feature is excluded and cannot be required by other apps."""
+  EXCLUDED
+
+  """Feature is required and cannot be excluded by other apps."""
+  REQUIRED
+}
+
+"""Response containing pre-signed upload URL and metadata."""
+type GenerateReleaseUploadUrlResponse {
+  """The timestamp when the upload URL expires."""
+  expiresAt: DateTime!
+
+  """The S3 key where the file should be uploaded."""
+  key: String!
+
+  """Maximum allowed file size in bytes."""
+  maxSizeBytes: Int!
+
+  """Required headers for the upload as key:value pairs."""
+  requiredHeaders: [String!]!
+
+  """The unique upload identifier for tracking."""
+  uploadId: String!
+
+  """The pre-signed URL for uploading the file."""
+  url: String!
+}
+
+"""A JSON object scalar type."""
+scalar JSONObject
+
+"""Allowed MIME types for listing media uploads."""
+enum ListingMediaContentType {
+  IMAGE_JPEG
+  IMAGE_PNG
+  VIDEO_MP4
+}
+
+"""The merchandising role of a listing media asset."""
+enum ListingMediaRole {
+  HIGHLIGHT
+  ICON
+  SCREENSHOT
+  VIDEO
+}
+
+"""The lifecycle status of a listing media upload."""
+enum ListingMediaStatus {
+  CONFIRMED
+  FAILED
+  PENDING
+  REMOVED
+  SUPERSEDED
+}
+
+"""The lifecycle status of a listing."""
+enum ListingStatus {
+  """Listing is active and eligible for marketplace discovery."""
+  ACTIVE
+
+  """Listing is inactive until activation requirements are met."""
+  INACTIVE
+}
+
+"""The visibility of a listing."""
+enum ListingVisibility {
+  """Listing is hidden from discovery surfaces."""
+  HIDDEN
+
+  """Listing is publicly visible."""
+  LISTED
+
+  """Listing is not shown in search."""
+  UNLISTED
+}
+
+"""A media asset attached to an application listing."""
+type MediaObject {
+  applicationId: ID!
+  contentType: String
+  createdAt: DateTime!
+  failureReason: String
+  filename: String
+  id: ID!
+  listingId: ID
+  role: ListingMediaRole
+  sortOrder: Int!
+  status: ListingMediaStatus!
+  updatedAt: DateTime!
+  url: String
+}
+
+type Mutation {
+  """
+  Activate a release and, when permitted, promote its parent application to ACTIVE.
+  """
+  activateRelease(
+    """The ID of the application."""
+    applicationId: ID!
+
+    """The ID of the release to activate."""
+    releaseId: ID!
+  ): ApplicationRelease
+
+  """Archive an existing Application."""
+  archiveApplication(
+    """The ID of the application to archive."""
+    id: String!
+  ): Application
+
+  """Confirm a listing media upload after the client PUTs the file to S3."""
+  confirmMediaObject(
+    """The application that owns the media object — used for authorization."""
+    applicationId: ID!
+
+    """The media object ID returned from createMediaUploadUrl."""
+    mediaObjectId: ID!
+  ): MediaObject
+
+  """Create a new Application."""
+  createApplication(input: MutationCreateApplicationInput!): Application
+
+  """
+  Create a pending listing media record and return a pre-signed S3 PUT URL.
+  """
+  createMediaUploadUrl(
+    """The application that owns the listing (1:1)."""
+    applicationId: ID!
+
+    """MIME type of the file to upload."""
+    contentType: ListingMediaContentType!
+
+    """
+    Declared file size in bytes. Rejected if it exceeds the role cap before issuing the presigned URL.
+    """
+    fileSizeBytes: Int!
+
+    """Original filename from the client."""
+    filename: String!
+
+    """Merchandising role for this asset."""
+    role: ListingMediaRole!
+
+    """
+    Optional ordering for screenshots/videos (0–7). Defaults to next slot. Ignored for other roles (defaults to 0).
+    """
+    sortOrder: Int
+  ): CreateMediaUploadUrlResponse
+
+  """Create a new release for an application."""
+  createRelease(input: MutationCreateReleaseInput!): ApplicationRelease
+
+  """
+  Deactivate an application through its lifecycle operation. Activate it again by activating a release.
+  """
+  deactivateApplication(
+    """The ID of the application to deactivate."""
+    id: String!
+  ): Application
+
+  """
+  Deactivate a release. When it is the last active release, its application listing is also deactivated.
+  """
+  deactivateRelease(
+    """The ID of the application."""
+    applicationId: ID!
+
+    """The ID of the release to deactivate."""
+    releaseId: ID!
+  ): ApplicationRelease
+
+  """Soft-delete the listing for an application."""
+  deleteApplicationListing(
+    """The ID of the application."""
+    applicationId: ID!
+  ): Boolean
+
+  """Disable an application on a customer"""
+  disableCustomerApplication(input: MutationDisableCustomerApplicationInput!): Application
+
+  """Disable an application in a store"""
+  disableStoreApplication(input: MutationDisableStoreApplicationInput!): Application
+
+  """Enable an application on a customer"""
+  enableCustomerApplication(input: MutationEnableCustomerApplicationInput!): Application
+
+  """Enable an application on a store"""
+  enableStoreApplication(input: MutationEnableStoreApplicationInput!): Application
+
+  """Generate a pre-signed URL for uploading UI extension artifacts."""
+  generateReleaseUploadUrl(input: MutationGenerateReleaseUploadUrlInput!): GenerateReleaseUploadUrlResponse
+
+  """
+  Remove a confirmed listing media object. Sets status to REMOVED, deletes the promoted S3 object, and invalidates the CDN path.
+  """
+  removeListingMediaObject(
+    """
+    The application that owns the media object — prevents cross-app removal.
+    """
+    applicationId: ID!
+
+    """The confirmed media object ID to remove."""
+    mediaObjectId: ID!
+  ): MediaObject
+
+  """
+  Create or update the listing for an application. Idempotent — safe to call multiple times for the same application.
+  """
+  setApplicationListing(
+    """The ID of the application."""
+    applicationId: ID!
+
+    """The listing fields to create or update."""
+    input: ApplicationListingInput!
+  ): ApplicationListing
+
+  """Update an existing Application."""
+  updateApplication(id: String!, input: MutationUpdateApplicationInput!): Application
+}
+
+input MutationCreateApplicationInput {
+  """
+  The authorization scopes of the application. Defines the GoDaddy permissions for the application.
+  """
+  authorizationScopes: [String!]
+
+  """The description of the application."""
+  description: String
+
+  """The distribution type for the application. Defaults to PUBLIC."""
+  distributionType: DistributionType = PUBLIC
+
+  """The label of the application."""
+  label: String!
+
+  """The name of the application."""
+  name: String!
+
+  """
+  Optional organization ID for multi-org users. If omitted, the organization is auto-resolved from the user's session. If provided, the user must be an admin of the specified organization.
+  """
+  organizationId: String
+
+  """
+  The proxy URL of the application. This is the base URL for all API endpoints.
+  """
+  proxyUrl: String
+
+  """
+  Additional OAuth redirect URI allowlist. Supports up to 5 unique HTTPS URLs. Entries equal to the application URL or its default callback are rejected; those defaults are registered automatically.
+  """
+  redirectUris: [String!]
+
+  """
+  The public URL of the application. This is typically the URL of the application's website.
+  """
+  url: String
+}
+
+input MutationCreateReleaseInput {
+  """The actions associated with the release."""
+  actions: [ApplicationActionCreateInput!]
+
+  """
+  The other applications this release depends on, and the state it declares for each.
+  """
+  applicationDependencies: [ApplicationDependencyInput!]
+
+  """The ID of the application."""
+  applicationId: ID!
+
+  """The description of the release."""
+  description: String
+
+  """The feature dependencies declared by the release."""
+  featureDependencies: [FeatureDependencyInput!]
+
+  """The MCP servers associated with the release."""
+  mcpServers: [ApplicationMcpServerCreateInput!]
+
+  """The native extensions associated with the release."""
+  nativeExtensions: [ApplicationNativeExtensionCreateInput!]
+
+  """The settings capabilities associated with the release."""
+  settings: [ApplicationSettingCreateInput!]
+
+  """The subscriptions associated with the release."""
+  subscriptions: [ApplicationSubscriptionCreateInput!]
+
+  """The UI extensions associated with the release."""
+  uiExtensions: [ApplicationUiExtensionCreateInput!]
+
+  """The version of the release."""
+  version: String!
+}
+
+input MutationDisableCustomerApplicationInput {
+  """The name of the application to disable."""
+  applicationName: String!
+
+  """The ID of the customer to disable the application on."""
+  customerId: String!
+}
+
+input MutationDisableStoreApplicationInput {
+  """The name of the application to disable."""
+  applicationName: String!
+
+  """The ID of the store to disable the application on."""
+  storeId: String!
+}
+
+input MutationEnableCustomerApplicationInput {
+  """The name of the application to enable."""
+  applicationName: String!
+
+  """The ID of the customer to enable the application on."""
+  customerId: String!
+}
+
+input MutationEnableStoreApplicationInput {
+  """The name of the application to enable."""
+  applicationName: String!
+
+  """The ID of the store to enable the application on."""
+  storeId: String!
+}
+
+input MutationGenerateReleaseUploadUrlInput {
+  """The ID of the application."""
+  applicationId: ID!
+
+  """The content type of the file to be uploaded."""
+  contentType: UploadContentType!
+
+  """The ID of the release."""
+  releaseId: ID!
+
+  """The target for the upload."""
+  target: String
+}
+
+input MutationUpdateApplicationInput {
+  """
+  The authorization scopes of the application. Defines the GoDaddy permissions for the application.
+  """
+  authorizationScopes: [String!]
+
+  """The description of the application."""
+  description: String
+
+  """
+  The distribution type for the application (PUBLIC or CUSTOM). Omit to leave unchanged.
+  """
+  distributionType: DistributionType
+
+  """The label of the application."""
+  label: String
+
+  """The name of the application."""
+  name: String
+
+  """
+  The proxy URL of the application. This is the base URL for all API endpoints.
+  """
+  proxyUrl: String
+
+  """
+  Additional OAuth redirect URI allowlist. Supports up to 5 unique HTTPS URLs. Entries equal to the effective application URL or its default callback are rejected. On URL changes, both old defaults are replaced; submit any old URI explicitly to retain it as an extra.
+  """
+  redirectUris: [String!]
+
+  """
+  The public URL of the application. This is typically the URL of the application's website.
+  """
+  url: String
+}
+
+"""The platform for a native extension."""
+enum NativeExtensionPlatform {
+  """Android platform (APK distribution)."""
+  ANDROID
+}
+
+"""Represents a null value."""
+scalar Null
+
+"""Direction for ordering results in queries."""
+enum OrderByDirectionEnum {
+  """Sort in ascending order."""
+  ASC
+
+  """Sort in descending order."""
+  DESC
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
+type Query {
+  """Get a single application by ID or name."""
+  application(
+    """The OAuth client ID of the application to retrieve."""
+    clientId: String
+
+    """The unique ID of the application to retrieve."""
+    id: String
+
+    """The unique name of the application to retrieve."""
+    name: String
+  ): Application
+
+  """
+  Paginated listings. Defaults to publicly LISTED listings for active PUBLIC-distribution apps. Pass visibility filter to query owner/admin contexts.
+  """
+  applicationListings(
+    after: String
+    before: String
+
+    """Filter options for the query."""
+    filter: ApplicationListingFilterInput
+    first: Int
+    last: Int
+  ): QueryApplicationListingsConnection
+
+  """
+  Get paginated applications. Returns all public applications for service requests, or only applications owned by the authenticated customer's organization. Multi-org users may pass an explicit `organizationId` to select which organization's apps to list.
+  """
+  applications(
+    after: String
+    before: String
+    first: Int
+    last: Int
+
+    """The order in which to sort the applications."""
+    orderBy: ApplicationOrderBy
+
+    """
+    Optional organization ID. When provided, lists apps for that specific organization. Customer tokens must be admin of the organization; service tokens may specify any organization.
+    """
+    organizationId: String
+
+    """Filter by application status. Defaults to ACTIVE applications only."""
+    status: ApplicationStatusFilter
+  ): QueryApplicationsConnection
+
+  """
+  Get all applications enabled for an entity by entity ID and type, with optional filtering by actions, UI extensions, and settings.
+  """
+  enabledApplications(
+    """
+    Filter by action names. Supports has (single match) and hasAny (any match).
+    """
+    actionNames: StringListFilter
+
+    """The ID of the entity to get enabled applications for."""
+    entityId: String!
+
+    """
+    The type of the entity the applications are enabled on. Currently STORE.
+    """
+    entityType: String!
+
+    """Filter by Commerce settings group slug."""
+    settingGroupSlug: String
+
+    """
+    Filter by application setting slugs. Supports has (single match) and hasAny (any match).
+    """
+    settingSlugs: StringListFilter
+
+    """
+    Filter by UI extension targets. Supports has (single match) and hasAny (any match).
+    """
+    uiExtensionTargets: StringListFilter
+
+    """
+    Filter by UI extension types. Supports has (single match) and hasAny (any match).
+    """
+    uiExtensionTypes: StringListFilter
+  ): [EnabledApplication!]
+
+  """
+  Get all applications enabled for a store by store ID, with optional filtering by actions, UI extensions, and settings.
+  """
+  enabledStoreApplications(
+    """
+    Filter by action names. Supports has (single match) and hasAny (any match).
+    """
+    actionNames: StringListFilter
+
+    """Filter by Commerce settings group slug."""
+    settingGroupSlug: String
+
+    """
+    Filter by application setting slugs. Supports has (single match) and hasAny (any match).
+    """
+    settingSlugs: StringListFilter
+
+    """The ID of the store to get enabled applications for."""
+    storeId: String!
+
+    """
+    Filter by UI extension targets. Supports has (single match) and hasAny (any match).
+    """
+    uiExtensionTargets: StringListFilter
+
+    """
+    Filter by UI extension types. Supports has (single match) and hasAny (any match).
+    """
+    uiExtensionTypes: StringListFilter
+  ): [EnabledApplication!]
+
+  """Returns a paginated list of enablements for a specific release."""
+  enablementsByRelease(
+    after: String
+    before: String
+    first: Int
+    last: Int
+
+    """The order in which to sort the enablements."""
+    orderBy: EnablementOrderBy
+
+    """The release ID to query enablements for."""
+    releaseId: ID!
+  ): QueryEnablementsByReleaseConnection!
+
+  """Get the status of a release upload by upload ID."""
+  getReleaseUpload(
+    """The application ID to verify authorization."""
+    applicationId: ID!
+
+    """The unique upload identifier."""
+    uploadId: String!
+  ): ReleaseUpload
+
+  """Get a single native extension by ID."""
+  nativeExtension(
+    """The ID of the native extension to retrieve."""
+    id: ID!
+  ): ApplicationNativeExtension
+
+  """
+  List native extensions by application or release. At least one of applicationId or releaseId must be provided.
+  """
+  nativeExtensions(
+    """Filter by application ID."""
+    applicationId: ID
+
+    """Maximum number of results to return."""
+    limit: Int
+
+    """Filter by release ID."""
+    releaseId: ID
+  ): [ApplicationNativeExtension!]!
+
+  """
+  Get the resolved feature states for a store, after reconciling all active app declarations.
+  """
+  storeFeatures(
+    """The ID of the store to resolve features for."""
+    storeId: String!
+  ): [FeatureDependency!]!
+
+  """Returns webhook subscription IDs for a specific release/entity pair."""
+  webhookSubscriptionInstancesByRelease(
+    """The entity ID to scope the query to."""
+    entityId: ID!
+
+    """The entity type to scope the query to (e.g. STORE)."""
+    entityType: String!
+
+    """The release ID to query webhook subscriptions for."""
+    releaseId: ID!
+  ): [String!]!
+}
+
+type QueryApplicationListingsConnection {
+  edges: [QueryApplicationListingsConnectionEdge]
+  pageInfo: PageInfo!
+}
+
+type QueryApplicationListingsConnectionEdge {
+  cursor: String!
+  node: ApplicationListing
+}
+
+type QueryApplicationsConnection {
+  edges: [QueryApplicationsConnectionEdge]
+  pageInfo: PageInfo!
+}
+
+type QueryApplicationsConnectionEdge {
+  cursor: String!
+  node: Application
+}
+
+type QueryEnablementsByReleaseConnection {
+  edges: [QueryEnablementsByReleaseConnectionEdge]
+  pageInfo: PageInfo!
+}
+
+type QueryEnablementsByReleaseConnectionEdge {
+  cursor: String!
+  node: ApplicationEnablement
+}
+
+"""Fields by which application releases can be ordered."""
+input ReleaseOrderBy {
+  """Order releases by activation date."""
+  activatedAt: OrderByDirectionEnum
+
+  """Order releases by creation date."""
+  createdAt: OrderByDirectionEnum
+
+  """Order releases by ID."""
+  id: OrderByDirectionEnum
+
+  """Order releases by last update date."""
+  updatedAt: OrderByDirectionEnum
+
+  """Order releases by version number. Must be in {major}.{minor} format."""
+  version: OrderByDirectionEnum
+}
+
+"""Filter releases by status."""
+input ReleaseStatusFilter {
+  """Filter by exact status match."""
+  eq: ApplicationReleaseStatus
+
+  """Filter by any of the specified statuses."""
+  in: [ApplicationReleaseStatus!]
+
+  """Filter by status not equal to the specified value."""
+  ne: ApplicationReleaseStatus
+}
+
+"""A release upload record tracking the status of uploaded artifacts."""
+type ReleaseUpload {
+  """The ID of the associated application."""
+  applicationId: String!
+
+  """The timestamp when the upload was completed or failed."""
+  completedAt: DateTime
+
+  """The MIME type of the uploaded content."""
+  contentType: UploadContentType!
+
+  """The timestamp when the upload was requested."""
+  createdAt: DateTime!
+
+  """The reason for failure if status is FAILED."""
+  failureReason: String
+
+  """The globally-unique ID of the upload record."""
+  id: String!
+
+  """The ID of the associated release."""
+  releaseId: String!
+
+  """The size of the uploaded file in bytes."""
+  sizeBytes: Int
+
+  """The current status of the upload."""
+  status: ReleaseUploadStatus!
+
+  """The unique upload identifier used for correlation."""
+  uploadId: String!
+}
+
+"""The status of a release upload."""
+enum ReleaseUploadStatus {
+  """Upload or processing failed."""
+  FAILED
+
+  """File has been processed and deployed successfully."""
+  PROCESSED
+
+  """Upload URL has been generated and is awaiting upload."""
+  REQUESTED
+
+  """File has been uploaded and is awaiting processing."""
+  UPLOADED
+}
+
+"""Filter for fields that are lists/sets of strings."""
+input StringListFilter {
+  """Field must contain this value."""
+  has: String
+
+  """Field must contain at least one of these values."""
+  hasAny: [String!]
+}
+
+"""Supported content types for release uploads."""
+enum UploadContentType {
+  """JavaScript file"""
+  JS
+
+  """TAR archive"""
+  TAR
+
+  """ZIP archive"""
+  ZIP
+}

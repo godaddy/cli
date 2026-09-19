@@ -1,3 +1,4 @@
+mod app_registry_spec;
 mod dereference;
 mod domains_spec;
 mod email_spec;
@@ -119,6 +120,13 @@ fn main() -> Result<()> {
             &email_spec::email_client_oas3_path(),
         )
         .context("failed to refresh email-client codegen spec")?;
+    }
+    if let Some(app_registry_source) = sources.iter().find(|s| s.domain == "app-registry") {
+        app_registry_spec::refresh(
+            &app_registry_source.spec_file,
+            &app_registry_spec::app_registry_client_schema_path(),
+        )
+        .context("failed to refresh platform-app-client codegen schema")?;
     }
 
     sources.extend(local_spec_sources(&source_manifest)?);

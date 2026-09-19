@@ -1,0 +1,5 @@
+mutation EnableApplication($input: MutationEnableStoreApplicationInput!) {
+  enableStoreApplication(input: $input) {
+    id
+  }
+}
