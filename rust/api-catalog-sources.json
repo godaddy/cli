@@ -93,6 +93,10 @@
     {
       "domain": "domains",
       "repository": "domains.domain-lifecycle-specification"
+    },
+    {
+      "domain": "email",
+      "repository": "email.mailbox-lifecycle-specification"
     }
   ],
   "local": []
