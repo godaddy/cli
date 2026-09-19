@@ -135,6 +135,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let env = ctx.middleware.env.clone();
             let token = tap_deploy_err(&sender, ctx.credential().await).await?.token;
             let base_url = tap_deploy_err(&sender, api_url_for_env(&env)).await?;
+            // Bypasses `super::make_client` (streaming commands build their
+            // own client), so the transport-observer registration it would
+            // otherwise do has to happen here instead.
+            crate::http::ensure_generated_client_transport_observer_registered();
             let client = ApplicationClient::new(base_url, token);
 
             sender
