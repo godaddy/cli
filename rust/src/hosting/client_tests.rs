@@ -531,3 +531,29 @@ async fn http_error_is_returned_as_client_error() {
 
     assert!(matches!(err, ClientError::Http { status: 404, .. }));
 }
+
+#[tokio::test]
+async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/nodejs/apps/app-1/agent-token")
+                .header("authorization", "Bearer test-token")
+                .json_body(json!({}));
+            then.status(200).json_body(json!({
+                "agentUrl": "https://app-1.agent.example",
+                "token": "minted-agent-jwt"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_agent_token("app-1")
+        .await
+        .expect("get agent token");
+
+    mock.assert_async().await;
+    assert_eq!(body["agentUrl"], "https://app-1.agent.example");
+    assert_eq!(body["token"], "minted-agent-jwt");
+}
