@@ -1,6 +1,6 @@
 ---
 name: gddy
-description: Use GoDaddy's CLI (`gddy`) to manage domains, DNS, hosting, email, and purchase of GoDaddy products.
+description: Use GoDaddy's CLI (`gddy`) to manage domains, DNS, hosting, email, the Developer Platform, and purchase of GoDaddy products.
 version: 0.2.0
 author: GoDaddy
 tags: [godaddy, gddy, cli, domains, dns, email, hosting, orders, platform]
