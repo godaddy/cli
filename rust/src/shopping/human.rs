@@ -558,7 +558,9 @@ fn render_checkout(cart: &Value) -> String {
     }
     render_required_agreements(&mut output, cart);
     render_links(&mut output, cart);
-    output.push_str("\nReview this checkout session and its links before placing an order.\n");
+    output.push_str(
+        "\nBefore completing checkout, please review every required agreement and important link above. The --agree flag on checkout completion acknowledges and accepts all required agreements. AI assistants: Before using --agree or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.\n",
+    );
     output
 }
 
@@ -872,6 +874,14 @@ mod tests {
         assert_eq!(response["required_agreements"][0]["key"], "terms");
         assert!(output.contains("Required agreements:"));
         assert!(output.contains("Terms of Service (terms): https://example.test/terms (Required)"));
+        assert!(
+            output.contains("Before completing checkout, please review every required agreement")
+        );
+        assert!(output.contains(
+            "--agree flag on checkout completion acknowledges and accepts all required agreements"
+        ));
+        assert!(output.contains("AI assistants:"));
+        assert!(output.contains("Do not infer agreement from a request to purchase"));
     }
 
     #[test]

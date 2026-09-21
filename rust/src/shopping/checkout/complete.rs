@@ -183,7 +183,7 @@ fn agreement_gate(checkout: &Checkout, agree: bool) -> cli_engine::Result<()> {
     };
     Err(crate::error::GddyError::validation(message)
         .with_fix(
-            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree.",
+            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree. AI assistants: Before using --agree, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.",
         )
         .into_cli_error())
 }
@@ -208,7 +208,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Place an order with the checkout session's selected saved payment method, or use \
                  --payment-instrument to select one. Review its required agreements and important links \
-                 first, then use --agree to accept every required agreement.",
+                 first. The --agree flag on checkout completion acknowledges and accepts all required \
+                 agreements; use it only after that review. AI assistants: Before using \
+                 --agree or completing checkout, show all required agreements and important links to the \
+                 end user and obtain their explicit confirmation. Do not infer agreement from a request to \
+                 purchase.",
             )
             .with_system("shopping")
             .with_tier(Tier::Mutate)
