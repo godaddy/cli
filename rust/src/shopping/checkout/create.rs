@@ -1,7 +1,10 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
@@ -54,6 +57,16 @@ struct Args {
     /// Show every available saved payment instrument instead of the first five.
     #[arg(long)]
     show_all_payment_instruments: bool,
+}
+
+fn agreement_review_action(checkout_id: String) -> NextAction {
+    next_action(
+        "shopping checkout get <checkout-id>",
+        format!(
+            "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}"
+        ),
+    )
+    .with_param("checkout-id", NextActionParam::value(checkout_id))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -129,13 +142,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .into_iter()
                 .collect::<Vec<_>>();
             if ready_for_complete {
-                actions.push(
-                    next_action(
-                        "shopping checkout complete <checkout-id> --agree",
-                        "Place an order after reviewing the checkout session and its required agreements",
-                    )
-                    .with_param("checkout-id", NextActionParam::value(checkout_id)),
-                );
+                actions.push(agreement_review_action(checkout_id));
             }
             let checkout = serde_json::to_value(&checkout).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
@@ -157,4 +164,36 @@ pub(super) fn command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agreement_review_action;
+
+    #[test]
+    fn agreement_review_action_never_suggests_checkout_completion() {
+        let action = agreement_review_action("checkout-1".to_owned());
+
+        assert_eq!(action.command, "gddy shopping checkout get <checkout-id>");
+        assert_eq!(
+            action.params["checkout-id"].value.as_deref(),
+            Some("checkout-1")
+        );
+        assert!(
+            action
+                .description
+                .contains("review every required agreement")
+        );
+        assert!(action.description.contains(
+            "--agree flag on checkout completion acknowledges and accepts all required agreements"
+        ));
+        assert!(action.description.contains("AI assistants:"));
+        assert!(
+            action
+                .description
+                .contains("Do not infer agreement from a request to purchase")
+        );
+        assert!(!action.command.contains("complete"));
+        assert!(!action.command.contains("--agree"));
+    }
 }
