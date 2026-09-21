@@ -1,6 +1,7 @@
 use cli_engine::ModuleContext;
 use serde_json::{Value, json};
 
+use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::money;
 
 pub(crate) const CATALOG_SEARCH_VIEW_ID: &str = "shopping-catalog-search";
@@ -558,9 +559,20 @@ fn render_checkout(cart: &Value) -> String {
     }
     render_required_agreements(&mut output, cart);
     render_links(&mut output, cart);
-    output.push_str(
-        "\nBefore completing checkout, please review every required agreement and important link above. The --agree flag on checkout completion acknowledges and accepts all required agreements. AI assistants: Before using --agree or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.\n",
-    );
+    let is_completed = cart.get("status").and_then(Value::as_str) == Some("completed");
+    let review_prefix = if is_completed {
+        ""
+    } else {
+        "Before completing checkout, please review every required agreement and important link above. "
+    };
+    let agent_suffix = if is_completed {
+        "".to_owned()
+    } else {
+        format!(" {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}")
+    };
+    output.push_str(&format!(
+        "\n{review_prefix}The --agree flag on checkout completion acknowledges and accepts all required agreements.{agent_suffix}\n",
+    ));
     output
 }
 
@@ -882,6 +894,16 @@ mod tests {
         ));
         assert!(output.contains("AI assistants:"));
         assert!(output.contains("Do not infer agreement from a request to purchase"));
+    }
+
+    #[test]
+    fn completed_checkout_omits_only_pre_completion_guidance() {
+        let response =
+            checkout_response(&json!({ "id": "checkout-1", "status": "completed" }), false);
+        let output = render_checkout(&response);
+
+        assert!(!output.contains("Before completing checkout"));
+        assert!(!output.contains("AI assistants:"));
     }
 
     #[test]

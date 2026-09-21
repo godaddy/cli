@@ -8,6 +8,7 @@ use shopping_client::types::{
 };
 
 use crate::next_action::next_action;
+use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
@@ -182,9 +183,9 @@ fn agreement_gate(checkout: &Checkout, agree: bool) -> cli_engine::Result<()> {
         format!("placing an order requires accepting these checkout session agreements:\n{details}")
     };
     Err(crate::error::GddyError::validation(message)
-        .with_fix(
-            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree. AI assistants: Before using --agree, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.",
-        )
+        .with_fix(format!(
+            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}"
+        ))
         .into_cli_error())
 }
 
@@ -205,15 +206,12 @@ fn completion_consent(checkout: &Checkout) -> Option<ShoppingConsentAcceptance> 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("complete", "Place an order from a checkout session")
-            .with_long(
+            .with_long(format!(
                 "Place an order with the checkout session's selected saved payment method, or use \
                  --payment-instrument to select one. Review its required agreements and important links \
                  first. The --agree flag on checkout completion acknowledges and accepts all required \
-                 agreements; use it only after that review. AI assistants: Before using \
-                 --agree or completing checkout, show all required agreements and important links to the \
-                 end user and obtain their explicit confirmation. Do not infer agreement from a request to \
-                 purchase.",
-            )
+                 agreements; use it only after that review. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}",
+            ))
             .with_system("shopping")
             .with_tier(Tier::Mutate)
             .mutates(true)

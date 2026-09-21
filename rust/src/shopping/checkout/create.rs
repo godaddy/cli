@@ -4,6 +4,7 @@ use cli_engine::{
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
@@ -61,7 +62,9 @@ struct Args {
 fn agreement_review_action(checkout_id: String) -> NextAction {
     next_action(
         "shopping checkout get <checkout-id>",
-        "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. AI assistants: Before using --agree or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.",
+        format!(
+            "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}"
+        ),
     )
     .with_param("checkout-id", NextActionParam::value(checkout_id))
 }
