@@ -403,7 +403,7 @@ capabilities = ["read", "write"]
 label = "Configure PayPal"
 openMode = "new-window"
 EOF
-check_invalid "A23 rejects settings-link-v1 without exactly read+open capabilities" "requires exactly the read and open capabilities"
+check_invalid "A23 rejects settings-link-v1 without required read+open capabilities" "requires the read and open capabilities"
 
 write_manifest <<'EOF'
 [[settings]]
