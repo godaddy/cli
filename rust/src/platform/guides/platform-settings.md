@@ -22,7 +22,7 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
      --icon-name percent --icon-library lucide
    ```
 
-   `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read`+`write` server-side if omitted. `--icon-name`/`--icon-library` must be given together or not at all.
+   `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read`+`write` server-side if omitted. `--icon-name`/`--icon-library` must be given together or not at all. A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
 
 2. **Author the form** — this command only writes placement metadata; the actual field/section definitions (`presentation`) aren't flag-driven. Either hand-add a `[settings.presentation]` block directly into the entry `add settings` just wrote, or point it at a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). The two are mutually exclusive — see "Presentation shape" below.
 
@@ -142,11 +142,39 @@ label = "Configure PayPal"
 openMode = "new-window"
 ```
 
-A link presentation requires exactly the `read` and `open` capabilities — no other combination is valid, and `open` is rejected on a form presentation. `label` must be non-empty; `openMode` currently only accepts `"new-window"`. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). See `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into (App Registry never stores a merchant-specific launch URL — it publishes the placement and lets Settings API request one via the GPA's `open` route at merchant-invoke time).
+A link presentation requires the `read` and `open` capabilities and may additionally declare `delete` and `config`; form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty; `openMode` currently only accepts `"new-window"`. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). See `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into (App Registry never stores a merchant-specific launch URL — it publishes the placement and lets Settings API request one via the GPA's `open` route at merchant-invoke time).
+
+### Public config (`gpa-settings-config-v1`)
+
+A form or link contribution may declare `config` when the GPA serves `POST {entryPath}/config`. The registration must also declare `read` and an allowlist of 1 to 16 public response keys. Keys must be unique and match `^[a-z][A-Za-z0-9]{0,63}$`.
+
+```sh
+gddy platform app add settings \
+  --group payment-methods \
+  --slug paypal-payments \
+  --entry-path /settings/paypal \
+  --capability read --capability open --capability config --capability delete \
+  --config-key clientId --config-key merchantId --config-key disableFunding
+```
+
+The command writes:
+
+```toml
+[[settings]]
+group = "payment-methods"
+slug = "paypal-payments"
+entryPath = "/settings/paypal"
+capabilities = ["read", "open", "config", "delete"]
+
+[settings.metadata]
+configKeys = ["clientId", "merchantId", "disableFunding"]
+```
+
+App Registry stores only this allowlist. Settings API strips response properties outside it before returning public config to consumers. `metadata.configKeys` without the `config` capability is rejected.
 
 ## What the CLI validates locally vs. server-side
 
-`gddy platform app add settings`/`release` catch cheap, structural problems before any network call: `group`/`slug` match the platform's slug pattern (`lowercase-with-dashes`); `entryPath` is a route-safe path (`/`-prefixed, no query string/fragment/`..`) and doesn't overlap another setting's `entryPath` in the same manifest; `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, with `open` only valid — and required — alongside `read` on a link presentation; `icon.library` is one of `ux`, `lucide`, `commerce`; every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key; a link presentation's `label` is non-empty and `openMode` is `"new-window"`; `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
+`gddy platform app add settings`/`release` catch cheap, structural problems before any network call: `group`/`slug` match the platform's slug pattern (`lowercase-with-dashes`); `entryPath` is a route-safe path (`/`-prefixed, no query string/fragment/`..`) and doesn't overlap another setting's `entryPath` in the same manifest; `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, `config`, with `open` only valid on a link presentation and link presentations limited to required `read`+`open` plus optional `config`/`delete`; `config` requires `read` and 1-16 valid, unique `metadata.configKeys`; `icon.library` is one of `ux`, `lucide`, `commerce`; every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key; a link presentation's `label` is non-empty and `openMode` is `"new-window"`; `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
 
 Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
 
