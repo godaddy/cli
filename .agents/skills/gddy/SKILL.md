@@ -3,7 +3,7 @@ name: gddy
 description: Use GoDaddy's CLI (`gddy`) to manage domains, DNS, hosting, email, and purchase of GoDaddy products.
 version: 0.2.0
 author: GoDaddy
-tags: [godaddy, gddy, cli, domains, dns, email, hosting, orders]
+tags: [godaddy, gddy, cli, domains, dns, email, hosting, orders, platform]
 ---
 
 # gddy CLI
@@ -15,6 +15,7 @@ tags: [godaddy, gddy, cli, domains, dns, email, hosting, orders]
 - hosting
 - email
 - purchase of GoDaddy products
+- the GoDaddy Developer Platform (building apps for GoDaddy Commerce products)
 
 ## Setup
 
@@ -49,13 +50,13 @@ For non-interactive workflows, you can use a [Personal Access Token (PAT)](https
 
 Always pause and obtain explicit consent from the user before performing any of the following on the user's behalf:
 
-- Agreement to terms & conditions; always provide a link to T&C documents and confirm that that the user has read and agreed to them.
+- Agreement to terms & conditions; always provide a link to T&C documents and confirm that the user has read and agreed to them.
 - Purchases; always confirm with the user before completing a financial transaction.
 - Any irreversible actions; always confirm with the user before proceeding with actions that cannot be undone, like deletion of a resource.
 
 ## Domain purchase
 
-Run `gddy guide domain-purchase` for a detailed walkthrough of the multi-step purchase domain flow.
+Run `gddy guide domain-purchase` for a detailed walkthrough of the multi-step domain purchase flow.
 
 ## DNS management
 

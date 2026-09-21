@@ -7,6 +7,7 @@ Teaches an AI coding agent how to drive `gddy`, GoDaddy's CLI for:
 - hosting
 - email
 - product purchasing
+- the GoDaddy Developer Platform
 
 See [SKILL.md](./SKILL.md) for the full instructions given to the agent.
 
