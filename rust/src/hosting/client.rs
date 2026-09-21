@@ -287,7 +287,7 @@ impl HostingClient {
     /// Mint a short-lived agent token for the app and return the agent's
     /// assigned URL alongside it. Response shape: `{ agentUrl, token, expires? }`.
     /// The `db tunnel` caller mints this token with a dedicated
-    /// `hosting.database:tunnel` scope in addition to `hosting.deployment:execute`,
+    /// `hosting.database.tunnel:execute` scope in addition to `hosting.deployment:execute`,
     /// so publish authority alone does not yield a database-tunnel agent token.
     ///
     /// This mint lives under the Node.js-specific `/v1/hosting/nodejs` path

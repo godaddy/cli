@@ -10,9 +10,10 @@
 //!
 //! Auth: the CLI mints a short-lived agent token from the hosting API
 //! (`POST /v1/hosting/nodejs/apps/:id/agent-token`) using your GoDaddy OAuth
-//! credential, stepped up to a dedicated `hosting.database:tunnel` scope *in
-//! addition to* deploy-execute — so authority to publish a deployment does not
-//! by itself grant raw database read/write. It then connects to the agent URL
+//! credential, stepped up to the dedicated `hosting.database.tunnel:execute`
+//! scope alongside deploy-execute — the tunnel scope is a separate grant, so
+//! authority to publish a deployment does not by itself grant raw database
+//! read/write. It then connects to the agent URL
 //! that call returns, sending the minted token as `Authorization: Bearer`. The
 //! agent URL and token both come from the service — neither is a user-supplied
 //! flag.
@@ -36,7 +37,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 use crate::error::GddyError;
 use crate::hosting::client::HostingClient;
 use crate::http::api_url_for_env;
-use crate::scopes::HOSTING_DATABASE_TUNNEL as DATABASE_TUNNEL;
+use crate::scopes::HOSTING_DATABASE_TUNNEL_EXECUTE as DATABASE_TUNNEL;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 /// A connected agent WebSocket. Always TLS: `build_tunnel_ws_url` admits only
@@ -297,9 +298,9 @@ async fn run_tunnel(
 
 /// Mint a short-lived agent token for `app_id` via the hosting API and return
 /// `(agent_url, token)`. Steps the CLI's OAuth credential up to *both*
-/// deploy-execute and the dedicated `hosting.database:tunnel` scope: authority
-/// to publish a deployment does not by itself grant database access, so opening
-/// a tunnel requires the separate database-tunnel grant as well.
+/// deploy-execute and the dedicated `hosting.database.tunnel:execute` scope:
+/// authority to publish a deployment does not by itself grant database access,
+/// so opening a tunnel requires the separate database-tunnel grant as well.
 async fn mint_agent_token(
     ctx: &CommandContext,
     app_id: &str,

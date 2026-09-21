@@ -131,10 +131,10 @@ declare_scopes! {
     /// Attach an an application to a hosting plan (`hosting subscription attach`).
     HOSTING_SUBSCRIPTION_WRITE => "hosting.subscription:write",
     /// Open a raw MySQL-over-WebSocket tunnel to a hosting app's database
-    /// (`db tunnel`). Required *in addition to* [`HOSTING_DEPLOYMENT_EXECUTE`],
-    /// so that authority to publish a deployment does not by itself grant raw
-    /// database read/write — opening a tunnel needs this dedicated grant as well.
-    HOSTING_DATABASE_TUNNEL => "hosting.database:tunnel",
+    /// (`db tunnel`). A dedicated grant, separate from
+    /// [`HOSTING_DEPLOYMENT_EXECUTE`]: authority to publish a deployment does
+    /// not by itself grant raw database read/write.
+    HOSTING_DATABASE_TUNNEL_EXECUTE => "hosting.database.tunnel:execute",
 
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
     EMAIL_READ => "email.mailbox:read",
@@ -267,7 +267,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         default: false,
     },
     ScopeInfo {
-        scope: HOSTING_DATABASE_TUNNEL,
+        scope: HOSTING_DATABASE_TUNNEL_EXECUTE,
         description: "Open a MySQL tunnel to a Node.js Hosting app's database",
         default: false,
     },
