@@ -256,7 +256,7 @@ mod tests {
         assert!(
             validate_requested_scopes(&[
                 scopes::DOMAINS_READ.to_owned(),
-                scopes::HOSTING_APPS_READ.to_owned(),
+                scopes::HOSTING_APPLICATION_READ.to_owned(),
             ])
             .is_ok()
         );

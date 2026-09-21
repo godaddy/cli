@@ -705,6 +705,11 @@ mod tests {
     /// the user could type/guess a valid PAT by hand.
     #[tokio::test]
     async fn invalid_pat_message_points_to_guide_auth() {
+        // `pat add` resolves the real "ote" environment before validating
+        // the token, so this races against any test elsewhere in the crate
+        // that mutates a GDDY_* override var — see
+        // `environments::test_support::ENV_LOCK`'s doc.
+        let _g = environments::test_support::ENV_LOCK.lock().await;
         let cli =
             Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
         let output = cli
@@ -730,6 +735,9 @@ mod tests {
     /// unconditionally reporting the generic "would execute".
     #[tokio::test]
     async fn add_dry_run_still_rejects_a_malformed_token() {
+        // See `invalid_pat_message_points_to_guide_auth` for why this takes
+        // `ENV_LOCK`.
+        let _g = environments::test_support::ENV_LOCK.lock().await;
         let cli =
             Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
         let output = cli
@@ -757,6 +765,9 @@ mod tests {
     /// GDDEVPLAT-81: a well-formed token previews without being stored.
     #[tokio::test]
     async fn add_dry_run_previews_a_valid_token_without_storing() {
+        // See `invalid_pat_message_points_to_guide_auth` for why this takes
+        // `ENV_LOCK`.
+        let _g = environments::test_support::ENV_LOCK.lock().await;
         let cli =
             Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
         let output = cli
@@ -785,6 +796,10 @@ mod tests {
     /// `pat remove --dry-run` previews existence without deleting.
     #[tokio::test]
     async fn remove_dry_run_reports_not_found_without_error() {
+        // `pat remove` resolves the real "ote" environment up front too —
+        // see `invalid_pat_message_points_to_guide_auth` for why this takes
+        // `ENV_LOCK`.
+        let _g = environments::test_support::ENV_LOCK.lock().await;
         let cli =
             Cli::new(CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(module()));
         let output = cli

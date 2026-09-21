@@ -276,6 +276,10 @@ mod tests {
     /// registered". This guards that the `env` commands stay `no_auth(true)`.
     #[tokio::test]
     async fn env_list_runs_without_auth() {
+        // Asserts on resolved apiUrl for both built-ins, so this races
+        // against any test elsewhere in the crate that mutates a GDDY_*
+        // override var — see `environments::test_support::ENV_LOCK`'s doc.
+        let _g = crate::environments::test_support::ENV_LOCK.lock().await;
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
         );
@@ -308,6 +312,11 @@ mod tests {
     /// without touching the real `~/.gdenv` state file.
     #[tokio::test]
     async fn env_set_dry_run_previews_a_valid_environment_without_persisting() {
+        // Resolves the real "ote" environment (full validation, not just
+        // apiUrl), so this races against any test elsewhere in the crate
+        // that mutates a GDDY_* override var — see
+        // `environments::test_support::ENV_LOCK`'s doc.
+        let _g = crate::environments::test_support::ENV_LOCK.lock().await;
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy").with_module(super::module()),
         );

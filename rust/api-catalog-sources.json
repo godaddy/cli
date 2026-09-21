@@ -30,6 +30,10 @@
       "repository": "commerce.fulfillments-specification"
     },
     {
+      "domain": "hosting",
+      "repository": "hosting.application-lifecycle-specification"
+    },
+    {
       "domain": "location-addresses",
       "repository": "location.addresses-specification"
     },
@@ -66,6 +70,11 @@
       "repository": "commerce.shipping-specification"
     },
     {
+      "domain": "shopping",
+      "repository": "shopping.ucp-specification",
+      "catalog": false
+    },
+    {
       "domain": "stores",
       "repository": "commerce.stores-specification"
     },
@@ -86,10 +95,5 @@
       "repository": "domains.domain-lifecycle-specification"
     }
   ],
-  "local": [
-    {
-      "domain": "hosting-nodejs",
-      "path": "schemas/openapi/hosting-nodejs-public-v1.yaml"
-    }
-  ]
+  "local": []
 }

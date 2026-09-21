@@ -1,0 +1,2653 @@
+{
+  "components": {
+    "headers": {
+      "Location": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RateLimitLimit": {
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "RateLimitRemaining": {
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "RateLimitReset": {
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "RetryAfter": {
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "XRequestId": {
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "parameters": {
+      "appId": {
+        "in": "path",
+        "name": "appId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "appType": {
+        "in": "query",
+        "name": "appType",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/AppType"
+        }
+      },
+      "hostingProduct": {
+        "in": "query",
+        "name": "hostingProduct",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/HostingProduct"
+        }
+      },
+      "idempotencyKey": {
+        "in": "header",
+        "name": "Idempotency-Key",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "pageSize": {
+        "in": "query",
+        "name": "pageSize",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/Pagination_pageSize"
+        }
+      },
+      "pageToken": {
+        "in": "query",
+        "name": "pageToken",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/Pagination_pageToken"
+        }
+      },
+      "totalRequired": {
+        "in": "query",
+        "name": "totalRequired",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/Pagination_totalRequired"
+        }
+      },
+      "traceparent": {
+        "in": "header",
+        "name": "traceparent",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotImplemented": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "RateLimit-Limit": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "RateLimit-Remaining": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "RateLimit-Reset": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "AppOperation": {
+        "$id": "https://godaddy.com/schemas/hosting/models/app-operation.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/AppOperationApplication",
+            "nullable": true,
+            "readOnly": true
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error",
+            "nullable": true,
+            "readOnly": true
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "operationId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "title": "AppOperation",
+        "type": "object"
+      },
+      "AppOperationApplication": {
+        "$id": "https://godaddy.com/schemas/hosting/models/app-operation-application.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "id": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "region": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppStatus"
+          }
+        },
+        "title": "AppOperationApplication",
+        "type": "object"
+      },
+      "AppSource": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-source.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AppSource",
+        "type": "string"
+      },
+      "AppState": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-state.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AppState",
+        "type": "string"
+      },
+      "AppStatus": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-status.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AppStatus",
+        "type": "string"
+      },
+      "AppType": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-type.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AppType",
+        "type": "string"
+      },
+      "Application": {
+        "$id": "https://godaddy.com/schemas/hosting/models/application.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "appType": {
+            "$ref": "#/components/schemas/AppType"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "id": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "region": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AppSource"
+          },
+          "sourceDetails": {
+            "$ref": "#/components/schemas/GitHubSource",
+            "nullable": true,
+            "readOnly": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppStatus"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "urls": {
+            "properties": {
+              "preview": {
+                "type": "string"
+              },
+              "publish": {
+                "type": "string"
+              }
+            },
+            "readOnly": true,
+            "type": "object"
+          }
+        },
+        "title": "Application",
+        "type": "object"
+      },
+      "ApplicationStatus": {
+        "$id": "https://godaddy.com/schemas/hosting/models/application-status.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppStatus"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentVariant"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "title": "ApplicationStatus",
+        "type": "object"
+      },
+      "AttachDomainRequest": {
+        "properties": {
+          "hostname": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AttachState": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/attach-state.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "ACTIVE",
+          "SUSPENDED",
+          "CANCELLED"
+        ],
+        "title": "AttachState",
+        "type": "string"
+      },
+      "AttachSubscriptionRequest": {
+        "properties": {
+          "subscriptionId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CdnStatus": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/cdn-status.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "CdnStatus",
+        "type": "string"
+      },
+      "CreateAppRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Deployment": {
+        "$id": "https://godaddy.com/schemas/hosting/models/deployment.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "deploymentId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error",
+            "nullable": true,
+            "readOnly": true
+          },
+          "gitHash": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/date-time"
+          }
+        },
+        "title": "Deployment",
+        "type": "object"
+      },
+      "DeploymentLogs": {
+        "$id": "https://godaddy.com/schemas/hosting/models/deployment-logs.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "deploymentId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          }
+        },
+        "title": "DeploymentLogs",
+        "type": "object"
+      },
+      "Domain": {
+        "$id": "https://godaddy.com/schemas/hosting/models/domain.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "anycastIp": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "cdnStatus": {
+            "$ref": "#/components/schemas/CdnStatus",
+            "nullable": true,
+            "readOnly": true
+          },
+          "certificateValidationCname": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "domainId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "domainType": {
+            "$ref": "#/components/schemas/DomainType"
+          },
+          "hostname": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DomainRole"
+          },
+          "verificationStatus": {
+            "$ref": "#/components/schemas/DomainVerificationStatus"
+          }
+        },
+        "title": "Domain",
+        "type": "object"
+      },
+      "DomainRole": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/domain-role.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "PRIMARY",
+          "ADDITIONAL"
+        ],
+        "title": "DomainRole",
+        "type": "string"
+      },
+      "DomainType": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/domain-type.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "PREFIX",
+          "CUSTOM"
+        ],
+        "title": "DomainType",
+        "type": "string"
+      },
+      "DomainVerificationStatus": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/domain-verification-status.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "DomainVerificationStatus",
+        "type": "string"
+      },
+      "Environment": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/environment.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Environment",
+        "type": "string"
+      },
+      "EnvironmentVariant": {
+        "$id": "https://godaddy.com/schemas/hosting/models/environment-variant.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "lifecycleState": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/Environment"
+          }
+        },
+        "title": "EnvironmentVariant",
+        "type": "object"
+      },
+      "GitHubSource": {
+        "$id": "https://godaddy.com/schemas/hosting/models/github-source.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "repositoryFullName": {
+            "type": "string"
+          }
+        },
+        "title": "GitHubSource",
+        "type": "object"
+      },
+      "HostingProduct": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/hosting-product.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "HostingProduct",
+        "type": "string"
+      },
+      "HostingSubscription": {
+        "$id": "https://godaddy.com/schemas/hosting/models/hosting-subscription.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "attachedCount": {
+            "minimum": 0,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "availableSlots": {
+            "minimum": 0,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "hostingProduct": {
+            "$ref": "#/components/schemas/HostingProduct"
+          },
+          "label": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "paidThroughDate": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "slotLimit": {
+            "minimum": 0,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "status": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "subscriptionId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "tier": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "title": "HostingSubscription",
+        "type": "object"
+      },
+      "ImportGitHubSourceRequest": {
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "repositoryFullName": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ImportType": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/import-type.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "ZIP",
+          "GITHUB"
+        ],
+        "title": "ImportType",
+        "type": "string"
+      },
+      "LogEntry": {
+        "$id": "https://godaddy.com/schemas/hosting/models/log-entry.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/LogLevel"
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LogSource"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/date-time"
+          }
+        },
+        "title": "LogEntry",
+        "type": "object"
+      },
+      "LogLevel": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/log-level.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "LogLevel",
+        "type": "string"
+      },
+      "LogSource": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/log-source.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "LogSource",
+        "type": "string"
+      },
+      "OperationStatus": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/operation-status.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "OperationStatus",
+        "type": "string"
+      },
+      "PagedApplications": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/Application"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "PagedDeployments": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/Deployment"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "PagedDomains": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/Domain"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "PagedList": {
+        "properties": {
+          "items": {
+            "nullable": true,
+            "type": "array"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "totalItems": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPages": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PagedLogEntries": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/LogEntry"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "PagedSubscriptions": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/HostingSubscription"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "Pagination_pageSize": {
+        "default": 25,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "Pagination_pageToken": {
+        "type": "string"
+      },
+      "Pagination_totalRequired": {
+        "default": false,
+        "type": "boolean"
+      },
+      "RestartRequest": {
+        "properties": {
+          "variant": {
+            "$ref": "#/components/schemas/Environment"
+          }
+        },
+        "type": "object"
+      },
+      "RuntimeVersion": {
+        "$id": "https://godaddy.com/schemas/hosting/models/runtime-version.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "runtime": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "title": "RuntimeVersion",
+        "type": "object"
+      },
+      "ScopedSecretSet": {
+        "$id": "https://godaddy.com/schemas/hosting/models/scoped-secret-set.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "shared": {
+            "properties": {
+              "secrets": {
+                "items": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "readOnly": true,
+            "type": "object"
+          },
+          "variants": {
+            "properties": {
+              "preview": {
+                "properties": {
+                  "secrets": {
+                    "items": {
+                      "$ref": "#/components/schemas/Secret"
+                    },
+                    "nullable": true,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "publish": {
+                "properties": {
+                  "secrets": {
+                    "items": {
+                      "$ref": "#/components/schemas/Secret"
+                    },
+                    "nullable": true,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "readOnly": true,
+            "type": "object"
+          }
+        },
+        "title": "ScopedSecretSet",
+        "type": "object"
+      },
+      "Secret": {
+        "$id": "https://godaddy.com/schemas/hosting/models/secret.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "systemManaged": {
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/date-time",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "title": "Secret",
+        "type": "object"
+      },
+      "SecretList": {
+        "$id": "https://godaddy.com/schemas/hosting/models/secret-list.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Secret"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "title": "SecretList",
+        "type": "object"
+      },
+      "SourceImport": {
+        "$id": "https://godaddy.com/schemas/hosting/models/source-import.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "$ref": "#/components/schemas/date-time"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error",
+            "nullable": true,
+            "readOnly": true
+          },
+          "gitHash": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "importId": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "importType": {
+            "$ref": "#/components/schemas/ImportType"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "title": "SourceImport",
+        "type": "object"
+      },
+      "SubscriptionAttachment": {
+        "$id": "https://godaddy.com/schemas/hosting/models/subscription-attachment.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "appState": {
+            "$ref": "#/components/schemas/AppState"
+          },
+          "attachState": {
+            "$ref": "#/components/schemas/AttachState"
+          },
+          "hostingProduct": {
+            "$ref": "#/components/schemas/HostingProduct"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "subscriptionId": {
+            "type": "string"
+          }
+        },
+        "title": "SubscriptionAttachment",
+        "type": "object"
+      },
+      "date-time": {
+        "$id": "https://godaddy.com/schemas/common/date-time.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "error": {
+        "$id": "https://godaddy.com/schemas/common/error.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "definitions": {
+          "error-details": {
+            "$ref": "#/components/schemas/error-details"
+          },
+          "link-description": {
+            "$ref": "#/components/schemas/link-description"
+          }
+        },
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "details": {
+            "additionalItems": false,
+            "items": {
+              "$ref": "#/components/schemas/error-details"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "informationLink": {
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "title": "Error",
+        "type": "object"
+      },
+      "error-details": {
+        "$id": "https://godaddy.com/schemas/common/error-details.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "issue": {
+            "type": "string"
+          },
+          "location": {
+            "default": "body",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "title": "Error Details",
+        "type": "object"
+      },
+      "link-description": {
+        "$id": "https://godaddy.com/schemas/common/link-description.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "rel": {
+            "type": "string"
+          },
+          "submissionMediaType": {
+            "default": "application/json",
+            "type": "string"
+          },
+          "submissionSchema": {},
+          "targetMediaType": {
+            "type": "string"
+          },
+          "targetSchema": {},
+          "title": {
+            "type": "string"
+          }
+        },
+        "title": "Link Description",
+        "type": "object"
+      },
+      "patch": {
+        "$id": "https://godaddy.com/schemas/common/patch.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add",
+              "remove",
+              "replace",
+              "move",
+              "copy",
+              "test"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {},
+                "nullable": true,
+                "type": "array"
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "title": "Patch",
+        "type": "object"
+      },
+      "patch-request": {
+        "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "items": {
+          "$ref": "#/components/schemas/patch"
+        },
+        "nullable": true,
+        "title": "Patch Request",
+        "type": "array"
+      }
+    },
+    "securitySchemes": {
+      "oauth2": {
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://api.godaddy.com/v2/oauth2/authorize",
+            "scopes": {
+              "hosting.application:create": "Create new applications",
+              "hosting.application:delete": "Delete applications",
+              "hosting.application:read": "Read application details",
+              "hosting.application:update": "Update application settings",
+              "hosting.deployment:execute": "Trigger deployments and restarts",
+              "hosting.domain:read": "Read attached domains",
+              "hosting.domain:write": "Attach or remove domains",
+              "hosting.log:read": "Read application logs",
+              "hosting.secret:read": "List application secrets",
+              "hosting.secret:write": "Create or update application secrets",
+              "hosting.source:read": "Read source import status",
+              "hosting.source:write": "Upload or link source code",
+              "hosting.subscription:read": "Read subscription data",
+              "hosting.subscription:write": "Attach subscriptions to applications"
+            },
+            "tokenUrl": "https://api.godaddy.com/v2/oauth2/token"
+          }
+        },
+        "type": "oauth2"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "GoDaddy Hosting",
+      "x-slack-channel": "#agi-hosting-nodejs",
+      "x-visibility": {
+        "extent": "private"
+      }
+    },
+    "license": {
+      "name": "Proprietary",
+      "url": "https://www.godaddy.com/legal/agreements/software-license-agreement"
+    },
+    "title": "Hosting API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/v1/hosting/app-operations/{operationId}": {
+      "get": {
+        "operationId": "getAppOperation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOperation"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "operationId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps": {
+      "get": {
+        "operationId": "listApps",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "appType",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AppType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageToken"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageSize"
+            }
+          },
+          {
+            "in": "query",
+            "name": "totalRequired",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_totalRequired"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedApplications"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createApp",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "appType",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AppType"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOperation"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:create"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/apps/{appId}": {
+      "delete": {
+        "operationId": "deleteApp",
+        "responses": {
+          "204": {
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:delete"
+            ]
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getApp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/deployments": {
+      "get": {
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageToken"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageSize"
+            }
+          },
+          {
+            "in": "query",
+            "name": "totalRequired",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_totalRequired"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedDeployments"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createDeployment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.deployment:execute"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/apps/{appId}/deployments/{deploymentId}": {
+      "get": {
+        "operationId": "getDeployment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "deploymentId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/deployments/{deploymentId}/logs": {
+      "get": {
+        "operationId": "getDeploymentLogs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentLogs"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ],
+        "x-visibility": {
+          "extent": "private"
+        }
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "deploymentId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/domains": {
+      "get": {
+        "operationId": "listDomains",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedDomains"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.domain:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "attachDomain",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachDomainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.domain:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/apps/{appId}/domains/{domainId}": {
+      "delete": {
+        "operationId": "detachDomain",
+        "responses": {
+          "204": {
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.domain:write"
+            ]
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getDomain",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.domain:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "domainId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/imports": {
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createSourceImport",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportGitHubSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceImport"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.source:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/apps/{appId}/imports/{importId}": {
+      "get": {
+        "operationId": "getSourceImport",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceImport"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.source:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "importId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/logs": {
+      "get": {
+        "operationId": "getLogs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Environment"
+            }
+          },
+          {
+            "deprecated": true,
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Environment"
+            }
+          },
+          {
+            "deprecated": true,
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "enum": [
+                "preview",
+                "production"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/date-time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LogSource"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LogLevel"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageToken"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedLogEntries"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.log:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/restarts": {
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createAppRestart",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationStatus"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.deployment:execute"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/apps/{appId}/runtime": {
+      "get": {
+        "operationId": "getRuntime",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeVersion"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/secrets": {
+      "get": {
+        "operationId": "listSecrets",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Environment"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretList"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.secret:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/status": {
+      "get": {
+        "operationId": "getAppStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationStatus"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/hosting/apps/{appId}/subscription": {
+      "get": {
+        "operationId": "getSubscriptionAttachment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionAttachment"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.subscription:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "attachSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionAttachment"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.subscription:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/hosting/subscriptions": {
+      "get": {
+        "operationId": "listSubscriptions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hostingProduct",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/HostingProduct"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedSubscriptions"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.subscription:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.godaddy.com"
+    }
+  ],
+  "x-lifecycle": "Beta",
+  "x-visibility": {
+    "extent": "public"
+  }
+}

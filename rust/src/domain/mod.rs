@@ -20,14 +20,16 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 mod agreements;
 mod available;
-mod common;
+pub(crate) mod common;
 mod contacts;
+mod contacts_file;
 mod get;
 mod list;
 mod nameservers;
 mod operation;
 mod purchase;
 mod quote;
+mod quote_cache;
 mod suggest;
 
 // Shared with the `dns` module, which builds the same Domains API client and

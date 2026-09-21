@@ -21,3 +21,6 @@ __pycache__
 # Claude Code local runtime state (per-machine, not for commit)
 **/.claude/scheduled_tasks.lock
 **/.claude/scheduled_tasks.json
+
+# Local end-to-end test evidence
+stash/
