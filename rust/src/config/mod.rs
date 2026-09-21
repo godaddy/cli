@@ -470,7 +470,8 @@ pub fn write_env_file(
 #[cfg(test)]
 mod tests {
     use super::settings_form::{
-        SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation, SettingsFormV1Section,
+        SettingPresentation, SettingsFormV1Field, SettingsFormV1Presentation,
+        SettingsFormV1Section, SettingsLinkV1Presentation,
     };
     use super::*;
 
@@ -859,6 +860,45 @@ mod tests {
             unreachable!("expected boolean field");
         };
         assert_eq!(default_value, &Some(true));
+    }
+
+    #[test]
+    fn setting_with_config_allowlist_round_trips_through_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = valid_config();
+        config.settings.push(SettingConfig {
+            group: "payment-methods".to_owned(),
+            slug: "paypal-payments".to_owned(),
+            title: None,
+            description: None,
+            entry_path: "/settings/paypal".to_owned(),
+            order: None,
+            capabilities: vec![
+                "read".to_owned(),
+                "open".to_owned(),
+                "config".to_owned(),
+                "delete".to_owned(),
+            ],
+            icon: None,
+            metadata: Some(serde_json::json!({
+                "configKeys": ["clientId", "merchantId"]
+            })),
+            presentation_file: None,
+            presentation: Some(SettingPresentation::Link(SettingsLinkV1Presentation {
+                label: "Configure PayPal".to_owned(),
+                open_mode: "new-window".to_owned(),
+            })),
+        });
+
+        write_config(&path, &config).expect("write config setting");
+        let read_back = read_config(&path).expect("read config setting");
+        assert_eq!(
+            read_back.settings[0].metadata,
+            Some(serde_json::json!({
+                "configKeys": ["clientId", "merchantId"]
+            }))
+        );
     }
 
     #[test]
