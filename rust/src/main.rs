@@ -17,6 +17,7 @@ mod platform;
 mod scopes;
 mod scopes_cmd;
 mod shopping;
+mod spec_cmd;
 mod summary;
 mod truncation;
 mod update;
@@ -93,7 +94,8 @@ async fn main() -> ExitCode {
                 Ok(())
             }))
             .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
-            .with_modules(all_modules()),
+            .with_modules(all_modules())
+            .with_command(spec_cmd::spec_command()),
     );
 
     execute_without_stdout_lock(&cli).await
