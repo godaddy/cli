@@ -66,6 +66,31 @@ Key fields:
 | `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
 
 
+### Microsoft Customer Agreement (MICROSOFT_MCA)
+
+Before returning eligible accounts, the API may require acceptance of the **Microsoft Customer Agreement**. When this is needed, the response includes a top-level `requirements` array (separate from `eligibleAccounts[].requirements`):
+
+```json
+{
+  "requirements": [
+    {
+      "type": "MICROSOFT_MCA",
+      "title": "Microsoft Customer Agreement",
+      "url": "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6"
+    }
+  ]
+}
+```
+
+**The CLI handles this automatically** — no manual steps are needed:
+
+1. The agreement page opens in your browser.
+2. Click **Accept** on the Microsoft Customer Agreement page.
+3. The CLI polls in the background until acceptance is confirmed.
+4. The eligibility check retries automatically and returns results.
+
+`MICROSOFT_MCA` is a pre-flight prerequisite handled before eligibility results are returned. It is **not** passed as `--consent` to `email create`.
+
 When the account has **no free-trial** plan, `requirements` is an empty array and no `--consent` flag is needed:
 
 ```json
@@ -95,7 +120,7 @@ gddy email create --email someone@example.com \
   --consent FREETRIAL_AUTORENEW
 ```
 
-`--consent` is repeatable — pass one per required requirement type. `FREETRIAL_AUTORENEW` is currently the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
+`--consent` is repeatable — pass one per required `eligibleAccounts[].requirements[].type`. Currently the only consent type issued by the API is `FREETRIAL_AUTORENEW`. When `requirements` is empty, omit `--consent` entirely. (`MICROSOFT_MCA` is handled automatically by `check-eligibility` and is never passed as `--consent`.)
 
 `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
 

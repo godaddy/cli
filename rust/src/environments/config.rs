@@ -69,6 +69,19 @@ pub struct GddyEnvConfig {
         default_fn = default_devx_core_url
     )]
     pub devx_core_url: String,
+
+    /// Base URL for GoDaddy Productivity APIs (email, calendar, etc.).
+    /// Derived from `api_url` by prepending `productivity.` to the host
+    /// (e.g. `api.test-godaddy.com` → `productivity.api.test-godaddy.com`).
+    /// Overridable via `GDDY_PRODUCTIVITY_API_URL` or `productivity_api_url`
+    /// in `environments.toml`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "PRODUCTIVITY_API_URL",
+        from_env = parse_url,
+        default_fn = default_productivity_api_url
+    )]
+    pub productivity_api_url: String,
 }
 
 /// `name`'s `default_fn`: the field itself is never set by any real TOML/env
@@ -115,6 +128,30 @@ fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
     // default keeps the field optional for unrelated CLI commands; callers
     // that require DevX Core report a missing URL through `devx_core_url`.
     String::new()
+}
+
+fn default_productivity_api_url(sources: &SourceChain<'_>) -> String {
+    let api_url = current_api_url(sources);
+    prepend_productivity_subdomain(&api_url).unwrap_or(api_url)
+}
+
+/// Inserts `productivity.` immediately after the scheme of `api_url`.
+/// `https://api.test-godaddy.com` → `https://productivity.api.test-godaddy.com`.
+/// Returns `None` for URLs without a recognised http(s):// scheme.
+pub(super) fn prepend_productivity_subdomain(api_url: &str) -> Option<String> {
+    let lower = api_url.to_ascii_lowercase();
+    let scheme_len = if lower.starts_with("https://") {
+        "https://".len()
+    } else if lower.starts_with("http://") {
+        "http://".len()
+    } else {
+        return None;
+    };
+    Some(format!(
+        "{}productivity.{}",
+        &api_url[..scheme_len],
+        &api_url[scheme_len..]
+    ))
 }
 
 fn derive_account_url(env_name: &str) -> String {
@@ -426,6 +463,48 @@ mod tests {
                 .with("api_url", "https://api.example.test")
         });
         assert_eq!(resolved.account_url, "https://account.override.test");
+    }
+
+    #[test]
+    fn productivity_api_url_derived_from_api_url() {
+        let resolved = test_environment("test", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.test-godaddy.com")
+        });
+        assert_eq!(
+            resolved.productivity_api_url,
+            "https://productivity.api.test-godaddy.com"
+        );
+    }
+
+    #[test]
+    fn productivity_api_url_override_is_respected() {
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+                .with("productivity_api_url", "https://productivity.override.test")
+        });
+        assert_eq!(
+            resolved.productivity_api_url,
+            "https://productivity.override.test"
+        );
+    }
+
+    #[test]
+    fn prepend_productivity_subdomain_inserts_prefix() {
+        assert_eq!(
+            prepend_productivity_subdomain("https://api.test-godaddy.com"),
+            Some("https://productivity.api.test-godaddy.com".to_owned())
+        );
+        assert_eq!(
+            prepend_productivity_subdomain("https://api.ote-godaddy.com"),
+            Some("https://productivity.api.ote-godaddy.com".to_owned())
+        );
+        assert_eq!(
+            prepend_productivity_subdomain("https://api.godaddy.com"),
+            Some("https://productivity.api.godaddy.com".to_owned())
+        );
+        assert!(prepend_productivity_subdomain("not-a-url").is_none());
     }
 
     #[test]
