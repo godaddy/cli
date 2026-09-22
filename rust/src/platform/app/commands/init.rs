@@ -216,6 +216,12 @@ async fn handle_from_existing(
                 })
                 .unwrap_or_default()
         });
+    let redirect_uris = app["redirectUris"].as_array().map(|redirect_uris| {
+        redirect_uris
+            .iter()
+            .filter_map(|uri| uri.as_str().map(str::to_owned))
+            .collect::<Vec<_>>()
+    });
 
     for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
         if !crate::platform::app::public_url::is_public_routable_url(u) {
@@ -276,6 +282,7 @@ async fn handle_from_existing(
         url: url.clone(),
         proxy_url: proxy_url.clone(),
         authorization_scopes: scopes.clone(),
+        redirect_uris: redirect_uris.clone(),
         actions,
         subscriptions: Some(crate::config::SubscriptionsConfig {
             webhook: webhook_subscriptions.clone(),
@@ -303,6 +310,7 @@ async fn handle_from_existing(
         "url": url,
         "proxyUrl": proxy_url,
         "authorizationScopes": scopes,
+        "redirectUris": redirect_uris,
         "subscriptions": subscriptions_json,
         "filesWritten": {
             "config": cwd.join(config_path).display().to_string(),
@@ -407,6 +415,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 })
                 .or_else(|| existing.as_ref().map(|c| c.authorization_scopes.clone()))
                 .unwrap_or_default();
+            let redirect_uris = existing
+                .as_ref()
+                .and_then(|config| config.redirect_uris.clone());
             let label = args.label.unwrap_or_else(|| name.clone());
 
             for (message, empty) in [
@@ -448,16 +459,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ensure_ready_for_app_init(&credential.token, &env, accept_agreements).await?;
 
             let client = super::make_client(&ctx).await?;
+            let mut input = json!({
+                "name": name,
+                "label": label,
+                "description": description,
+                "url": url,
+                "proxyUrl": proxy_url,
+                "organizationId": &onboarding.org_id,
+                "authorizationScopes": scopes,
+            });
+            super::add_redirect_uris_to_input(&mut input, redirect_uris.as_deref());
             let data = client
-                .create_application(json!({
-                    "name": name,
-                    "label": label,
-                    "description": description,
-                    "url": url,
-                    "proxyUrl": proxy_url,
-                    "organizationId": &onboarding.org_id,
-                    "authorizationScopes": scopes,
-                }))
+                .create_application(input)
                 .await
                 .map_err(super::client_err)?;
 
@@ -478,6 +491,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 url: url.clone(),
                 proxy_url: proxy_url.clone(),
                 authorization_scopes: scopes.clone(),
+                redirect_uris: redirect_uris.clone(),
                 actions: vec![],
                 subscriptions: Some(crate::config::SubscriptionsConfig { webhook: vec![] }),
                 dependencies: vec![],

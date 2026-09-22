@@ -173,7 +173,7 @@ impl ApplicationClient {
 
     pub async fn update_application(&self, id: &str, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) { updateApplication(id: $id, input: $input) { id clientId label name description status url proxyUrl authorizationScopes } }",
+            "query": "mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) { updateApplication(id: $id, input: $input) { id clientId label name description status url proxyUrl authorizationScopes redirectUris } }",
             "variables": { "id": id, "input": input }
         }))
         .await
@@ -246,7 +246,7 @@ impl ApplicationClient {
 
     pub async fn create_application(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateApplication($input: MutationCreateApplicationInput!) { createApplication(input: $input) { id clientId clientSecret label name description status url proxyUrl authorizationScopes secret publicKey } }",
+            "query": "mutation CreateApplication($input: MutationCreateApplicationInput!) { createApplication(input: $input) { id clientId clientSecret label name description status url proxyUrl authorizationScopes redirectUris secret publicKey } }",
             "variables": { "input": input }
         }))
         .await
@@ -254,7 +254,7 @@ impl ApplicationClient {
 
     pub async fn get_application_with_releases(&self, name: &str) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
+            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes redirectUris clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
             "variables": { "name": name }
         }))
         .await

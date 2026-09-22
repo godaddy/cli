@@ -21,6 +21,7 @@ output_schema!(ApplicationInit {
     "url": "string";
     "proxyUrl": "string";
     "authorizationScopes": "[]string";
+    "redirectUris": "[]string", optional;
     "oauthGrantTypes": "[]string", optional;
     "subscriptions": "[]object", optional;
     "filesWritten": "object";
@@ -36,6 +37,7 @@ output_schema!(ApplicationUpdate {
     "url": "string", optional;
     "proxyUrl": "string", optional;
     "authorizationScopes": "[]string";
+    "redirectUris": "[]string", optional;
 });
 
 output_schema!(ApplicationRef {

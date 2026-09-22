@@ -310,11 +310,13 @@ async fn sync_manifest_metadata(
 }
 
 fn manifest_metadata_input(config: &crate::config::Config) -> Value {
-    json!({
+    let mut input = json!({
         "url": config.url,
         "proxyUrl": config.proxy_url,
         "authorizationScopes": config.authorization_scopes,
-    })
+    });
+    super::add_redirect_uris_to_input(&mut input, config.redirect_uris.as_deref());
+    input
 }
 
 #[cfg(test)]
@@ -436,6 +438,7 @@ mod tests {
             url: "https://app.example.com".to_owned(),
             proxy_url: "https://api.example.com".to_owned(),
             authorization_scopes: vec!["openid".to_owned(), "profile".to_owned()],
+            redirect_uris: Some(vec!["https://auth.example.net/callback".to_owned()]),
             actions: vec![],
             subscriptions: None,
             dependencies: vec![],
@@ -451,6 +454,27 @@ mod tests {
             input["authorizationScopes"],
             serde_json::json!(["openid", "profile"])
         );
+        assert_eq!(
+            input["redirectUris"],
+            serde_json::json!(["https://auth.example.net/callback"])
+        );
         assert!(input.get("status").is_none());
+
+        let mut omitted = config.clone();
+        omitted.redirect_uris = None;
+        assert!(
+            super::manifest_metadata_input(&omitted)
+                .get("redirectUris")
+                .is_none(),
+            "an omitted manifest key must leave the remote allowlist unchanged"
+        );
+
+        let mut clear = config;
+        clear.redirect_uris = Some(vec![]);
+        assert_eq!(
+            super::manifest_metadata_input(&clear)["redirectUris"],
+            serde_json::json!([]),
+            "an explicit empty list must clear the remote allowlist"
+        );
     }
 }

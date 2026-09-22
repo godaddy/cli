@@ -14,6 +14,20 @@ gddy platform app init --name my-app --url https://example.com --proxy-url https
 
 This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url`/`proxy-url` must be publicly resolvable HTTP(S) — localhost, loopback, and private IPs are rejected. Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Requires the `applications.*:read`/`write` scopes (`--scope` on `gddy auth login`, or a PAT with the same scopes).
 
+To allow additional OAuth callbacks, add `redirect_uris` to the manifest passed with `--config`:
+
+```toml
+url = "https://my-app.example.com"
+
+# Additional OAuth callbacks only. The defaults derived from `url` are automatic.
+redirect_uris = [
+  "https://auth.example.net/oauth/callback",
+  "https://staging.example.net/oauth/callback",
+]
+```
+
+The list accepts up to five unique HTTPS URLs. Credentials and fragments are not allowed, and the list must not repeat `url` or `url` plus `/api/godaddy/callback`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update; `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application, and `deploy` keeps it synchronized on updates. The list contains extras only and does not replace the callbacks registered automatically from `url`.
+
 ## 2. Configure it locally
 
 `gddy platform app add <subcommand>` appends to `godaddy.toml` without any network call:
