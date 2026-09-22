@@ -17,6 +17,7 @@ mod platform;
 mod scopes;
 mod scopes_cmd;
 mod shopping;
+#[cfg(feature = "dev-portal-spec")]
 mod spec_cmd;
 mod summary;
 mod truncation;
@@ -57,7 +58,7 @@ async fn main() -> ExitCode {
 
     let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
 
-    let cli = Cli::new(
+    let config =
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
             .with_long(
                 "gddy is the command-line interface to the GoDaddy developer platform.\n\
@@ -94,9 +95,12 @@ async fn main() -> ExitCode {
                 Ok(())
             }))
             .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
-            .with_modules(all_modules())
-            .with_command(spec_cmd::spec_command()),
-    );
+            .with_modules(all_modules());
+
+    #[cfg(feature = "dev-portal-spec")]
+    let config = config.with_command(spec_cmd::spec_command());
+
+    let cli = Cli::new(config);
 
     execute_without_stdout_lock(&cli).await
 }

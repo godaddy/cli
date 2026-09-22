@@ -7,15 +7,21 @@
 //! Uses `cli_engine::build_module_group`, the same function
 //! `crate::scopes::command_scopes` uses, so the output can't drift from the
 //! real CLI and needs no cli-engine changes.
+//!
+//! Scoped to product commands (plus `auth`, needed to use them). Deliberately
+//! excludes cli-engine's own meta commands (`tree`, `guide`, `help`,
+//! `completion`, `search`, `flags`, and `spec` itself): none of DEVEX-1035's
+//! consumers document CLI mechanics, only GoDaddy platform functionality.
 
 use clap::{Arg, ArgAction};
 use cli_engine::{
     CommandResult, CommandSpec, RuntimeCommandSpec, RuntimeGroupSpec, SchemaInfo, Tier,
 };
+use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::json;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 struct SpecFlag {
     #[serde(skip_serializing_if = "Option::is_none")]
     long: Option<String>,
@@ -34,7 +40,7 @@ struct SpecFlag {
     takes_value: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 struct SpecNode {
     name: String,
     path: String,
@@ -44,7 +50,11 @@ struct SpecNode {
     long: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     flags: Vec<SpecFlag>,
+    /// `SchemaInfo` doesn't implement `JsonSchema` (it carries an arbitrary
+    /// nested JSON Schema itself), so its schema is generated as a generic
+    /// JSON value rather than a fully-typed shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<serde_json::Value>")]
     output: Option<SchemaInfo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     children: Vec<SpecNode>,
@@ -164,7 +174,8 @@ pub(crate) fn spec_command() -> RuntimeCommandSpec {
             "Emit the full command spec (flags, output schema) as JSON for external tooling",
         )
         .with_tier(Tier::Read)
-        .no_auth(true),
+        .no_auth(true)
+        .with_json_schema::<Vec<SpecNode>>(),
         |_credential, _args| async move { Ok(CommandResult::new(json!(build_spec_tree()))) },
     )
 }
@@ -188,6 +199,45 @@ mod tests {
     async fn spec_runs_without_auth() {
         let output = cli().run(["gddy", "spec", "--output", "json"]).await;
         assert_eq!(output.exit_code, 0, "rendered output: {}", output.rendered);
+    }
+
+    /// Guards against the derived `JsonSchema` drifting from the real
+    /// `SpecNode`/`SpecFlag` output shape — the artifact the dev-portal team
+    /// wants assurance against (DEVEX-1038 review).
+    #[tokio::test]
+    async fn spec_output_conforms_to_its_own_json_schema() {
+        let schema_output = cli().run(["gddy", "spec", "--schema"]).await;
+        assert_eq!(
+            schema_output.exit_code, 0,
+            "rendered output: {}",
+            schema_output.rendered
+        );
+        let schema_payload: serde_json::Value =
+            serde_json::from_str(&schema_output.rendered).expect("valid json output");
+        let schema = schema_payload["data"]["schema"]
+            .as_object()
+            .expect("spec command should register a full JSON schema")
+            .clone();
+
+        let data_output = cli().run(["gddy", "spec", "--output", "json"]).await;
+        assert_eq!(
+            data_output.exit_code, 0,
+            "rendered output: {}",
+            data_output.rendered
+        );
+        let data_payload: serde_json::Value =
+            serde_json::from_str(&data_output.rendered).expect("valid json output");
+
+        let validator = jsonschema::validator_for(&serde_json::Value::Object(schema))
+            .expect("derived spec schema should itself be a valid JSON Schema document");
+        let errors: Vec<String> = validator
+            .iter_errors(&data_payload["data"])
+            .map(|error| error.to_string())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "spec output should conform to its own derived schema: {errors:?}"
+        );
     }
 
     #[tokio::test]
