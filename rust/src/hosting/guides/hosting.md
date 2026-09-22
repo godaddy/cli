@@ -32,7 +32,7 @@ gddy hosting operation get --operation-id <operation-id>
 
 ## 2. Prepare source code
 
-The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. For a full list of application requirements and instructions on preparing a `.zip` file for uploading, read to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
+The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
 ## 3. Upload source code
 
