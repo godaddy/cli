@@ -63,8 +63,7 @@ tempfile = "3"
 
 [features]
 # Excludes `gddy spec` from default/release builds: it's only used to extract
-# the CLI's command spec for the dev-portal, never by end users. CI enables it
-# explicitly to check/lint/test the command.
+# the CLI's command spec for the dev-portal, never by end users.
 dev-portal-spec = ["dep:schemars"]
 
 [lints.rust]
