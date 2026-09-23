@@ -26,6 +26,18 @@ output_schema!(ApplicationInit {
     "filesWritten": "object";
 });
 
+output_schema!(ApplicationImport {
+    "id": "string";
+    "name": "string";
+    "status": "string";
+    "clientId": "string";
+    "url": "string";
+    "proxyUrl": "string";
+    "authorizationScopes": "[]string";
+    "subscriptions": "[]object", optional;
+    "filesWritten": "object";
+});
+
 output_schema!(ApplicationUpdate {
     "id": "string";
     "clientId": "string";
