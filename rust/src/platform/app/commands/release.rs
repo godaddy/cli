@@ -223,6 +223,23 @@ fn native_extension_draft(config: &crate::config::Config) -> Option<NativeExtens
     })
 }
 
+/// Draft for `createRelease` when the `native-apps` flag is visible.
+///
+/// A hidden flag yields `None` even if `[native_extension]` is present, so
+/// `apply_native_extensions` omits `nativeExtensions` and skips the mix check.
+fn native_extension_draft_if_visible(
+    config: &crate::config::Config,
+    policy: &cli_engine::FlagPolicy,
+) -> Option<NativeExtensionDraft> {
+    if !policy.visible(
+        Some(super::NATIVE_APPS_FLAG_KEY),
+        cli_engine::Stage::Experimental,
+    ) {
+        return None;
+    }
+    native_extension_draft(config)
+}
+
 /// Build the `createRelease` `nativeExtensions` entry from toml-owned fields.
 ///
 /// `platform` is required (`ANDROID` is the only `NativeExtensionPlatform`
@@ -321,7 +338,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             .unwrap_or_default();
                         let ui_extensions = build_ui_extensions(&config)?;
                         let settings = build_settings(&config, manifest_dir)?;
-                        let native_extension = native_extension_draft(&config);
+                        let native_extension =
+                            native_extension_draft_if_visible(&config, &ctx.middleware.flag_policy);
                         (
                             actions,
                             subscriptions,
@@ -366,6 +384,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use cli_engine::{FlagPolicy, Stage};
+
     #[test]
     fn command_accepts_version_flag() {
         super::command()
@@ -820,6 +840,110 @@ authorization_scopes = []
             settings: vec![],
             native_extension: None,
         }
+    }
+
+    fn config_with_native_extension() -> crate::config::Config {
+        let mut config = valid_release_config();
+        config.native_extension = Some(crate::config::NativeExtensionConfig {
+            name: Some("My Display Name".to_owned()),
+            support_contact: "support@example.com".to_owned(),
+            android_package_name: "com.example.app".to_owned(),
+        });
+        config
+    }
+
+    #[test]
+    fn native_apps_flag_key_is_native_apps() {
+        assert_eq!(super::super::NATIVE_APPS_FLAG_KEY, "native-apps");
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_is_none_at_ga_when_section_present() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new();
+        let draft = super::native_extension_draft_if_visible(&config, &policy);
+        assert!(draft.is_none());
+
+        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        super::apply_native_extensions(&mut input, &[], draft.as_ref()).expect("non-native release");
+        assert!(input.get("nativeExtensions").is_none());
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_is_some_when_min_stage_is_experimental() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new().with_min_stage(Stage::Experimental);
+        let draft = super::native_extension_draft_if_visible(&config, &policy).expect("draft");
+        assert_eq!(draft.name, "My Display Name");
+        assert_eq!(draft.support_contact, "support@example.com");
+        assert_eq!(draft.android_package_name, "com.example.app");
+
+        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        super::apply_native_extensions(&mut input, &[], Some(&draft)).expect("native release");
+        assert_eq!(input["nativeExtensions"][0]["packageName"], "com.example.app");
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_is_some_when_override_promotes_key_to_ga() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new()
+            .with_min_stage(Stage::Ga)
+            .with_override(super::super::NATIVE_APPS_FLAG_KEY, Stage::Ga);
+        let draft = super::native_extension_draft_if_visible(&config, &policy).expect("draft");
+        assert_eq!(draft.android_package_name, "com.example.app");
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_stays_none_when_override_is_experimental_at_ga() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new()
+            .with_min_stage(Stage::Ga)
+            .with_override(super::super::NATIVE_APPS_FLAG_KEY, Stage::Experimental);
+        assert!(super::native_extension_draft_if_visible(&config, &policy).is_none());
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_ignores_native_section_beside_ui_extensions_at_ga() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new();
+        let draft = super::native_extension_draft_if_visible(&config, &policy);
+        assert!(draft.is_none());
+
+        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let ui = vec![serde_json::json!({ "name": "Widget", "handle": "widget" })];
+        super::apply_native_extensions(&mut input, &ui, draft.as_ref()).expect("ui release");
+        assert!(input.get("nativeExtensions").is_none());
+        assert_eq!(ui.len(), 1);
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_rejects_mix_when_flag_visible() {
+        let config = config_with_native_extension();
+        let policy = FlagPolicy::new().with_min_stage(Stage::Experimental);
+        let draft = super::native_extension_draft_if_visible(&config, &policy).expect("draft");
+
+        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let ui = vec![serde_json::json!({ "name": "Widget", "handle": "widget" })];
+        let err = super::apply_native_extensions(&mut input, &ui, Some(&draft))
+            .expect_err("hybrid must fail locally");
+        assert!(
+            err.to_string().contains("cannot mix uiExtensions"),
+            "got: {err}"
+        );
+        assert!(input.get("nativeExtensions").is_none());
+    }
+
+    #[test]
+    fn native_extension_draft_if_visible_is_none_without_section_for_either_policy() {
+        let config = valid_release_config();
+        assert!(super::native_extension_draft_if_visible(&config, &FlagPolicy::new()).is_none());
+        assert!(
+            super::native_extension_draft_if_visible(
+                &config,
+                &FlagPolicy::new().with_min_stage(Stage::Experimental),
+            )
+            .is_none()
+        );
     }
 
     #[test]
