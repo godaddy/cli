@@ -216,10 +216,10 @@
           "$ref": "#/$defs/date-time"
         },
         "urls": {
-          "description": "Public URLs assigned to this application.",
+          "description": "Environment URLs assigned to this application.",
           "properties": {
             "preview": {
-              "description": "URL for the preview environment. Null until provisioning completes.\n",
+              "description": "Preview environment URL.",
               "format": "uri",
               "type": [
                 "string",
@@ -227,7 +227,7 @@
               ]
             },
             "publish": {
-              "description": "URL for the published environment. Null until a domain is attached.\n",
+              "description": "Publish environment URL.",
               "format": "uri",
               "type": [
                 "string",
@@ -676,7 +676,7 @@
           "type": "string"
         },
         "links": {
-          "description": "Reserved for future per-subscription HATEOAS links; currently always an empty array. The collection's `rel=self` (`GET /subscriptions`) lives on the `PagedSubscriptions` envelope, not here.\n",
+          "description": "Reserved for future per-subscription HATEOAS links. The collection's `rel=self` (`GET /subscriptions`) lives on the `PagedSubscriptions` envelope, not here.\n",
           "items": {
             "$ref": "#/$defs/link-description"
           },
@@ -942,12 +942,19 @@
                 "$ref": "#/$defs/HostingSubscription"
               },
               "type": "array"
+            },
+            "links": {
+              "description": "HATEOAS links for this collection. Includes the usual pagination relations (`rel=self`, `rel=next`, `rel=prev`, `rel=first`, `rel=last`) when applicable. May also include `rel=catalog` when the list is empty or the user needs to purchase a plan: `href` is the shopping catalog search URL, `method` is `POST`, and the body should filter with `filters.categories` (for example `webHosting` for `WEB_HOSTING`). Clients should navigate pages by following `links[rel=next].href` rather than constructing URLs manually.\n",
+              "items": {
+                "$ref": "#/$defs/link-description"
+              },
+              "type": "array"
             }
           },
           "type": "object"
         }
       ],
-      "description": "Hosting subscriptions belonging to the authenticated user. Returned as a single page in current implementations; navigate future pages via `links[rel=next]` if it is present in the response.\n"
+      "description": "Hosting subscriptions belonging to the authenticated user. Returned as a single page in current implementations; navigate future pages via `links[rel=next]` if it is present in the response. When the user has no suitable subscription, follow `links[rel=catalog]` to the shopping catalog for this product.\n"
     },
     "Pagination_pageSize": {
       "default": 25,
@@ -1008,7 +1015,7 @@
     "ScopedSecretSet": {
       "$id": "https://godaddy.com/schemas/hosting/models/scoped-secret-set.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Secrets for an application organised by storage scope: a shared bucket and per-variant buckets. Secret values are write-only and are never returned.\n\nThis is deliberately not the flat `items` list returned by `GET /apps/{appId}/secrets`: that endpoint deduplicates the two scopes into a single view, whereas this representation reports each scope separately so a client can see exactly where each secret is stored. A shared secret and a variant secret of the same name are distinct entries here.\n",
+      "description": "Secret metadata after a patch. Values are never returned.\n",
       "properties": {
         "shared": {
           "description": "Secrets visible to both the `PREVIEW` and `PUBLISH` variants.\n",
@@ -1075,7 +1082,7 @@
     "Secret": {
       "$id": "https://godaddy.com/schemas/hosting/models/secret.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Metadata for an environment secret. Secret values are write-only and are never returned in any response.\n\nSecrets are stored in two scopes: `shared` (visible to both preview and publish variants) and per-variant (`preview` or `publish`). When the same secret name exists in both a shared scope and a variant scope, the list endpoint returns it once with the shared metadata taking precedence. To write a secret into a specific scope, use `PATCH /apps/{appId}/secrets` with a path under `/shared/secrets`, `/variants/preview/secrets`, or `/variants/publish/secrets`.\n",
+      "description": "Metadata for an environment secret. Secret values are write-only and are never returned in any response. To write a secret, send `PATCH /apps/{appId}/secrets?variant=PREVIEW` or `?variant=PUBLISH` with a JSON Patch path of `/{name}`.\n",
       "properties": {
         "createdAt": {
           "description": "The time the secret was created. Null when the backend does not record a creation timestamp.\n",
@@ -3196,7 +3203,7 @@
       "summary": "Get runtime configuration"
     },
     {
-      "description": "Returns secret metadata. Values are never included in responses. Returns a deduplicated flat list — when the same secret name exists in both a shared scope and a variant scope, it appears once.\n",
+      "description": "Returns secret metadata. Values are never included in responses.\n",
       "method": "GET",
       "operationId": "listSecrets",
       "parameters": [
@@ -3281,7 +3288,7 @@
       "summary": "List secrets"
     },
     {
-      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present. The combined total number of operations must not exceed 50. Existing secrets not referenced in the request are left unchanged.\n\nSupported operations are `add`, `replace`, and `remove`. Any other op returns `400 Bad Request`. Paths identify a secret by name within a storage scope (a write-addressing convention; not array indexes into the `ScopedSecretSet` response):\n\n- `/shared/secrets/{name}` — shared across `PREVIEW` and\n  `PUBLISH`\n- `/variants/preview/secrets/{name}` — `PREVIEW` only - `/variants/publish/secrets/{name}` — `PUBLISH` only\n\nEncode `/` in a secret name as `~1` per RFC 6901. Secret names must start with a letter and contain only letters, digits, `/`, `_`, `+`, `=`, `.`, `@`, or `-`. Reserved environment variable names are rejected. System-managed and reserved secrets cannot be updated or deleted.\n\nFor `add` and `replace`, `value` is the secret string (max 8 KB). `remove` does not take a value. A request that would leave the application with more than 50 secrets across all scopes returns `400 Bad Request`.\n\nThe response is the full secret set grouped by scope (`ScopedSecretSet`), with each scope's secrets as an array of `Secret` objects — not the flat `items` list returned by `GET /apps/{appId}/secrets`.\n",
+      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present. The combined total number of operations must not exceed 50. Existing secrets not referenced in the request are left unchanged.\n\nThe `variant` query parameter selects the environment (`PREVIEW` or `PUBLISH`). Defaults to `PREVIEW`.\n\nSupported operations are `add`, `replace`, and `remove`. Any other op returns `400 Bad Request`. Each path is `/{name}` — a JSON Pointer to the secret name, not an index into the `ScopedSecretSet` response.\n\nEncode `/` in a secret name as `~1` per RFC 6901. Secret names must start with a letter and contain only letters, digits, `/`, `_`, `+`, `=`, `.`, `@`, or `-`. Reserved environment variable names are rejected. System-managed and reserved secrets cannot be updated or deleted.\n\nFor `add` and `replace`, `value` is the secret string (max 8 KB). `remove` does not take a value. A request that would leave the application with more than 50 secrets returns `400 Bad Request`.\n\nThe response is secret metadata after the update. Values are never included.\n",
       "method": "PATCH",
       "operationId": "updateSecrets",
       "parameters": [
@@ -3314,6 +3321,15 @@
             "format": "uuid",
             "type": "string"
           }
+        },
+        {
+          "description": "The environment variant to target. Defaults to `PREVIEW`.\n",
+          "in": "query",
+          "name": "variant",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/Environment"
+          }
         }
       ],
       "path": "/apps/{appId}/secrets",
@@ -3326,7 +3342,7 @@
       },
       "responses": {
         "200": {
-          "description": "The secret set after the update, grouped by scope. Not the flat `items` list returned by `GET /apps/{appId}/secrets`.\n",
+          "description": "Secret metadata after the update. Values are never included.\n",
           "schema": {
             "$ref": "#/$defs/ScopedSecretSet"
           }

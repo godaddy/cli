@@ -909,6 +909,13 @@
                 },
                 "nullable": true,
                 "type": "array"
+              },
+              "links": {
+                "items": {
+                  "$ref": "#/components/schemas/link-description"
+                },
+                "nullable": true,
+                "type": "array"
               }
             },
             "type": "object"
