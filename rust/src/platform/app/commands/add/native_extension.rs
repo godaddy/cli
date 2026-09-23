@@ -1,6 +1,6 @@
 //! `gddy platform app add native-extension` — synchronize a native Android draft.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Stage, Tier};
 use serde_json::json;
 
 use super::super::schemas::ConfigNativeExtension;
@@ -158,7 +158,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("applications")
         .with_tier(Tier::Mutate)
         .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
-        .with_output_schema::<ConfigNativeExtension>(),
+        .with_output_schema::<ConfigNativeExtension>()
+        .with_feature_flag(super::super::NATIVE_APPS_FLAG_KEY, Stage::Experimental),
         |ctx, args: NativeExtensionArgs| async move {
             let path = crate::config::config_path(Some(&ctx.middleware.env));
             let config = prepare_native_extension(&path, &args)?;

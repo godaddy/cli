@@ -437,6 +437,58 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn native_extension_is_hidden_at_ga_and_visible_at_experimental() {
+        let hidden = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_module(super::platform::module()),
+        );
+        let output = hidden
+            .run(["gddy", "platform", "app", "add", "native-extension", "--help"])
+            .await;
+        assert_ne!(
+            output.exit_code, 0,
+            "native-extension should stay hidden at the Ga default: {}",
+            output.rendered
+        );
+
+        let add_help = hidden
+            .run(["gddy", "platform", "app", "add", "--help"])
+            .await;
+        assert_eq!(add_help.exit_code, 0, "{}", add_help.rendered);
+        assert!(
+            !add_help.rendered.contains("native-extension"),
+            "add help should not list native-extension at Ga: {}",
+            add_help.rendered
+        );
+
+        let release_help = hidden
+            .run(["gddy", "platform", "app", "release", "--help"])
+            .await;
+        assert_eq!(release_help.exit_code, 0, "{}", release_help.rendered);
+
+        let revealed = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_module(super::platform::module()),
+        );
+        let output = revealed
+            .run(["gddy", "platform", "app", "add", "native-extension", "--help"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("--support-contact"),
+            "missing --support-contact: {}",
+            output.rendered
+        );
+        assert!(
+            output.rendered.contains("--android-package-name"),
+            "missing --android-package-name: {}",
+            output.rendered
+        );
+    }
+
     // `--env` actually re-routing command execution to the targeted
     // environment (DEVEX-721's `cli-smoke` env-override parity item) is
     // already covered end-to-end per-command — see
