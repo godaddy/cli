@@ -163,6 +163,19 @@ pub(crate) fn is_valid_app_name(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+pub(crate) fn validate_redirect_uris_for_url(
+    redirect_uris: Option<&[String]>,
+    app_url: &str,
+) -> Result<(), String> {
+    let mut errors = Vec::new();
+    redirect_uris::validate(&mut errors, redirect_uris, app_url);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 fn is_uuid_v4(value: &str) -> bool {
     let Ok(id) = uuid::Uuid::parse_str(value) else {
         return false;

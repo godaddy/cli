@@ -26,7 +26,7 @@ redirect_uris = [
 ]
 ```
 
-The list accepts up to five unique HTTPS URLs. Credentials and fragments are not allowed, and the list must not repeat `url` or `url` plus `/api/godaddy/callback`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update; `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application, and `deploy` keeps it synchronized on updates. The list contains extras only and does not replace the callbacks registered automatically from `url`.
+The list accepts up to five unique HTTPS URLs, each no longer than 2048 characters. Credentials and fragments are not allowed, and the list must not repeat `url` or the root-relative `/api/godaddy/callback` resolved against `url`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update; `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application. Both `update` (including a label/description-only update) and `deploy` synchronize it when the key is present, so an explicit empty list clears remote extras in either flow. The list contains extras only and does not replace the callbacks registered automatically from `url`.
 
 ## 2. Configure it locally
 

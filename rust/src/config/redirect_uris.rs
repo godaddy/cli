@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+const MAX_REDIRECT_URI_LENGTH: usize = 2048;
+
 pub(super) fn validate(errors: &mut Vec<String>, redirect_uris: Option<&[String]>, app_url: &str) {
     let Some(redirect_uris) = redirect_uris else {
         return;
@@ -13,15 +15,18 @@ pub(super) fn validate(errors: &mut Vec<String>, redirect_uris: Option<&[String]
     }
 
     let app_default = url::Url::parse(app_url).ok();
-    let callback_default = url::Url::parse(&format!(
-        "{}/api/godaddy/callback",
-        app_url.trim_end_matches('/')
-    ))
-    .ok();
+    let callback_default = app_default
+        .as_ref()
+        .and_then(|url| url.join("/api/godaddy/callback").ok());
     let mut seen = BTreeSet::new();
 
     for (index, value) in redirect_uris.iter().enumerate() {
         let path = format!("redirect_uris[{index}]");
+        if value.encode_utf16().count() > MAX_REDIRECT_URI_LENGTH {
+            errors.push(format!(
+                "{path} must be at most {MAX_REDIRECT_URI_LENGTH} characters"
+            ));
+        }
         let Ok(parsed) = url::Url::parse(value) else {
             errors.push(format!(
                 "{path} must be an absolute HTTPS URL (got {value:?})"
@@ -43,11 +48,11 @@ pub(super) fn validate(errors: &mut Vec<String>, redirect_uris: Option<&[String]
         {
             errors.push(format!("{path} must not contain credentials"));
         }
-        if parsed.fragment().is_some() {
+        if value.contains('#') {
             errors.push(format!("{path} must not contain a fragment"));
         }
 
-        if !seen.insert(parsed.as_str().to_owned()) {
+        if !seen.insert(value.as_str()) {
             errors.push(format!("{path} duplicates another redirect URI"));
         }
         if app_default.as_ref() == Some(&parsed) || callback_default.as_ref() == Some(&parsed) {
@@ -162,5 +167,47 @@ mod tests {
         assert!(message.contains("redirect_uris[1] duplicates another redirect URI"));
         assert!(message.contains("redirect_uris[2] duplicates an automatically registered"));
         assert!(message.contains("redirect_uris[3] duplicates an automatically registered"));
+    }
+
+    #[test]
+    fn rejects_root_callback_default_for_path_bearing_app_url() {
+        let mut config = valid_config();
+        config.url = "https://example.com/app".to_owned();
+        config.redirect_uris = Some(vec!["https://example.com/api/godaddy/callback".to_owned()]);
+
+        let message = config
+            .validate()
+            .expect_err("App Registry resolves the automatic callback from the origin root")
+            .to_string();
+        assert!(message.contains("duplicates an automatically registered redirect URI"));
+    }
+
+    #[test]
+    fn accepts_distinct_exact_strings_that_normalize_to_the_same_url() {
+        let mut config = valid_config();
+        config.redirect_uris = Some(vec![
+            "https://auth.example.net".to_owned(),
+            "https://auth.example.net/".to_owned(),
+        ]);
+
+        config
+            .validate()
+            .expect("App Registry uniqueness uses the original strings");
+    }
+
+    #[test]
+    fn rejects_registry_length_limit_and_raw_fragment_marker() {
+        let mut config = valid_config();
+        config.redirect_uris = Some(vec![
+            format!("https://example.net/{}", "a".repeat(2040)),
+            "https://auth.example.net/callback#".to_owned(),
+        ]);
+
+        let message = config
+            .validate()
+            .expect_err("registry validation limits")
+            .to_string();
+        assert!(message.contains("at most 2048 characters"));
+        assert!(message.contains("redirect_uris[1] must not contain a fragment"));
     }
 }
