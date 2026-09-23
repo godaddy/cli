@@ -14,10 +14,10 @@ pub(super) fn validate(errors: &mut Vec<String>, redirect_uris: Option<&[String]
         ));
     }
 
-    let app_default = url::Url::parse(app_url).ok();
-    let callback_default = app_default
-        .as_ref()
-        .and_then(|url| url.join("/api/godaddy/callback").ok());
+    let callback_default = url::Url::parse(app_url)
+        .ok()
+        .and_then(|url| url.join("/api/godaddy/callback").ok())
+        .map(String::from);
     let mut seen = BTreeSet::new();
 
     for (index, value) in redirect_uris.iter().enumerate() {
@@ -55,7 +55,7 @@ pub(super) fn validate(errors: &mut Vec<String>, redirect_uris: Option<&[String]
         if !seen.insert(value.as_str()) {
             errors.push(format!("{path} duplicates another redirect URI"));
         }
-        if app_default.as_ref() == Some(&parsed) || callback_default.as_ref() == Some(&parsed) {
+        if value == app_url || callback_default.as_deref() == Some(value.as_str()) {
             errors.push(format!(
                 "{path} duplicates an automatically registered redirect URI derived from url"
             ));
@@ -180,6 +180,16 @@ mod tests {
             .expect_err("App Registry resolves the automatic callback from the origin root")
             .to_string();
         assert!(message.contains("duplicates an automatically registered redirect URI"));
+    }
+
+    #[test]
+    fn accepts_normalized_variant_of_automatic_app_default() {
+        let mut config = valid_config();
+        config.redirect_uris = Some(vec!["https://example.com/".to_owned()]);
+
+        config
+            .validate()
+            .expect("App Registry compares automatic defaults as exact strings");
     }
 
     #[test]
