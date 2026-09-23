@@ -187,6 +187,19 @@ fn existing_config_for(
     Ok(None)
 }
 
+/// Field overrides accepted only by `init --from-existing`'s deprecated
+/// forwarding alias, for scripts written against v0.2.14's `--from-existing`
+/// (which let `--description`/`--url`/`--proxy-url`/`--scopes` override the
+/// fetched value). The `import` command itself has no override flags and
+/// always passes `ImportOverrides::default()`.
+#[derive(Debug, Clone, Default)]
+pub(super) struct ImportOverrides {
+    pub description: Option<String>,
+    pub url: Option<String>,
+    pub proxy_url: Option<String>,
+    pub scopes: Option<String>,
+}
+
 /// Shared by the `import` command and `init --from-existing`'s deprecated
 /// forwarding alias. Read-only against the API (no `createApplication`, no
 /// `.env` write); safe to re-run to re-sync webhook subscriptions after a
@@ -195,6 +208,7 @@ pub(super) async fn run(
     ctx: &cli_engine::CommandContext,
     name: String,
     force: bool,
+    overrides: ImportOverrides,
 ) -> cli_engine::Result<CommandResult> {
     let env = ctx.middleware.env.clone();
     let config_path = crate::config::config_path(Some(&env));
@@ -213,16 +227,34 @@ pub(super) async fn run(
     }
 
     let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
-    let description = app["description"].as_str().unwrap_or("").to_owned();
-    let url = app["url"].as_str().unwrap_or("").to_owned();
-    let proxy_url = app["proxyUrl"].as_str().unwrap_or("").to_owned();
-    let scopes: Vec<String> = app["authorizationScopes"]
-        .as_array()
-        .map(|scopes| {
-            scopes
-                .iter()
-                .filter_map(|s| s.as_str().map(str::to_owned))
+    let description = overrides
+        .description
+        .or_else(|| app["description"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let url = overrides
+        .url
+        .or_else(|| app["url"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let proxy_url = overrides
+        .proxy_url
+        .or_else(|| app["proxyUrl"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let scopes: Vec<String> = overrides
+        .scopes
+        .map(|s| {
+            s.split(',')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned)
                 .collect()
+        })
+        .or_else(|| {
+            app["authorizationScopes"].as_array().map(|scopes| {
+                scopes
+                    .iter()
+                    .filter_map(|s| s.as_str().map(str::to_owned))
+                    .collect()
+            })
         })
         .unwrap_or_default();
 
@@ -353,7 +385,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_scopes(&[APP_REGISTRY_READ])
         .with_output_schema::<ApplicationImport>()
         .with_view(import_view_columns()),
-        |ctx, args: ImportArgs| async move { run(&ctx, args.name, args.force).await },
+        |ctx, args: ImportArgs| async move {
+            run(&ctx, args.name, args.force, ImportOverrides::default()).await
+        },
     )
 }
 

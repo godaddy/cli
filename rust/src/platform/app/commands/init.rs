@@ -48,18 +48,11 @@ struct InitArgs {
     /// [DEPRECATED: use `gddy platform app import <name>`] Fetch an
     /// already-registered application's remote config and its latest
     /// release's webhook subscriptions into godaddy.toml, instead of
-    /// creating a new application. Unlike the old --from-existing, this no
-    /// longer accepts --label/--description/--url/--proxy-url/--scopes
-    /// overrides — like `import`, it strictly mirrors the remote app; use
-    /// `gddy platform app update` to change label/description afterward.
-    #[arg(
-        long,
-        value_name = "NAME",
-        conflicts_with_all = [
-            "accept_agreements", "name", "config", "label", "description", "url", "proxy_url",
-            "scopes",
-        ]
-    )]
+    /// creating a new application. --description, --url, --proxy-url, and
+    /// --scopes override the corresponding fetched value if also provided,
+    /// matching v0.2.14's --from-existing (--label is accepted for
+    /// compatibility but, as in v0.2.14, is not applied here).
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["accept_agreements", "name", "config"])]
     from_existing: Option<String>,
 
     /// With --from-existing, skip the confirmation/abort when the local
@@ -109,11 +102,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if let Some(name) = args.from_existing {
                 tracing::warn!(
                     "`init --from-existing` is deprecated and will be removed in a future \
-                     release; use `gddy platform app import {name}` instead. Field overrides \
-                     (--label/--description/--url/--proxy-url/--scopes) are no longer \
-                     supported here — use `gddy platform app update` afterward."
+                     release; use `gddy platform app import {name}` instead."
                 );
-                return super::import::run(&ctx, name, args.force).await;
+                let overrides = super::import::ImportOverrides {
+                    description: args.description,
+                    url: args.url,
+                    proxy_url: args.proxy_url,
+                    scopes: args.scopes,
+                };
+                return super::import::run(&ctx, name, args.force, overrides).await;
             }
 
             let env = ctx.middleware.env.clone();
