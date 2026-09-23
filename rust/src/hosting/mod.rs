@@ -13,7 +13,8 @@ mod subscription;
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 
 pub fn module() -> Module {
-    Module::new("Hosting", |_ctx| {
+    Module::new("Hosting", |ctx| {
+        let mhwp = common::mhwp_enabled(&ctx.middleware().flag_policy);
         RuntimeGroupSpec::new(
             GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
                 "Work with GoDaddy hosting APIs.\n\
@@ -40,7 +41,7 @@ pub fn module() -> Module {
                  Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
             ),
         )
-        .with_group(app::group())
+        .with_group(app::group(mhwp))
         .with_group(deployment::group())
         .with_group(source::group())
         .with_group(secrets::group())
