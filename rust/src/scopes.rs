@@ -141,6 +141,8 @@ declare_scopes! {
     /// Create a mailbox (`email create`).
     EMAIL_CREATE => "email.mailbox:create",
 
+    /// Trigger an on-demand malware scan (`malware scan run`).
+    SECURITY_MALWARE_SCAN => "security.website-security-scan:execute",
     /// Browse and resolve Shopping catalog products.
     SHOPPING_CATALOG_READ => "shopping.catalog:read",
     /// Create, update, read, and complete Shopping checkout sessions.
@@ -279,6 +281,11 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: EMAIL_CREATE,
         description: "Create a mailbox",
+        default: false,
+    },
+    ScopeInfo {
+        scope: SECURITY_MALWARE_SCAN,
+        description: "Trigger an on-demand malware scan",
         default: false,
     },
     ScopeInfo {

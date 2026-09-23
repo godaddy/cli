@@ -10,6 +10,7 @@ mod environments;
 mod error;
 mod hosting;
 mod http;
+mod malware;
 mod next_action;
 mod output_schema;
 mod pat;
@@ -41,6 +42,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         email::module(),
         env::module(),
         hosting::module(),
+        malware::module(),
         pat::module(),
         payment_methods::module(),
         platform::module(),
