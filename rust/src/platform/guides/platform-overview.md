@@ -23,8 +23,6 @@ Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`
 - `add extension <embed|checkout|blocks> ...` — a UI extension bundle (see that subcommand's own `--help`).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form or link. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
-`add native-extension --support-contact <email> --android-package-name <package> [--name <name>]` is the exception: it authenticates, looks up the manifest application by name, and immediately creates or updates its DevX Core native-app draft before writing `[native_extension]` locally. It requires App Registry read/write scopes. If the remote draft succeeds but the local write fails, fix the local file problem and rerun the same command; the remote upsert is idempotent.
-
 Run `gddy platform app config validate` any time to check the manifest against every rule the API would otherwise enforce (required fields, URL/UUID/semver shapes, settings placement rules) without a network call — it reports every violation found, not just the first.
 
 ## 3. Release

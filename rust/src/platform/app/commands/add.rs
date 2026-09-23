@@ -90,10 +90,9 @@ struct SubscriptionArgs {
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("add", "Add components to an application").with_long(
-            "Add actions, webhook subscriptions, UI extensions, or a native \
-            extension to the godaddy.toml manifest in the current directory. \
-            Native extensions are also registered immediately as DevX Core \
-            drafts; other components are published by a later deploy or release.",
+            "Add actions, webhook subscriptions, or UI extensions to the \
+             godaddy.toml manifest in the current directory. Components are \
+             published by a later deploy or release.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<

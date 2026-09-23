@@ -489,6 +489,29 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn platform_app_add_help_omits_native_extension_copy_at_ga() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_module(super::platform::module()),
+        );
+        let output = cli
+            .run(["gddy", "platform", "app", "add", "--help"])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            !output.rendered.contains("native extension"),
+            "add help still names a native extension: {}",
+            output.rendered
+        );
+        assert!(
+            !output.rendered.contains("DevX Core"),
+            "add help still names DevX Core: {}",
+            output.rendered
+        );
+    }
+
     // `--env` actually re-routing command execution to the targeted
     // environment (DEVEX-721's `cli-smoke` env-override parity item) is
     // already covered end-to-end per-command — see
