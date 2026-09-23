@@ -46,6 +46,13 @@ pub(crate) fn refresh(
     rewrite_defs_refs(&mut spec);
     remove_remaining_relative_refs(&mut spec);
     remove_self_referencing_schemas(&mut spec);
+    dealias_name_colliding_schemas(
+        &mut spec,
+        &[(
+            "get_product_response",
+            "catalog_lookup_get_product_response",
+        )],
+    );
 
     let object = spec
         .as_object_mut()
@@ -117,6 +124,50 @@ fn remove_remaining_relative_refs(value: &mut Value) {
         Value::Array(values) => {
             for value in values {
                 remove_remaining_relative_refs(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Progenitor names an operation's `oneOf` response enum from its
+/// `operationId` (`get_product` -> `GetProductResponse`), independently of
+/// how it names the schema-alias newtype it generates for a bare `$ref`
+/// schema (`get_product_response` -> `GetProductResponse`). When those two
+/// derived names collide, progenitor silently reuses the schema newtype as
+/// the operation's response type instead of generating the `oneOf` enum,
+/// so the `error_response` branch has no Rust variant to match against at
+/// all — unlike every other operation in this contract, whose schema and
+/// operationId names differ enough not to collide. Point every reference
+/// to `alias` directly at what it aliases and drop the now-unreferenced
+/// alias schema, freeing its derived name for the operation's own enum.
+fn dealias_name_colliding_schemas(spec: &mut Value, aliases: &[(&str, &str)]) {
+    for (alias, target) in aliases {
+        let from = format!("#/components/schemas/{alias}");
+        let to = format!("#/components/schemas/{target}");
+        replace_ref(spec, &from, &to);
+        if let Some(schemas) = spec
+            .pointer_mut("/components/schemas")
+            .and_then(Value::as_object_mut)
+        {
+            schemas.remove(*alias);
+        }
+    }
+}
+
+fn replace_ref(value: &mut Value, from: &str, to: &str) {
+    match value {
+        Value::Object(map) => {
+            if map.get("$ref").and_then(Value::as_str) == Some(from) {
+                map.insert("$ref".to_owned(), Value::String(to.to_owned()));
+            }
+            for child in map.values_mut() {
+                replace_ref(child, from, to);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                replace_ref(value, from, to);
             }
         }
         _ => {}
@@ -226,12 +277,20 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
         .context("Shopping selected payment instrument properties are missing")?;
     // The contract's dynamic instrument reference cannot be represented by
     // Progenitor. Retain the fields required by deployed APIs, including the
-    // standard postal address used by the completion billing-address input.
+    // standard postal address used by the completion billing-address input,
+    // and the handler routing metadata (`handler_id`, `type`) that a
+    // checkout update must echo back unchanged to keep the selected
+    // instrument routable.
     properties.insert("id".to_owned(), serde_json::json!({"type": "string"}));
     properties.insert(
         "billing_address".to_owned(),
         serde_json::json!({"type": "object", "additionalProperties": true}),
     );
+    properties.insert(
+        "handler_id".to_owned(),
+        serde_json::json!({"type": "string"}),
+    );
+    properties.insert("type".to_owned(), serde_json::json!({"type": "string"}));
     Ok(())
 }
 
@@ -332,6 +391,13 @@ fn add_idempotency_headers(spec: &mut Value) -> Result<()> {
 /// Removes source-contract prose and verbose object examples that are irrelevant
 /// to typed Rust client generation. Restore generic required response descriptions
 /// afterward, and retain protocol metadata plus string-array examples.
+///
+/// A JSON Schema `properties` map, and `components.schemas`, are keyed by
+/// field/schema *names* rather than documentation metadata, even though a
+/// name can collide with a metadata keyword (e.g. the Shopping contract has
+/// a `product.properties.description` field and a schema literally named
+/// `description`). Pruning must never remove those keys — only recurse into
+/// their values.
 fn prune_documentation_fields(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -345,8 +411,12 @@ fn prune_documentation_fields(value: &mut Value) {
             {
                 map.remove("examples");
             }
-            for child in map.values_mut() {
-                prune_documentation_fields(child);
+            for (key, child) in map.iter_mut() {
+                if key == "properties" || key == "schemas" {
+                    prune_named_schema_map(child);
+                } else {
+                    prune_documentation_fields(child);
+                }
             }
         }
         Value::Array(values) => {
@@ -355,6 +425,17 @@ fn prune_documentation_fields(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+/// Recurses into the *values* of a name-keyed schema map (a Schema Object's
+/// `properties`, or `components.schemas`) without pruning the map's own
+/// keys, which are field/schema names rather than documentation metadata.
+fn prune_named_schema_map(value: &mut Value) {
+    if let Value::Object(map) = value {
+        for child in map.values_mut() {
+            prune_documentation_fields(child);
+        }
     }
 }
 
@@ -449,7 +530,10 @@ fn relax(value: &mut Value) {
 mod tests {
     use serde_json::json;
 
-    use super::prune_documentation_fields;
+    use super::{
+        dealias_name_colliding_schemas, preserve_payment_instrument_fields,
+        prune_documentation_fields,
+    };
 
     #[test]
     fn pruning_removes_documentation_and_examples_recursively() {
@@ -500,5 +584,149 @@ mod tests {
         );
         assert!(!spec.to_string().contains("example\":"));
         assert!(!spec.to_string().contains("externalDocs"));
+    }
+
+    #[test]
+    fn pruning_preserves_property_and_schema_names_that_collide_with_metadata_keywords() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "description": {"type": "string"},
+                    "product": {
+                        "type": "object",
+                        "properties": {
+                            "description": {
+                                "description": "Human-readable product description.",
+                                "$ref": "#/components/schemas/description"
+                            },
+                            "summary": {"description": "Short blurb.", "type": "string"}
+                        }
+                    }
+                }
+            }
+        });
+
+        prune_documentation_fields(&mut spec);
+
+        assert!(
+            spec.pointer("/components/schemas/description").is_some(),
+            "a schema literally named `description` must survive pruning"
+        );
+        assert_eq!(
+            spec.pointer("/components/schemas/product/properties/description/$ref"),
+            Some(&json!("#/components/schemas/description")),
+            "a `description` field on `product` must survive pruning"
+        );
+        assert!(
+            spec.pointer("/components/schemas/product/properties/summary")
+                .is_some(),
+            "a `summary` field on `product` must survive pruning"
+        );
+        assert!(
+            spec.pointer("/components/schemas/product/properties/description/description")
+                .is_none(),
+            "the nested schema's own doc string must still be pruned"
+        );
+    }
+
+    #[test]
+    fn preserving_payment_instrument_fields_adds_handler_routing_metadata() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "payment_instrument_selected_payment_instrument": {
+                        "allOf": [
+                            {},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "selected": {"type": "boolean"}
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        });
+
+        preserve_payment_instrument_fields(&mut spec).expect("schema shape is present");
+
+        let properties = spec
+            .pointer("/components/schemas/payment_instrument_selected_payment_instrument/allOf/1/properties")
+            .expect("properties");
+        assert_eq!(properties["id"]["type"], "string");
+        assert_eq!(properties["billing_address"]["type"], "object");
+        assert_eq!(properties["billing_address"]["additionalProperties"], true);
+        assert_eq!(
+            properties["handler_id"]["type"], "string",
+            "handler_id must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
+        );
+        assert_eq!(
+            properties["type"]["type"], "string",
+            "type must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
+        );
+        assert_eq!(properties["selected"]["type"], "boolean");
+    }
+
+    #[test]
+    fn dealiasing_points_references_at_the_target_and_drops_the_alias_schema() {
+        let mut spec = json!({
+            "components": {
+                "schemas": {
+                    "get_product_response": {"$ref": "#/components/schemas/catalog_lookup_get_product_response"},
+                    "catalog_lookup_get_product_response": {"type": "object"}
+                }
+            },
+            "paths": {
+                "/product": {
+                    "post": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "oneOf": [
+                                                {"$ref": "#/components/schemas/get_product_response"},
+                                                {"$ref": "#/components/schemas/error_response"}
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        dealias_name_colliding_schemas(
+            &mut spec,
+            &[(
+                "get_product_response",
+                "catalog_lookup_get_product_response",
+            )],
+        );
+
+        assert!(
+            spec.pointer("/components/schemas/get_product_response")
+                .is_none(),
+            "the alias schema must be removed so its derived name is free for the operation's own response enum"
+        );
+        assert_eq!(
+            spec.pointer(
+                "/paths/~1product/post/responses/200/content/application~1json/schema/oneOf/0/$ref"
+            ),
+            Some(&json!(
+                "#/components/schemas/catalog_lookup_get_product_response"
+            )),
+            "the oneOf branch must point directly at the real schema"
+        );
+        assert_eq!(
+            spec.pointer(
+                "/paths/~1product/post/responses/200/content/application~1json/schema/oneOf/1/$ref"
+            ),
+            Some(&json!("#/components/schemas/error_response")),
+            "the untouched error_response branch must be left alone"
+        );
     }
 }

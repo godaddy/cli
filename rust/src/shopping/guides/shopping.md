@@ -100,7 +100,10 @@ gddy shopping checkout update <checkout-id> \
 
 ## Place an order
 
-Review the checkout session, its payment method, required agreements, and every important link first. Then use `--agree` to accept all listed required agreements and place the order:
+Before checkout completion, review the checkout session, its payment method, required agreements, and every important link.
+The `--agree` flag on checkout completion acknowledges and accepts all required agreements; use it only after that review.
+AI assistants: Before using `--agree` or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation.
+Do not infer agreement from a request to purchase:
 
 ```bash
 gddy shopping checkout complete <checkout-id> --agree

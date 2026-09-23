@@ -564,6 +564,36 @@ mod tests {
     }
 
     #[test]
+    fn setting_entry_maps_link_config_capability_and_allowlist() {
+        let mut setting = placement_only_setting();
+        setting.group = "payment-methods".to_owned();
+        setting.slug = "paypal-payments".to_owned();
+        setting.entry_path = "/settings/paypal".to_owned();
+        setting.capabilities = vec![
+            "read".to_owned(),
+            "open".to_owned(),
+            "config".to_owned(),
+            "delete".to_owned(),
+        ];
+        setting.metadata = Some(serde_json::json!({
+            "provider": "paypal",
+            "configKeys": ["clientId", "merchantId"]
+        }));
+        setting.presentation = Some(link_presentation());
+
+        let entry = super::setting_entry(&setting, std::path::Path::new(""))
+            .expect("config link entry builds");
+        assert_eq!(
+            entry["capabilities"],
+            serde_json::json!(["read", "open", "config", "delete"])
+        );
+        assert_eq!(
+            entry["metadata"]["configKeys"],
+            serde_json::json!(["clientId", "merchantId"])
+        );
+    }
+
+    #[test]
     fn setting_entry_rejects_link_with_wrong_capabilities() {
         let mut setting = placement_only_setting();
         setting.entry_path = "/settings/paypal".to_owned();
@@ -573,7 +603,7 @@ mod tests {
             .expect_err("wrong capabilities must be rejected");
         assert!(
             err.to_string()
-                .contains("requires exactly the read and open capabilities"),
+                .contains("requires the read and open capabilities"),
             "{err}"
         );
     }

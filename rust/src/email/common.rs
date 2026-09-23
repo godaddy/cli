@@ -55,6 +55,20 @@ struct ApiErrorDetail {
     description: Option<String>,
 }
 
+/// Returns `true` when the parsed error body contains a `details[].issue`
+/// matching `issue_code`. Used to branch on specific API error codes before
+/// falling through to the generic fix message.
+pub(crate) fn body_has_issue(body: &str, issue_code: &str) -> bool {
+    serde_json::from_str::<ApiErrorBody>(body)
+        .map(|parsed| {
+            parsed
+                .details
+                .iter()
+                .any(|d| d.issue.as_deref() == Some(issue_code))
+        })
+        .unwrap_or(false)
+}
+
 fn format_api_error_body(body: &str) -> String {
     let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
         return body.to_owned();
@@ -123,6 +137,18 @@ mod tests {
                 .is_some_and(|f| f.contains("check-eligibility")),
             "{envelope:?}"
         );
+    }
+
+    #[test]
+    fn body_has_issue_matches_details_issue_field() {
+        let body = r#"{"message":"err","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        assert!(body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE"));
+        assert!(!body_has_issue(body, "OTHER_ISSUE"));
+    }
+
+    #[test]
+    fn body_has_issue_returns_false_for_unparseable_body() {
+        assert!(!body_has_issue("not json", "EMAIL_PLAN_NOT_AVAILABLE"));
     }
 
     #[test]

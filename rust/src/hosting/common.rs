@@ -1,9 +1,33 @@
 use cli_engine::{CliCoreError, CommandContext};
+use serde::Deserialize;
 use serde_json::Value;
 
+use crate::error::GddyError;
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::http::api_url_for_env;
 use crate::output_schema::output_schema;
+
+struct CliEngineTransportObserver;
+
+impl hosting_client::TransportObserver for CliEngineTransportObserver {
+    fn on_request(&self, request: &reqwest::Request) {
+        cli_engine::transport::debug_log_reqwest_request(request);
+    }
+
+    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap) {
+        cli_engine::transport::debug_log_reqwest_response(status, headers, &[]);
+    }
+}
+
+static TRANSPORT_OBSERVER_INIT: std::sync::Once = std::sync::Once::new();
+
+fn ensure_transport_observer_registered() {
+    TRANSPORT_OBSERVER_INIT.call_once(|| {
+        hosting_client::set_transport_observer(Some(std::sync::Arc::new(
+            CliEngineTransportObserver,
+        )));
+    });
+}
 
 output_schema!(HostingAppSummary {
     "id": "string";
@@ -108,7 +132,55 @@ output_schema!(HostingRuntime {
 });
 
 pub fn client_err(e: ClientError) -> CliCoreError {
-    crate::error::GddyError::from(e).into_cli_error()
+    match e {
+        ClientError::Http { status, body } => {
+            GddyError::from_http(status, format_api_error_body(&body), "hosting").into_cli_error()
+        }
+        other => GddyError::from(other).into_cli_error(),
+    }
+}
+
+/// Like [`client_err`], but overrides the fix hint.
+pub fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> CliCoreError {
+    match e {
+        ClientError::Http { status, body } => {
+            GddyError::from_http(status, format_api_error_body(&body), "hosting")
+                .with_fix(fix)
+                .into_cli_error()
+        }
+        other => GddyError::from(other).into_cli_error(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorBody {
+    message: Option<String>,
+    #[serde(default)]
+    details: Vec<ApiErrorDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorDetail {
+    issue: Option<String>,
+    description: Option<String>,
+}
+
+fn format_api_error_body(body: &str) -> String {
+    let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
+        return body.to_owned();
+    };
+    let message = parsed.message.unwrap_or_else(|| body.to_owned());
+    let details: Vec<String> = parsed
+        .details
+        .iter()
+        .filter_map(|d| d.issue.clone().or_else(|| d.description.clone()))
+        .filter(|s| !s.is_empty() && *s != message)
+        .collect();
+    if details.is_empty() {
+        message
+    } else {
+        format!("{message} ({})", details.join("; "))
+    }
 }
 
 pub async fn make_client(
@@ -118,6 +190,7 @@ pub async fn make_client(
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
+    ensure_transport_observer_registered();
     Ok(HostingClient::new(base_url, token))
 }
 
@@ -138,6 +211,23 @@ impl HostingAppType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Nodejs => "NODEJS",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum HostingProduct {
+    #[value(name = "WEB_HOSTING")]
+    WebHosting,
+    #[value(name = "MANAGED_WORDPRESS")]
+    ManagedWordpress,
+}
+
+impl HostingProduct {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WebHosting => "WEB_HOSTING",
+            Self::ManagedWordpress => "MANAGED_WORDPRESS",
         }
     }
 }
@@ -192,6 +282,19 @@ mod tests {
     }
 
     #[test]
+    fn hosting_product_parses_known_values() {
+        assert_eq!(
+            HostingProduct::from_str("WEB_HOSTING", true).expect("WEB_HOSTING"),
+            HostingProduct::WebHosting
+        );
+        assert_eq!(
+            HostingProduct::from_str("managed_wordpress", true).expect("managed_wordpress"),
+            HostingProduct::ManagedWordpress
+        );
+        assert_eq!(HostingProduct::WebHosting.as_str(), "WEB_HOSTING");
+    }
+
+    #[test]
     fn next_page_token_extracts_from_links() {
         let response = json!({
             "items": [],
@@ -218,5 +321,74 @@ mod tests {
     fn next_page_token_returns_none_when_no_links() {
         let response = json!({ "items": [] });
         assert!(next_page_token(&response).is_none());
+    }
+
+    #[test]
+    fn format_api_error_body_prefers_issue_over_repeated_description() {
+        let body = r#"{
+            "name": "UnprocessableEntity",
+            "message": "This app must be attached to a Web Hosting plan to publish.",
+            "details": [{
+                "issue": "WH_PLAN_REQUIRED",
+                "description": "This app must be attached to a Web Hosting plan to publish."
+            }]
+        }"#;
+        assert_eq!(
+            format_api_error_body(body),
+            "This app must be attached to a Web Hosting plan to publish. (WH_PLAN_REQUIRED)"
+        );
+    }
+
+    #[test]
+    fn format_api_error_body_falls_back_to_description_without_issue() {
+        let body = r#"{"message": "bad request", "details": [{"description": "missing field"}]}"#;
+        assert_eq!(format_api_error_body(body), "bad request (missing field)");
+    }
+
+    #[test]
+    fn format_api_error_body_passes_through_unparseable_bodies() {
+        assert_eq!(format_api_error_body("not json"), "not json");
+    }
+
+    #[test]
+    fn client_err_with_fix_overrides_the_default_fix() {
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: r#"{"message":"This app must be attached to a Web Hosting plan to publish.","details":[{"issue":"WH_PLAN_REQUIRED"}]}"#.to_owned(),
+            },
+            "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING",
+        );
+        let envelope = cli_engine::build_error_envelope(&err, "hosting");
+        assert_eq!(
+            envelope.error.as_ref().map(|e| e.message.as_str()),
+            Some(
+                "HTTP error 422: This app must be attached to a Web Hosting plan to publish. (WH_PLAN_REQUIRED)"
+            )
+        );
+        assert_eq!(
+            envelope.fix.as_deref(),
+            Some("Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
+        );
+    }
+
+    #[test]
+    fn client_err_maps_http_status_to_hosting_system() {
+        let err = client_err(ClientError::Http {
+            status: 404,
+            body: r#"{"message":"app not found"}"#.to_owned(),
+        });
+        let envelope = cli_engine::build_error_envelope(&err, "hosting");
+        assert_eq!(
+            envelope.error.as_ref().map(|e| e.message.as_str()),
+            Some("HTTP error 404: app not found")
+        );
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("hosting app list")),
+            "{envelope:?}"
+        );
     }
 }

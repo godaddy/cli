@@ -1,6 +1,7 @@
 mod create;
 mod delete;
 mod list;
+mod patch;
 mod sync;
 mod update;
 

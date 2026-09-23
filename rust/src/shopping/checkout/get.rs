@@ -1,10 +1,17 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::Value;
+use shopping_client::types::Checkout;
 
-use crate::next_action::next_action;
 use crate::shopping::SHOPPING_SCOPES;
-use crate::shopping::common::{client_err, make_client};
+use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
+
+fn encode_checkout(checkout: &Checkout) -> Result<Value> {
+    serde_json::to_value(checkout).map_err(|error| {
+        crate::error::GddyError::unexpected(format!("failed to encode checkout response: {error}"))
+            .into_cli_error()
+    })
+}
 
 #[derive(Debug, Clone, clap::Args)]
 struct Args {
@@ -30,33 +37,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(SHOPPING_SCOPES)
             .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {
-            let checkout = client_response(&ctx, &args.id).await?;
-            let ready_for_complete =
-                checkout.get("status").and_then(Value::as_str) == Some("ready_for_complete");
-            let actions = if ready_for_complete {
-                vec![
-                    next_action(
-                        "shopping checkout complete <checkout-id> --agree",
-                        "Place an order after reviewing the checkout session and its required agreements",
-                    )
-                    .with_param("checkout-id", NextActionParam::value(args.id)),
-                ]
-            } else {
-                Vec::new()
-            };
+            let client = make_client(&ctx).await?;
+            let checkout = crate::shopping::client::get_checkout(&client, &args.id)
+                .await
+                .map_err(client_err)?;
+            reject_response_errors(&checkout.messages)?;
+            let checkout = encode_checkout(&checkout)?;
             let output = if ctx.middleware.output_format == "human" {
                 checkout_response(&checkout, args.show_all_payment_instruments)
             } else {
                 checkout
             };
-            Ok(CommandResult::new(output).with_next_actions(actions))
+            Ok(CommandResult::new(output))
         },
     )
-}
-
-pub(super) async fn client_response(ctx: &cli_engine::CommandContext, id: &str) -> Result<Value> {
-    let client = make_client(ctx).await?;
-    client.get_checkout(id).await.map_err(client_err)
 }
 
 #[cfg(test)]

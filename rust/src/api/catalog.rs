@@ -152,6 +152,7 @@ const DOMAIN_FILES: &[(&str, &str)] = &[
         "fulfillments",
         include_str!("../../schemas/api/fulfillments.json"),
     ),
+    ("hosting", include_str!("../../schemas/api/hosting.json")),
     (
         "location-addresses",
         include_str!("../../schemas/api/location-addresses.json"),
@@ -602,6 +603,20 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
+    }
+
+    #[test]
+    fn catalog_includes_hosting_domain() {
+        let hosting = catalog()
+            .iter()
+            .find(|d| d.name == "hosting")
+            .expect("hosting is embedded in DOMAIN_FILES");
+        assert_eq!(hosting.endpoints.len(), 25);
+        assert!(
+            hosting.base_url.ends_with("/v1/hosting"),
+            "unexpected hosting base URL: {}",
+            hosting.base_url
+        );
     }
 
     /// Mirrors `call_command`'s domain-aware base-URL resolution: a matched

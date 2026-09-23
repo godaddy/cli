@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.20](https://github.com/godaddy/cli/compare/v0.2.19...v0.2.20) (2026-09-18)
+
+
+### Bug Fixes
+
+* **hosting:** use WEB_HOSTING as hosting-product flag in next … ([#275](https://github.com/godaddy/cli/issues/275)) ([1d9c005](https://github.com/godaddy/cli/commit/1d9c005318bbbb2b871aaf66b131bf9ef8b91adb))
+* **shopping:** restore product description field and use typed Shopping client throughout ([#272](https://github.com/godaddy/cli/issues/272)) ([38a2424](https://github.com/godaddy/cli/commit/38a2424b86fb8ef3e9447045b086330af006de35))
+
+
+### Code Refactoring
+
+* **hosting:** Generate spec-driven hosting schema for catalog and create HTTP client from schema ([#276](https://github.com/godaddy/cli/issues/276)) ([5320554](https://github.com/godaddy/cli/commit/5320554f17ce97a627a45541dfc13917bfe37034))
+
+## [0.2.19](https://github.com/godaddy/cli/compare/v0.2.18...v0.2.19) (2026-09-17)
+
+
+### Miscellaneous
+
+* **hosting:** Implement shopping hint in hosting guide when custome… ([#273](https://github.com/godaddy/cli/issues/273)) ([5b60267](https://github.com/godaddy/cli/commit/5b6026709893b6695d73bba40733e153342e2ba3))
+
+## [0.2.18](https://github.com/godaddy/cli/compare/v0.2.17...v0.2.18) (2026-09-17)
+
+
+### Features
+
+* **repo:** generate CODEOWNERS from a reviewer config and align source layout with product ownership ([#265](https://github.com/godaddy/cli/issues/265)) ([0f85459](https://github.com/godaddy/cli/commit/0f854596158c190f8a5f67cf4bb7c8ce16f702b6))
+
+
+### Bug Fixes
+
+* **api-catalog:** refresh upstream specs, fix duplicated bulk-operations path prefix ([#268](https://github.com/godaddy/cli/issues/268)) ([29bc626](https://github.com/godaddy/cli/commit/29bc626aa382bc593859b3843b1140ae8bf1b90f))
+
+
+### Documentation
+
+* Update email guide to call shopping CL for email purchase ([#271](https://github.com/godaddy/cli/issues/271)) ([ea97ddf](https://github.com/godaddy/cli/commit/ea97ddfdf5766684dd2a2a8bbac4631e5ef048e2))
+
 ## [0.2.17](https://github.com/godaddy/cli/compare/v0.2.16...v0.2.17) (2026-09-16)
 
 

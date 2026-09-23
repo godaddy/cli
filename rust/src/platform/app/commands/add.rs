@@ -48,9 +48,14 @@ struct SettingsArgs {
     order: Option<i64>,
 
     /// One or more lifecycle capabilities (read, write, validate, test,
-    /// delete, open) — a link presentation requires exactly read+open.
+    /// delete, open, config). Links require read+open and may add delete/config.
     #[arg(long = "capability", value_name = "CAPABILITY", num_args = 1..)]
     capabilities: Vec<String>,
+
+    /// Public config key the GPA may return. Repeat for each allowed key;
+    /// requires the read and config capabilities.
+    #[arg(long = "config-key", value_name = "KEY", num_args = 1..)]
+    config_keys: Vec<String>,
 
     /// Icon name for display; must be provided together with --icon-library.
     #[arg(long = "icon-name", value_name = "NAME")]
@@ -183,7 +188,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
         .with_long(
             "Register the placement metadata for an application-settings \
             capability in the godaddy.toml manifest in the current directory. \
-            This command only writes group/slug/entryPath/order/capabilities/icon \
+            This command only writes group/slug/entryPath/order/capabilities/icon/metadata \
             — it cannot author the settings-form-v1 form or settings-link-v1 \
             link itself. After running it, hand-add a [settings.presentation] \
             block to the written entry — sections and fields for a form, or a \
@@ -198,6 +203,11 @@ pub(super) fn group() -> RuntimeGroupSpec {
             let group = args.group;
             let slug = args.slug;
             let entry_path = args.entry_path;
+            let metadata = if args.config_keys.is_empty() {
+                None
+            } else {
+                Some(json!({ "configKeys": args.config_keys }))
+            };
             if args.icon_name.is_some() != args.icon_library.is_some() {
                 return Err(crate::error::GddyError::validation(
                     "--icon-name and --icon-library must be provided together",
@@ -220,7 +230,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 order: args.order,
                 capabilities: args.capabilities,
                 icon,
-                metadata: None,
+                metadata,
                 presentation_file: args.presentation_file,
                 presentation: None,
             });
@@ -620,5 +630,32 @@ mod tests {
                 "fixtures/manual-tax-presentation.json",
             ])
             .expect("--presentation-file flag should be accepted");
+    }
+
+    #[test]
+    fn settings_subcommand_accepts_config_capability_and_keys() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "settings",
+                "--group",
+                "payment-methods",
+                "--slug",
+                "paypal-payments",
+                "--entry-path",
+                "/settings/paypal",
+                "--capability",
+                "read",
+                "--capability",
+                "open",
+                "--capability",
+                "config",
+                "--config-key",
+                "clientId",
+                "--config-key",
+                "merchantId",
+            ])
+            .expect("config capability flags should be accepted");
     }
 }

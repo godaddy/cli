@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-03T19:27:03.834264167+00:00",
+  "generated": "2026-09-16T23:32:54.403859848+00:00",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -34,12 +34,17 @@
     "domains": {
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
-      "endpointCount": 17
+      "endpointCount": 23
     },
     "fulfillments": {
       "file": "fulfillments.json",
       "title": "Fulfillment Service",
       "endpointCount": 4
+    },
+    "hosting": {
+      "file": "hosting.json",
+      "title": "Hosting API",
+      "endpointCount": 25
     },
     "location-addresses": {
       "file": "location-addresses.json",
