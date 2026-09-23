@@ -32,7 +32,22 @@ gddy hosting operation get --operation-id <operation-id>
 
 ## 2. Prepare source code
 
-The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
+The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. Source code can be deployed using a `.zip` file containing your project directory.
+
+The top level of the project must include a `package.json` file at the top level containing:
+  - A non-empty `name`
+  - A `version`
+  - A `main` entry point
+  - A `build` script (use `echo build` if nothing needs compiling)
+  - A `start` script
+
+Any package needed during build or start must be in `dependencies`, not `devDependencies`.
+
+The `start` script is what GoDaddy's hosting platform will invoke to run your application. When started, your application must open a listener (like a web server) to the TCP port number present in the `process.env.PORT` environment variable.
+
+When zipping your project, exclude the `node_modules` directory.
+
+For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
 ## 3. Upload source code
 
