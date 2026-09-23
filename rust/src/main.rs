@@ -445,7 +445,14 @@ mod tests {
                 .with_module(super::platform::module()),
         );
         let output = hidden
-            .run(["gddy", "platform", "app", "add", "native-extension", "--help"])
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "add",
+                "native-extension",
+                "--help",
+            ])
             .await;
         assert_ne!(
             output.exit_code, 0,
@@ -474,7 +481,14 @@ mod tests {
                 .with_module(super::platform::module()),
         );
         let output = revealed
-            .run(["gddy", "platform", "app", "add", "native-extension", "--help"])
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "add",
+                "native-extension",
+                "--help",
+            ])
             .await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         assert!(
@@ -496,9 +510,7 @@ mod tests {
                 .with_min_stage(Stage::Ga)
                 .with_module(super::platform::module()),
         );
-        let output = cli
-            .run(["gddy", "platform", "app", "add", "--help"])
-            .await;
+        let output = cli.run(["gddy", "platform", "app", "add", "--help"]).await;
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         assert!(
             !output.rendered.contains("native extension"),

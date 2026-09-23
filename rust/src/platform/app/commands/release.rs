@@ -865,7 +865,8 @@ authorization_scopes = []
         assert!(draft.is_none());
 
         let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
-        super::apply_native_extensions(&mut input, &[], draft.as_ref()).expect("non-native release");
+        super::apply_native_extensions(&mut input, &[], draft.as_ref())
+            .expect("non-native release");
         assert!(input.get("nativeExtensions").is_none());
     }
 
@@ -880,7 +881,10 @@ authorization_scopes = []
 
         let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
         super::apply_native_extensions(&mut input, &[], Some(&draft)).expect("native release");
-        assert_eq!(input["nativeExtensions"][0]["packageName"], "com.example.app");
+        assert_eq!(
+            input["nativeExtensions"][0]["packageName"],
+            "com.example.app"
+        );
     }
 
     #[test]
