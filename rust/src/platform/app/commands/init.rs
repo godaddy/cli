@@ -73,6 +73,29 @@ fn latest_release(app: &Value) -> Option<&Value> {
         .map(|edge| &edge["node"])
 }
 
+fn redirect_uris_from_application(app: &Value) -> Option<Vec<String>> {
+    app["redirectUris"].as_array().map(|redirect_uris| {
+        redirect_uris
+            .iter()
+            .filter_map(|uri| uri.as_str().map(str::to_owned))
+            .collect()
+    })
+}
+
+fn validate_resolved_redirect_uris(
+    redirect_uris: Option<&[String]>,
+    app_url: &str,
+) -> cli_engine::Result<()> {
+    crate::config::validate_redirect_uris_for_url(redirect_uris, app_url).map_err(|message| {
+        crate::error::GddyError::validation(format!("Invalid application configuration: {message}"))
+            .into_cli_error()
+    })
+}
+
+fn create_result_redirect_uris(app: &Value, requested: Option<&[String]>) -> Option<Vec<String>> {
+    redirect_uris_from_application(app).or_else(|| requested.map(<[String]>::to_vec))
+}
+
 /// Maps the latest release's `subscriptions` into local `SubscriptionConfig`
 /// entries, relativizing each webhook URL against `proxy_url` so it matches
 /// the `/webhooks/...` shape hand-authored entries use.
@@ -216,6 +239,7 @@ async fn handle_from_existing(
                 })
                 .unwrap_or_default()
         });
+    let redirect_uris = redirect_uris_from_application(app);
 
     for (field, u) in [("url", &url), ("proxyUrl", &proxy_url)] {
         if !crate::platform::app::public_url::is_public_routable_url(u) {
@@ -276,6 +300,7 @@ async fn handle_from_existing(
         url: url.clone(),
         proxy_url: proxy_url.clone(),
         authorization_scopes: scopes.clone(),
+        redirect_uris: redirect_uris.clone(),
         actions,
         subscriptions: Some(crate::config::SubscriptionsConfig {
             webhook: webhook_subscriptions.clone(),
@@ -303,6 +328,7 @@ async fn handle_from_existing(
         "url": url,
         "proxyUrl": proxy_url,
         "authorizationScopes": scopes,
+        "redirectUris": redirect_uris,
         "subscriptions": subscriptions_json,
         "filesWritten": {
             "config": cwd.join(config_path).display().to_string(),
@@ -407,6 +433,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 })
                 .or_else(|| existing.as_ref().map(|c| c.authorization_scopes.clone()))
                 .unwrap_or_default();
+            let redirect_uris = existing
+                .as_ref()
+                .and_then(|config| config.redirect_uris.clone());
             let label = args.label.unwrap_or_else(|| name.clone());
 
             for (message, empty) in [
@@ -443,21 +472,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
+            validate_resolved_redirect_uris(redirect_uris.as_deref(), &url)?;
+
             let credential = ctx.credential().await?;
             let onboarding =
                 ensure_ready_for_app_init(&credential.token, &env, accept_agreements).await?;
 
             let client = super::make_client(&ctx).await?;
+            let mut input = json!({
+                "name": name,
+                "label": label,
+                "description": description,
+                "url": url,
+                "proxyUrl": proxy_url,
+                "organizationId": &onboarding.org_id,
+                "authorizationScopes": scopes,
+            });
+            super::add_redirect_uris_to_input(&mut input, redirect_uris.as_deref());
             let data = client
-                .create_application(json!({
-                    "name": name,
-                    "label": label,
-                    "description": description,
-                    "url": url,
-                    "proxyUrl": proxy_url,
-                    "organizationId": &onboarding.org_id,
-                    "authorizationScopes": scopes,
-                }))
+                .create_application(input)
                 .await
                 .map_err(super::client_err)?;
 
@@ -478,6 +511,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 url: url.clone(),
                 proxy_url: proxy_url.clone(),
                 authorization_scopes: scopes.clone(),
+                redirect_uris: redirect_uris.clone(),
                 actions: vec![],
                 subscriptions: Some(crate::config::SubscriptionsConfig { webhook: vec![] }),
                 dependencies: vec![],
@@ -522,7 +556,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             let app_id = app["id"].as_str().unwrap_or("").to_owned();
-            let result = json!({
+            let result_redirect_uris = create_result_redirect_uris(app, redirect_uris.as_deref());
+            let mut result = json!({
                 "id": app_id,
                 "name": name,
                 "status": app["status"].as_str().unwrap_or("").to_owned(),
@@ -534,6 +569,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "oauthGrantTypes": ["authorization_code", "client_credentials"],
                 "filesWritten": files_written,
             });
+            super::add_redirect_uris_to_input(&mut result, result_redirect_uris.as_deref());
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
                     "platform app add action --name <name> --url <url>",
@@ -564,7 +600,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        init_view_columns, latest_release, subscriptions_at_risk, subscriptions_from_latest_release,
+        create_result_redirect_uris, init_view_columns, latest_release,
+        redirect_uris_from_application, subscriptions_at_risk, subscriptions_from_latest_release,
+        validate_resolved_redirect_uris,
     };
     use crate::config::SubscriptionConfig;
 
@@ -687,6 +725,51 @@ mod tests {
     fn latest_release_is_none_without_releases() {
         let app = json!({ "releases": { "edges": [] } });
         assert!(latest_release(&app).is_none());
+    }
+
+    #[test]
+    fn redirect_uris_from_application_preserves_missing_empty_and_populated_values() {
+        assert_eq!(redirect_uris_from_application(&json!({})), None);
+        assert_eq!(
+            redirect_uris_from_application(&json!({ "redirectUris": [] })),
+            Some(vec![])
+        );
+        assert_eq!(
+            redirect_uris_from_application(&json!({
+                "redirectUris": ["https://auth.example.net/callback"]
+            })),
+            Some(vec!["https://auth.example.net/callback".to_owned()])
+        );
+    }
+
+    #[test]
+    fn resolved_url_override_is_validated_before_create() {
+        let redirects = vec!["https://new.example.com/api/godaddy/callback".to_owned()];
+        let error =
+            validate_resolved_redirect_uris(Some(&redirects), "https://new.example.com/app")
+                .expect_err("resolved URL must be used for redirect validation");
+        assert!(
+            error
+                .to_string()
+                .contains("duplicates an automatically registered redirect URI"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn create_result_redirect_uris_prefers_api_response_and_falls_back_to_request() {
+        let requested = vec!["https://requested.example.net/callback".to_owned()];
+        assert_eq!(
+            create_result_redirect_uris(&json!({}), Some(&requested)),
+            Some(requested)
+        );
+        assert_eq!(
+            create_result_redirect_uris(
+                &json!({ "redirectUris": ["https://api.example.net/callback"] }),
+                None,
+            ),
+            Some(vec!["https://api.example.net/callback".to_owned()])
+        );
     }
 
     /// Proves `init_view_columns()` renders a `filesWritten` shaped like what

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+mod redirect_uris;
 mod settings;
 pub(crate) mod settings_form;
 
@@ -15,6 +16,10 @@ pub struct Config {
     pub url: String,
     pub proxy_url: String,
     pub authorization_scopes: Vec<String>,
+    /// Additional OAuth redirect URIs. `None` leaves the remote allowlist
+    /// unchanged, while `Some(vec![])` explicitly clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect_uris: Option<Vec<String>>,
     #[serde(default)]
     pub actions: Vec<ActionConfig>,
     #[serde(default)]
@@ -65,6 +70,8 @@ impl Config {
         if self.authorization_scopes.is_empty() {
             errors.push("authorization_scopes must contain at least one scope".to_owned());
         }
+
+        redirect_uris::validate(&mut errors, self.redirect_uris.as_deref(), &self.url);
 
         for (i, action) in self.actions.iter().enumerate() {
             validate_action(
@@ -154,6 +161,19 @@ pub(crate) fn is_valid_app_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+pub(crate) fn validate_redirect_uris_for_url(
+    redirect_uris: Option<&[String]>,
+    app_url: &str,
+) -> Result<(), String> {
+    let mut errors = Vec::new();
+    redirect_uris::validate(&mut errors, redirect_uris, app_url);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn is_uuid_v4(value: &str) -> bool {
@@ -484,6 +504,7 @@ mod tests {
             url: "https://example.com".to_owned(),
             proxy_url: "https://proxy.example.com".to_owned(),
             authorization_scopes: vec!["openid".to_owned()],
+            redirect_uris: None,
             actions: vec![],
             subscriptions: None,
             dependencies: vec![],

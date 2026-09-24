@@ -40,6 +40,14 @@ fn validation_err(message: impl Into<String>) -> cli_engine::CliCoreError {
     crate::error::GddyError::validation(message).into_cli_error()
 }
 
+/// Add the optional manifest field to a create/update input without collapsing
+/// the meaningful distinction between an omitted key and an explicit empty list.
+fn add_redirect_uris_to_input(input: &mut serde_json::Value, redirect_uris: Option<&[String]>) {
+    if let Some(redirect_uris) = redirect_uris {
+        input["redirectUris"] = serde_json::json!(redirect_uris);
+    }
+}
+
 /// Next-actions after mutating local godaddy.toml (add action/subscription/extension).
 fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
     let name_param = if app_name.is_empty() {
@@ -104,5 +112,24 @@ mod tests {
         let name = &actions[0].params["name"];
         assert!(name.required);
         assert_eq!(name.value.as_deref(), None);
+    }
+
+    #[test]
+    fn redirect_uri_input_preserves_omitted_vs_empty() {
+        let mut omitted = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut omitted, None);
+        assert!(omitted.get("redirectUris").is_none());
+
+        let mut clear = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut clear, Some(&[]));
+        assert_eq!(clear["redirectUris"], serde_json::json!([]));
+
+        let mut populated = serde_json::json!({});
+        let redirects = vec!["https://auth.example.net/callback".to_owned()];
+        super::add_redirect_uris_to_input(&mut populated, Some(&redirects));
+        assert_eq!(
+            populated["redirectUris"],
+            serde_json::json!(["https://auth.example.net/callback"])
+        );
     }
 }
