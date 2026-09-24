@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.21](https://github.com/godaddy/cli/compare/v0.2.20...v0.2.21) (2026-09-24)
+
+
+### Features
+
+* **cli:** promote hosting, email, and shopping out of beta ([#287](https://github.com/godaddy/cli/issues/287)) ([39e4c3e](https://github.com/godaddy/cli/commit/39e4c3ec028937b0624d3d0169d7e5c1d9796129))
+* **db:** add experimental `db tunnel` (MySQL over WebSocket) ([#249](https://github.com/godaddy/cli/issues/249)) ([3b16c6b](https://github.com/godaddy/cli/commit/3b16c6bf6cd7326dbb4cc7b0de450a86a160a887))
+* **hosting:** add MHWP app type behind a feature flag ([#289](https://github.com/godaddy/cli/issues/289)) ([5c2597d](https://github.com/godaddy/cli/commit/5c2597d7a1c5a545df1decb1114e265b09b7fd27))
+* **platform:** support OAuth redirect URIs in manifests ([#288](https://github.com/godaddy/cli/issues/288)) ([1b1b7e2](https://github.com/godaddy/cli/commit/1b1b7e23f377b4744acf6a25d7886e3fdace1ffc))
+* **platform:** support settings config capability ([#284](https://github.com/godaddy/cli/issues/284)) ([c61e1bb](https://github.com/godaddy/cli/commit/c61e1bbfe2f6741830feb1ad352859d31fd19c12))
+
+
+### Bug Fixes
+
+* **email:** Email purchase as next action in eligibility check ([#281](https://github.com/godaddy/cli/issues/281)) ([4ee8b41](https://github.com/godaddy/cli/commit/4ee8b4149eacebb12386b9694d22388092646e8c))
+* **shopping:** instruct AI agents to require agreement review before checkout ([#286](https://github.com/godaddy/cli/issues/286)) ([ac72a5b](https://github.com/godaddy/cli/commit/ac72a5b3b51b952079f68c7cfddaa986d0b5ed5b))
+
+
+### Miscellaneous
+
+* **hosting:** import types at top of hosting client file ([#278](https://github.com/godaddy/cli/issues/278)) ([fd8e024](https://github.com/godaddy/cli/commit/fd8e024ff0982ae6bdd180889de5faed2a910ee4))
+
 ## [0.2.20](https://github.com/godaddy/cli/compare/v0.2.19...v0.2.20) (2026-09-18)
 
 
