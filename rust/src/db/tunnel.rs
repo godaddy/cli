@@ -10,7 +10,7 @@
 //!
 //! Auth: the CLI mints a short-lived agent token from the hosting API
 //! (`POST /v1/hosting/nodejs/apps/:id/agent-token`, or for `--product wordpress`
-//! `POST /v1/airo/apps/:id/database-tunnel/agent-token`) using your GoDaddy OAuth
+//! `POST /v1/airo/hosting/apps/:id/database-tunnel/agent-token`) using your GoDaddy OAuth
 //! credential, stepped up to the dedicated `hosting.database.tunnel:execute`
 //! scope alongside deploy-execute — the tunnel scope is a separate grant, so
 //! authority to publish a deployment does not by itself grant raw database

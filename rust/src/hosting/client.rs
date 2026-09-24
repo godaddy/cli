@@ -303,10 +303,10 @@ impl HostingClient {
     /// Mint the database-tunnel agent token for an Airo-managed app (agent-enabled
     /// WordPress). Same response shape and scopes as
     /// [`get_agent_token`](Self::get_agent_token), but served by the Airo API at
-    /// `/v1/airo/apps/:id/database-tunnel/agent-token`, outside the `/v1/hosting` base.
+    /// `/v1/airo/hosting/apps/:id/database-tunnel/agent-token`, outside the `/v1/hosting` base.
     pub async fn get_airo_database_tunnel_token(&self, app_id: &str) -> Result<Value, ClientError> {
         let url = format!(
-            "{}/v1/airo/apps/{app_id}/database-tunnel/agent-token",
+            "{}/v1/airo/hosting/apps/{app_id}/database-tunnel/agent-token",
             self.base_url
         );
         self.post_empty_json_inner(url, false).await

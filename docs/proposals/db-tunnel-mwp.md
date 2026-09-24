@@ -41,9 +41,10 @@ sequenceDiagram
     participant Agent as App agent
     participant DB as App MySQL
 
-    CLI->>Edge: POST /v1/airo/apps/{appId}/database-tunnel/agent-token<br/>Authorization: Bearer <OAuth>
-    Edge->>Airo: POST /api/airo/v1/apps/{appId}/database-tunnel/agent-token
-    Airo->>Airo: validate OAuth JWT (JWKS, iss, aud, typ, exp)<br/>require scope hosting.database.tunnel:execute
+    CLI->>Edge: POST /v1/airo/hosting/apps/{appId}/database-tunnel/agent-token<br/>Authorization: Bearer <OAuth>
+    Edge->>Airo: POST /api/airo/v1/hosting/apps/{appId}/database-tunnel/agent-token
+    Airo->>Airo: /v1/hosting OAuth chain: validate OAuth JWT (JWKS, iss, aud, typ, exp),<br/>resolve the caller's shopper, TLA gate
+    Airo->>Airo: require scope hosting.database.tunnel:execute
     Airo->>Airo: rate limit per app + customer (10/min, burst 5)
     Airo->>Airo: GetCustomerForApp(appId)<br/>caller must be the owner → owner shopperId
     Airo->>Host: POST hosting/v1/apps/{appId}/database-tunnel/agent-token<br/>service JWT, body {shopperId}, X-OAuth-Token
@@ -62,32 +63,43 @@ sequenceDiagram
 
 1. **CLI.** `--product wordpress` selects
    `HostingClient::get_airo_database_tunnel_token`. It sends
-   `POST {api base}/v1/airo/apps/{appId}/database-tunnel/agent-token` with the
+   `POST {api base}/v1/airo/hosting/apps/{appId}/database-tunnel/agent-token` with the
    CLI's OAuth token. The CLI gets that token with the same scopes as for
    Node.js: deploy-execute and `hosting.database.tunnel:execute`. The response
    body is not logged, because it contains the agent token. The response shape
    `{agentUrl, token}` is the same as for Node.js, so everything after the mint
    is shared code.
 2. **Edge.** The public gateway maps `/v1/airo/...` to the mgmt host at
-   `/api/airo/...`. Then frontdoor must let an OAuth Bearer token through on
+   `/api/airo/v1/...`. Then frontdoor must let an OAuth Bearer token through on
    that one path. **Neither route exists today** (see **Cross-team
-   dependencies**).
-3. **airo-go: authenticate.** `RequireOAuthBearer` validates the token the same
-   way the PaaS public API (HWA) does:
-   - It gets the signing keys from `https://api.<root>/v2/oauth2/jwks`. Keys
-     are cached for 1 hour. After a failed fetch, the cache waits 30 seconds
-     before it tries again.
-   - The token must use RS256. The issuer must be `https://oauth.api.<root>`,
-     the audience `godaddy.com`, and `typ` either `at+jwt` or
-     `application/at+jwt`. `exp` is required, with 30 seconds of leeway.
-   - The scope `hosting.database.tunnel:execute` is required.
-   - `sub` must be `customer:<uuid>`.
+   dependencies**). The public path assumes that mapping; the gateway owner has
+   to confirm it.
+3. **airo-go: authenticate.** The route is on airo-go's public `/v1/hosting`
+   group, which accepts only an Authorization Platform OAuth access token
+   (`OAuthAuthMiddleware`, BACK-3991). It never accepts an `sso-jwt`, an admin
+   token, or a service certificate. It validates the token the same way the
+   PaaS public API (HWA) does:
+   - The issuer and its key set are configured (`oauthIssuer`, `oauthJwksUrl`:
+     `https://oauth.api.<root>` and `https://api.<root>/v2/oauth2/jwks`). If
+     they are not configured, the group, and so this route, is not mounted.
+   - The token must use RS256 with a key of at least 2048 bits. The audience
+     must be `godaddy.com`, and `typ` either `at+jwt` or `application/at+jwt`.
+     `exp` is required, with 30 seconds of leeway. Delegated tokens (an `act`
+     claim) are refused.
+   - `sub` must be `customer:<uuid>`. The middleware maps that customer to a
+     shopper ID (`airo_customers`, then the Shopper API) and applies the TLA
+     shopper gate, which is enforced in production.
 
-   An `sso-jwt` header, a missing token, or an invalid token gets `401`. If the
-   keys cannot be fetched, the answer is `502`.
-4. **airo-go: rate limit.** At most 10 requests per minute with a burst of 5,
-   counted per app and customer (`ExecutionRateLimitKey`). Beyond that the
-   answer is `429`.
+   A missing, malformed, or invalid token, or an `sso-jwt` header, gets `401`.
+   A valid token for a customer with no shopper, or a shopper outside the TLA
+   gate, gets `403`. If the signing keys cannot be fetched, the answer is
+   `503`.
+4. **airo-go: scope and rate limit.** Every `/v1/hosting` route names its
+   scope. This one requires `hosting.database.tunnel:execute`; a token without
+   it gets `403 Insufficient scope`, so deploy authority alone is not enough.
+   Then at most 10 requests per minute with a burst of 5 are allowed, counted
+   per app and customer (`ExecutionRateLimitKey`). Beyond that the answer is
+   `429`.
 5. **airo-go: ownership.** The CLI sends only the app ID. airo-go looks up the
    app's subscription and the customer who owns it (`GetCustomerForApp`), and
    the caller must be that customer. An unknown app, a failed lookup, another
@@ -138,7 +150,9 @@ that have no agent (see below), so that signal is not reliable.
 | Layer | Check | Failure |
 | --- | --- | --- |
 | Frontdoor | The route allows an OAuth Bearer token on this one path (still to be added) | `401` from the edge, with an empty body |
-| airo-go | The OAuth JWT is valid and has the scope `hosting.database.tunnel:execute` | `401` (`502` if the signing keys are unavailable) |
+| airo-go | The OAuth JWT is valid (`/v1/hosting` chain) | `401` (`503` if the signing keys are unavailable) |
+| airo-go | The customer has a shopper ID and passes the TLA gate | `403` |
+| airo-go | The token has the scope `hosting.database.tunnel:execute` | `403 Insufficient scope` |
 | airo-go | Rate limit per app and customer | `429` |
 | airo-go | The caller is the app's owner and the owner has a shopper ID | `404 app not found` |
 | hosting | The service credential is allowed (`JWTOrCert`: Airo console or CTK cert) | airo-go answers `502` |
@@ -156,9 +170,9 @@ not have an agent URL".
 Compared with Node.js Hosting:
 
 - **Who validates OAuth.** For Node.js, HWA validates the OAuth token. For
-  WordPress, airo-go validates it with the same rules. airo-builder receives the
-  OAuth token only as `X-OAuth-Token`, next to the cert2s delegation that it
-  bases its grant on.
+  WordPress, airo-go's shared `/v1/hosting` OAuth chain validates it with the
+  same rules. airo-builder receives the OAuth token only as `X-OAuth-Token`,
+  next to the cert2s delegation that it bases its grant on.
 - **Ownership.** For Node.js, the app is looked up for the authenticated
   customer. For WordPress, airo-go resolves the app's owner through its
   subscription and compares that owner with the caller. Collaborators are
@@ -206,11 +220,11 @@ returns in step 7.
 | Owner | Change | State |
 | --- | --- | --- |
 | CLI | `--product wordpress` and `get_airo_database_tunnel_token` | Implemented. The checks, clippy, 951 tests, and the module-size check pass. |
-| airo-go | `POST /v1/apps/:appId/database-tunnel/agent-token`: OAuth validator, `RequireOAuthBearer`, rate limit, owner check, and a proxy to hosting | Implemented. The route is registered only when the OAuth endpoints can be derived from `GodaddySSOHost`. The build and the handler and middleware tests must run with the Artifactory `GOPROXY`. |
+| airo-go | `POST /v1/hosting/apps/:appId/database-tunnel/agent-token` on the shared `/v1/hosting` OAuth chain (BACK-3991): scope check, rate limit, owner check, and a proxy to hosting | Implemented. The route is registered only when `oauthIssuer` and `oauthJwksUrl` are configured. The build and the handler tests must run with the Artifactory `GOPROXY`. |
 | hosting | `POST /hosting/v1/apps/:id/database-tunnel/agent-token`: resolves the agent URL, cert2s delegation, airo-builder mint, and a token lifetime check | Implemented. The service is wired only when the airo-builder URL and the cert client are configured. |
 | hosting | An agent, or an on-demand tunnel job, for `managed-wordpress` | **Not started. This is the blocker.** |
-| frontdoor (`frontdoor-config`, `hosting-api-ext/*/pioneermgmt`) | A POST route for `^/api/airo/v1/apps/[^/]+/database-tunnel/agent-token/?$` with `authz-oauth`, placed before the `/api/airo/` catch-all in test and before the `/api/` catch-all in production | Not started. Today the catch-alls allow only `pagely,gdjwt`, so an OAuth token gets `401` at the edge. The frontdoor owners must confirm that the edge passes the `Authorization` header through unchanged. |
-| API gateway | Map `api.godaddy.com/v1/airo/apps/...` to the mgmt host at `/api/airo/v1/apps/...` | Not started. The route is not in `frontdoor-config`, and its owner is unknown. |
+| frontdoor (`frontdoor-config`, `hosting-api-ext/*/pioneermgmt`) | A POST route for `^/api/airo/v1/hosting/apps/[^/]+/database-tunnel/agent-token/?$` with `authz-oauth`, placed before the `/api/airo/` catch-all in test and before the `/api/` catch-all in production | Not started. Today the catch-alls allow only `pagely,gdjwt`, so an OAuth token gets `401` at the edge. The frontdoor owners must confirm that the edge passes the `Authorization` header through unchanged. |
+| API gateway | Map `api.godaddy.com/v1/airo/hosting/apps/...` to the mgmt host at `/api/airo/v1/hosting/apps/...` | Not started. The route is not in `frontdoor-config`, and its owner is unknown. |
 | airo-builder (AAB) | `resolveDatabaseTunnelGrant` grants for cert2s with `AiroAppBuilder`, and the agent's `PaaSNodeJS` product gate is widened only together with the `canTunnelDatabase` check | For the owner of the AAB OAuth/JWT work. It is not part of this change. |
 
 ## Deferred work
@@ -232,15 +246,15 @@ returns in step 7.
   - `rust/src/hosting/client_tests.rs`: `get_airo_database_tunnel_token_posts_to_airo_path`
     checks the request path, the Bearer header, and the parsed response.
 - **airo-go.**
-  - `oauth/access_token_validator_test.go` covers the signature, issuer,
-    audience, `typ`, expiry, scope, and `sub` checks, and the key cache.
-  - `middleware/oauth_bearer_test.go` covers the header handling and maps
-    errors to `401`, `502`, and `503`.
+  - The shared OAuth chain has its own tests (`auth/oauth_access_token_validator_test.go`,
+    `middleware/oauth_auth_test.go`, `handlers/hosting_router_test.go`).
   - `handlers/database_tunnel_proxy_handler_test.go` covers the owner check,
     that every miss returns the same 404, and that hosting's `422` becomes
-    `403`. Router-level tests check that the route is registered only when a
-    validator is present, that `sso-jwt` and invalid Bearer tokens are refused
-    before the owner lookup, and that the sixth request in a burst gets `429`.
+    `403`. Router-level tests run through the real `/v1/hosting` chain. They
+    check that the route is registered only when that chain is configured,
+    that `sso-jwt` and invalid Bearer tokens get `401` before the owner lookup,
+    that a token without the tunnel scope gets `403`, that the validated token
+    is forwarded to hosting, and that the sixth request in a burst gets `429`.
 - **hosting.** `database_tunnel_service_test.go`, `database_tunnel_handler_test.go`,
   and `sharetokenapi/agent_token_test.go` cover agent URL selection, the refusal
   of non-https agent URLs, the error mapping, and the token lifetime checks.

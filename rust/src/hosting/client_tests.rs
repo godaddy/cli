@@ -564,7 +564,7 @@ async fn get_airo_database_tunnel_token_posts_to_airo_path() {
     let mock = server
         .mock_async(|when, then| {
             when.method(POST)
-                .path("/v1/airo/apps/app-1/database-tunnel/agent-token")
+                .path("/v1/airo/hosting/apps/app-1/database-tunnel/agent-token")
                 .header("authorization", "Bearer test-token")
                 .json_body(json!({}));
             then.status(200).json_body(json!({
