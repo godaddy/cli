@@ -33,7 +33,7 @@ The two planes are the same as for Node.js:
 sequenceDiagram
     autonumber
     participant CLI as gddy db tunnel<br/>--product wordpress
-    participant Edge as api.godaddy.com gateway<br/>+ frontdoor (pioneermgmt)
+    participant Route as Public route to airo-go<br/>(not confirmed)
     participant Airo as airo-go<br/>(Airo API)
     participant Host as hosting API
     participant SSO as SSO (cert2s)
@@ -41,8 +41,8 @@ sequenceDiagram
     participant Agent as App agent
     participant DB as App MySQL
 
-    CLI->>Edge: POST /v1/airo/hosting/apps/{appId}/database-tunnel/agent-token<br/>Authorization: Bearer <OAuth>
-    Edge->>Airo: POST /api/airo/v1/hosting/apps/{appId}/database-tunnel/agent-token
+    CLI->>Route: POST /v1/airo/hosting/apps/{appId}/database-tunnel/agent-token<br/>Authorization: Bearer <OAuth>
+    Route->>Airo: POST /v1/hosting/apps/{appId}/database-tunnel/agent-token
     Airo->>Airo: /v1/hosting OAuth chain: validate OAuth JWT (JWKS, iss, aud, typ, exp),<br/>resolve the caller's shopper, TLA gate
     Airo->>Airo: require scope hosting.database.tunnel:execute
     Airo->>Airo: rate limit per app + customer (10/min, burst 5)
@@ -69,11 +69,12 @@ sequenceDiagram
    body is not logged, because it contains the agent token. The response shape
    `{agentUrl, token}` is the same as for Node.js, so everything after the mint
    is shared code.
-2. **Edge.** The public gateway maps `/v1/airo/...` to the mgmt host at
-   `/api/airo/v1/...`. Then frontdoor must let an OAuth Bearer token through on
-   that one path. **Neither route exists today** (see **Cross-team
-   dependencies**). The public path assumes that mapping; the gateway owner has
-   to confirm it.
+2. **Public route.** The request must reach airo-go's
+   `/v1/hosting/apps/{appId}/database-tunnel/agent-token` with the
+   `Authorization` header unchanged. **How the public URL maps to airo-go is not
+   confirmed.** The CLI path above assumes that `/v1/airo/...` on the API host
+   maps to airo-go's `/v1/...`. Nothing in this proposal depends on a particular
+   proxy in between (see **Cross-team dependencies**).
 3. **airo-go: authenticate.** The route is on airo-go's public `/v1/hosting`
    group, which accepts only an Authorization Platform OAuth access token
    (`OAuthAuthMiddleware`, BACK-3991). It never accepts an `sso-jwt`, an admin
@@ -149,7 +150,6 @@ that have no agent (see below), so that signal is not reliable.
 
 | Layer | Check | Failure |
 | --- | --- | --- |
-| Frontdoor | The route allows an OAuth Bearer token on this one path (still to be added) | `401` from the edge, with an empty body |
 | airo-go | The OAuth JWT is valid (`/v1/hosting` chain) | `401` (`503` if the signing keys are unavailable) |
 | airo-go | The customer has a shopper ID and passes the TLA gate | `403` |
 | airo-go | The token has the scope `hosting.database.tunnel:execute` | `403 Insufficient scope` |
@@ -223,8 +223,7 @@ returns in step 7.
 | airo-go | `POST /v1/hosting/apps/:appId/database-tunnel/agent-token` on the shared `/v1/hosting` OAuth chain (BACK-3991): scope check, rate limit, owner check, and a proxy to hosting | Implemented. The route is registered only when `oauthIssuer` and `oauthJwksUrl` are configured. The build and the handler tests must run with the Artifactory `GOPROXY`. |
 | hosting | `POST /hosting/v1/apps/:id/database-tunnel/agent-token`: resolves the agent URL, cert2s delegation, airo-builder mint, and a token lifetime check | Implemented. The service is wired only when the airo-builder URL and the cert client are configured. |
 | hosting | An agent, or an on-demand tunnel job, for `managed-wordpress` | **Not started. This is the blocker.** |
-| frontdoor (`frontdoor-config`, `hosting-api-ext/*/pioneermgmt`) | A POST route for `^/api/airo/v1/hosting/apps/[^/]+/database-tunnel/agent-token/?$` with `authz-oauth`, placed before the `/api/airo/` catch-all in test and before the `/api/` catch-all in production | Not started. Today the catch-alls allow only `pagely,gdjwt`, so an OAuth token gets `401` at the edge. The frontdoor owners must confirm that the edge passes the `Authorization` header through unchanged. |
-| API gateway | Map `api.godaddy.com/v1/airo/hosting/apps/...` to the mgmt host at `/api/airo/v1/hosting/apps/...` | Not started. The route is not in `frontdoor-config`, and its owner is unknown. |
+| Public routing (owner to be identified) | Confirm the public URL for airo-go's `/v1/hosting/apps/:appId/database-tunnel/agent-token` and that it forwards an OAuth `Authorization: Bearer` header unchanged | Not confirmed. The CLI path `/v1/airo/hosting/...` is an assumption and changes if the confirmed URL differs. |
 | airo-builder (AAB) | `resolveDatabaseTunnelGrant` grants for cert2s with `AiroAppBuilder`, and the agent's `PaaSNodeJS` product gate is widened only together with the `canTunnelDatabase` check | For the owner of the AAB OAuth/JWT work. It is not part of this change. |
 
 ## Deferred work
@@ -258,7 +257,5 @@ returns in step 7.
 - **hosting.** `database_tunnel_service_test.go`, `database_tunnel_handler_test.go`,
   and `sharetokenapi/agent_token_test.go` cover agent URL selection, the refusal
   of non-https agent URLs, the error mapping, and the token lifetime checks.
-- **End to end.** Not possible until the blocker is removed and the frontdoor
-  and gateway routes exist. A probe on test confirmed the current edge
-  behavior: `401` at the edge for an OAuth token on `mgmt.nstk.net`, and `404`
-  for `api.test-godaddy.com/v1/airo/...`.
+- **End to end.** Not possible until the blocker is removed and the public
+  route to airo-go is confirmed.
