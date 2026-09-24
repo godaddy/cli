@@ -8,8 +8,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::records::verify_with_list_action;
 use super::records::{
-    RecordOptions, RecordWriteArgs, fetch_records, validate_caa_fields, validate_svcb_fields,
-    validate_tlsa_fields,
+    RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
+    validate_svcb_fields, validate_tlsa_fields,
 };
 
 mod outcome;
@@ -140,12 +140,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .with_fix(fix)
                     .into_cli_error());
             }
-            let existing_ids: Vec<String> = existing
-                .iter()
-                .filter_map(|r| r.record_id.clone())
-                .collect();
-
-            let plan = plan_set(&existing_ids, &data);
+            let desired = v3_records(&name, &record_type, &data, &opts);
+            let plan = plan_set(&existing, &desired);
             if ctx.dry_run() {
                 return Ok(CommandResult::new(dry_run_set_preview(
                     &domain,
