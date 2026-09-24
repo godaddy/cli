@@ -10,7 +10,7 @@ mod secrets;
 mod source;
 mod subscription;
 
-use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
+use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 pub fn module() -> Module {
     Module::new("Hosting", |ctx| {
@@ -51,7 +51,6 @@ pub fn module() -> Module {
         .with_group(subscription::group())
         .with_group(operation::group())
     })
-    .with_feature_flag("hosting", Stage::Beta)
     .with_guides_from_markdown([(
         "hosting.md",
         include_bytes!("guides/hosting.md").as_slice(),

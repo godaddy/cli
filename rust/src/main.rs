@@ -130,36 +130,31 @@ mod tests {
 
     use cli_engine::{Cli, CliConfig, Stage, environments::EnvTable};
 
-    /// Regression test for a real bug found while wiring feature-flagging up
-    /// properly: with no `min_stage` override anywhere, cli-engine's own
-    /// default (`Stage::Ga`) hides `hosting`. Guards that the *global* default
-    /// stays `Ga` per product decision — i.e. beta and experimental modules
-    /// stay hidden absent an environment override.
     #[tokio::test]
-    async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
+    async fn hosting_email_and_shopping_are_visible_at_the_default_min_stage() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
         let output = cli.run(["gddy", "hosting", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "hosting should stay hidden at the Ga default: {}",
+            "hosting should be visible at the Ga default: {}",
             output.rendered
         );
 
         let output = cli.run(["gddy", "email", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "email should stay hidden at the Ga default: {}",
+            "email should be visible at the Ga default: {}",
             output.rendered
         );
 
         let output = cli.run(["gddy", "shopping", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "shopping should stay hidden at the Ga default: {}",
+            "shopping should be visible at the Ga default: {}",
             output.rendered
         );
     }
@@ -179,14 +174,8 @@ mod tests {
         );
     }
 
-    /// The other half of the guard: an environment whose resolved
-    /// `min_stage` is lower than the global default reveals those same
-    /// modules. This is exactly the mechanism `environments.toml`'s
-    /// `min_stage`/`feature_overrides` keys are meant to drive (there is no
-    /// per-environment env var equivalent — see `crate::environments`'s
-    /// module doc).
     #[tokio::test]
-    async fn an_environment_min_stage_override_reveals_beta_and_experimental_modules() {
+    async fn an_environment_min_stage_override_reveals_experimental_modules() {
         let environments = Arc::new(
             cli_engine::environments::Environments::new("dev")
                 .with_environment("dev", EnvTable::new().with("min_stage", "experimental")),
@@ -198,24 +187,10 @@ mod tests {
                 .with_startup_args(Vec::<&str>::new())
                 .with_modules(super::all_modules()),
         );
-        let output = cli.run(["gddy", "hosting", "--help"]).await;
+        let output = cli.run(["gddy", "db", "--help"]).await;
         assert_eq!(
             output.exit_code, 0,
-            "hosting should be revealed under an Experimental-min_stage environment: {}",
-            output.rendered
-        );
-
-        let output = cli.run(["gddy", "email", "--help"]).await;
-        assert_eq!(
-            output.exit_code, 0,
-            "email should be revealed under an Experimental-min_stage environment: {}",
-            output.rendered
-        );
-
-        let output = cli.run(["gddy", "shopping", "--help"]).await;
-        assert_eq!(
-            output.exit_code, 0,
-            "shopping should be revealed under an Experimental-min_stage environment: {}",
+            "db should be revealed under an Experimental-min_stage environment: {}",
             output.rendered
         );
     }
