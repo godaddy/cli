@@ -9,7 +9,8 @@
 //! matching `platform app deploy`.
 //!
 //! Auth: the CLI mints a short-lived agent token from the hosting API
-//! (`POST /v1/hosting/nodejs/apps/:id/agent-token`) using your GoDaddy OAuth
+//! (`POST /v1/hosting/nodejs/apps/:id/agent-token`, or for `--product wordpress`
+//! `POST /v1/airo/apps/:id/database-tunnel/agent-token`) using your GoDaddy OAuth
 //! credential, stepped up to the dedicated `hosting.database.tunnel:execute`
 //! scope alongside deploy-execute — the tunnel scope is a separate grant, so
 //! authority to publish a deployment does not by itself grant raw database
@@ -80,6 +81,17 @@ struct TunnelArgs {
     /// the network. Off by default; the default loopback bind needs no flag.
     #[arg(long = "allow-non-loopback")]
     allow_non_loopback: bool,
+
+    /// Product the app belongs to. Selects which service mints the tunnel token:
+    /// Node.js Hosting, or the Airo API for agent-enabled WordPress sites.
+    #[arg(long, value_enum, value_name = "PRODUCT", default_value_t = TunnelProduct::Nodejs)]
+    product: TunnelProduct,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum TunnelProduct {
+    Nodejs,
+    Wordpress,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -102,7 +114,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
              `--ssl-mode=REQUIRED`) so the session is encrypted across the local \
              hop as well; the database may require it. The CLI authorizes with \
              your GoDaddy credentials and connects to the app's assigned agent \
-             automatically. Runs until interrupted (Ctrl-C).",
+             automatically. Pass `--product wordpress` for an agent-enabled \
+             WordPress site; the default is a Node.js Hosting app. Runs until \
+             interrupted (Ctrl-C).",
         )
         .with_system("database")
         .with_tier(Tier::Mutate)
@@ -176,7 +190,7 @@ async fn run_tunnel(
     sender
         .send(json!({ "type": "step", "name": "authorize", "status": "started" }))
         .await;
-    let (agent_url, token) = match mint_agent_token(ctx, &args.app_id).await {
+    let (agent_url, token) = match mint_agent_token(ctx, &args.app_id, args.product).await {
         Ok(pair) => pair,
         Err(e) => return Err(fail(sender, e).await),
     };
@@ -301,18 +315,21 @@ async fn run_tunnel(
 /// deploy-execute and the dedicated `hosting.database.tunnel:execute` scope:
 /// authority to publish a deployment does not by itself grant database access,
 /// so opening a tunnel requires the separate database-tunnel grant as well.
+/// `product` picks the mint; both return the same `{ agentUrl, token }` shape.
 async fn mint_agent_token(
     ctx: &CommandContext,
     app_id: &str,
+    product: TunnelProduct,
 ) -> cli_engine::Result<(String, String)> {
     let required = vec![DEPLOY_EXECUTE.to_owned(), DATABASE_TUNNEL.to_owned()];
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
     let client = HostingClient::new(base_url, token);
-    let resp = client
-        .get_agent_token(app_id)
-        .await
-        .map_err(|e| GddyError::from(e).into_cli_error())?;
+    let minted = match product {
+        TunnelProduct::Nodejs => client.get_agent_token(app_id).await,
+        TunnelProduct::Wordpress => client.get_airo_database_tunnel_token(app_id).await,
+    };
+    let resp = minted.map_err(|e| GddyError::from(e).into_cli_error())?;
     let agent_url = field_str(&resp, "agentUrl")?;
     let token = field_str(&resp, "token")?;
     Ok((agent_url, token))
@@ -687,6 +704,26 @@ mod tests {
                 "{host:?} should not count as loopback"
             );
         }
+    }
+
+    #[test]
+    fn product_defaults_to_nodejs_and_accepts_wordpress() {
+        use clap::Parser;
+
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: super::TunnelArgs,
+        }
+
+        let default = Cli::try_parse_from(["t", "--app-id", "abc123"]).expect("parse default");
+        assert_eq!(default.args.product, super::TunnelProduct::Nodejs);
+
+        let wp = Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "wordpress"])
+            .expect("parse wordpress");
+        assert_eq!(wp.args.product, super::TunnelProduct::Wordpress);
+
+        assert!(Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "php"]).is_err());
     }
 
     #[test]

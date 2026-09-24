@@ -557,3 +557,29 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
     assert_eq!(body["agentUrl"], "https://app-1.agent.example");
     assert_eq!(body["token"], "minted-agent-jwt");
 }
+
+#[tokio::test]
+async fn get_airo_database_tunnel_token_posts_to_airo_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/airo/apps/app-1/database-tunnel/agent-token")
+                .header("authorization", "Bearer test-token")
+                .json_body(json!({}));
+            then.status(200).json_body(json!({
+                "agentUrl": "https://app-1.agent.example",
+                "token": "minted-agent-jwt"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_airo_database_tunnel_token("app-1")
+        .await
+        .expect("get airo database tunnel token");
+
+    mock.assert_async().await;
+    assert_eq!(body["agentUrl"], "https://app-1.agent.example");
+    assert_eq!(body["token"], "minted-agent-jwt");
+}

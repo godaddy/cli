@@ -147,7 +147,7 @@ impl HostingClient {
 
     // Spec has no request body; Akamai still 411s a POST with no Content-Length.
     async fn post_empty_json(&self, path: &str) -> Result<Value, ClientError> {
-        self.post_empty_json_inner(path, true).await
+        self.post_empty_json_inner(self.url(path), true).await
     }
 
     /// Like [`post_empty_json`](Self::post_empty_json), but the response body is
@@ -157,17 +157,17 @@ impl HostingClient {
     /// verbatim and offers no body-redaction hook, so the suppression happens
     /// here, at the one call site that needs it.
     async fn post_empty_json_secret_response(&self, path: &str) -> Result<Value, ClientError> {
-        self.post_empty_json_inner(path, false).await
+        self.post_empty_json_inner(self.url(path), false).await
     }
 
     async fn post_empty_json_inner(
         &self,
-        path: &str,
+        url: String,
         log_response_body: bool,
     ) -> Result<Value, ClientError> {
         let request = self
             .http
-            .request(Method::POST, self.url(path))
+            .request(Method::POST, url)
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id())
             .json(&json!({}))
@@ -298,6 +298,18 @@ impl HostingClient {
         // reach the `--debug transport` trace (cli-engine would print it in full).
         self.post_empty_json_secret_response(&format!("/nodejs/apps/{app_id}/agent-token"))
             .await
+    }
+
+    /// Mint the database-tunnel agent token for an Airo-managed app (agent-enabled
+    /// WordPress). Same response shape and scopes as
+    /// [`get_agent_token`](Self::get_agent_token), but served by the Airo API at
+    /// `/v1/airo/apps/:id/database-tunnel/agent-token`, outside the `/v1/hosting` base.
+    pub async fn get_airo_database_tunnel_token(&self, app_id: &str) -> Result<Value, ClientError> {
+        let url = format!(
+            "{}/v1/airo/apps/{app_id}/database-tunnel/agent-token",
+            self.base_url
+        );
+        self.post_empty_json_inner(url, false).await
     }
 
     pub async fn list_deployments(
