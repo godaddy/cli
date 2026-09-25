@@ -24,7 +24,7 @@ mod add;
 mod conflicts;
 mod delete;
 mod list;
-mod records;
+pub(crate) mod records;
 mod set;
 
 /// Partial add/set/delete failure: outcomes may mix validation, API, and

@@ -102,6 +102,17 @@ impl RecordOptions {
     }
 }
 
+/// Flags below that clap only requires conditionally, via `required_if_eq`.
+/// clap doesn't expose that relation publicly, so `spec_cmd` reads this
+/// table by hand. Keep in sync with the attributes below.
+#[cfg_attr(not(feature = "dev-portal-spec"), allow(dead_code))]
+pub(crate) const CONDITIONALLY_REQUIRED_FLAGS: &[(&str, &str)] = &[
+    ("tag", "required when --type is CAA"),
+    ("usage", "required when --type is TLSA"),
+    ("selector", "required when --type is TLSA"),
+    ("matching-type", "required when --type is TLSA"),
+];
+
 /// Shared flags for the mutating commands (`add`/`set`): required type/name and
 /// the repeatable `--data`, plus the optional record fields.
 #[derive(Debug, Clone, clap::Args)]

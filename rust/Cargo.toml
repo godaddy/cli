@@ -40,6 +40,7 @@ phonenumber = "0.3"
 progenitor-client = "0.14"
 regex = { version = "1", features = ["std"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "form", "rustls"] }
+schemars = { version = "1.2", features = ["derive"], optional = true }
 self-replace = "1.5.0"
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 sha2 = "0.10"
@@ -59,7 +60,13 @@ iso_currency = "0.5.3"
 
 [dev-dependencies]
 httpmock = "0.8"
+jsonschema = "0.35"
 tempfile = "3"
+
+[features]
+# Excludes `gddy spec` from default/release builds: it's only used to extract
+# the CLI's command spec for the dev-portal, never by end users.
+dev-portal-spec = ["dep:schemars"]
 
 [lints.rust]
 unsafe_code = "deny"
