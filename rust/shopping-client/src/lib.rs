@@ -16,9 +16,7 @@ pub use generated::*;
 pub use generated_client_support::{BuildError, TransportObserver, set_transport_observer};
 
 /// Bridges generated requests/responses into the registered
-/// [`TransportObserver`], if any. See `domains-client`'s copy of this impl
-/// for the full rationale; this impl has to live here (Rust's orphan rule)
-/// even though the observer plumbing itself is shared.
+/// [`TransportObserver`], if any
 impl progenitor_client::ClientHooks<()> for Client {
     async fn pre<E>(
         &self,
@@ -29,13 +27,12 @@ impl progenitor_client::ClientHooks<()> for Client {
         Ok(())
     }
 
-    async fn post<E>(
+    async fn exec(
         &self,
-        result: &reqwest::Result<reqwest::Response>,
+        request: reqwest::Request,
         _info: &progenitor_client::OperationInfo,
-    ) -> Result<(), progenitor_client::Error<E>> {
-        generated_client_support::notify_response_result(result);
-        Ok(())
+    ) -> reqwest::Result<reqwest::Response> {
+        generated_client_support::execute_and_observe(self.client(), request).await
     }
 }
 
@@ -74,7 +71,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct RecordingObserver {
         requests: std::sync::Mutex<Vec<String>>,
-        responses: std::sync::Mutex<Vec<u16>>,
+        responses: std::sync::Mutex<Vec<(u16, Vec<u8>)>>,
     }
 
     impl TransportObserver for RecordingObserver {
@@ -85,11 +82,16 @@ mod tests {
                 .push(request.method().to_string());
         }
 
-        fn on_response(&self, status: reqwest::StatusCode, _headers: &reqwest::header::HeaderMap) {
+        fn on_response(
+            &self,
+            status: reqwest::StatusCode,
+            _headers: &reqwest::header::HeaderMap,
+            body: &[u8],
+        ) {
             self.responses
                 .lock()
                 .expect("lock is never held across a panic")
-                .push(status.as_u16());
+                .push((status.as_u16(), body.to_vec()));
         }
     }
 
@@ -111,7 +113,7 @@ mod tests {
     // `domains-client`/`email-client` — this is the first proof `--debug
     // transport` logging actually reaches a shopping request/response.
     #[tokio::test]
-    async fn client_hooks_feed_the_registered_observer() {
+    async fn client_hooks_feed_request_and_response_events_to_the_registered_observer() {
         let _test_lock = TRANSPORT_OBSERVER_TEST_LOCK.lock().await;
         let _clear = ClearTransportObserver;
 
@@ -131,7 +133,8 @@ mod tests {
             .id("order-1")
             .send()
             .await
-            .expect("request succeeds");
+            .expect("request succeeds")
+            .into_inner();
         mock.assert_async().await;
 
         let requests = observer
@@ -147,8 +150,9 @@ mod tests {
             .lock()
             .expect("lock is never held across a panic");
         assert!(
-            responses.contains(&200),
-            "expected a response event, got: {responses:?}"
+            responses.iter().any(|(status, body)| *status == 200
+                && String::from_utf8_lossy(body).contains("order-1")),
+            "expected a response event carrying the real body, got: {responses:?}"
         );
     }
 }

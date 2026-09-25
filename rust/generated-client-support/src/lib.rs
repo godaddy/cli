@@ -51,7 +51,12 @@ pub fn build_authenticated_http_client(
 /// pulling one in.
 pub trait TransportObserver: Send + Sync {
     fn on_request(&self, request: &reqwest::Request);
-    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap);
+    fn on_response(
+        &self,
+        status: reqwest::StatusCode,
+        headers: &reqwest::header::HeaderMap,
+        body: &[u8],
+    );
 }
 
 static TRANSPORT_OBSERVER: RwLock<Option<Arc<dyn TransportObserver>>> = RwLock::new(None);
@@ -82,20 +87,54 @@ pub fn notify_request(request: &reqwest::Request) {
     }
 }
 
-/// Forwards a generated response to the registered [`TransportObserver`], if
-/// any — the counterpart to [`notify_request`], called from
-/// `ClientHooks::post`. Silently does nothing for an `Err` (a communication
-/// failure never reached a response to observe).
-pub fn notify_response_result(result: &reqwest::Result<reqwest::Response>) {
+/// Executes `request` on `client`, then — if a [`TransportObserver`] is
+/// registered — reads the response body, forwards it to the observer, and
+/// returns a freshly built `Response` carrying the same status, headers,
+/// and bytes, so whatever decodes the response afterward (a generated
+/// client's own response handling) is completely unaffected and needs no
+/// awareness that logging happened at all.
+///
+/// Call this from each generated client crate's `ClientHooks::exec`
+/// override. `exec` is the hook progenitor's own codegen feeds directly into
+/// every operation's response handling (`let response =
+/// client.exec(request, &info).await?; match response.status() { ... }`),
+/// and the only hook that ever owns the request/response outright — `pre`
+/// only gets `&mut Request` and `post` only `&Result<Response>`, so neither
+/// can read a body (a body read needs ownership: `Response::bytes` takes
+/// `self`).
+///
+/// One known gap: `reqwest` tracks a response's originating URL via a
+/// private extension type, so the rebuilt response's `.url()` reads back a
+/// placeholder rather than the real request URL. Nothing in this workspace
+/// calls `Response::url()` today.
+pub async fn execute_and_observe(
+    client: &reqwest::Client,
+    request: reqwest::Request,
+) -> reqwest::Result<reqwest::Response> {
+    let response = client.execute(request).await?;
+
     let observer = TRANSPORT_OBSERVER
         .read()
         .expect("lock is never held across a panic")
         .clone();
-    if let Ok(response) = result
-        && let Some(observer) = observer
-    {
-        observer.on_response(response.status(), response.headers());
+    let Some(observer) = observer else {
+        return Ok(response);
+    };
+
+    let status = response.status();
+    let version = response.version();
+    let headers = response.headers().clone();
+    let bytes = response.bytes().await?;
+    observer.on_response(status, &headers, &bytes);
+
+    let mut builder = http::Response::builder().status(status).version(version);
+    if let Some(rebuilt_headers) = builder.headers_mut() {
+        *rebuilt_headers = headers;
     }
+    let rebuilt = builder
+        .body(bytes)
+        .expect("status/headers copied from a real response are always valid");
+    Ok(rebuilt.into())
 }
 
 #[cfg(test)]
@@ -118,7 +157,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct RecordingObserver {
         requests: std::sync::Mutex<Vec<String>>,
-        responses: std::sync::Mutex<Vec<u16>>,
+        responses: std::sync::Mutex<Vec<(u16, Vec<u8>)>>,
     }
 
     impl TransportObserver for RecordingObserver {
@@ -129,19 +168,21 @@ mod tests {
                 .push(request.method().to_string());
         }
 
-        fn on_response(&self, status: reqwest::StatusCode, _headers: &reqwest::header::HeaderMap) {
+        fn on_response(
+            &self,
+            status: reqwest::StatusCode,
+            _headers: &reqwest::header::HeaderMap,
+            body: &[u8],
+        ) {
             self.responses
                 .lock()
                 .expect("lock is never held across a panic")
-                .push(status.as_u16());
+                .push((status.as_u16(), body.to_vec()));
         }
     }
 
-    // Serializes tests that mutate the process-wide observer. An async-aware
-    // lock isn't needed here (no `.await` while held), but a plain
-    // `std::sync::Mutex` still keeps the tests in this module from
-    // interleaving their observer mutation.
-    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Serializes tests that mutate the process-wide observer
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     struct ClearObserver;
     impl Drop for ClearObserver {
@@ -150,9 +191,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn notify_request_reaches_the_registered_observer() {
-        let _guard = TEST_LOCK.lock().expect("lock is never held across a panic");
+    #[tokio::test]
+    async fn notify_request_reaches_the_registered_observer() {
+        let _guard = TEST_LOCK.lock().await;
         let _clear = ClearObserver;
 
         let observer = Arc::new(RecordingObserver::default());
@@ -173,14 +214,83 @@ mod tests {
         );
     }
 
-    // `notify_response_result`'s `Ok` path is covered end-to-end by each
-    // generated client crate's own `client_hooks_feed_the_registered_observer`
-    // test against a real mock response — no `Err(reqwest::Error)` can be
-    // constructed outside the `reqwest` crate to test the other branch here.
+    #[tokio::test]
+    async fn execute_and_observe_forwards_the_real_body_and_still_lets_the_caller_read_it() {
+        let _guard = TEST_LOCK.lock().await;
+        let _clear = ClearObserver;
 
-    #[test]
-    fn no_observer_registered_is_a_silent_no_op() {
-        let _guard = TEST_LOCK.lock().expect("lock is never held across a panic");
+        let observer = Arc::new(RecordingObserver::default());
+        set_transport_observer(Some(observer.clone()));
+
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/probe");
+                then.status(200).body("real body");
+            })
+            .await;
+
+        let client = reqwest::Client::new();
+        let request = client
+            .get(format!("{}/probe", server.base_url()))
+            .build()
+            .expect("valid request");
+
+        let response = execute_and_observe(&client, request)
+            .await
+            .expect("request succeeds");
+        mock.assert_async().await;
+
+        // The observer saw the real body...
+        assert_eq!(
+            *observer
+                .responses
+                .lock()
+                .expect("lock is never held across a panic"),
+            vec![(200, b"real body".to_vec())]
+        );
+        // ...and the caller can still read the very same body from the
+        // returned response — the "fork" didn't consume the one copy the
+        // caller needs to decode.
+        let text = response
+            .text()
+            .await
+            .expect("rebuilt response is still readable");
+        assert_eq!(text, "real body");
+    }
+
+    #[tokio::test]
+    async fn execute_and_observe_skips_the_read_and_rebuild_with_no_observer_registered() {
+        let _guard = TEST_LOCK.lock().await;
+        let _clear = ClearObserver;
+        set_transport_observer(None);
+
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/probe");
+                then.status(200).body("real body");
+            })
+            .await;
+
+        let client = reqwest::Client::new();
+        let request = client
+            .get(format!("{}/probe", server.base_url()))
+            .build()
+            .expect("valid request");
+
+        let response = execute_and_observe(&client, request)
+            .await
+            .expect("request succeeds");
+        mock.assert_async().await;
+
+        let text = response.text().await.expect("response is still readable");
+        assert_eq!(text, "real body");
+    }
+
+    #[tokio::test]
+    async fn no_observer_registered_is_a_silent_no_op() {
+        let _guard = TEST_LOCK.lock().await;
         let _clear = ClearObserver;
         set_transport_observer(None);
 

@@ -28,8 +28,13 @@ impl generated_client_support::TransportObserver for CliEngineTransportObserver 
         cli_engine::transport::debug_log_reqwest_request(request);
     }
 
-    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap) {
-        cli_engine::transport::debug_log_reqwest_response(status, headers, &[]);
+    fn on_response(
+        &self,
+        status: reqwest::StatusCode,
+        headers: &reqwest::header::HeaderMap,
+        body: &[u8],
+    ) {
+        cli_engine::transport::debug_log_reqwest_response(status, headers, body);
     }
 }
 
