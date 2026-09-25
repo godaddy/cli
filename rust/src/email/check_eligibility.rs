@@ -31,12 +31,23 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(|e| match &e {
                     ClientError::Http { status, body }
-                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
                     {
                         client_err_with_fix(
                             e,
                             "Run: 'gddy shopping catalog search --query titan' \
                              to see available email plans, select one to purchase, then retry.",
+                        )
+                    }
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Go to the GoDaddy Email dashboard \
+                             (https://productivity.godaddy.com/addnewemail) to create the \
+                             mailbox manually — this domain's plan doesn't support \
+                             provisioning via this API.",
                         )
                     }
                     _ => client_err(e),
@@ -124,10 +135,10 @@ mod tests {
     }
 
     #[test]
-    fn email_plan_not_eligible_fix_points_at_shopping_catalog() {
+    fn email_plan_not_available_fix_points_at_shopping_catalog() {
         use cli_engine::build_error_envelope;
 
-        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
                 status: 422,
@@ -142,6 +153,36 @@ mod tests {
                 .fix
                 .as_deref()
                 .is_some_and(|f| f.contains("shopping catalog search")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn email_plan_not_eligible_fix_points_at_the_dashboard() {
+        use cli_engine::build_error_envelope;
+
+        // Per the email guide's "Eligibility failure reasons" table:
+        // `EMAIL_PLAN_NOT_ELIGIBLE` (this domain's plan can't provision via
+        // this API) is a distinct failure from `EMAIL_PLAN_NOT_AVAILABLE`
+        // (no plan at all) and needs a different fix — the dashboard, not
+        // the shopping catalog.
+        let body = r#"{"message":"not eligible","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Go to the GoDaddy Email dashboard \
+             (https://productivity.godaddy.com/addnewemail) to create the \
+             mailbox manually — this domain's plan doesn't support \
+             provisioning via this API.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("productivity.godaddy.com")),
             "{envelope:?}"
         );
     }
