@@ -38,7 +38,7 @@ pub fn module() -> Module {
                  \n\
                  To redeploy: repeat steps 2–3, then 5.\n\
                  \n\
-                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
+                 Terminology: `variant` refers to an environment: PREVIEW (for testing) or PUBLISH (public).",
             ),
         )
         .with_group(app::group(mhwp))
