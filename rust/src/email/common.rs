@@ -8,10 +8,11 @@ use crate::email::client::{ClientError, EmailClient};
 use crate::error::GddyError;
 
 pub(crate) async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<EmailClient> {
+    crate::http::ensure_generated_client_transport_observer_registered();
     let required: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
-    Ok(EmailClient::new(base_url, token))
+    EmailClient::new(base_url, token).map_err(|e| GddyError::from(e).into_cli_error())
 }
 
 /// Maps a [`ClientError`] to a [`CliCoreError`], rendering the panel API's
@@ -24,7 +25,10 @@ pub(crate) fn client_err(e: ClientError) -> CliCoreError {
         ClientError::Http { status, body } => {
             GddyError::from_http(status, format_api_error_body(&body), "email").into_cli_error()
         }
-        ClientError::Network(_) => GddyError::from(e).into_cli_error(),
+        ClientError::Network(_)
+        | ClientError::Request(_)
+        | ClientError::Response(_)
+        | ClientError::Build(_) => GddyError::from(e).into_cli_error(),
     }
 }
 
@@ -38,7 +42,10 @@ pub(crate) fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> Cli
                 .with_fix(fix)
                 .into_cli_error()
         }
-        ClientError::Network(_) => GddyError::from(e).into_cli_error(),
+        ClientError::Network(_)
+        | ClientError::Request(_)
+        | ClientError::Response(_)
+        | ClientError::Build(_) => GddyError::from(e).into_cli_error(),
     }
 }
 
@@ -69,17 +76,23 @@ pub(crate) fn body_has_issue(body: &str, issue_code: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn format_detail(detail: &ApiErrorDetail) -> Option<String> {
+    match (detail.issue.as_deref(), detail.description.as_deref()) {
+        (Some(issue), Some(description)) if !issue.is_empty() && !description.is_empty() => {
+            Some(format!("{issue}: {description}"))
+        }
+        (Some(issue), _) if !issue.is_empty() => Some(issue.to_owned()),
+        (_, Some(description)) if !description.is_empty() => Some(description.to_owned()),
+        _ => None,
+    }
+}
+
 fn format_api_error_body(body: &str) -> String {
     let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
         return body.to_owned();
     };
     let message = parsed.message.unwrap_or_else(|| body.to_owned());
-    let details: Vec<String> = parsed
-        .details
-        .iter()
-        .filter_map(|d| d.description.clone().or_else(|| d.issue.clone()))
-        .filter(|s| !s.is_empty())
-        .collect();
+    let details: Vec<String> = parsed.details.iter().filter_map(format_detail).collect();
     if details.is_empty() {
         message
     } else {
@@ -102,8 +115,20 @@ mod tests {
         let rendered = format_api_error_body(body);
         assert_eq!(
             rendered,
-            "missing required agreements (EMAIL_TOS not accepted)"
+            "missing required agreements (MISSING_AGREEMENT: EMAIL_TOS not accepted)"
         );
+    }
+
+    #[test]
+    fn format_api_error_body_keeps_the_issue_code_alongside_the_description() {
+        // The live bug this guards: the API's `issue` (a stable code like
+        // `EMAIL_PLAN_NOT_AVAILABLE`) used to be dropped from the rendered
+        // message whenever a `description` was also present, leaving only
+        // prose with no way to tell which specific failure occurred.
+        let body = r#"{"message":"Found 1 reason why this email address cannot be provisioned.","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE","description":"Please visit https://productivity.test-godaddy.com/addnewemail to create an email address."}]}"#;
+        let rendered = format_api_error_body(body);
+        assert!(rendered.contains("EMAIL_PLAN_NOT_AVAILABLE"), "{rendered}");
+        assert!(rendered.contains("Please visit"), "{rendered}");
     }
 
     #[test]
