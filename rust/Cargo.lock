@@ -1344,8 +1344,11 @@ dependencies = [
 name = "generated-client-support"
 version = "0.2.21"
 dependencies = [
+ "http",
+ "httpmock",
  "reqwest 0.13.4",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

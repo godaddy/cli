@@ -39,16 +39,6 @@ pub use generated_client_support::{BuildError, TransportObserver, set_transport_
 
 /// Bridges generated requests/responses into the registered
 /// [`TransportObserver`], if any.
-///
-/// progenitor generates every call as `client.pre(...)`, `client.exec(...)`,
-/// `client.post(...)` (see [`progenitor_client::ClientHooks`]); the default
-/// impl (for `&Client`) is a no-op. Implementing the trait for `Client`
-/// (without the reference) overrides it via progenitor's "auto-ref
-/// specialization" — this is the sanctioned extension point, not a hack.
-/// This impl has to live here (Rust's orphan rule: it's a foreign trait for
-/// this crate's own `Client` type) even though the observer plumbing itself
-/// is shared — see `generated_client_support::notify_request`/
-/// `notify_response_result`.
 impl progenitor_client::ClientHooks<()> for Client {
     async fn pre<E>(
         &self,
@@ -59,13 +49,12 @@ impl progenitor_client::ClientHooks<()> for Client {
         Ok(())
     }
 
-    async fn post<E>(
+    async fn exec(
         &self,
-        result: &reqwest::Result<reqwest::Response>,
+        request: reqwest::Request,
         _info: &progenitor_client::OperationInfo,
-    ) -> Result<(), progenitor_client::Error<E>> {
-        generated_client_support::notify_response_result(result);
-        Ok(())
+    ) -> reqwest::Result<reqwest::Response> {
+        generated_client_support::execute_and_observe(self.client(), request).await
     }
 }
 
@@ -586,7 +575,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct RecordingObserver {
         requests: std::sync::Mutex<Vec<String>>,
-        responses: std::sync::Mutex<Vec<u16>>,
+        responses: std::sync::Mutex<Vec<(u16, Vec<u8>)>>,
     }
 
     impl TransportObserver for RecordingObserver {
@@ -597,11 +586,16 @@ mod tests {
                 .push(request.method().to_string());
         }
 
-        fn on_response(&self, status: reqwest::StatusCode, _headers: &reqwest::header::HeaderMap) {
+        fn on_response(
+            &self,
+            status: reqwest::StatusCode,
+            _headers: &reqwest::header::HeaderMap,
+            body: &[u8],
+        ) {
             self.responses
                 .lock()
                 .expect("lock is never held across a panic")
-                .push(status.as_u16());
+                .push((status.as_u16(), body.to_vec()));
         }
     }
 
@@ -630,7 +624,7 @@ mod tests {
     // without this crate depending on that framework. Assert the bridge
     // actually fires, not just that the request/response round-trips.
     #[tokio::test]
-    async fn client_hooks_feed_the_registered_observer() {
+    async fn client_hooks_feed_request_and_response_events_to_the_registered_observer() {
         let _test_lock = TRANSPORT_OBSERVER_TEST_LOCK.lock().await;
         let _clear = ClearTransportObserver;
 
@@ -645,13 +639,16 @@ mod tests {
             })
             .await;
 
-        client_for(&server)
+        let suggestions = client_for(&server)
             .suggest_domains()
             .query("coffee")
             .send()
             .await
-            .expect("request succeeds");
+            .expect("request succeeds")
+            .into_inner();
         mock.assert_async().await;
+
+        assert!(suggestions.items.is_empty());
 
         let requests = observer
             .requests
@@ -666,8 +663,11 @@ mod tests {
             .lock()
             .expect("lock is never held across a panic");
         assert!(
-            responses.contains(&200),
-            "expected a response event, got: {responses:?}"
+            responses
+                .iter()
+                .any(|(status, body)| *status == 200
+                    && String::from_utf8_lossy(body).contains("items")),
+            "expected a response event carrying the real body, got: {responses:?}"
         );
     }
 

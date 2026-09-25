@@ -6,5 +6,15 @@ license = "Proprietary"
 description = "Shared hand-written support code for progenitor-generated API clients (domains-client, shopping-client, email-client, ...): transport observation and authenticated-client construction."
 
 [dependencies]
+# Pinned to the same major version reqwest itself resolves to (checked
+# against Cargo.lock) — `execute_and_observe`'s response-rebuilding relies on
+# reqwest's `impl<T: Into<Body>> From<http::Response<T>> for Response`, which
+# only applies when this crate's `http::Response` is the same type reqwest
+# constructs its own `Response` from.
+http = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
 thiserror = "2"
+
+[dev-dependencies]
+httpmock = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
