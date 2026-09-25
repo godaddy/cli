@@ -212,4 +212,49 @@ mod tests {
             serde_json::json!(false)
         );
     }
+
+    #[test]
+    fn payment_process_exposes_optional_platform_collection_target() {
+        let schema = super::load_action_schema("commerce.payment.process")
+            .expect("payment process action schema should load");
+        let target = &schema["requestSchema"]["properties"]["collectionEntityTargetId"];
+        let id = &schema["requestSchema"]["$defs"]["Id"];
+
+        assert_eq!(target["$ref"], serde_json::json!("#/$defs/Id"));
+        assert_eq!(id["type"], serde_json::json!("string"));
+        assert!(
+            schema["requestSchema"]["required"]
+                .as_array()
+                .is_some_and(|required| !required
+                    .iter()
+                    .any(|field| { field == &serde_json::json!("collectionEntityTargetId") })),
+            "collectionEntityTargetId must remain optional"
+        );
+
+        let pattern = id["pattern"]
+            .as_str()
+            .expect("platform Id must define a string pattern");
+        let anchored = format!("^(?:{pattern})$");
+        let id_pattern = regex::Regex::new(&anchored).expect("platform Id pattern must compile");
+
+        for valid in [
+            "2cf6f478-e7c6-3378-8cda-74ee60715e13",
+            "urn:tid:oak:2cf6f478-e7c6-3378-8cda-74ee60715e13",
+        ] {
+            assert!(
+                id_pattern.is_match(valid),
+                "expected valid platform Id: {valid}"
+            );
+        }
+        for invalid in [
+            "urn:tid:2cf6f478-e7c6-3378-8cda-74ee60715e13",
+            "2CF6F478-E7C6-3378-8CDA-74EE60715E13",
+            "not-a-platform-id",
+        ] {
+            assert!(
+                !id_pattern.is_match(invalid),
+                "expected invalid platform Id: {invalid}"
+            );
+        }
+    }
 }
