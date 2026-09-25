@@ -76,17 +76,23 @@ pub(crate) fn body_has_issue(body: &str, issue_code: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn format_detail(detail: &ApiErrorDetail) -> Option<String> {
+    match (detail.issue.as_deref(), detail.description.as_deref()) {
+        (Some(issue), Some(description)) if !issue.is_empty() && !description.is_empty() => {
+            Some(format!("{issue}: {description}"))
+        }
+        (Some(issue), _) if !issue.is_empty() => Some(issue.to_owned()),
+        (_, Some(description)) if !description.is_empty() => Some(description.to_owned()),
+        _ => None,
+    }
+}
+
 fn format_api_error_body(body: &str) -> String {
     let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
         return body.to_owned();
     };
     let message = parsed.message.unwrap_or_else(|| body.to_owned());
-    let details: Vec<String> = parsed
-        .details
-        .iter()
-        .filter_map(|d| d.description.clone().or_else(|| d.issue.clone()))
-        .filter(|s| !s.is_empty())
-        .collect();
+    let details: Vec<String> = parsed.details.iter().filter_map(format_detail).collect();
     if details.is_empty() {
         message
     } else {
@@ -109,8 +115,20 @@ mod tests {
         let rendered = format_api_error_body(body);
         assert_eq!(
             rendered,
-            "missing required agreements (EMAIL_TOS not accepted)"
+            "missing required agreements (MISSING_AGREEMENT: EMAIL_TOS not accepted)"
         );
+    }
+
+    #[test]
+    fn format_api_error_body_keeps_the_issue_code_alongside_the_description() {
+        // The live bug this guards: the API's `issue` (a stable code like
+        // `EMAIL_PLAN_NOT_AVAILABLE`) used to be dropped from the rendered
+        // message whenever a `description` was also present, leaving only
+        // prose with no way to tell which specific failure occurred.
+        let body = r#"{"message":"Found 1 reason why this email address cannot be provisioned.","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE","description":"Please visit https://productivity.test-godaddy.com/addnewemail to create an email address."}]}"#;
+        let rendered = format_api_error_body(body);
+        assert!(rendered.contains("EMAIL_PLAN_NOT_AVAILABLE"), "{rendered}");
+        assert!(rendered.contains("Please visit"), "{rendered}");
     }
 
     #[test]

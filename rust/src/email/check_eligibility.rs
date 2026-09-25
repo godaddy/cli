@@ -31,7 +31,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(|e| match &e {
                     ClientError::Http { status, body }
-                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
                     {
                         client_err_with_fix(
                             e,
@@ -124,10 +124,10 @@ mod tests {
     }
 
     #[test]
-    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+    fn email_plan_not_eligible_fix_points_at_shopping_catalog() {
         use cli_engine::build_error_envelope;
 
-        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
                 status: 422,
