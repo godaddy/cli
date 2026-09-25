@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.22](https://github.com/godaddy/cli/compare/v0.2.21...v0.2.22) (2026-09-25)
+
+
+### Features
+
+* **malware:** add gddy malware scan run command ([#290](https://github.com/godaddy/cli/issues/290)) ([c0ea763](https://github.com/godaddy/cli/commit/c0ea763cccfd495ce3842a242b13aaf6774347d5))
+
 ## [0.2.21](https://github.com/godaddy/cli/compare/v0.2.20...v0.2.21) (2026-09-24)
 
 
