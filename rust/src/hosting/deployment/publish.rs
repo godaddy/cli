@@ -11,11 +11,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("publish", "Trigger a deployment")
             .with_long(
-                "Promote the current PREVIEW build to PUBLISH. Hosting uses a two-stage model: \
-                 `hosting source upload` refreshes PREVIEW (or `hosting source github` \
+                "Deploy your app to PUBLISH. When successful, this makes your app available \
+                 on its public URL. Hosting uses a two-stage model: \
+                 `hosting source upload` updates PREVIEW (or `hosting source github` \
                  if the app is already GitHub-linked in the UI), \
-                 and `hosting deployment publish` builds that source and rolls it out to PUBLISH — \
-                 which is why there is no --variant flag here. Requires a subscription on the app; \
+                 and `hosting deployment publish` deploys to PUBLISH, \
+                 which is why publish takes no environment flag. Requires a subscription on the app; \
                  first time only, run `hosting subscription list` then `hosting subscription attach`. \
                  Returns immediately with a deployment ID; poll `hosting deployment get` until \
                  status is COMPLETED or FAILED.",

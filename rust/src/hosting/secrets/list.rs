@@ -11,9 +11,9 @@ struct SecretsListArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// Filter by environment variant (PREVIEW or PUBLISH).
-    #[arg(long, value_name = "VARIANT", value_parser = ["PREVIEW", "PUBLISH"])]
-    variant: Option<String>,
+    /// Filter by environment (PREVIEW or PUBLISH).
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"])]
+    app_environment: Option<String>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -21,7 +21,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<SecretsListArgs>("list", "List application secrets")
             .with_long(
                 "List secret names for a hosting application. Values are never returned. \
-                 Use --variant to filter by environment; omit to see all secrets.",
+                 Use --app-environment to filter by environment; omit to see all secrets.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -32,7 +32,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let app_id = args.app_id.clone();
             let client = make_client(&ctx, &[SECRET_READ]).await?;
             let data = client
-                .list_secrets(&app_id, args.variant.as_deref())
+                .list_secrets(&app_id, args.app_environment.as_deref())
                 .await
                 .map_err(client_err)?;
             let items: Vec<Value> = data

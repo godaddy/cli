@@ -4,13 +4,13 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 # `gddy hosting` — deploying a Node.js application
 
-`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
+`gddy hosting` manages the full lifecycle of a hosted Node.js application: create an app, upload source code, test on a preview URL, attach to a hosting plan, and publish to a public URL.
 
 ## Concepts
 
 **App** — the hosted Node.js application. Create it first. Later commands take `--app-id`.
 
-**Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
+**Environments** — each app has a PREVIEW environment and a PUBLISH environment. Commands that act on one environment take an `--app-environment` flag (the older `--variant` name still works). Uploading source makes your app available on its PREVIEW URL for testing. `deployment publish`, when successful, makes your app available on its public PUBLISH URL.
 
 **Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish.
 
@@ -98,7 +98,7 @@ Skip this on later deploys.
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app is not attached. Go back to step 4.
+If publish returns `WH_PLAN_REQUIRED`, the app is not attached. Go back to step 5.
 
 Poll until COMPLETED:
 
@@ -128,15 +128,15 @@ Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN pro
 
 ## Redeploying
 
-Upload source again (step 2), wait for the import to complete, then run `deployment publish` again (step 5). Skip steps 1 and 4.
+Upload source again (step 3), wait for the import to complete, then run `deployment publish` again (step 6). Skip steps 1 and 5.
 
 ## Other commands
 
 | Command | Purpose |
 |---|---|
 | `hosting app status` | Runtime status for PREVIEW and PUBLISH |
-| `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment |
-| `hosting log list` | Fetch log entries (filter by `--variant`, `--level`, `--since`) |
+| `hosting app restart --app-environment <PREVIEW\|PUBLISH>` | Restart an environment |
+| `hosting log list` | Fetch log entries (filter by `--app-environment`, `--level`, `--since`) |
 | `hosting secrets create/update/delete/list/sync` | Manage per-environment secrets |
 | `hosting domain attach/get/detach/list` | Custom domains. Get returns DNS targets for external DNS |
 | `hosting runtime get` | View the Node.js runtime version |

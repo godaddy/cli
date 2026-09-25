@@ -29,7 +29,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 )
                 .with_param("app-id", NextActionParam::value(app_id.clone())),
                 next_action(
-                    "hosting app restart --app-id <app-id> --variant <variant>",
+                    "hosting app restart --app-id <app-id> --app-environment <app-environment>",
                     "Restart an environment",
                 )
                 .with_param("app-id", NextActionParam::value(app_id)),

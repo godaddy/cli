@@ -12,7 +12,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
         GroupSpec::new("secrets", "Manage application secrets").with_long(
             "Create, update, delete, and list secrets for a hosting application. \
              Secret values are write-only — list returns names only. \
-             Use --variant to target PREVIEW (staging) or PUBLISH (production); \
+             Use --app-environment to target PREVIEW or PUBLISH; \
              writes default to PREVIEW.",
         ),
     )

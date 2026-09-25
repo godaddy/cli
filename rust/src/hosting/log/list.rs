@@ -11,8 +11,8 @@ struct LogListArgs {
     app_id: String,
 
     /// Environment to retrieve logs from (PREVIEW or PUBLISH). Defaults to PREVIEW.
-    #[arg(long, value_name = "VARIANT", value_parser = ["PREVIEW", "PUBLISH"])]
-    variant: Option<String>,
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"])]
+    app_environment: Option<String>,
 
     /// Return only entries at or after this ISO 8601 timestamp (e.g. 2024-01-01T00:00:00Z).
     #[arg(long, value_name = "DATETIME")]
@@ -36,7 +36,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<LogListArgs>("list", "List application logs")
             .with_long(
                 "Retrieve log entries for a hosting application. Results are autopaginated. \
-                 Use --variant to select the environment, --since for a time window, \
+                 Use --app-environment to select the environment, --since for a time window, \
                  --source and --level to filter by stream and severity.",
             )
             .with_system("hosting")
@@ -58,7 +58,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 let response = client
                     .list_logs(
                         &args.app_id,
-                        args.variant.as_deref(),
+                        args.app_environment.as_deref(),
                         args.since.as_deref(),
                         args.source.as_deref(),
                         args.level.as_deref(),
