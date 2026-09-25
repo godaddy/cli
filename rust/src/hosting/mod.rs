@@ -38,7 +38,7 @@ pub fn module() -> Module {
                  \n\
                  To redeploy: repeat steps 2–3, then 5.\n\
                  \n\
-                 Commands that act on one environment take an `--environment` flag \
+                 Commands that act on one environment take an `--app-environment` flag \
                  (PREVIEW for testing or PUBLISH for public); the older `--variant` name still works.",
             ),
         )

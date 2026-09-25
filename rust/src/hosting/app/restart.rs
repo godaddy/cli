@@ -11,8 +11,8 @@ struct AppRestartArgs {
     app_id: String,
 
     /// Environment to restart (PREVIEW or PUBLISH).
-    #[arg(long = "environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"])]
-    environment: String,
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"])]
+    app_environment: String,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -29,7 +29,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[DEPLOY_EXECUTE]),
         |ctx, args: AppRestartArgs| async move {
             let app_id = args.app_id;
-            let variant = args.environment;
+            let variant = args.app_environment;
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
             let data = client
                 .restart_app(&app_id, &variant)

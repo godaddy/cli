@@ -10,7 +10,7 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 **App** — the hosted Node.js application. Create it first. Later commands take `--app-id`.
 
-**Environments** — each app has a PREVIEW environment and a PUBLISH environment. Commands that act on one environment take an `--environment` flag (the older `--variant` name still works). Uploading source makes your app available on its PREVIEW URL for testing. `deployment publish`, when successful, makes your app available on its public PUBLISH URL.
+**Environments** — each app has a PREVIEW environment and a PUBLISH environment. Commands that act on one environment take an `--app-environment` flag (the older `--variant` name still works). Uploading source makes your app available on its PREVIEW URL for testing. `deployment publish`, when successful, makes your app available on its public PUBLISH URL.
 
 **Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish.
 
@@ -135,8 +135,8 @@ Upload source again (step 3), wait for the import to complete, then run `deploym
 | Command | Purpose |
 |---|---|
 | `hosting app status` | Runtime status for PREVIEW and PUBLISH |
-| `hosting app restart --environment <PREVIEW\|PUBLISH>` | Restart an environment |
-| `hosting log list` | Fetch log entries (filter by `--environment`, `--level`, `--since`) |
+| `hosting app restart --app-environment <PREVIEW\|PUBLISH>` | Restart an environment |
+| `hosting log list` | Fetch log entries (filter by `--app-environment`, `--level`, `--since`) |
 | `hosting secrets create/update/delete/list/sync` | Manage per-environment secrets |
 | `hosting domain attach/get/detach/list` | Custom domains. Get returns DNS targets for external DNS |
 | `hosting runtime get` | View the Node.js runtime version |

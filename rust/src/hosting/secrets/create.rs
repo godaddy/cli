@@ -20,8 +20,8 @@ struct SecretCreateArgs {
     value: String,
 
     /// Target environment (PREVIEW or PUBLISH). Defaults to PREVIEW.
-    #[arg(long = "environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
-    environment: String,
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
+    app_environment: String,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -29,7 +29,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<SecretCreateArgs>("create", "Create an application secret")
             .with_long(
                 "Create a new secret for a hosting application. \
-                 Use --environment to target PREVIEW or PUBLISH (defaults to PREVIEW).",
+                 Use --app-environment to target PREVIEW or PUBLISH (defaults to PREVIEW).",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -42,7 +42,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(GddyError::into_cli_error)?;
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .patch_secrets(&app_id, &args.environment, patch)
+                .patch_secrets(&app_id, &args.app_environment, patch)
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
