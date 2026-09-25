@@ -10,7 +10,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Get details for a single hosting application by ID. \
                  The `urls` object exposes the reachable URLs for each environment \
-                 variant (preview and publish).",
+                 (preview and publish).",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
