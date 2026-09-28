@@ -425,6 +425,14 @@ mod tests {
             msg.contains("Do not infer confirmation from a general request to buy"),
             "{msg}"
         );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(msg.contains("title AND link"), "{msg}");
+        assert!(
+            msg.contains("Do not summarize an agreement by name only"),
+            "{msg}"
+        );
 
         let err = purchase_consent_types("example.com", 2, true, false, &titles, &ty, true)
             .expect_err("must require --confirm");
@@ -436,6 +444,7 @@ mod tests {
             msg.contains("show the end user the exact price from `domain quote`"),
             "{msg}"
         );
+        assert!(msg.contains("title AND link"), "{msg}");
 
         let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty, true)
             .expect("both gates satisfied");

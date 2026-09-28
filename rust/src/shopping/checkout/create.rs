@@ -214,6 +214,15 @@ mod tests {
                 .description
                 .contains("Do not infer approval from a request to purchase")
         );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(with_note.description.contains("title AND link"));
+        assert!(
+            with_note
+                .description
+                .contains("Do not summarize an agreement by name only")
+        );
 
         // `--output human`: a human reading their own terminal doesn't need to
         // be told to confirm the price with themselves.

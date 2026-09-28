@@ -442,6 +442,15 @@ mod tests {
                 .description
                 .contains("Do not infer confirmation from a general request to buy")
         );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(action.description.contains("title AND link"));
+        assert!(
+            action
+                .description
+                .contains("Do not summarize an agreement by name only")
+        );
     }
 
     #[test]

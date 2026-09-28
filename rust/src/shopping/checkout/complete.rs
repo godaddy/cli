@@ -450,6 +450,17 @@ mod tests {
             "{:?}",
             envelope.fix
         );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("title AND link")),
+            "{:?}",
+            envelope.fix
+        );
 
         // `--output human`: a human reading their own terminal doesn't need to
         // be told to confirm the price with themselves.

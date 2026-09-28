@@ -103,7 +103,7 @@ gddy shopping checkout update <checkout-id> \
 Before checkout completion, review the checkout session, its payment method, required agreements, and every important link.
 The `--agree` flag on checkout completion acknowledges and accepts all required agreements; use it only after that review.
 
-AI assistants: Before using `--agree` or completing checkout, show the end user the checkout session's final total (including all fees) and all required agreements and important links. Then obtain their explicit confirmation to proceed. Do not infer approval from a request to purchase:
+AI assistants: Before using `--agree` or completing checkout, show the end user the checkout session's final total (including all fees), each required agreement's title AND link, and every important link. Then obtain their explicit confirmation to proceed. Do not summarize an agreement by name only — the user must be able to click through and read it. Do not infer approval from a request to purchase:
 
 ```bash
 gddy shopping checkout complete <checkout-id> --agree
