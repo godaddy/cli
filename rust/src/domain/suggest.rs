@@ -47,13 +47,22 @@ fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
 /// auto-alignment for no-view columns doesn't apply to them — they're
 /// right-aligned explicitly here instead so decimal points line up across
 /// rows of differently-priced suggestions.
+///
+/// `fees1Year`/`fees2Year` aren't `.nested(...)`, unlike `available`/`quote`'s
+/// `fees` column: each row here is one suggestion in an array-of-objects
+/// table, and cli-engine renders a cell inside such a row as a single flat
+/// line — nesting is a no-op there. A plain column still surfaces a premium
+/// suggestion's fee data (as a compact inline value) instead of it being
+/// entirely absent from the table, which is the regression this guards.
 fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("price1Year", "1yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
+        TableColumn::new("fees1Year", "1yr Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
+        TableColumn::new("fees2Year", "2yr Fees"),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("inventory", "Inventory"),
     ]
@@ -208,8 +217,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::super::common::comma_joined;
-    use super::{command, nonzero, suggestion_to_json};
+    use super::{command, nonzero, suggestion_to_json, view_columns};
     use domains_client::types;
+    use serde_json::json;
 
     /// Builds a standalone `clap::Command` from the real `--limit` arg
     /// definition (not a re-declared copy), so this exercises the actual
@@ -395,5 +405,35 @@ mod tests {
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
         assert!(fields.split(',').any(|f| f == "fees1Year"), "{fields}");
+    }
+
+    #[test]
+    fn fees_render_in_the_human_table() {
+        // Regression (Copilot review, PR #294): `fees1Year`/`fees2Year` were
+        // emitted into JSON but `view_columns()` had no column for either,
+        // so the human table silently dropped a premium suggestion's
+        // surcharge even though `--output json` had it. Narrowed to just
+        // `fees1Year` (rather than the full `view_columns()`, which doesn't
+        // fit an 80-column non-tty test width alongside every other column)
+        // so the assertion is about this column existing and rendering its
+        // value, not about column-hiding under width pressure — with only
+        // one column, cli-engine always keeps it (truncated if it must)
+        // rather than hiding it.
+        let suggestions = json!([{
+            "domain": "premium-example.com",
+            "fees1Year": [{"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3500.00", "currency": "USD"}],
+        }]);
+        let columns: Vec<_> = view_columns()
+            .into_iter()
+            .filter(|c| c.field == "fees1Year")
+            .collect();
+        let envelope = cli_engine::Envelope::success(suggestions, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&columns), "");
+        assert!(rendered.contains("1YR FEES"), "{rendered}");
+        assert!(
+            rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("3500.00"), "{rendered}");
     }
 }
