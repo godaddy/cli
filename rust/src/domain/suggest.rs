@@ -27,9 +27,10 @@ output_schema!(DomainSuggestResult {
     "renewalPrice2Year": "string", optional;
     "fees2Year": "[]object", optional;
     "currency": "string", optional;
-    // Present only for premium (registry or Afternic) domains — see
-    // `types::InventoryType`. A premium suggestion's per-term `fees` (e.g. a
-    // one-time acquisition surcharge) still apply on top of the price fields.
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's in that term's
+    // per-term `fees` (`fees1Year`/`fees2Year`), in addition to the price fields.
     "inventory": "string", optional;
 });
 

@@ -25,9 +25,11 @@ output_schema!(DomainAvailableResult {
     // Present only when the API returns priced terms at all.
     "currency": "string", optional;
     "terms": "[]object", optional;
-    // Present only for premium (registry or Afternic) domains: `REGISTRY_PREMIUM`
-    // or `PREMIUM` — see `types::InventoryType`. A premium domain's per-term
-    // `fees` (e.g. a one-time acquisition surcharge) still apply on top of `price`.
+    // Present whenever the API returns an inventory source at all (typically
+    // whenever `available` is true): `REGISTRY`, `REGISTRY_PREMIUM`, or
+    // `PREMIUM` — see `types::InventoryType`. Only the latter two carry a
+    // premium surcharge; when they do, it's in that term's per-term `fees`,
+    // in addition to `price`.
     "inventory": "string", optional;
 });
 

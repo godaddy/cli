@@ -32,8 +32,10 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
-    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
-    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's acknowledged
+    // via `fees`, in addition to `price`.
     "inventory": "string", optional;
     "fees": "[]object", optional;
 });
