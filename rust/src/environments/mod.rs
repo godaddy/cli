@@ -10,7 +10,7 @@
 //!
 //! gddy's global default (set on `CliConfig` in `main.rs`) keeps
 //! `min_stage` at `Stage::Ga`, hiding any module/command flagged below GA
-//! (e.g. `hosting` = Beta; `platform` = Experimental).
+//! (e.g. `db` = Experimental).
 //! An `environments.toml` entry can permanently opt a specific environment
 //! into those pre-release commands via the *same* recognized keys cli-engine
 //! reads generically off every environment's merged TOML table:

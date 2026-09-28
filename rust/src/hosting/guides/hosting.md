@@ -30,7 +30,26 @@ Poll until COMPLETED, then note the `app.id` in the response:
 gddy hosting operation get --operation-id <operation-id>
 ```
 
-## 2. Upload source code
+## 2. Prepare source code
+
+The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. Source code can be deployed using a `.zip` file containing your project directory.
+
+The top level of the project must include a `package.json` file at the top level containing:
+  - A non-empty `name`
+  - A `version`
+  - A `main` entry point
+  - A `build` script (use `echo build` if nothing needs compiling)
+  - A `start` script
+
+Any package needed during build or start must be in `dependencies`, not `devDependencies`.
+
+The `start` script is what GoDaddy's hosting platform will invoke to run your application. When started, your application must open a listener (like a web server) to the TCP port number present in the `process.env.PORT` environment variable.
+
+When zipping your project, exclude the `node_modules` directory.
+
+For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
+
+## 3. Upload source code
 
 Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
@@ -44,7 +63,7 @@ Poll the import until COMPLETED:
 gddy hosting source status --app-id <app-id> --import-id <import-id>
 ```
 
-## 3. Test on PREVIEW
+## 4. Test on PREVIEW
 
 Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
@@ -54,7 +73,7 @@ gddy hosting app get --app-id <app-id>
 
 The `urls` field shows the address for each environment.
 
-## 4. Attach a subscription (first deploy only)
+## 5. Attach a subscription (first deploy only)
 
 Check whether the app is already on a subscription:
 
@@ -73,7 +92,7 @@ If `totalAvailableSlots` is 0, buy a Web Hosting plan (`gddy shopping catalog se
 
 Skip this on later deploys.
 
-## 5. Publish to production
+## 6. Publish to production
 
 ```sh
 gddy hosting deployment publish --app-id <app-id>
@@ -87,7 +106,7 @@ Poll until COMPLETED:
 gddy hosting deployment get --app-id <app-id> --deployment-id <deployment-id>
 ```
 
-## 6. Custom domains
+## 7. Custom domains
 
 Attach after the app is published:
 

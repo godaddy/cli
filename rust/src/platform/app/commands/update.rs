@@ -1,4 +1,4 @@
-//! `gddy platform app update` — update label or description.
+//! `gddy platform app update` — update label, description, and manifest OAuth redirects.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::json;
@@ -44,7 +44,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 developer-platform application by its ID. At least one of \
                 --label or --description must be provided. Use \
                 `gddy platform app info --name <name>` to retrieve the \
-                application ID.",
+                application ID. When the environment's godaddy.toml declares \
+                redirect_uris, the same request synchronizes those additional \
+                OAuth callbacks; omitting the key leaves them unchanged.",
             )
             .with_system("applications")
             .with_tier(Tier::Mutate)
@@ -58,9 +60,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if let Some(description) = args.fields.description {
                 input.insert("description".to_owned(), json!(description));
             }
+            let config_path = crate::config::config_path(Some(&context.middleware.env));
+            let redirect_uris = match crate::config::read_config(&config_path) {
+                Ok(config) => config.redirect_uris,
+                Err(crate::config::ConfigError::NotFound { .. }) => None,
+                Err(error) => {
+                    return Err(crate::error::GddyError::config(format!(
+                        "invalid config: {error}"
+                    ))
+                    .into_cli_error());
+                }
+            };
+            let mut input = json!(input);
+            super::add_redirect_uris_to_input(&mut input, redirect_uris.as_deref());
             let client = super::make_client(&context).await?;
             let data = client
-                .update_application(&args.id, json!(input))
+                .update_application(&args.id, input)
                 .await
                 .map_err(super::client_err)?;
             let name = data["updateApplication"]["name"]

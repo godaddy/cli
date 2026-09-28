@@ -833,6 +833,7 @@ authorization_scopes = []
             url: "https://example.com".to_owned(),
             proxy_url: "https://proxy.example.com".to_owned(),
             authorization_scopes: vec!["openid".to_owned()],
+            redirect_uris: None,
             actions: vec![],
             subscriptions: None,
             dependencies: vec![],

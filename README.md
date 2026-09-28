@@ -2,10 +2,6 @@
 
 Agent-first CLI for interacting with the GoDaddy Developer Platform.
 
-> Looking for the original, TypeScript-based `godaddy` CLI (`@godaddy/cli` on
-> npm)? It's maintained on the `original` branch — including its
-> `godaddy-cli` agent skill, which isn't installable from this branch.
-
 ## Installation
 
 ### macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows)
@@ -62,19 +58,15 @@ Use `gddy --help` or `gddy tree` to get a comprehensive list of available comman
 
 - `domain` — list your domains, check availability, get suggestions, and register new ones
 - `dns` — view and edit a domain's DNS records
+- `hosting`
+- `email`
+- `shopping`
 
 We're actively working to expand the CLI to cover additional GoDaddy products.
 
 ### Developer Platform
 
-The Developer Platform command tree is currently an Experimental preview. [Enable
-Experimental commands](./docs/feature-flags.md) in your environment:
-
-```bash
-export GDDY_MIN_STAGE=experimental
-```
-
-...then begin with `gddy platform app init`.
+The CLI also provides access to the GoDaddy Developer Platform for building apps that users of GoDaddy Commerce products can install to their stores.
 
 - `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
 - `gddy platform actions` — discover the action contracts an app can declare

@@ -1,4 +1,5 @@
-use cli_engine::{CliCoreError, CommandContext};
+use clap::builder::{PossibleValuesParser, TypedValueParser};
+use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -132,6 +133,12 @@ output_schema!(HostingRuntime {
 });
 
 pub fn client_err(e: ClientError) -> CliCoreError {
+    if matches!(e, ClientError::Http { status: 501, .. }) {
+        return client_err_with_fix(
+            e,
+            "This operation is not supported for this app type or hosting product.",
+        );
+    }
     match e {
         ClientError::Http { status, body } => {
             GddyError::from_http(status, format_api_error_body(&body), "hosting").into_cli_error()
@@ -163,6 +170,16 @@ struct ApiErrorBody {
 struct ApiErrorDetail {
     issue: Option<String>,
     description: Option<String>,
+}
+
+/// Returns the `details[].issue` codes of an API error.
+pub fn error_issues(e: &ClientError) -> Vec<String> {
+    let ClientError::Http { body, .. } = e else {
+        return Vec::new();
+    };
+    serde_json::from_str::<ApiErrorBody>(body)
+        .map(|b| b.details.into_iter().filter_map(|d| d.issue).collect())
+        .unwrap_or_default()
 }
 
 fn format_api_error_body(body: &str) -> String {
@@ -205,14 +222,44 @@ pub struct AppIdArgs {
 pub enum HostingAppType {
     #[value(name = "NODEJS")]
     Nodejs,
+    #[value(name = "MHWP")]
+    Mhwp,
 }
 
 impl HostingAppType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Nodejs => "NODEJS",
+            Self::Mhwp => "MHWP",
         }
     }
+}
+
+/// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
+/// can stay hidden until its backend is live.
+const MHWP_FLAG: &str = "hosting-mhwp";
+
+pub fn mhwp_enabled(policy: &FlagPolicy) -> bool {
+    policy.visible(Some(MHWP_FLAG), Stage::Experimental)
+}
+
+/// App types to list in help text.
+pub const fn supported_app_types(mhwp: bool) -> &'static str {
+    if mhwp { "NODEJS, MHWP" } else { "NODEJS" }
+}
+
+/// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only
+/// while its feature flag is on.
+pub fn app_type_command<T: clap::Args>(name: &str, short: &str, mhwp: bool) -> CommandSpec {
+    let mut spec = CommandSpec::from_args::<T>(name, short);
+    if !mhwp {
+        for arg in spec.args.iter_mut().filter(|a| a.get_id() == "app_type") {
+            *arg = arg.clone().value_parser(
+                PossibleValuesParser::new(["NODEJS"]).map(|_| HostingAppType::Nodejs),
+            );
+        }
+    }
+    spec
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -273,6 +320,35 @@ mod tests {
             HostingAppType::Nodejs
         );
         assert_eq!(HostingAppType::Nodejs.as_str(), "NODEJS");
+    }
+
+    #[test]
+    fn hosting_app_type_parses_mhwp_case_insensitive() {
+        assert_eq!(
+            HostingAppType::from_str("mhwp", true).expect("mhwp"),
+            HostingAppType::Mhwp
+        );
+        assert_eq!(HostingAppType::Mhwp.as_str(), "MHWP");
+    }
+
+    #[test]
+    fn mhwp_is_off_until_experimental_or_overridden() {
+        assert!(!mhwp_enabled(&FlagPolicy::new()));
+        assert!(!mhwp_enabled(
+            &FlagPolicy::new().with_min_stage(Stage::Beta)
+        ));
+        assert!(mhwp_enabled(
+            &FlagPolicy::new().with_min_stage(Stage::Experimental)
+        ));
+        assert!(mhwp_enabled(
+            &FlagPolicy::new().with_override(MHWP_FLAG, Stage::Ga)
+        ));
+    }
+
+    #[test]
+    fn supported_app_types_lists_mhwp_only_when_enabled() {
+        assert_eq!(supported_app_types(false), "NODEJS");
+        assert_eq!(supported_app_types(true), "NODEJS, MHWP");
     }
 
     #[test]
@@ -369,6 +445,43 @@ mod tests {
         assert_eq!(
             envelope.fix.as_deref(),
             Some("Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
+        );
+    }
+
+    #[test]
+    fn error_issues_returns_every_issue_code() {
+        let err = ClientError::Http {
+            status: 422,
+            body: r#"{"message":"m","details":[{"issue":"VALIDATION_FAILED"},{"description":"d"},{"issue":"APP_LIMIT_EXCEEDED"}]}"#
+                .to_owned(),
+        };
+        assert_eq!(
+            error_issues(&err),
+            ["VALIDATION_FAILED", "APP_LIMIT_EXCEEDED"]
+        );
+        let plain = ClientError::Http {
+            status: 500,
+            body: "not json".to_owned(),
+        };
+        assert!(error_issues(&plain).is_empty());
+        assert!(error_issues(&ClientError::Network("down".to_owned())).is_empty());
+    }
+
+    #[test]
+    fn client_err_explains_501_not_applicable() {
+        let err = client_err(ClientError::Http {
+            status: 501,
+            body: r#"{"message":"Not supported for MHWP apps.","details":[{"issue":"NOT_APPLICABLE"}]}"#
+                .to_owned(),
+        });
+        let envelope = cli_engine::build_error_envelope(&err, "hosting");
+        assert_eq!(
+            envelope.error.as_ref().map(|e| e.message.as_str()),
+            Some("HTTP error 501: Not supported for MHWP apps. (NOT_APPLICABLE)")
+        );
+        assert_eq!(
+            envelope.fix.as_deref(),
+            Some("This operation is not supported for this app type or hosting product.")
         );
     }
 

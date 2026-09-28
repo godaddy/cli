@@ -1,8 +1,9 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
 use crate::hosting::common::{
-    HostingAppSummary, HostingAppType, client_err, make_client, next_page_token,
+    HostingAppSummary, HostingAppType, app_type_command, client_err, make_client, next_page_token,
+    supported_app_types,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
@@ -18,15 +19,16 @@ struct AppListArgs {
     limit: Option<u32>,
 }
 
-pub(super) fn command() -> RuntimeCommandSpec {
+pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppListArgs, _, _, _>(
-        CommandSpec::from_args::<AppListArgs>("list", "List hosting applications")
-            .with_long(
+        app_type_command::<AppListArgs>("list", "List hosting applications", mhwp)
+            .with_long(format!(
                 "List all hosting applications of a given type. Results are autopaginated — \
                  all pages are fetched and combined. Use --limit to cap the total returned.\n\
                  \n\
-                 --app-type is required. Currently supported: NODEJS.",
-            )
+                 --app-type is required. Currently supported: {}.",
+                supported_app_types(mhwp)
+            ))
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])

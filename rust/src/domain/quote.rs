@@ -9,7 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, validate_domain_name,
+    api_error, fees_to_json, format_money, make_client, period_label, validate_domain_name,
     validate_nameserver_hosts,
 };
 use crate::next_action::next_action;
@@ -32,39 +32,13 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
-    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
-    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's acknowledged
+    // via `fees`, in addition to `price`.
     "inventory": "string", optional;
     "fees": "[]object", optional;
 });
-
-/// Render a quote's `fees` array (e.g. a premium domain's one-time acquisition
-/// surcharge) as `{type, amount, currency}` objects for display — mirrors how
-/// `quote_to_json` renders prices via [`format_money`]. `None` (rather than an
-/// empty array) when the quote carried no fees, so the field is omitted from
-/// output entirely instead of showing an empty list.
-fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
-    if fees.is_empty() {
-        return None;
-    }
-    Some(json!(
-        fees.iter()
-            .map(|f| {
-                let mut out = json!({});
-                if let Some(t) = f.type_.as_ref() {
-                    out["type"] = json!(t.to_string());
-                }
-                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
-                    out["amount"] = json!(amount);
-                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
-                        out["currency"] = json!(code.to_string());
-                    }
-                }
-                out
-            })
-            .collect::<Vec<_>>()
-    ))
-}
 
 /// Build the inline registration profile (contacts + preferences) sent with a
 /// quote. Always returns a profile: `auto_renew` and `privacy` are always set
@@ -298,7 +272,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Read)
         .with_default_fields(
-            "domain,available,price,renewalPrice,currency,period,periodLabel,quoteToken,expiresAt,agreements",
+            "domain,available,price,renewalPrice,currency,period,periodLabel,inventory,fees,quoteToken,expiresAt,agreements",
         )
         .with_output_schema::<DomainQuoteResult>()
         .with_view(view_columns())
@@ -433,6 +407,13 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    #[test]
+    fn default_fields_includes_inventory_and_fees() {
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
+        assert!(fields.split(',').any(|f| f == "fees"), "{fields}");
     }
 
     #[test]
