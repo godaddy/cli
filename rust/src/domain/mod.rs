@@ -41,12 +41,12 @@ pub(crate) use common::{api_error, format_api_error, make_client};
 /// from `quote` that points at it — so a purchase's price is always relayed to
 /// the end user before the account is actually charged. See AGENTS.md's
 /// "Purchase confirmation" section.
-pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --confirm, show the end user the exact price \
-    from `domain quote` (including any fees) and each required legal agreement's \
-    title AND link (from `domain quote`'s `requiredAgreements`), and obtain their \
-    explicit confirmation to proceed. Do not summarize an agreement by name only \
-    — the user must be able to click through and read it. Do not infer \
-    confirmation from a general request to buy or register a domain.";
+pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or --confirm, show the end user the exact \
+    price from `domain quote` (including any fees) and each required legal \
+    agreement's title AND link (from `domain quote`'s `requiredAgreements`), and \
+    obtain their explicit confirmation to proceed. Do not summarize an agreement \
+    by name only — the user must be able to click through and read it. Do not \
+    infer confirmation from a general request to buy or register a domain.";
 
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {
