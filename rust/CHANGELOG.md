@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.22](https://github.com/godaddy/cli/compare/v0.2.21...v0.2.22) (2026-09-28)
+
+
+### Features
+
+* **malware:** add gddy malware scan run command ([#290](https://github.com/godaddy/cli/issues/290)) ([c0ea763](https://github.com/godaddy/cli/commit/c0ea763cccfd495ce3842a242b13aaf6774347d5))
+
+
+### Bug Fixes
+
+* **domain:** surface premium domain fees in available/suggest/quote ([#294](https://github.com/godaddy/cli/issues/294)) ([ef30da1](https://github.com/godaddy/cli/commit/ef30da1bce310b57241e6e906d691b84258603eb))
+
 ## [0.2.21](https://github.com/godaddy/cli/compare/v0.2.20...v0.2.21) (2026-09-24)
 
 
