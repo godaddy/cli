@@ -187,20 +187,24 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
 /// the end user before adding `--confirm`. `show_agent_note` should be `false`
 /// for `--output human` — a human reading their own terminal doesn't need to
 /// be told to show themselves the price and confirm with themselves.
+///
+/// Deliberately omits `--agree`/`--confirm` from the suggested command — an
+/// assistant that executes `next_actions[].command` verbatim without those
+/// flags hits the gates (and their price-confirmation errors) instead of
+/// silently charging the account. Mirrors shopping's `agreement_review_action`,
+/// which never suggests `checkout complete --agree` either.
 fn purchase_next_action(quote_token: String, show_agent_note: bool) -> cli_engine::NextAction {
     let description = if show_agent_note {
         format!(
-            "Register at the quoted price (within ~10 minutes). \
+            "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm. \
              {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
         )
     } else {
-        "Register at the quoted price (within ~10 minutes).".to_owned()
+        "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm."
+            .to_owned()
     };
-    next_action(
-        "domain purchase --quote-token <quote-token> --agree --confirm",
-        description,
-    )
-    .with_param("quote-token", NextActionParam::value(quote_token))
+    next_action("domain purchase --quote-token <quote-token>", description)
+        .with_param("quote-token", NextActionParam::value(quote_token))
 }
 
 /// Split a quote's required agreements into (types, human-title lines) for the
@@ -425,7 +429,18 @@ mod tests {
 
         assert_eq!(
             action.command,
-            "gddy domain purchase --quote-token <quote-token> --agree --confirm"
+            "gddy domain purchase --quote-token <quote-token>"
+        );
+        // Regression: the suggested command must never bake in --agree/--confirm
+        // — an assistant that executes `next_actions[].command` verbatim must
+        // hit the gates (and their price-confirmation errors), not silently
+        // charge the account. Mirrors shopping's equivalent regression check.
+        assert!(!action.command.contains("--agree"));
+        assert!(!action.command.contains("--confirm"));
+        assert!(
+            action
+                .description
+                .contains("requires --agree and --confirm")
         );
         assert_eq!(
             action.params["quote-token"].value.as_deref(),

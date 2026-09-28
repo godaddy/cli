@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use shopping_client::types::Checkout;
 
+use super::create::agreement_review_action;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
@@ -174,9 +175,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 requested_payment_instrument.as_deref(),
             )?;
             let env = crate::environments::resolve(&ctx.middleware.env)?;
-            let actions = no_saved_payment_method_action(&checkout, &env.account_url)
-            .into_iter()
-            .collect::<Vec<_>>();
+            let ready_for_complete = checkout.status.as_deref() == Some("ready_for_complete");
+            let checkout_id = checkout.id.clone().unwrap_or_default();
+            let mut actions = no_saved_payment_method_action(&checkout, &env.account_url)
+                .into_iter()
+                .collect::<Vec<_>>();
+            if ready_for_complete {
+                actions.push(agreement_review_action(
+                    checkout_id,
+                    ctx.middleware.output_format != "human",
+                ));
+            }
             let checkout = serde_json::to_value(&checkout).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
                     "failed to encode checkout response: {error}"

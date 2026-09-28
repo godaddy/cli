@@ -63,7 +63,12 @@ struct Args {
 /// their own terminal doesn't need to be told to show themselves the price
 /// and confirm with themselves; the note is for an AI assistant consuming
 /// `--output json` on the user's behalf.
-fn agreement_review_action(checkout_id: String, show_agent_note: bool) -> NextAction {
+///
+/// Shared with `checkout update` (`super::update`) — an update that changes
+/// items/currency can change the final total on an already-`ready_for_complete`
+/// checkout, so it needs the same reminder to re-present the (possibly new)
+/// total and agreements before completing, not just `checkout create`.
+pub(super) fn agreement_review_action(checkout_id: String, show_agent_note: bool) -> NextAction {
     let description = if show_agent_note {
         format!(
             "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
