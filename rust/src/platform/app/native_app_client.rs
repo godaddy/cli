@@ -85,6 +85,18 @@ impl From<NativeAppClientError> for crate::error::GddyError {
                 status,
                 code,
                 message,
+            } if code == UPSTREAM_ERROR_CODE => Self::new(
+                UPSTREAM_ERROR_CODE,
+                format!("DevX Core returned HTTP {status}: {code}{message}"),
+            )
+            .with_fix(
+                "The API is currently failing server-side. Retry, or check service health/incidents.",
+            )
+            .with_system("applications"),
+            NativeAppClientError::Api {
+                status,
+                code,
+                message,
             } => Self::from_http(status, format!("{code}{message}"), "applications"),
             NativeAppClientError::InvalidResponse { status, message } => Self::from_http(
                 status,
@@ -195,18 +207,28 @@ impl NativeAppClient {
         self.send(request).await
     }
 
-    pub(crate) async fn upsert(
+    /// Create or update the native app for `application_id`.
+    ///
+    /// `organization_id` is resolved only on the create path, so updating an
+    /// existing record never depends on it.
+    pub(crate) async fn upsert<E, F, Fut>(
         &self,
         application_id: &str,
-        organization_id: &str,
         input: &NativeAppInput,
-    ) -> Result<UpsertOperation, NativeAppClientError> {
+        organization_id: F,
+    ) -> Result<UpsertOperation, E>
+    where
+        E: From<NativeAppClientError>,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<String, E>>,
+    {
         if self.get(application_id).await?.is_some() {
             self.update(application_id, input).await?;
             return Ok(UpsertOperation::Updated);
         }
 
-        self.create(application_id, organization_id, input).await?;
+        let organization_id = organization_id().await?;
+        self.create(application_id, &organization_id, input).await?;
         // DevX Portal currently follows create with this patch because
         // application-service does not reliably persist supportEmail on create.
         self.update_support_email(application_id, &input.support_email)
@@ -409,7 +431,9 @@ mod tests {
             .await;
 
         let operation = NativeAppClient::new(server.base_url(), "test-token")
-            .upsert("app-1", "550e8400-e29b-41d4-a716-446655440000", &input())
+            .upsert("app-1", &input(), || async {
+                Ok::<_, NativeAppClientError>("550e8400-e29b-41d4-a716-446655440000".to_owned())
+            })
             .await
             .expect("create native app");
 
@@ -452,7 +476,13 @@ mod tests {
             .await;
 
         let operation = NativeAppClient::new(server.base_url(), "test-token")
-            .upsert("app-1", "ignored-org", &input())
+            .upsert("app-1", &input(), || async {
+                // Resolving the organization on the update path fails the test.
+                Err::<String, _>(NativeAppClientError::InvalidResponse {
+                    status: 0,
+                    message: "organization must not be resolved on update".to_owned(),
+                })
+            })
             .await
             .expect("update native app");
 
@@ -522,7 +552,9 @@ mod tests {
             .await;
 
         let error = NativeAppClient::new(server.base_url(), "test-token")
-            .upsert("app-1", "550e8400-e29b-41d4-a716-446655440000", &input())
+            .upsert("app-1", &input(), || async {
+                Ok::<_, NativeAppClientError>("550e8400-e29b-41d4-a716-446655440000".to_owned())
+            })
             .await
             .expect_err("support email patch failure must surface");
 
@@ -638,6 +670,30 @@ mod tests {
             error,
             NativeAppClientError::InvalidResponse { status: 200, .. }
         ));
+    }
+
+    #[test]
+    fn non_envelope_error_keeps_upstream_error_code() {
+        use cli_engine::DetailedError;
+
+        let error = crate::error::GddyError::from(api_error(502, b"<html>gateway</html>"));
+        assert_eq!(error.error_code(), UPSTREAM_ERROR_CODE);
+        let rendered = error.to_string();
+        assert!(rendered.contains("HTTP 502"), "{rendered}");
+        assert!(rendered.contains("UPSTREAM_ERROR"), "{rendered}");
+        assert!(rendered.contains("gateway"), "{rendered}");
+    }
+
+    #[test]
+    fn envelope_error_still_maps_from_http_status() {
+        use cli_engine::DetailedError;
+
+        let error = crate::error::GddyError::from(NativeAppClientError::Api {
+            status: 404,
+            code: "NATIVE_APP_NOT_FOUND".to_owned(),
+            message: DisplayMessage(Some("missing".to_owned())),
+        });
+        assert_eq!(error.error_code(), "NOT_FOUND");
     }
 
     #[test]

@@ -29,6 +29,17 @@ pub(super) struct NativeExtensionRegistration {
     pub(super) operation: UpsertOperation,
 }
 
+/// Native-app display name: `[native_extension].name` when present and
+/// non-empty, otherwise the application name.
+fn native_app_name(config: &crate::config::Config) -> &str {
+    config
+        .native_extension
+        .as_ref()
+        .and_then(|native| native.name.as_deref())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&config.name)
+}
+
 pub(super) fn apply_native_extension(
     config: &mut crate::config::Config,
     name: Option<String>,
@@ -101,26 +112,12 @@ pub(super) async fn sync_native_extension(
         .map_err(super::super::client_err)?;
     let application_id = application_id(&application, &config.name)?;
 
-    let onboarding = crate::platform::app::onboarding::OnboardingClient::new(devx_core_url);
-    let onboarding_status = onboarding.status(token).await.map_err(|error| {
-        crate::error::GddyError::network(format!(
-            "Could not obtain the organization for native-app registration: {error}"
-        ))
-        .with_system("applications")
-        .into_cli_error()
-    })?;
-
     let native = config
         .native_extension
         .as_ref()
         .expect("native extension is installed during preparation");
     let input = NativeAppInput {
-        name: native
-            .name
-            .as_deref()
-            .filter(|name| !name.is_empty())
-            .unwrap_or(&config.name)
-            .to_owned(),
+        name: native_app_name(config).to_owned(),
         description: config.description.clone().unwrap_or_default(),
         support_email: native.support_contact.clone(),
         app_category: String::new(),
@@ -128,10 +125,23 @@ pub(super) async fn sync_native_extension(
         android_package_name: native.android_package_name.clone(),
         status: "draft".to_owned(),
     };
+    // Only a create needs the organization, so an update never calls onboarding.
+    let onboarding = crate::platform::app::onboarding::OnboardingClient::new(devx_core_url);
     let operation = NativeAppClient::new(devx_core_url, token)
-        .upsert(&application_id, &onboarding_status.org_id, &input)
+        .upsert(&application_id, &input, || async {
+            onboarding
+                .status(token)
+                .await
+                .map(|status| status.org_id)
+                .map_err(|error| {
+                    crate::error::GddyError::network(format!(
+                        "Could not obtain the organization for native-app registration: {error}"
+                    ))
+                    .with_system("applications")
+                })
+        })
         .await
-        .map_err(|error| crate::error::GddyError::from(error).into_cli_error())?;
+        .map_err(crate::error::GddyError::into_cli_error)?;
 
     Ok(NativeExtensionRegistration {
         application_id,
@@ -194,7 +204,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             Ok(CommandResult::new(json!({
                 "applicationId": registration.application_id,
                 "operation": registration.operation.as_str(),
-                "name": native.name.as_deref().unwrap_or(&config.name),
+                "name": native_app_name(&config),
                 "supportContact": native.support_contact,
                 "androidPackageName": native.android_package_name,
             }))
@@ -249,6 +259,27 @@ mod tests {
             "status": "draft",
             "released": false
         })
+    }
+
+    #[test]
+    fn native_app_name_falls_back_to_application_name_when_absent_or_empty() {
+        let mut config = test_config();
+        for name in [None, Some(String::new())] {
+            apply_native_extension(
+                &mut config,
+                name,
+                "support@example.com".to_owned(),
+                "com.example.app".to_owned(),
+            );
+            assert_eq!(native_app_name(&config), "my-app");
+        }
+        apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+        assert_eq!(native_app_name(&config), "My Display Name");
     }
 
     #[test]
@@ -399,6 +430,69 @@ mod tests {
         get.assert_async().await;
         create.assert_async().await;
         support_patch.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn sync_updates_existing_record_without_calling_onboarding() {
+        let app_registry = MockServer::start_async().await;
+        app_registry
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/v1/apps/app-registry-subgraph");
+                then.status(200).json_body(json!({
+                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                }));
+            })
+            .await;
+        let devx_core = MockServer::start_async().await;
+        // Onboarding is unavailable; an update must not depend on it.
+        let onboarding = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/status");
+                then.status(503);
+            })
+            .await;
+        let get = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::GET)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let update = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::PATCH)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let mut config = test_config();
+        apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+
+        let registration = sync_native_extension(
+            &config,
+            "test-token",
+            &app_registry.base_url(),
+            &devx_core.base_url(),
+        )
+        .await
+        .expect("update should not need onboarding");
+
+        assert_eq!(registration.operation, UpsertOperation::Updated);
+        get.assert_async().await;
+        update.assert_async().await;
+        assert_eq!(onboarding.calls_async().await, 0);
     }
 
     #[tokio::test]
