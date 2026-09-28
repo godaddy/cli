@@ -1,4 +1,4 @@
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, NextAction, RuntimeCommandSpec, Tier};
 use shopping_client::types::Checkout;
 
 use super::create::agreement_review_action;
@@ -98,6 +98,24 @@ fn validate_selected_payment(
         .into_cli_error())
 }
 
+/// An update can change items/currency and land on (or stay on) a
+/// `ready_for_complete` checkout with a new final total, so it needs the same
+/// price/agreement review reminder as `checkout create` — not just its
+/// payment-method action. Falls back to `input_id` (the id the caller passed
+/// to `update`) when the response omits its optional `id`, so the suggested
+/// `checkout get <checkout-id>` next action is never built with an empty ID.
+fn update_review_action(
+    checkout: &Checkout,
+    input_id: &str,
+    show_agent_note: bool,
+) -> Option<NextAction> {
+    if checkout.status.as_deref() != Some("ready_for_complete") {
+        return None;
+    }
+    let checkout_id = checkout.id.clone().unwrap_or_else(|| input_id.to_owned());
+    Some(agreement_review_action(checkout_id, show_agent_note))
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("update", "Optionally update a checkout session")
@@ -175,17 +193,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 requested_payment_instrument.as_deref(),
             )?;
             let env = crate::environments::resolve(&ctx.middleware.env)?;
-            let ready_for_complete = checkout.status.as_deref() == Some("ready_for_complete");
-            let checkout_id = checkout.id.clone().unwrap_or_default();
             let mut actions = no_saved_payment_method_action(&checkout, &env.account_url)
                 .into_iter()
                 .collect::<Vec<_>>();
-            if ready_for_complete {
-                actions.push(agreement_review_action(
-                    checkout_id,
-                    ctx.middleware.output_format != "human",
-                ));
-            }
+            actions.extend(update_review_action(
+                &checkout,
+                &args.id,
+                ctx.middleware.output_format != "human",
+            ));
             let checkout = serde_json::to_value(&checkout).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
                     "failed to encode checkout response: {error}"
@@ -206,7 +221,63 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use shopping_client::types::{Checkout, Payment, PaymentInstrumentSelectedPaymentInstrument};
 
-    use super::{validate_requested_payment, validate_selected_payment};
+    use super::{update_review_action, validate_requested_payment, validate_selected_payment};
+
+    #[test]
+    fn update_review_action_is_added_when_ready_for_complete() {
+        let checkout = Checkout {
+            status: Some("ready_for_complete".to_owned()),
+            id: Some("checkout-1".to_owned()),
+            ..Default::default()
+        };
+        let action = update_review_action(&checkout, "input-id", true)
+            .expect("ready_for_complete must add the review action");
+        assert_eq!(
+            action.params["checkout-id"].value.as_deref(),
+            Some("checkout-1")
+        );
+        assert!(action.description.contains("AI assistants:"));
+    }
+
+    #[test]
+    fn update_review_action_falls_back_to_the_input_id_when_the_response_omits_it() {
+        // The GET response's `id` is optional; an empty checkout-id would
+        // produce an unusable `shopping checkout get <checkout-id>` action.
+        let checkout = Checkout {
+            status: Some("ready_for_complete".to_owned()),
+            id: None,
+            ..Default::default()
+        };
+        let action = update_review_action(&checkout, "input-id", true)
+            .expect("ready_for_complete must add the review action");
+        assert_eq!(
+            action.params["checkout-id"].value.as_deref(),
+            Some("input-id")
+        );
+    }
+
+    #[test]
+    fn update_review_action_is_omitted_when_not_ready_for_complete() {
+        let checkout = Checkout {
+            status: Some("pending".to_owned()),
+            ..Default::default()
+        };
+        assert!(update_review_action(&checkout, "input-id", true).is_none());
+    }
+
+    #[test]
+    fn update_review_action_omits_agent_note_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let checkout = Checkout {
+            status: Some("ready_for_complete".to_owned()),
+            id: Some("checkout-1".to_owned()),
+            ..Default::default()
+        };
+        let action = update_review_action(&checkout, "input-id", false)
+            .expect("ready_for_complete must add the review action");
+        assert!(!action.description.contains("AI assistants:"));
+    }
 
     fn checkout_with_instrument(id: &str) -> Checkout {
         Checkout {
