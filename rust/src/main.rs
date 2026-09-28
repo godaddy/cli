@@ -24,6 +24,7 @@ mod spec_cmd;
 mod summary;
 mod truncation;
 mod update;
+mod userinfo;
 
 use std::{io::Write as _, process::ExitCode, sync::Arc};
 

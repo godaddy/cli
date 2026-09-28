@@ -9,6 +9,7 @@ use cli_engine::{
 use crate::environments::{self, GddyEnvConfig};
 use crate::pat::{self, PatEntry};
 use crate::scopes;
+use crate::userinfo;
 
 /// Single auth provider, built per call from gddy's own resolved
 /// [`GddyEnvConfig`] (already fully derived — `auth_url`/`token_url` filled
@@ -48,6 +49,16 @@ impl GoDaddyAuthProvider {
     fn provider_for(&self, env: &str) -> Result<PkceAuthProvider> {
         let resolved = environments::resolve(env)?;
         Ok(build_provider(&resolved))
+    }
+
+    /// Like [`provider_for`](Self::provider_for), but also hands back the
+    /// resolved environment for callers that need more than the provider
+    /// (currently: its `userinfo_url`), so the environment is resolved once
+    /// rather than once per consumer.
+    fn provider_and_env_for(&self, env: &str) -> Result<(PkceAuthProvider, GddyEnvConfig)> {
+        let resolved = environments::resolve(env)?;
+        let provider = build_provider(&resolved);
+        Ok((provider, resolved))
     }
 }
 
@@ -117,6 +128,7 @@ fn log_resolved_oauth(env: &GddyEnvConfig) {
     };
     let auth_url_ovr = override_var("AUTH_URL");
     let token_url_ovr = override_var("TOKEN_URL");
+    let userinfo_url_ovr = override_var("USERINFO_URL");
     tracing::debug!(
         env = %env.name,
         client_id = %env.client_id,
@@ -124,14 +136,16 @@ fn log_resolved_oauth(env: &GddyEnvConfig) {
         auth_url_from_env_var = auth_url_ovr.is_some(),
         token_url = %token_url_ovr.as_deref().unwrap_or(&env.token_url),
         token_url_from_env_var = token_url_ovr.is_some(),
+        userinfo_url = %userinfo_url_ovr.as_deref().unwrap_or(&env.userinfo_url),
+        userinfo_url_from_env_var = userinfo_url_ovr.is_some(),
         redirect_uri = environments::REDIRECT_URI,
         "resolved OAuth client for login/token exchange"
     );
 }
 
 /// Rejects any scope in `requested` that isn't registered in [`scopes`] —
-/// [`scopes::ALL`] plus the standalone [`scopes::OFFLINE_ACCESS`] directive
-/// scope.
+/// [`scopes::ALL`] plus the standalone [`scopes::DIRECTIVE_SCOPES`]
+/// (`offline_access`, `openid`, `profile`).
 ///
 /// A scope missing from that list is, by construction, either misspelled or
 /// was never registered on the CLI's OAuth client (see the "Adding a scope"
@@ -143,7 +157,7 @@ fn validate_requested_scopes(requested: &[String]) -> Result<()> {
     let unknown: Vec<&str> = requested
         .iter()
         .map(String::as_str)
-        .filter(|scope| *scope != scopes::OFFLINE_ACCESS && !scopes::ALL.contains(scope))
+        .filter(|scope| !scopes::DIRECTIVE_SCOPES.contains(scope) && !scopes::ALL.contains(scope))
         .filter(|scope| seen.insert(*scope))
         .collect();
     if unknown.is_empty() {
@@ -190,16 +204,31 @@ impl AuthProvider for GoDaddyAuthProvider {
         if req.command.is_empty() {
             validate_requested_scopes(&req.meta.scopes)?;
         }
-        let provider = self.provider_for(req.env)?;
-        provider.get_credential_for(req).await
+        let (provider, resolved) = self.provider_and_env_for(req.env)?;
+        let mut credential = provider.get_credential_for(req).await?;
+        // Only the explicit `auth login` path (empty command — see above)
+        // pays for a `/userinfo` round-trip, so the login summary shows the
+        // same username/shopper ID `auth status` will. Ordinary commands
+        // fetching a credential for an API call never do — they only need
+        // the bearer token, and adding a network hop to every invocation is
+        // exactly what this must not do.
+        if req.command.is_empty() {
+            userinfo::enrich_credential(&resolved.userinfo_url, &mut credential).await;
+        }
+        Ok(credential)
     }
 
     async fn status(&self, env: &str) -> Result<Credential> {
         if let Some(entry) = pat::resolve_pat(env).await {
             return Ok(pat_credential(env, &entry));
         }
-        let provider = self.provider_for(env)?;
-        provider.status(env).await
+        let (provider, resolved) = self.provider_and_env_for(env)?;
+        let mut credential = provider.status(env).await?;
+        // Swap the opaque `customer:<uuid>` for the user's username + shopper
+        // ID when the token allows it; best-effort, see `userinfo` for the
+        // cases it deliberately skips (expired, pre-OIDC token, offline).
+        userinfo::enrich_credential(&resolved.userinfo_url, &mut credential).await;
+        Ok(credential)
     }
 
     async fn logout(&self, env: &str) -> Result<()> {
@@ -265,6 +294,20 @@ mod tests {
     #[test]
     fn validate_requested_scopes_accepts_offline_access() {
         assert!(validate_requested_scopes(&[scopes::OFFLINE_ACCESS.to_owned()]).is_ok());
+    }
+
+    /// The OIDC directive scopes are login defaults, so `auth login --scope
+    /// openid --scope profile` (e.g. an agent replaying `auth scopes
+    /// --defaults-only`) must not be rejected as "unsupported".
+    #[test]
+    fn validate_requested_scopes_accepts_every_directive_scope() {
+        let requested: Vec<String> = scopes::DIRECTIVE_SCOPES
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert!(validate_requested_scopes(&requested).is_ok());
+        assert!(validate_requested_scopes(&[scopes::OPENID.to_owned()]).is_ok());
+        assert!(validate_requested_scopes(&[scopes::PROFILE.to_owned()]).is_ok());
     }
 
     #[test]

@@ -27,7 +27,7 @@ gddy auth login
 
 ...and you can ask for specific scopes with repeatable `--scope x` arguments. To view a list of all available scopes, run `gddy auth scopes`.
 
-If you want to check your current authentication status, run `gddy auth status`.
+If you want to check your current authentication status, run `gddy auth status`. The `IDENTITY` column shows the logged-in username and shopper ID (e.g. `kperkins (shopper:123456789)`), resolved live from the OpenID Connect `userinfo` endpoint using the `openid` and `profile` scopes that are requested at login by default; nothing beyond the access/refresh tokens is stored locally. A session created before those scopes were defaults shows the token's `customer:<uuid>` subject instead until you run `gddy auth login` again. PAT-based sessions show the PAT's name.
 
 ## Personal Access Tokens
 

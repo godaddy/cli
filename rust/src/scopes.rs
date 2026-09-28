@@ -18,18 +18,20 @@
 //! registered for — a single place to diff against the client's configuration.
 //!
 //! `ALL` does NOT cover every scope requiring client registration, though:
-//! directive scopes like [`OFFLINE_ACCESS`] aren't `resource:action` grants, so
-//! they're declared outside [`declare_scopes!`]/`ALL` but still need the same
-//! server-side registration. When syncing the OAuth client's configuration,
-//! diff against `ALL` *plus* every such standalone constant, not `ALL` alone.
+//! directive scopes like [`OFFLINE_ACCESS`] and the OIDC [`OPENID`]/[`PROFILE`]
+//! pair aren't `resource:action` grants, so they're declared outside
+//! [`declare_scopes!`]/`ALL` (collected in [`DIRECTIVE_SCOPES`]) but still
+//! need the same server-side registration. When syncing the OAuth client's
+//! configuration, diff against `ALL` *plus* [`DIRECTIVE_SCOPES`], not `ALL`
+//! alone.
 //!
 //! # Adding a scope (READ THIS)
 //!
 //! 1. Add a constant to the [`declare_scopes!`] block below (or, for a directive
 //!    scope that isn't a `resource:action` permission, declare it standalone
-//!    like [`OFFLINE_ACCESS`]). Constants in `declare_scopes!` are automatically
-//!    included in [`ALL`] — you cannot add one there without registering it in
-//!    the list.
+//!    like [`OFFLINE_ACCESS`] *and* add it to [`DIRECTIVE_SCOPES`]). Constants
+//!    in `declare_scopes!` are automatically included in [`ALL`] — you cannot
+//!    add one there without registering it in the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
 //! 3. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
@@ -52,10 +54,10 @@ macro_rules! declare_scopes {
         /// registration in sync with this list.
         ///
         /// NOT the complete set of scopes requiring OAuth client registration:
-        /// [`OFFLINE_ACCESS`] is a directive scope (not a `resource:action` permission)
-        /// and is deliberately excluded, but still must be registered on the client
-        /// server-side. Diff the client's configuration against `ALL` *plus*
-        /// [`OFFLINE_ACCESS`], not `ALL` alone.
+        /// the directive scopes in [`DIRECTIVE_SCOPES`] (not `resource:action`
+        /// permissions) are deliberately excluded, but still must be registered on
+        /// the client server-side. Diff the client's configuration against `ALL`
+        /// *plus* [`DIRECTIVE_SCOPES`], not `ALL` alone.
         ///
         /// Not referenced by production code (the individual constants are what
         /// commands use); it exists as the authoritative registry to diff against
@@ -76,6 +78,33 @@ macro_rules! declare_scopes {
 /// authorization server will refuse or silently drop it just like any other
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
+
+/// OIDC directive scope turning the login into an OpenID Connect request:
+/// the authorization server issues an `id_token` alongside the access token
+/// and enables the `/v2/oauth2/userinfo` endpoint for it. Requested at login
+/// by default (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]) so
+/// `gddy auth status` can show *who* is logged in rather than only the
+/// opaque `customer:<uuid>` subject baked into the access token.
+///
+/// Declared standalone for the same reason as [`OFFLINE_ACCESS`]: it isn't a
+/// `resource:action` permission grant.
+pub const OPENID: &str = "openid";
+
+/// OIDC standard `profile` scope. Adds the user's profile claims (`name`,
+/// `preferred_username`, `locale`, `zoneinfo`, …) — plus GoDaddy's
+/// non-standard `shopperId` — to the ID token and the `/userinfo` response.
+/// Only meaningful together with [`OPENID`]; requested at login by default
+/// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+///
+/// Declared standalone for the same reason as [`OFFLINE_ACCESS`]: it isn't a
+/// `resource:action` permission grant.
+pub const PROFILE: &str = "profile";
+
+/// Every directive (non-`resource:action`) scope the CLI requests. These are
+/// excluded from [`ALL`] by construction but need the exact same OAuth client
+/// registration; [`crate::auth`]'s `--scope` validation and the registry
+/// tests treat `ALL ∪ DIRECTIVE_SCOPES` as the complete set.
+pub const DIRECTIVE_SCOPES: &[&str] = &[OFFLINE_ACCESS, OPENID, PROFILE];
 
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
@@ -308,6 +337,16 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         description: "Request a refresh token",
         default: true,
     },
+    ScopeInfo {
+        scope: OPENID,
+        description: "Issue an OpenID Connect ID token and enable the userinfo endpoint",
+        default: true,
+    },
+    ScopeInfo {
+        scope: PROFILE,
+        description: "Include profile claims (username, name, shopper ID, locale) in the ID token and userinfo",
+        default: true,
+    },
 ];
 
 /// Every leaf command's space-separated invocation path (e.g. `"domain
@@ -375,16 +414,40 @@ mod tests {
 
     /// [`SCOPE_REGISTRY`] must describe every scope requiring OAuth client
     /// registration — `ALL` plus the standalone directive scopes
-    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scopes` would silently omit a
+    /// ([`DIRECTIVE_SCOPES`]) — or `gddy auth scopes` would silently omit a
     /// scope an agent needs to plan an eager login around.
     #[test]
     fn scope_registry_covers_every_declared_scope() {
         let registered: std::collections::HashSet<&str> =
             SCOPE_REGISTRY.iter().map(|info| info.scope).collect();
-        for scope in ALL.iter().copied().chain([OFFLINE_ACCESS]) {
+        for scope in ALL.iter().chain(DIRECTIVE_SCOPES).copied() {
             assert!(
                 registered.contains(scope),
                 "scope {scope:?} is declared but missing from SCOPE_REGISTRY"
+            );
+        }
+    }
+
+    /// The converse of `scope_registry_covers_every_declared_scope`: a
+    /// directive scope is, by definition, not `resource:action`-shaped, so
+    /// it must never leak into `ALL` (where `all_scopes_are_unique_and_wellformed`
+    /// would reject it) and `DIRECTIVE_SCOPES` must hold each one once.
+    #[test]
+    fn directive_scopes_are_unique_and_not_permission_shaped() {
+        let mut seen = std::collections::HashSet::new();
+        for scope in DIRECTIVE_SCOPES {
+            assert!(
+                seen.insert(*scope),
+                "duplicate scope in scopes::DIRECTIVE_SCOPES: {scope:?}"
+            );
+            assert!(
+                !scope.contains(':'),
+                "directive scope {scope:?} looks like a `resource:action` permission; \
+                 declare it in `declare_scopes!` instead"
+            );
+            assert!(
+                !ALL.contains(scope),
+                "directive scope {scope:?} must not also be in scopes::ALL"
             );
         }
     }

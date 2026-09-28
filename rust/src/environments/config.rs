@@ -36,6 +36,19 @@ pub struct GddyEnvConfig {
     )]
     pub token_url: String,
 
+    /// OIDC `userinfo` endpoint, called with the access token by
+    /// `gddy auth status`/`auth login` to resolve the logged-in user's
+    /// username and shopper ID (see [`crate::userinfo`]). Derived from
+    /// `api_url` like the other OAuth endpoints; overridable at runtime via
+    /// `GDDY_USERINFO_URL`.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "USERINFO_URL",
+        from_env = parse_url,
+        default_fn = default_userinfo_url
+    )]
+    pub userinfo_url: String,
+
     /// Base URL for the domain commands. Some endpoints (e.g. domain
     /// availability) live behind a different host than the OAuth/`api_url`
     /// service; this defaults to `api_url` when not overridden. Overridable
@@ -102,6 +115,10 @@ fn default_token_url(sources: &SourceChain<'_>) -> String {
     derive_token_url(&current_api_url(sources))
 }
 
+fn default_userinfo_url(sources: &SourceChain<'_>) -> String {
+    derive_userinfo_url(&current_api_url(sources))
+}
+
 fn default_domains_api_url(sources: &SourceChain<'_>) -> String {
     current_api_url(sources)
 }
@@ -164,6 +181,10 @@ fn derive_auth_url(api_url: &str) -> String {
 
 fn derive_token_url(api_url: &str) -> String {
     format!("{}/v2/oauth2/token", api_url.trim_end_matches('/'))
+}
+
+fn derive_userinfo_url(api_url: &str) -> String {
+    format!("{}/v2/oauth2/userinfo", api_url.trim_end_matches('/'))
 }
 
 /// Validates and normalizes a candidate URL. Trims surrounding
@@ -246,6 +267,10 @@ mod tests {
             resolved.token_url,
             "https://api.example.test/v2/oauth2/token"
         );
+        assert_eq!(
+            resolved.userinfo_url,
+            "https://api.example.test/v2/oauth2/userinfo"
+        );
     }
 
     #[test]
@@ -254,10 +279,12 @@ mod tests {
             t.with("client_id", "cid")
                 .with("auth_url", "https://auth.example.test/authorize")
                 .with("token_url", "https://auth.example.test/token")
+                .with("userinfo_url", "https://auth.example.test/userinfo")
                 .with("api_url", "https://api.example.test")
         });
         assert_eq!(resolved.auth_url, "https://auth.example.test/authorize");
         assert_eq!(resolved.token_url, "https://auth.example.test/token");
+        assert_eq!(resolved.userinfo_url, "https://auth.example.test/userinfo");
     }
 
     #[test]
@@ -402,6 +429,18 @@ mod tests {
                 .with("api_url", "https://api.example.test")
         });
         assert_eq!(resolved.token_url, "https://token.override.test");
+    }
+
+    #[test]
+    fn env_var_overrides_userinfo_url() {
+        let _g = ENV_LOCK.blocking_lock();
+        let _guard = EnvGuard::set("GDDY_USERINFO_URL", "https://userinfo.override.test");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(resolved.userinfo_url, "https://userinfo.override.test");
     }
 
     #[test]

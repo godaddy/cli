@@ -73,10 +73,17 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
 });
 
 /// Scopes requested at login by default.
+///
+/// `openid` + `profile` make the login an OIDC request so the CLI can learn
+/// *who* logged in (username, shopper ID) via `/v2/oauth2/userinfo` — the
+/// access token itself deliberately carries no PII beyond the
+/// `customer:<uuid>` subject. See [`crate::userinfo`].
 pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
     crate::scopes::APP_REGISTRY_READ,
     crate::scopes::DOMAINS_READ,
     crate::scopes::OFFLINE_ACCESS,
+    crate::scopes::OPENID,
+    crate::scopes::PROFILE,
 ];
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
