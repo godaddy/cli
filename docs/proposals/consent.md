@@ -1,0 +1,187 @@
+# Real Human Consent Proposal
+
+## Problem statement
+
+One goal of the GoDaddy CLI was to make it easy for humans to accomplish common GoDaddy tasks with the aid of assistive agents. While LLM-based agents can be prompted to control their behavior, this really only amounts to a suggestion. Even with the best of prompting, LLMs infamously ignore previously given instructions if the tokens bearing these instructions are not in the optimal high-attention location in their context window, and they can also erroneously use previously-given consent from a user as an excuse to authorize later operations.
+
+So no matter how we design CLI command flags, no matter how we tailor LLM prompting in skills or embedded CLI help, we're never going to guarantee that users sufficiently consent to operations such as agreeing to terms & conditions or purchases.
+
+## Proposal
+
+To truly get users to agree to T&Cs, finalize purchase decisions, or other high-risk operations where we want to guarantee human consent, I'd like to propose a shared mechanism across the GoDaddy API landscape for demanding and fulfilling human consent.
+
+### Concepts
+
+The workflows in this document involve the following concepts.
+
+#### ConfirmationRequest
+
+A **ConfirmationRequest** is a persisted record consisting of:
+
+- A **ConfirmationToken** - an opaque, unique, non-sequential, randomly-generated token used to identify the **ConfirmationRequest**.
+- A **ConfirmationURL** - A URL pointing to the [**ConfirmationUI**](#confirmationui), embedding the **ConfirmationToken**.
+- A **CustomerID** - the ID of the customer that we're seeking consent from 
+- A **SeekerID** - an ID representing the [**ConfirmationSeeker**](#confirmationseeker); this could be, for example, the CLI's OAuth client ID.
+- A **Description** - a preamble about what the **ConfirmationRequest** is for, like "In order to register this domain, you must agree to the following."
+- **Agreements** - a set of [**Agreement**](#agreement) records representing things that we wish the person to consent to.
+- **Status** - an enumerated value indicating the state of the **ConfirmationRequest**. It can be `REQUESTED`, `APPROVED`, `REJECTED`, `CANCELLED`, or `EXPIRED`.
+- **CreateDate** - The date/time the confirmation request was created.
+- **ConfirmedDate** - A nullable date/time that indicates whether the user completed their confirmation and when they did so.
+- **ExpirationDate** - The end date/time that the asked for confirmation remains valid; an expired **ConfirmationRequest** cannot be agreed to. This is set by the **ConfirmationSeeker** when it creates the **ConfirmationRequest**; there is no platform-wide default.
+- **AuditData** - A JSON document of key/value pairs captured for non-repudiation purposes. This is kept as a flexible bag of fields, rather than a fixed schema, so that what's collected can evolve over time. The first draft would include things like the IP address, user agent, and IDP session details of the approving/rejecting request.
+
+**Status** follows a simple lifecycle. `APPROVED`, `REJECTED`, `CANCELLED`, and `EXPIRED` are all terminal; a **ConfirmationRequest** cannot be re-approved, re-rejected, or reopened once it leaves `REQUESTED`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> REQUESTED
+
+    REQUESTED --> APPROVED : ConfirmationUI approves
+    REQUESTED --> REJECTED : ConfirmationUI rejects
+    REQUESTED --> CANCELLED : ConfirmationSeeker cancels
+    REQUESTED --> EXPIRED : ExpirationDate elapses
+
+    APPROVED --> [*]
+    REJECTED --> [*]
+    CANCELLED --> [*]
+    EXPIRED --> [*]
+```
+
+#### Agreement
+
+An **Agreement** is a standalone item we are entering into a contract with a customer over. It is made up of:
+
+- **ConfirmationToken** - reference to the encompassing **ConfirmationRequest** record that this agreement is a part of. This can be omitted if we store agreements as embedded data rather than in their own table.
+- An **AgreementType** - an enumerated set of "flavors" of agreements, for example `TERMS_AND_CONDITIONS` or `PURCHASE`. Each **AgreementType** has an associated JSON schema that **AgreementData** must conform to.
+- **AgreementData** - a JSON document, conforming to the schema of a given **AgreementType**. This JSON is used for rendering the UI that a user sees when they're being asked to confirm an operation. For `TERMS_AND_CONDITIONS`, this may involve a URL containing text that we want the user to read and agree to abide by. For `PURCHASE`, the data may include an itemized breakdown of all charges included in a purchase.
+
+#### ConfirmationSeeker
+
+A **ConfirmationSeeker** is an interface that wants to acquire consent from a human. It is responsible for assembling the contents of a [**ConfirmationRequest**](#confirmationrequest) and checking for its human acceptance or rejection. A **ConfirmationSeeker** is the holder of an OAuth token or PAT that authorizes it as a representative for performing actions on a user's behalf.
+
+This proposal is meant to be flexible enough for reuse in various situations, but the first implemented holder of this role would be the `gddy` CLI.
+
+#### ConfirmationAPI
+
+The **ConfirmationAPI** is a RESTful API for managing a [**ConfirmationRequest**](#confirmationrequest). It has two users:
+
+- The [**ConfirmationSeeker**](#confirmationseeker), calling with OAuth credentials
+- The [**ConfirmationUI**](#confirmationui), calling with IDP (pass-through customer identity) credentials
+
+The following operations are supported:
+
+| Operation | User |
+|-----------|------|
+| **Creating a confirmation** | **ConfirmationSeeker** |
+| **Cancelling a confirmation** | **ConfirmationSeeker** |
+| **Checking a confirmation status** | **ConfirmationSeeker** |
+| **Approving a confirmation** | **ConfirmationUI** |
+| **Rejecting a confirmation** | **ConfirmationUI** |
+
+```mermaid
+flowchart LR
+    Human(["Human<br/>(Customer)"])
+    Seeker["ConfirmationSeeker<br/>(e.g. gddy CLI)"]
+    API[("ConfirmationAPI")]
+    UI["ConfirmationUI"]
+    IDP["IDP"]
+
+    Seeker -- "OAuth / PAT<br/>create, cancel, check status" --> API
+    UI -- "IDP-authenticated<br/>approve, reject" --> API
+    Seeker -- "displays ConfirmationURL" --> Human
+    Human -- "HTTPS" --> UI
+    UI -- "authenticate" --> IDP
+```
+
+By separating out the authentication models for these operations, we guarantee that an agent working on behalf of a human (through OAuth credentials) cannot approve an operation by itself; a human must provide consent within the [**ConfirmationUI**](#confirmationui) directly. 
+
+#### ConfirmationUI
+
+The **ConfirmationUI** is an HTML interface, accessible over HTTPS, where in a customer can:
+
+- Read the preamble
+- See details on each thing they're agreeing to (T&Cs, price breakdowns)
+- Click a button to accept or reject
+
+The UI is reachable via a URL carrying the **ConfirmationToken**. The UI is responsible for:
+
+- Demanding user authentication (IDP auth), redirecting if they aren't authenticated
+- Authorizing access only if an authenticated customer is the same customer related to the **ConfirmationToken**
+- Reflecting the current status of the [**ConfirmationRequest**](#confirmationrequest) (letting them know if they already agreed to or rejected the confirmation request)
+- Rendering the confirmation details
+- Allowing the user to accept or reject the **ConfirmationRequest** as a whole - all of its **Agreements** together. Partial acceptance of individual agreements is not supported.
+- Calling the **ConfirmationAPI** to record acceptance/rejection
+
+This UI cannot be accessed with OAuth credentials or a PAT; only direct human interaction is allowed.
+
+### Flow
+
+These sequence diagrams summarize the interactions.
+
+#### Requesting and approving a ConfirmationRequest
+
+```mermaid
+sequenceDiagram
+    actor Human as Human (Customer)
+    participant Seeker as ConfirmationSeeker (gddy)
+    participant API as ConfirmationAPI
+    participant UI as ConfirmationUI
+    participant IDP
+
+    Seeker->>API: POST /confirmations (OAuth)<br/>Description + Agreements
+    API-->>Seeker: ConfirmationRequest{Token, URL, Status=REQUESTED}
+    Seeker->>Human: Display ConfirmationURL
+
+    Human->>UI: Open ConfirmationURL
+    UI->>IDP: Authenticate customer
+    IDP-->>UI: Authenticated identity
+    UI->>API: GET /confirmations/{token} (IDP credentials)
+    API-->>UI: Confirmation details (verify CustomerID matches)
+    UI-->>Human: Render preamble + agreements
+
+    Human->>UI: Accept
+    UI->>API: POST /confirmations/{token}/approve (IDP)
+    API-->>UI: Status=APPROVED, ConfirmedDate set
+    UI-->>Human: Confirmation complete
+
+    loop Poll until terminal status
+        Seeker->>API: GET /confirmations/{token} (OAuth)
+        API-->>Seeker: Status
+    end
+    Note over Seeker: Status=APPROVED → proceed with operation
+```
+
+#### Rejection, cancellation, and expiration
+
+```mermaid
+sequenceDiagram
+    actor Human as Human (Customer)
+    participant Seeker as ConfirmationSeeker (gddy)
+    participant API as ConfirmationAPI
+    participant UI as ConfirmationUI
+
+    Seeker->>API: POST /confirmations (OAuth)
+    API-->>Seeker: ConfirmationRequest{Token, URL, Status=REQUESTED}
+    Seeker->>Human: Display ConfirmationURL
+
+    alt Human rejects
+        Human->>UI: Open URL, click Reject
+        UI->>API: POST /confirmations/{token}/reject (IDP)
+        API-->>UI: Status=REJECTED
+    else Seeker cancels first
+        Seeker->>API: POST /confirmations/{token}/cancel (OAuth)
+        API-->>Seeker: Status=CANCELLED
+    else ConfirmationRequest expires unattended
+        Note over API: ExpirationDate passes with no action
+        API->>API: Status=EXPIRED
+    end
+
+    Seeker->>API: GET /confirmations/{token} (OAuth)
+    API-->>Seeker: Status (REJECTED | CANCELLED | EXPIRED)
+    Note over Seeker: Abort original operation
+```
+
+## Rejected alternatives
+
+- **Popup confirmations** - displaying pop-up windows on the user's machine was considered. This would be an expensive solution, requiring cross-platform interactions with various OS UI platforms. Compatibility is difficult, especially with the Linux platform which is highly variable. Also, this confirmation system is flexible enough to be usable in other contexts, such as MCP servers seeking human confirmation.
+- **Agent prompts** - as stated in the problem statement, we can only ever make a best effort that we request agents to seek human consent; this has proven to be insufficient.
