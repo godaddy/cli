@@ -65,6 +65,8 @@ An `APPROVED` **ConfirmationRequest** is only meaningful if the operation it aut
 
 `APPROVED` is also a durable status that stays queryable indefinitely, not a one-time signal, so a **ConfirmationSeeker** must not treat "I observed `APPROVED`" as license to run the operation as many times as it happens to check. A timed-out command that retries, or two processes polling the same **ConfirmationRequest**, must not be able to execute the same approved operation twice. This cannot be left to the downstream operation's own idempotency, since not every purchase or mutation is naturally idempotent; a mandatory, atomic single-claim mechanism - keyed by the **ConfirmationToken** or the bound operation identifier, with the claim itself an atomic compare-and-set that only one caller can win - is required so that repeated observations of `APPROVED` result in at most one execution.
 
+That single-claim mechanism only protects a `ConfirmationToken` that already exists exactly once. Creating a confirmation must therefore also be idempotent on the bound operation identifier: if a **ConfirmationSeeker** loses the response to its create call and retries, the **ConfirmationAPI** must return the existing **ConfirmationRequest** for that operation identifier rather than minting a second token - otherwise two independently-approved tokens could each be claimed once and the operation would still run twice.
+
 This proposal is meant to be flexible enough for reuse in various situations, but the first implemented holder of this role would be the `gddy` CLI.
 
 #### ConfirmationAPI
