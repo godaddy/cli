@@ -1,4 +1,4 @@
-//! `gddy platform app add native-extension` — synchronize a native Android draft.
+//! `gddy platform app add native-extension` — synchronize a native Android app record.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Stage, Tier};
 use serde_json::json;
@@ -143,17 +143,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<NativeExtensionArgs, _, _, _>(
         CommandSpec::from_args::<NativeExtensionArgs>(
             "native-extension",
-            "Register a native Android extension draft",
+            "Register a native Android extension",
         )
         .with_long(
             "Write a [native_extension] section to the godaddy.toml manifest in \
             the current directory and immediately create or update its DevX Core \
-            native-app draft. The command authenticates, looks up the App Registry \
+            native-app record. The command authenticates, looks up the App Registry \
             application by the manifest's name, and uses that application's ID. \
             support_contact and android_package_name are required; name is optional \
             and falls back to the application name. The local file is written only \
-            after the remote draft succeeds, and rerunning safely reconciles either \
-            an existing remote draft or an existing local section.",
+            after the remote record succeeds, and rerunning safely reconciles either \
+            an existing remote record or an existing local section. The record is \
+            requested as a draft, but DevX Core may currently store it as active.",
         )
         .with_system("applications")
         .with_tier(Tier::Mutate)
@@ -178,12 +179,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 sync_native_extension(&config, &token, &app_registry_url, &devx_core_url).await?;
             crate::config::write_config(&path, &config).map_err(|error| {
                 crate::error::GddyError::config(format!(
-                    "The DevX Core native-app draft was {} for application {}, but {} could not be updated: {error}",
+                    "The DevX Core native-app record was {} for application {}, but {} could not be updated: {error}",
                     registration.operation.as_str(),
                     registration.application_id,
                     path.display(),
                 ))
-                .with_fix("Rerun this idempotent command to reconcile the local manifest with the existing remote draft.")
+                .with_fix("Rerun this idempotent command to reconcile the local manifest with the existing remote record.")
                 .into_cli_error()
             })?;
             let native = config
