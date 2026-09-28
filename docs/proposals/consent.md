@@ -63,6 +63,8 @@ A **ConfirmationSeeker** is an interface that wants to acquire consent from a hu
 
 An `APPROVED` **ConfirmationRequest** is only meaningful if the operation it authorizes is the operation that actually runs. A **ConfirmationSeeker** must therefore include enough detail in its **Agreements** - an immutable operation identifier, or a digest of the operation's key parameters - to bind the approval to one specific operation, and must re-verify that binding before executing anything on the strength of an `APPROVED` status. Otherwise, approval collected for one description of an operation could be reused to justify a different one.
 
+`APPROVED` is also a durable status that stays queryable indefinitely, not a one-time signal, so a **ConfirmationSeeker** must not treat "I observed `APPROVED`" as license to run the operation as many times as it happens to check. A timed-out command that retries, or two processes polling the same **ConfirmationRequest**, must not be able to execute the same approved operation twice. The downstream operation should be idempotent, keyed by the **ConfirmationToken** (or the bound operation identifier), so repeated observations of `APPROVED` only ever result in one execution.
+
 This proposal is meant to be flexible enough for reuse in various situations, but the first implemented holder of this role would be the `gddy` CLI.
 
 #### ConfirmationAPI
@@ -111,7 +113,7 @@ The **ConfirmationUI** is an HTML interface, accessible over HTTPS, where a cust
 The UI is reachable via a URL carrying the **ConfirmationToken**. The UI is responsible for:
 
 - Demanding user authentication (IDP auth), redirecting if they aren't authenticated
-- Authorizing access only if an authenticated customer is the same customer related to the **ConfirmationToken**
+- Authorizing access only if an authenticated customer is the same customer related to the **ConfirmationToken** - as a UX convenience only. The real authorization boundary is the **ConfirmationAPI** itself: it must independently validate the IDP assertion on every detail-read, approve, and reject call and reject any request whose customer subject doesn't match the **ConfirmationRequest**'s **CustomerID**, since anti-CSRF checks alone authenticate the browser request, not the identity behind it, and the UI's own check can be bypassed by a caller that talks to the **ConfirmationAPI** directly
 - Reading the [**ConfirmationRequest**](#confirmationrequest) details from the **ConfirmationAPI** and reflecting its current status (letting them know if they already agreed to or rejected the confirmation request)
 - Rendering the confirmation details, treating the **Description** and **AgreementData** it receives from the **ConfirmationAPI** as untrusted, seeker-supplied content - rendered with contextual escaping against a data-only schema (no raw HTML/script), and with any embedded URLs validated against a safe scheme/host allowlist before being made clickable
 - Allowing the user to accept or reject the **ConfirmationRequest** as a whole - all of its **Agreements** together. Partial acceptance of individual agreements is not supported.
