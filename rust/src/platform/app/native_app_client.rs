@@ -561,11 +561,15 @@ mod tests {
             status,
             code,
             message,
-        } = error
+        } = &error
         else {
-            panic!("expected an API error, got {error:?}");
+            assert!(
+                matches!(error, NativeAppClientError::Api { .. }),
+                "expected an API error, got {error:?}"
+            );
+            return;
         };
-        assert_eq!(status, 502);
+        assert_eq!(*status, 502);
         assert_eq!(code, UPSTREAM_ERROR_CODE);
         let rendered = message.to_string();
         assert!(rendered.starts_with(": <html> <body>gateway"), "{rendered}");
@@ -604,8 +608,12 @@ mod tests {
     #[test]
     fn empty_error_body_carries_no_message() {
         let error = api_error(504, b"   \n  ");
-        let NativeAppClientError::Api { code, message, .. } = error else {
-            panic!("expected an API error");
+        let NativeAppClientError::Api { code, message, .. } = &error else {
+            assert!(
+                matches!(error, NativeAppClientError::Api { .. }),
+                "expected an API error, got {error:?}"
+            );
+            return;
         };
         assert_eq!(code, UPSTREAM_ERROR_CODE);
         assert_eq!(message.to_string(), "");
