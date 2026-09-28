@@ -3,6 +3,7 @@
 //! `gddy domain` subcommand lives in its own sibling module and draws from here.
 
 use cli_engine::{CliCoreError, CommandContext, Credential, Result};
+use serde_json::json;
 
 use crate::environments;
 
@@ -68,6 +69,35 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
             .unwrap_or(""),
         false,
         false,
+    ))
+}
+
+/// Render a `fees` array (e.g. a premium domain's one-time acquisition
+/// surcharge) as `{type, amount, currency}` objects for display. Shared by
+/// `available`/`suggest`/`quote`, all of which surface a `types::Fee` list
+/// from the domains API. `None` (rather than an empty array) when there are
+/// no fees, so the field is omitted from output entirely instead of showing
+/// an empty list.
+pub(super) fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
+    if fees.is_empty() {
+        return None;
+    }
+    Some(json!(
+        fees.iter()
+            .map(|f| {
+                let mut out = json!({});
+                if let Some(t) = f.type_.as_ref() {
+                    out["type"] = json!(t.to_string());
+                }
+                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
+                    out["amount"] = json!(amount);
+                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
+                        out["currency"] = json!(code.to_string());
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
     ))
 }
 
@@ -537,6 +567,32 @@ mod tests {
             currency_code: (!currency.is_empty())
                 .then(|| types::CurrencyCode(currency.to_string())),
         }
+    }
+
+    #[test]
+    fn fees_to_json_renders_type_amount_and_currency() {
+        let fee = types::Fee {
+            fee: Some(money(Some(390000), "USD")),
+            type_: Some(types::FeeType(
+                "ONE_TIME_PREMIUM_DOMAIN_PURCHASE".to_string(),
+            )),
+        };
+        let rendered = fees_to_json(&[fee]).expect("non-empty fees render Some");
+        assert_eq!(
+            rendered,
+            json!([{
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "amount": "3900.00",
+                "currency": "USD",
+            }])
+        );
+    }
+
+    #[test]
+    fn fees_to_json_is_none_for_an_empty_list() {
+        // `available`/`suggest`/`quote` all gate on this to omit `fees`
+        // entirely rather than emit an empty array.
+        assert_eq!(fees_to_json(&[]), None);
     }
 
     #[test]
