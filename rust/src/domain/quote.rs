@@ -12,6 +12,7 @@ use super::common::{
     api_error, fees_to_json, format_money, make_client, period_label, validate_domain_name,
     validate_nameserver_hosts,
 };
+use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -178,6 +179,28 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
         );
     }
     out
+}
+
+/// The `next_action` a successful, available quote points at: registering with
+/// the cached token. Carries the price-confirmation instruction so an AI
+/// assistant reading this from `--output json` is told to relay the price to
+/// the end user before adding `--confirm`. `show_agent_note` should be `false`
+/// for `--output human` — a human reading their own terminal doesn't need to
+/// be told to show themselves the price and confirm with themselves.
+fn purchase_next_action(quote_token: String, show_agent_note: bool) -> cli_engine::NextAction {
+    let description = if show_agent_note {
+        format!(
+            "Register at the quoted price (within ~10 minutes). \
+             {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+        )
+    } else {
+        "Register at the quoted price (within ~10 minutes).".to_owned()
+    };
+    next_action(
+        "domain purchase --quote-token <quote-token> --agree --confirm",
+        description,
+    )
+    .with_param("quote-token", NextActionParam::value(quote_token))
 }
 
 /// Split a quote's required agreements into (types, human-title lines) for the
@@ -370,13 +393,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // find it. Warn so the user knows to re-quote on this host.
                     tracing::warn!(error = %e, "could not cache the quote for purchase");
                 }
-                next_actions.push(
-                    next_action(
-                        "domain purchase --quote-token <quote-token> --agree --confirm",
-                        "Register at the quoted price (within ~10 minutes)",
-                    )
-                    .with_param("quote-token", NextActionParam::value(token)),
-                );
+                next_actions.push(purchase_next_action(
+                    token,
+                    ctx.middleware.output_format != "human",
+                ));
             } else {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
@@ -396,8 +416,43 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{command, view_columns};
+    use super::{command, purchase_next_action, view_columns};
     use serde_json::json;
+
+    #[test]
+    fn purchase_next_action_tells_ai_assistants_to_confirm_price_first() {
+        let action = purchase_next_action("quote-token-1".to_owned(), true);
+
+        assert_eq!(
+            action.command,
+            "gddy domain purchase --quote-token <quote-token> --agree --confirm"
+        );
+        assert_eq!(
+            action.params["quote-token"].value.as_deref(),
+            Some("quote-token-1")
+        );
+        assert!(action.description.contains("AI assistants:"));
+        assert!(
+            action
+                .description
+                .contains("show the end user the exact price from `domain quote`")
+        );
+        assert!(
+            action
+                .description
+                .contains("Do not infer confirmation from a general request to buy")
+        );
+    }
+
+    #[test]
+    fn purchase_next_action_omits_agent_note_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let action = purchase_next_action("quote-token-1".to_owned(), false);
+
+        assert!(!action.description.contains("AI assistants:"));
+        assert!(action.description.contains("Register at the quoted price"));
+    }
 
     #[test]
     fn default_fields_includes_renewal_price() {

@@ -36,6 +36,16 @@ mod suggest;
 // reuses the repeatable-argument helper.
 pub(crate) use common::{api_error, format_api_error, make_client};
 
+/// Shown wherever an AI assistant driving `purchase` might look — its help
+/// text, the `--confirm`/`--agree` gate error messages, and the `next_action`
+/// from `quote` that points at it — so a purchase's price is always relayed to
+/// the end user before the account is actually charged. See AGENTS.md's
+/// "Purchase confirmation" section.
+pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --confirm, show the end user the exact price \
+    from `domain quote` (including any fees) and the required legal agreements, \
+    and obtain their explicit confirmation to proceed. Do not infer confirmation \
+    from a general request to buy or register a domain.";
+
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {
         RuntimeGroupSpec::new(

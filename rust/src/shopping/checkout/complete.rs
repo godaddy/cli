@@ -8,7 +8,7 @@ use shopping_client::types::{
 };
 
 use crate::next_action::next_action;
-use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
+use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
@@ -163,7 +163,15 @@ fn required_agreements(checkout: &Checkout) -> Vec<(&str, &str, Option<&str>)> {
         .collect()
 }
 
-fn agreement_gate(checkout: &Checkout, agree: bool) -> cli_engine::Result<()> {
+/// `show_agent_note` should be `false` for `--output human` — a human reading
+/// their own terminal doesn't need to be told to show themselves the price
+/// and confirm with themselves; the note is for an AI assistant consuming
+/// `--output json` on the user's behalf.
+fn agreement_gate(
+    checkout: &Checkout,
+    agree: bool,
+    show_agent_note: bool,
+) -> cli_engine::Result<()> {
     if agree {
         return Ok(());
     }
@@ -182,10 +190,15 @@ fn agreement_gate(checkout: &Checkout, agree: bool) -> cli_engine::Result<()> {
     } else {
         format!("placing an order requires accepting these checkout session agreements:\n{details}")
     };
+    let fix = if show_agent_note {
+        format!(
+            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree. {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+        )
+    } else {
+        "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree.".to_owned()
+    };
     Err(crate::error::GddyError::validation(message)
-        .with_fix(format!(
-            "Review the checkout session with `shopping checkout get <checkout-id>`, then re-run with --agree. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}"
-        ))
+        .with_fix(fix)
         .into_cli_error())
 }
 
@@ -210,7 +223,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "Place an order with the checkout session's selected saved payment method, or use \
                  --payment-instrument to select one. Review its required agreements and important links \
                  first. The --agree flag on checkout completion acknowledges and accepts all required \
-                 agreements; use it only after that review. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}",
+                 agreements; use it only after that review. {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}",
             ))
             .with_system("shopping")
             .with_tier(Tier::Mutate)
@@ -225,7 +238,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             reject_response_errors(&checkout.messages)?;
-            agreement_gate(&checkout, args.agree)?;
+            agreement_gate(
+                &checkout,
+                args.agree,
+                ctx.middleware.output_format != "human",
+            )?;
             let product_ids = crate::shopping::product_actions::purchased_product_ids(&checkout);
             let product_actions = if product_ids.is_empty() {
                 Vec::new()
@@ -406,14 +423,47 @@ mod tests {
             )],
             ..Default::default()
         };
-        let error = agreement_gate(&checkout, false).expect_err("must require --agree");
+        let error = agreement_gate(&checkout, false, true).expect_err("must require --agree");
         assert!(
             error
                 .to_string()
                 .contains("Universal Terms of Service Agreement")
         );
         assert!(error.to_string().contains("universal_terms_and_conditions"));
-        assert!(agreement_gate(&checkout, true).is_ok());
+        assert!(agreement_gate(&checkout, true, true).is_ok());
+    }
+
+    #[test]
+    fn agreement_gate_includes_agent_note_only_when_requested() {
+        let checkout = Checkout {
+            required_agreements: vec![required_agreement("terms", None, None, true)],
+            ..Default::default()
+        };
+
+        let with_note = agreement_gate(&checkout, false, true).expect_err("must require --agree");
+        let envelope = cli_engine::build_error_envelope(&with_note, "shopping");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("AI assistants:")),
+            "{:?}",
+            envelope.fix
+        );
+
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let without_note =
+            agreement_gate(&checkout, false, false).expect_err("must require --agree");
+        let envelope = cli_engine::build_error_envelope(&without_note, "shopping");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| !f.contains("AI assistants:")),
+            "{:?}",
+            envelope.fix
+        );
     }
 
     #[test]

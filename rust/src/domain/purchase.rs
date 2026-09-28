@@ -8,6 +8,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
+use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -46,6 +47,11 @@ fn next_action_description(status: &str) -> &'static str {
 /// registration is paid). The agreement types are only returned once both gates
 /// pass. `agreement_titles`/`agreement_types` come from the cached quote (the
 /// types are what the register call must echo into `consent.agreementTypes`).
+///
+/// `show_agent_note` should be `false` for `--output human` — a human reading
+/// their own terminal doesn't need to be told to show themselves the price
+/// and confirm with themselves; the note is for an AI assistant consuming
+/// `--output json` on the user's behalf.
 fn purchase_consent_types(
     domain: &str,
     period: u64,
@@ -53,6 +59,7 @@ fn purchase_consent_types(
     confirm: bool,
     agreement_titles: &[String],
     agreement_types: &[String],
+    show_agent_note: bool,
 ) -> Result<Vec<types::AgreementType>> {
     // Validate the cached quote actually carries agreement types *before* the
     // --agree gate: an empty list means a corrupt/outdated cache the command can
@@ -80,16 +87,26 @@ fn purchase_consent_types(
             .map(|t| format!("  - {t}"))
             .collect::<Vec<_>>()
             .join("\n");
+        let agent_note = if show_agent_note {
+            format!(" {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}")
+        } else {
+            String::new()
+        };
         return Err(CliCoreError::message(format!(
             "registering {domain} requires agreeing to its legal agreement(s):\n{list}\n\n\
-             Re-run with --agree to accept them. See `gddy guide domain-purchase`."
+             Re-run with --agree to accept them. See `gddy guide domain-purchase`.{agent_note}"
         )));
     }
 
     if !confirm {
+        let agent_note = if show_agent_note {
+            format!(" {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}")
+        } else {
+            String::new()
+        };
         return Err(CliCoreError::message(format!(
             "registering {domain} for {period} year(s) charges your account and cannot be undone; \
-             re-run with --confirm to proceed"
+             re-run with --confirm to proceed.{agent_note}"
         )));
     }
 
@@ -122,25 +139,27 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "purchase",
             "Register a domain from a quote (paid; charges your account)",
         )
-        .with_long(
-            "Register a domain by accepting a quote from `gddy domain quote`. This \
-                 charges your GoDaddy account and cannot be undone, so it is gated behind \
-                 --confirm.\n\
-                 \n\
-                 Registration settings (period, privacy, nameservers, contacts) are fixed \
-                 at quote time — the quote token locks both those settings and the price. \
-                 `purchase` accepts the token, records your consent to the quote's legal \
-                 agreements (--agree), then registers and waits for the registry to \
-                 finish. A usable payment method must be on file — add one with \
-                 `gddy payment-methods add`.\n\
-                 \n\
-                 Typical flow:\n  \
-                 1. gddy domain quote example.com          # review price + agreements\n  \
-                 2. gddy domain purchase --quote-token <token> --agree --confirm\n\
-                 \n\
-                 The quote is cached locally, so run both on the same machine within the \
-                 token's ~10-minute lifetime. See `gddy guide domain-purchase`.",
-        )
+        .with_long(format!(
+            "Register a domain by accepting a quote from `gddy domain quote`. \
+            This charges your GoDaddy account and cannot be undone, so it is \
+            gated behind --confirm.\n\
+            \n\
+            Registration settings (period, privacy, nameservers, contacts) are \
+            fixed at quote time — the quote token locks both those settings and \
+            the price. `purchase` accepts the token, records your consent to the \
+            quote's legal agreements (--agree), then registers and waits for the \
+            registry to finish. A usable payment method must be on file — add \
+            one with `gddy payment-methods add`.\n\
+            \n\
+            {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}\n\
+            \n\
+            Typical flow:\n  \
+            1. gddy domain quote example.com # review price + agreements\n  \
+            2. gddy domain purchase --quote-token <token> --agree --confirm\n\
+            \n\
+            The quote is cached locally, so run both on the same machine within \
+            the token's ~10-minute lifetime. See `gddy guide domain-purchase`."
+        ))
         .with_system("domain")
         .with_tier(Tier::Destructive)
         .with_default_fields("domain,status,operationId,price,currency")
@@ -193,6 +212,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 confirm,
                 &cached.agreement_titles,
                 &cached.agreement_types,
+                ctx.middleware.output_format != "human",
             )?;
             let period_nz = std::num::NonZeroU64::new(cached.period).ok_or_else(|| {
                 CliCoreError::message("the cached quote has an invalid registration period")
@@ -395,28 +415,54 @@ mod tests {
         let titles = vec!["Registration Agreement (https://x)".to_string()];
         let ty = vec!["API_DPA".to_string()];
 
-        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty)
+        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty, true)
             .expect_err("must require --agree");
         let msg = err.to_string();
         assert!(msg.contains("Registration Agreement"), "{msg}");
         assert!(msg.contains("--agree"), "{msg}");
+        assert!(msg.contains("AI assistants:"), "{msg}");
+        assert!(
+            msg.contains("Do not infer confirmation from a general request to buy"),
+            "{msg}"
+        );
 
-        let err = purchase_consent_types("example.com", 2, true, false, &titles, &ty)
+        let err = purchase_consent_types("example.com", 2, true, false, &titles, &ty, true)
             .expect_err("must require --confirm");
         let msg = err.to_string();
         assert!(msg.contains("--confirm"), "{msg}");
         assert!(msg.contains("2 year(s)"), "{msg}");
+        assert!(msg.contains("AI assistants:"), "{msg}");
+        assert!(
+            msg.contains("show the end user the exact price from `domain quote`"),
+            "{msg}"
+        );
 
-        let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty)
+        let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty, true)
             .expect("both gates satisfied");
         assert_eq!(types.len(), 1);
         assert_eq!(types[0].to_string(), "API_DPA");
     }
 
     #[test]
+    fn agent_note_is_omitted_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let titles = vec!["Registration Agreement (https://x)".to_string()];
+        let ty = vec!["API_DPA".to_string()];
+
+        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty, false)
+            .expect_err("must require --agree");
+        assert!(!err.to_string().contains("AI assistants:"), "{err}");
+
+        let err = purchase_consent_types("example.com", 1, true, false, &titles, &ty, false)
+            .expect_err("must require --confirm");
+        assert!(!err.to_string().contains("AI assistants:"), "{err}");
+    }
+
+    #[test]
     fn purchase_consent_rejects_when_no_agreement_types() {
         // --agree given, but the cached quote carried no agreement types.
-        let err = purchase_consent_types("example.com", 1, true, true, &[], &[])
+        let err = purchase_consent_types("example.com", 1, true, true, &[], &[], true)
             .expect_err("no types -> error");
         assert!(
             err.to_string().contains("no legal agreement types"),
@@ -429,7 +475,7 @@ mod tests {
         // Without --agree AND with no cached agreement types, the accurate
         // "no agreement types / re-quote" error must win over the "requires
         // agreeing…" prompt (which would list nothing and never be satisfiable).
-        let err = purchase_consent_types("example.com", 1, false, false, &[], &[])
+        let err = purchase_consent_types("example.com", 1, false, false, &[], &[], true)
             .expect_err("empty types -> error");
         let msg = err.to_string();
         assert!(msg.contains("no legal agreement types"), "{msg}");
@@ -441,9 +487,16 @@ mod tests {
         // An older cached quote may carry agreement types but no human titles
         // (titles are serde-default). The --agree prompt must still list
         // something actionable — fall back to the types.
-        let err =
-            purchase_consent_types("example.com", 1, false, true, &[], &["API_DPA".to_string()])
-                .expect_err("must require --agree");
+        let err = purchase_consent_types(
+            "example.com",
+            1,
+            false,
+            true,
+            &[],
+            &["API_DPA".to_string()],
+            true,
+        )
+        .expect_err("must require --agree");
         let msg = err.to_string();
         assert!(msg.contains("requires agreeing"), "{msg}");
         assert!(msg.contains("- API_DPA"), "{msg}");

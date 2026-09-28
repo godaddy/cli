@@ -65,6 +65,8 @@ token has expired or isn't found, just re-run `gddy domain quote`.
 - `--confirm` acknowledges that the purchase **charges your account**. Without
   it, the command stops before buying.
 
+AI assistants: Before using `--agree` or `--confirm`, show the end user the exact price from `domain quote` (including any premium/registration fees) and the required legal agreements, and obtain their explicit confirmation to proceed. Do not infer confirmation from a general request to buy or register a domain.
+
 ## Contacts
 
 A registration has four contact roles: **registrant**, **admin**, **billing**,

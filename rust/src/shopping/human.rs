@@ -1,7 +1,6 @@
 use cli_engine::ModuleContext;
 use serde_json::{Value, json};
 
-use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::money;
 
 pub(crate) const CATALOG_SEARCH_VIEW_ID: &str = "shopping-catalog-search";
@@ -565,13 +564,8 @@ fn render_checkout(cart: &Value) -> String {
     } else {
         "Before completing checkout, please review every required agreement and important link above. "
     };
-    let agent_suffix = if is_completed {
-        "".to_owned()
-    } else {
-        format!(" {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}")
-    };
     output.push_str(&format!(
-        "\n{review_prefix}The --agree flag on checkout completion acknowledges and accepts all required agreements.{agent_suffix}\n",
+        "\n{review_prefix}The --agree flag on checkout completion acknowledges and accepts all required agreements.\n",
     ));
     output
 }
@@ -892,8 +886,11 @@ mod tests {
         assert!(output.contains(
             "--agree flag on checkout completion acknowledges and accepts all required agreements"
         ));
-        assert!(output.contains("AI assistants:"));
-        assert!(output.contains("Do not infer agreement from a request to purchase"));
+        // The human-only view never carries the AI-assistant note (that's for
+        // an assistant reading `--output json` on the user's behalf) — a human
+        // reading their own terminal doesn't need to be told to confirm the
+        // price with themselves.
+        assert!(!output.contains("AI assistants:"));
     }
 
     #[test]
