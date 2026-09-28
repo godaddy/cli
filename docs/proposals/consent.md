@@ -20,8 +20,8 @@ A **ConfirmationRequest** is a persisted record consisting of:
 
 - A **ConfirmationToken** - an opaque, unique, non-sequential, randomly-generated token used to identify the **ConfirmationRequest**.
 - A **ConfirmationURL** - A URL pointing to the [**ConfirmationUI**](#confirmationui), embedding the **ConfirmationToken**.
-- A **CustomerID** - the ID of the customer that we're seeking consent from 
-- A **SeekerID** - an ID representing the [**ConfirmationSeeker**](#confirmationseeker); this could be, for example, the CLI's OAuth client ID.
+- A **CustomerID** - the ID of the customer that we're seeking consent from. The **ConfirmationAPI** must derive or validate this against the calling **ConfirmationSeeker**'s credential at creation time - it cannot be an arbitrary value the seeker asserts - otherwise a request could later be approved for a customer the seeker was never authorized to represent.
+- A **SeekerID** - an ID representing the [**ConfirmationSeeker**](#confirmationseeker); this could be, for example, the CLI's OAuth client ID. This identifies the calling *application*, not the specific user/account behind the credential, so it is not by itself sufficient to authorize status-check or cancellation calls; the **ConfirmationAPI** must still confirm that the caller's credential is bound to the **ConfirmationRequest**'s **CustomerID** before allowing access.
 - A **Description** - a preamble about what the **ConfirmationRequest** is for, like "In order to register this domain, you must agree to the following."
 - **Agreements** - a set of [**Agreement**](#agreement) records representing things that we wish the person to consent to.
 - **Status** - an enumerated value indicating the state of the **ConfirmationRequest**. It can be `REQUESTED`, `APPROVED`, `REJECTED`, `CANCELLED`, or `EXPIRED`.
@@ -31,6 +31,8 @@ A **ConfirmationRequest** is a persisted record consisting of:
 - **AuditData** - A JSON document of key/value pairs captured for non-repudiation purposes. This is kept as a flexible bag of fields, rather than a fixed schema, so that what's collected can evolve over time. The first draft would include things like the IP address, user agent, and IDP session details of the approving/rejecting request.
 
 **Status** follows a simple lifecycle. `APPROVED`, `REJECTED`, `CANCELLED`, and `EXPIRED` are all terminal; a **ConfirmationRequest** cannot be re-approved, re-rejected, or reopened once it leaves `REQUESTED`.
+
+Each transition out of `REQUESTED` must be applied as an atomic compare-and-set against the persisted status, not a blind write: an approve, reject, cancel, or expiry check only succeeds if the stored status is still `REQUESTED`, and a request that loses that race receives back whichever terminal status was already recorded. This prevents, for example, an approval and a cancellation racing to overwrite one another. There is no separate "expire" operation in the **ConfirmationAPI** - expiry is enforced lazily: any read of, or attempted transition on, a `REQUESTED` **ConfirmationRequest** whose **ExpirationDate** has passed treats and persists it as `EXPIRED` before doing anything else, which is what blocks a late approval or rejection from succeeding.
 
 ```mermaid
 stateDiagram-v2
@@ -53,11 +55,13 @@ An **Agreement** is a standalone item we are entering into a contract with a cus
 
 - **ConfirmationToken** - reference to the encompassing **ConfirmationRequest** record that this agreement is a part of. This can be omitted if we store agreements as embedded data rather than in their own table.
 - An **AgreementType** - an enumerated set of "flavors" of agreements, for example `TERMS_AND_CONDITIONS` or `PURCHASE`. Each **AgreementType** has an associated JSON schema that **AgreementData** must conform to.
-- **AgreementData** - a JSON document, conforming to the schema of a given **AgreementType**. This JSON is used for rendering the UI that a user sees when they're being asked to confirm an operation. For `TERMS_AND_CONDITIONS`, this may involve a URL containing text that we want the user to read and agree to abide by. For `PURCHASE`, the data may include an itemized breakdown of all charges included in a purchase.
+- **AgreementData** - a JSON document, conforming to the schema of a given **AgreementType**. This JSON is used for rendering the UI that a user sees when they're being asked to confirm an operation. For `TERMS_AND_CONDITIONS`, this may involve a URL containing text that we want the user to read and agree to abide by; because the content behind a live URL can change or disappear after the fact, the schema must also capture an immutable snapshot (or at least a content hash) of what was actually rendered and accepted, and treat the URL as a display link rather than the record of consent. For `PURCHASE`, the data may include an itemized breakdown of all charges included in a purchase.
 
 #### ConfirmationSeeker
 
 A **ConfirmationSeeker** is an interface that wants to acquire consent from a human. It is responsible for assembling the contents of a [**ConfirmationRequest**](#confirmationrequest) and checking for its human acceptance or rejection. A **ConfirmationSeeker** is the holder of an OAuth token or PAT that authorizes it as a representative for performing actions on a user's behalf.
+
+An `APPROVED` **ConfirmationRequest** is only meaningful if the operation it authorizes is the operation that actually runs. A **ConfirmationSeeker** must therefore include enough detail in its **Agreements** - an immutable operation identifier, or a digest of the operation's key parameters - to bind the approval to one specific operation, and must re-verify that binding before executing anything on the strength of an `APPROVED` status. Otherwise, approval collected for one description of an operation could be reused to justify a different one.
 
 This proposal is meant to be flexible enough for reuse in various situations, but the first implemented holder of this role would be the `gddy` CLI.
 
@@ -75,6 +79,7 @@ The following operations are supported:
 | **Creating a confirmation** | **ConfirmationSeeker** |
 | **Cancelling a confirmation** | **ConfirmationSeeker** |
 | **Checking a confirmation status** | **ConfirmationSeeker** |
+| **Reading confirmation details** (preamble + agreements, for rendering) | **ConfirmationUI** |
 | **Approving a confirmation** | **ConfirmationUI** |
 | **Rejecting a confirmation** | **ConfirmationUI** |
 
@@ -87,17 +92,17 @@ flowchart LR
     IDP["IDP"]
 
     Seeker -- "OAuth / PAT<br/>create, cancel, check status" --> API
-    UI -- "IDP-authenticated<br/>approve, reject" --> API
+    UI -- "IDP-authenticated<br/>read details, approve, reject" --> API
     Seeker -- "displays ConfirmationURL" --> Human
     Human -- "HTTPS" --> UI
     UI -- "authenticate" --> IDP
 ```
 
-By separating out the authentication models for these operations, we guarantee that an agent working on behalf of a human (through OAuth credentials) cannot approve an operation by itself; a human must provide consent within the [**ConfirmationUI**](#confirmationui) directly. 
+By separating out the authentication models for these operations, we ensure that an agent working on behalf of a human (through OAuth credentials) cannot approve an operation by itself; approval requires an IDP-authenticated customer session acting within the [**ConfirmationUI**](#confirmationui). This guarantees the approving party is authenticated *as* the customer; it is a lesser guarantee than proof that a live human, rather than an automated agent driving an already-authenticated browser session, clicked the button - see the note on the [**ConfirmationUI**](#confirmationui) below.
 
 #### ConfirmationUI
 
-The **ConfirmationUI** is an HTML interface, accessible over HTTPS, where in a customer can:
+The **ConfirmationUI** is an HTML interface, accessible over HTTPS, where a customer can:
 
 - Read the preamble
 - See details on each thing they're agreeing to (T&Cs, price breakdowns)
@@ -107,12 +112,12 @@ The UI is reachable via a URL carrying the **ConfirmationToken**. The UI is resp
 
 - Demanding user authentication (IDP auth), redirecting if they aren't authenticated
 - Authorizing access only if an authenticated customer is the same customer related to the **ConfirmationToken**
-- Reflecting the current status of the [**ConfirmationRequest**](#confirmationrequest) (letting them know if they already agreed to or rejected the confirmation request)
+- Reading the [**ConfirmationRequest**](#confirmationrequest) details from the **ConfirmationAPI** and reflecting its current status (letting them know if they already agreed to or rejected the confirmation request)
 - Rendering the confirmation details
 - Allowing the user to accept or reject the **ConfirmationRequest** as a whole - all of its **Agreements** together. Partial acceptance of individual agreements is not supported.
 - Calling the **ConfirmationAPI** to record acceptance/rejection
 
-This UI cannot be accessed with OAuth credentials or a PAT; only direct human interaction is allowed.
+This UI cannot be accessed with OAuth credentials or a PAT; interaction requires an IDP-authenticated customer session. That proves the actor is authenticated as the customer, not that a live human (rather than an automated agent driving an already-authenticated browser session) performed the click - this proposal does not include a proof-of-presence mechanism (e.g. a WebAuthn user-presence assertion). That is a candidate for future work and out of scope here.
 
 ### Flow
 
@@ -172,11 +177,11 @@ sequenceDiagram
         Seeker->>API: POST /confirmations/{token}/cancel (OAuth)
         API-->>Seeker: Status=CANCELLED
     else ConfirmationRequest expires unattended
-        Note over API: ExpirationDate passes with no action
-        API->>API: Status=EXPIRED
+        Note over API: ExpirationDate passes with no dedicated<br/>"expire" call - detected lazily below
     end
 
     Seeker->>API: GET /confirmations/{token} (OAuth)
+    Note over API: If still REQUESTED and ExpirationDate has passed,<br/>persist Status=EXPIRED before responding
     API-->>Seeker: Status (REJECTED | CANCELLED | EXPIRED)
     Note over Seeker: Abort original operation
 ```
