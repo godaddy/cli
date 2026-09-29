@@ -19,30 +19,6 @@ struct DeploymentGetArgs {
     deployment_id: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::{Args, FromArgMatches};
-
-    #[test]
-    fn deployment_id_starting_with_hyphen_is_parsed_as_a_value() {
-        let cmd = DeploymentGetArgs::augment_args(clap::Command::new("get"));
-        let matches = cmd
-            .try_get_matches_from([
-                "get",
-                "--app-id",
-                "NODEJS-rf2dwbzqux",
-                "--deployment-id",
-                "-yfNpdQN6X",
-            ])
-            .expect("hyphen-prefixed deployment ID should not be mistaken for a flag");
-        let args =
-            DeploymentGetArgs::from_arg_matches(&matches).expect("args should parse into struct");
-
-        assert_eq!(args.deployment_id, "-yfNpdQN6X");
-    }
-}
-
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<DeploymentGetArgs, _, _, _>(
         CommandSpec::from_args::<DeploymentGetArgs>("get", "Get a deployment")
@@ -68,4 +44,28 @@ pub(super) fn command() -> RuntimeCommandSpec {
             ]))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::{Args, FromArgMatches};
+
+    #[test]
+    fn deployment_id_starting_with_hyphen_is_parsed_as_a_value() {
+        let cmd = DeploymentGetArgs::augment_args(clap::Command::new("get"));
+        let matches = cmd
+            .try_get_matches_from([
+                "get",
+                "--app-id",
+                "NODEJS-rf2dwbzqux",
+                "--deployment-id",
+                "-yfNpdQN6X",
+            ])
+            .expect("hyphen-prefixed deployment ID should not be mistaken for a flag");
+        let args =
+            DeploymentGetArgs::from_arg_matches(&matches).expect("args should parse into struct");
+
+        assert_eq!(args.deployment_id, "-yfNpdQN6X");
+    }
 }
