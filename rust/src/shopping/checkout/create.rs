@@ -4,7 +4,7 @@ use cli_engine::{
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::shopping::AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS;
+use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
@@ -59,14 +59,25 @@ struct Args {
     show_all_payment_instruments: bool,
 }
 
-fn agreement_review_action(checkout_id: String) -> NextAction {
-    next_action(
-        "shopping checkout get <checkout-id>",
+/// `show_agent_note` should be `false` for `--output human` — a human reading
+/// their own terminal doesn't need to be told to show themselves the price
+/// and confirm with themselves; the note is for an AI assistant consuming
+/// `--output json` on the user's behalf.
+///
+/// Shared with `checkout update` (`super::update`) — an update that changes
+/// items/currency can change the final total on an already-`ready_for_complete`
+/// checkout, so it needs the same reminder to re-present the (possibly new)
+/// total and agreements before completing, not just `checkout create`.
+pub(super) fn agreement_review_action(checkout_id: String, show_agent_note: bool) -> NextAction {
+    let description = if show_agent_note {
         format!(
-            "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS}"
-        ),
-    )
-    .with_param("checkout-id", NextActionParam::value(checkout_id))
+            "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+        )
+    } else {
+        "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review.".to_owned()
+    };
+    next_action("shopping checkout get <checkout-id>", description)
+        .with_param("checkout-id", NextActionParam::value(checkout_id))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -142,7 +153,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .into_iter()
                 .collect::<Vec<_>>();
             if ready_for_complete {
-                actions.push(agreement_review_action(checkout_id));
+                actions.push(agreement_review_action(
+                    checkout_id,
+                    ctx.middleware.output_format != "human",
+                ));
             }
             let checkout = serde_json::to_value(&checkout).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
@@ -172,7 +186,7 @@ mod tests {
 
     #[test]
     fn agreement_review_action_never_suggests_checkout_completion() {
-        let action = agreement_review_action("checkout-1".to_owned());
+        let action = agreement_review_action("checkout-1".to_owned(), true);
 
         assert_eq!(action.command, "gddy shopping checkout get <checkout-id>");
         assert_eq!(
@@ -187,13 +201,42 @@ mod tests {
         assert!(action.description.contains(
             "--agree flag on checkout completion acknowledges and accepts all required agreements"
         ));
-        assert!(action.description.contains("AI assistants:"));
-        assert!(
-            action
-                .description
-                .contains("Do not infer agreement from a request to purchase")
-        );
         assert!(!action.command.contains("complete"));
         assert!(!action.command.contains("--agree"));
+    }
+
+    #[test]
+    fn agreement_review_action_includes_agent_note_only_when_requested() {
+        let with_note = agreement_review_action("checkout-1".to_owned(), true);
+        assert!(with_note.description.contains("AI assistants:"));
+        assert!(
+            with_note
+                .description
+                .contains("final total (including all fees)")
+        );
+        assert!(
+            with_note
+                .description
+                .contains("Do not infer approval from a request to purchase")
+        );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(with_note.description.contains("title AND link"));
+        assert!(
+            with_note
+                .description
+                .contains("Do not summarize an agreement by name only")
+        );
+
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let without_note = agreement_review_action("checkout-1".to_owned(), false);
+        assert!(!without_note.description.contains("AI assistants:"));
+        assert!(
+            without_note
+                .description
+                .contains("review every required agreement")
+        );
     }
 }
