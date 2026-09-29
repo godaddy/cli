@@ -9,15 +9,11 @@ on:
   pull_request:
     paths:
       - "action/**"
-      - "install.sh"
-      - "install.ps1"
       - ".github/workflows/action-test.yml"
   push:
     branches: [main]
     paths:
       - "action/**"
-      - "install.sh"
-      - "install.ps1"
 
 jobs:
   latest:

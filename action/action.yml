@@ -31,17 +31,19 @@ runs:
       id: install-unix
       if: runner.os != 'Windows'
       shell: bash
+      env:
+        GDDY_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
         prefix="${RUNNER_TEMP}/gddy-bin"
         mkdir -p "$prefix"
 
         args=(--prefix "$prefix")
-        if [ "${{ inputs.version }}" != "latest" ]; then
-          args+=(--version "${{ inputs.version }}")
+        if [ "$GDDY_VERSION" != "latest" ]; then
+          args+=(--version "$GDDY_VERSION")
         fi
 
-        bash "${{ github.action_path }}/../install.sh" "${args[@]}"
+        bash "${{ github.action_path }}/install.sh" "${args[@]}"
 
         echo "$prefix" >> "$GITHUB_PATH"
         {
@@ -53,16 +55,18 @@ runs:
       id: install-windows
       if: runner.os == 'Windows'
       shell: pwsh
+      env:
+        GDDY_VERSION: ${{ inputs.version }}
       run: |
         $prefix = Join-Path $env:RUNNER_TEMP 'gddy-bin'
         New-Item -ItemType Directory -Path $prefix -Force | Out-Null
 
         $scriptArgs = @{ Prefix = $prefix }
-        if ('${{ inputs.version }}' -ne 'latest') {
-          $scriptArgs['Version'] = '${{ inputs.version }}'
+        if ($env:GDDY_VERSION -ne 'latest') {
+          $scriptArgs['Version'] = $env:GDDY_VERSION
         }
 
-        & "${{ github.action_path }}\..\install.ps1" @scriptArgs
+        & "${{ github.action_path }}\install.ps1" @scriptArgs
 
         $installedVersion = & "$prefix\gddy.exe" --version
 
