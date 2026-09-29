@@ -559,27 +559,30 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
 }
 
 #[tokio::test]
-async fn get_airo_database_tunnel_token_posts_to_airo_path() {
+async fn ensure_airo_database_tunnel_session_posts_to_airo_path() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
             when.method(POST)
-                .path("/v1/airo/hosting/apps/app-1/database-tunnel/agent-token")
+                .path("/v1/airo/hosting/apps/app-1/database-tunnel")
                 .header("authorization", "Bearer test-token")
                 .json_body(json!({}));
             then.status(200).json_body(json!({
-                "agentUrl": "https://app-1.agent.example",
-                "token": "minted-agent-jwt"
+                "sessionId": "s1",
+                "url": "https://dbt-s1.c1.pma.example",
+                "pollUrl": "https://dbt-s1.c1.pma.example/healthz",
+                "token": "relay-token"
             }));
         })
         .await;
 
     let body = client(&server.base_url())
-        .get_airo_database_tunnel_token("app-1")
+        .ensure_airo_database_tunnel_session("app-1")
         .await
-        .expect("get airo database tunnel token");
+        .expect("ensure airo database tunnel session");
 
     mock.assert_async().await;
-    assert_eq!(body["agentUrl"], "https://app-1.agent.example");
-    assert_eq!(body["token"], "minted-agent-jwt");
+    assert_eq!(body["url"], "https://dbt-s1.c1.pma.example");
+    assert_eq!(body["pollUrl"], "https://dbt-s1.c1.pma.example/healthz");
+    assert_eq!(body["token"], "relay-token");
 }
