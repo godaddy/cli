@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.24](https://github.com/godaddy/cli/compare/v0.2.23...v0.2.24) (2026-09-29)
+
+
+### Bug Fixes
+
+* **hosting:** allow hyphen-prefixed deployment IDs ([#302](https://github.com/godaddy/cli/issues/302)) ([2410e76](https://github.com/godaddy/cli/commit/2410e76a56f7a612afce60e291123ea0fa2cd1a4))
+
 ## [0.2.23](https://github.com/godaddy/cli/compare/v0.2.22...v0.2.23) (2026-09-29)
 
 
