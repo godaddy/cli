@@ -22,6 +22,17 @@ Both installers download, checksum-verify, and install the binary for your platf
 
 Once installed, `gddy update check` / `gddy update apply` handles upgrades in place.
 
+### GitHub Actions
+
+Use [`godaddy/cli/action`](action/action.yml) to install `gddy` inside a workflow:
+
+```yaml
+- uses: godaddy/cli/action@action-v1
+- run: gddy --version
+```
+
+Pin an exact `gddy` release with `with: { version: v0.2.23 }`; omit it for latest. The action is versioned independently of the CLI itself — `action-v1` always points at the latest `action-v1.x.y` release.
+
 ### Agentic Skills
 
 To install Claude Code skills for the `gddy` CLI, run the following:

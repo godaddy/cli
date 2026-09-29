@@ -31,6 +31,8 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs['rust--tag_name'] }}
+      action_release_created: ${{ steps.release.outputs['action--release_created'] }}
+      action_tag_name: ${{ steps.release.outputs['action--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 #v5.0.0
         id: release
@@ -39,6 +41,26 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: main
+
+  action-major-tag:
+    name: Move floating action major tag
+    needs: release-please
+    if: needs.release-please.outputs.action_release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Move floating major tag
+        run: |
+          TAG="${{ needs.release-please.outputs.action_tag_name }}"
+          MAJOR="action-v$(echo "$TAG" | sed -E 's/^action-v([0-9]+)\..*/\1/')"
+          git tag -f "$MAJOR" "$TAG"
+          git push origin "$MAJOR" --force
 
   build:
     name: Build ${{ matrix.target }}

@@ -1,0 +1,71 @@
+name: Setup gddy CLI
+description: >
+  Install the GoDaddy CLI (gddy) from GitHub Releases and add it to PATH
+author: GoDaddy
+branding:
+  icon: download-cloud
+  color: green
+
+inputs:
+  version:
+    description: >
+      gddy release to install, e.g. "v0.2.23". Defaults to the latest release.
+    required: false
+    default: latest
+
+outputs:
+  version:
+    description: >
+      The gddy version that was installed (as reported by `gddy --version`)
+    value: >
+      ${{ steps.install-unix.outputs.version || steps.install-windows.outputs.version }}
+  path:
+    description: Directory the gddy binary was installed to
+    value: >
+      ${{ steps.install-unix.outputs.path || steps.install-windows.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install gddy (Linux/macOS)
+      id: install-unix
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        prefix="${RUNNER_TEMP}/gddy-bin"
+        mkdir -p "$prefix"
+
+        args=(--prefix "$prefix")
+        if [ "${{ inputs.version }}" != "latest" ]; then
+          args+=(--version "${{ inputs.version }}")
+        fi
+
+        bash "${{ github.action_path }}/../install.sh" "${args[@]}"
+
+        echo "$prefix" >> "$GITHUB_PATH"
+        {
+          echo "path=$prefix"
+          echo "version=$("$prefix/gddy" --version)"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Install gddy (Windows)
+      id: install-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $prefix = Join-Path $env:RUNNER_TEMP 'gddy-bin'
+        New-Item -ItemType Directory -Path $prefix -Force | Out-Null
+
+        $scriptArgs = @{ Prefix = $prefix }
+        if ('${{ inputs.version }}' -ne 'latest') {
+          $scriptArgs['Version'] = '${{ inputs.version }}'
+        }
+
+        & "${{ github.action_path }}\..\install.ps1" @scriptArgs
+
+        $installedVersion = & "$prefix\gddy.exe" --version
+
+        Add-Content -Path $env:GITHUB_PATH -Value $prefix
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$prefix"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$installedVersion"

@@ -22,6 +22,12 @@
       "include-component-in-tag": false,
       "draft": true,
       "force-tag-creation": true
+    },
+    "action": {
+      "release-type": "simple",
+      "component": "action",
+      "include-component-in-tag": true,
+      "draft": false
     }
   }
 }
