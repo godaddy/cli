@@ -61,7 +61,7 @@ runs:
         $prefix = Join-Path $env:RUNNER_TEMP 'gddy-bin'
         New-Item -ItemType Directory -Path $prefix -Force | Out-Null
 
-        $scriptArgs = @{ Prefix = $prefix }
+        $scriptArgs = @{ Prefix = $prefix; SkipPathUpdate = $true }
         if ($env:GDDY_VERSION -ne 'latest') {
           $scriptArgs['Version'] = $env:GDDY_VERSION
         }
