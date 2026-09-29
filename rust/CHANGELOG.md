@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.23](https://github.com/godaddy/cli/compare/v0.2.22...v0.2.23) (2026-09-29)
+
+
+### Features
+
+* **import:** replace init from-existing with a dedicated import command ([#266](https://github.com/godaddy/cli/issues/266)) ([7c9d4db](https://github.com/godaddy/cli/commit/7c9d4db8e72a595461f18fe02bb6afb51b71ecb3))
+* **spec:** add dedicated command for full spec output ([#285](https://github.com/godaddy/cli/issues/285)) ([0551a80](https://github.com/godaddy/cli/commit/0551a802f9479abc491fa8643779d4eab59776ea))
+
+
+### Bug Fixes
+
+* **purchase:** tell AI assistants to confirm price before charging ([#299](https://github.com/godaddy/cli/issues/299)) ([7731ba2](https://github.com/godaddy/cli/commit/7731ba27df71eb1f53e6ebec432b2ef67fa15065))
+
 ## [0.2.22](https://github.com/godaddy/cli/compare/v0.2.21...v0.2.22) (2026-09-28)
 
 
