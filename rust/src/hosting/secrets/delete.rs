@@ -16,8 +16,8 @@ struct SecretDeleteArgs {
     name: String,
 
     /// Target environment (PREVIEW or PUBLISH). Defaults to PREVIEW.
-    #[arg(long, value_name = "VARIANT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
-    variant: String,
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
+    app_environment: String,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -25,7 +25,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<SecretDeleteArgs>("delete", "Delete an application secret")
             .with_long(
                 "Delete a secret from a hosting application. \
-                 Use --variant to target PREVIEW or PUBLISH (defaults to PREVIEW). \
+                 Use --app-environment to target PREVIEW or PUBLISH (defaults to PREVIEW). \
                  System-managed secrets cannot be deleted.",
             )
             .with_system("hosting")
@@ -39,7 +39,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(GddyError::into_cli_error)?;
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .patch_secrets(&app_id, &args.variant, patch)
+                .patch_secrets(&app_id, &args.app_environment, patch)
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![

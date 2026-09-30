@@ -15,8 +15,8 @@ struct SecretSyncArgs {
     app_id: String,
 
     /// Target environment (PREVIEW or PUBLISH). Defaults to PREVIEW.
-    #[arg(long, value_name = "VARIANT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
-    variant: String,
+    #[arg(long = "app-environment", alias = "variant", value_name = "ENVIRONMENT", value_parser = ["PREVIEW", "PUBLISH"], default_value = "PREVIEW")]
+    app_environment: String,
 
     /// Secrets to add, as a JSON array: '[{"name":"K","value":"V"}]'.
     #[arg(long, value_name = "JSON")]
@@ -83,7 +83,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let client = make_client(&ctx, &[SECRET_WRITE]).await?;
             let data = client
-                .patch_secrets(&app_id, &args.variant, patch)
+                .patch_secrets(&app_id, &args.app_environment, patch)
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![

@@ -32,7 +32,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
              upload` for a local zip. Returns immediately — poll `hosting source status` \
              until status is COMPLETED or FAILED. Once the import finishes, the new code \
              is live on the PREVIEW URL from `hosting app get`. Try it there before \
-             running `hosting deployment publish` to promote it to PUBLISH.",
+             running `hosting deployment publish`, which makes your app available on its public URL.",
         )
         .with_system("hosting")
         .with_tier(Tier::Mutate)
@@ -56,8 +56,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     "hosting source status --app-id <app-id> --import-id <id>",
                     "Poll until import completes",
                 )
-                .with_param("app-id", NextActionParam::value(app_id))
+                .with_param("app-id", NextActionParam::value(app_id.clone()))
                 .with_param("import-id", NextActionParam::value(import_id)),
+                next_action(
+                    "hosting deployment publish --app-id <app-id>",
+                    "Publish to your public URL once preview looks good",
+                )
+                .with_param("app-id", NextActionParam::value(app_id)),
             ]))
         },
     )
