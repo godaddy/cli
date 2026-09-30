@@ -276,6 +276,7 @@ mod tests {
             name: Some("My Display Name".to_owned()),
             support_contact: support_contact.to_owned(),
             android_package_name: "com.example.app".to_owned(),
+            accept_agreements: false,
         }
     }
 
@@ -306,6 +307,7 @@ mod tests {
                 "support@example.com",
                 "--android-package-name",
                 "com.example.app",
+                "--accept-agreements",
             ])
             .expect("native-extension flags should be accepted");
     }
@@ -518,6 +520,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
         )
         .await
         .expect("sync native extension");
@@ -597,6 +600,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
         )
         .await
         .expect_err("remote update must fail");

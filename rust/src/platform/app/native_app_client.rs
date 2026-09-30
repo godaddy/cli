@@ -17,6 +17,28 @@ pub(crate) struct NativeAppInput {
     pub(crate) status: String,
 }
 
+/// Fields this command owns on an existing record.
+///
+/// Categories, description, and status stay off the PATCH. Core writes every
+/// key that is present, so an empty string would clear a portal-owned value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeAppUpdate {
+    pub(crate) name: String,
+    pub(crate) support_email: String,
+    pub(crate) android_package_name: String,
+}
+
+impl NativeAppUpdate {
+    fn from_input(input: &NativeAppInput) -> Self {
+        Self {
+            name: input.name.clone(),
+            support_email: input.support_email.clone(),
+            android_package_name: input.android_package_name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NativeApp {
@@ -71,6 +93,12 @@ impl std::fmt::Display for DisplayMessage {
         } else {
             Ok(())
         }
+    }
+}
+
+impl From<NativeAppClientError> for cli_engine::CliCoreError {
+    fn from(error: NativeAppClientError) -> Self {
+        crate::error::GddyError::from(error).into_cli_error()
     }
 }
 
@@ -184,7 +212,7 @@ impl NativeAppClient {
     pub(crate) async fn update(
         &self,
         application_id: &str,
-        input: &NativeAppInput,
+        input: &NativeAppUpdate,
     ) -> Result<NativeApp, NativeAppClientError> {
         let request = self
             .http
@@ -223,7 +251,8 @@ impl NativeAppClient {
         Fut: Future<Output = Result<String, E>>,
     {
         if self.get(application_id).await?.is_some() {
-            self.update(application_id, input).await?;
+            self.update(application_id, &NativeAppUpdate::from_input(input))
+                .await?;
             return Ok(UpsertOperation::Updated);
         }
 
@@ -461,12 +490,8 @@ mod tests {
                     .path("/api/v1/native-apps/app-1")
                     .json_body(json!({
                         "name": "Example Native App",
-                        "description": "Example description",
                         "supportEmail": "support@example.com",
-                        "appCategory": "",
-                        "merchantCategory": "",
-                        "androidPackageName": "com.example.app",
-                        "status": "draft"
+                        "androidPackageName": "com.example.app"
                     }));
                 then.status(200).json_body(json!({
                     "success": true,
@@ -508,7 +533,7 @@ mod tests {
             .await;
 
         let error = NativeAppClient::new(server.base_url(), "test-token")
-            .update("app-1", &input())
+            .update("app-1", &NativeAppUpdate::from_input(&input()))
             .await
             .expect_err("immutable package name must fail");
         let message = error.to_string();

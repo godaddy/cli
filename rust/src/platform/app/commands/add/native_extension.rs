@@ -21,6 +21,12 @@ pub(super) struct NativeExtensionArgs {
     /// Android package name written into godaddy.toml as android_package_name.
     #[arg(long = "android-package-name", value_name = "PACKAGE")]
     pub(super) android_package_name: String,
+
+    /// Accept GoDaddy Developer agreements non-interactively when onboarding
+    /// is still pending (required for non-TTY). Used only when creating a
+    /// native-app record.
+    #[arg(long)]
+    pub(super) accept_agreements: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +109,7 @@ pub(super) async fn sync_native_extension(
     token: &str,
     app_registry_url: &str,
     devx_core_url: &str,
+    accept_agreements: bool,
 ) -> cli_engine::Result<NativeExtensionRegistration> {
     let app_registry =
         crate::platform::app::client::ApplicationClient::new(app_registry_url, token.to_owned());
@@ -125,23 +132,19 @@ pub(super) async fn sync_native_extension(
         android_package_name: native.android_package_name.clone(),
         status: "draft".to_owned(),
     };
-    // Only a create needs the organization, so an update never calls onboarding.
-    let onboarding = crate::platform::app::onboarding::OnboardingClient::new(devx_core_url);
+    // Only a create needs the agreement gate. An update never calls onboarding,
+    // and the PATCH carries only the fields this command owns.
     let operation = NativeAppClient::new(devx_core_url, token)
         .upsert(&application_id, &input, || async {
-            onboarding
-                .status(token)
-                .await
-                .map(|status| status.org_id)
-                .map_err(|error| {
-                    crate::error::GddyError::network(format!(
-                        "Could not obtain the organization for native-app registration: {error}"
-                    ))
-                    .with_system("applications")
-                })
+            crate::platform::app::onboarding::ensure_ready_for_app_init_at(
+                token,
+                devx_core_url,
+                accept_agreements,
+            )
+            .await
+            .map(|outcome| outcome.org_id)
         })
-        .await
-        .map_err(crate::error::GddyError::into_cli_error)?;
+        .await?;
 
     Ok(NativeExtensionRegistration {
         application_id,
@@ -164,7 +167,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             and falls back to the application name. The local file is written only \
             after the remote record succeeds, and rerunning safely reconciles either \
             an existing remote record or an existing local section. The record is \
-            requested as a draft, but DevX Core may currently store it as active.",
+            requested as a draft, but DevX Core may currently store it as active. \
+            Creating a record requires accepted developer agreements; a non-interactive \
+            session passes --accept-agreements when onboarding is still pending. \
+            Updating an existing record leaves portal-owned categories and description \
+            unchanged.",
         )
         .with_system("applications")
         .with_tier(Tier::Mutate)
@@ -185,8 +192,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 })?;
             // Resolve credentials only after all local validation has passed.
             let token = ctx.credential().await?.token;
-            let registration =
-                sync_native_extension(&config, &token, &app_registry_url, &devx_core_url).await?;
+            let registration = sync_native_extension(
+                &config,
+                &token,
+                &app_registry_url,
+                &devx_core_url,
+                args.accept_agreements,
+            )
+            .await?;
             crate::config::write_config(&path, &config).map_err(|error| {
                 crate::error::GddyError::config(format!(
                     "The DevX Core native-app record was {} for application {}, but {} could not be updated: {error}",
@@ -244,6 +257,7 @@ mod tests {
             name: Some("My Display Name".to_owned()),
             support_contact: support_contact.to_owned(),
             android_package_name: "com.example.app".to_owned(),
+            accept_agreements: false,
         }
     }
 
@@ -419,6 +433,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
         )
         .await
         .expect("sync native extension");
@@ -465,7 +480,12 @@ mod tests {
         let update = devx_core
             .mock_async(|when, then| {
                 when.method(Method::PATCH)
-                    .path("/api/v1/native-apps/app-registry-id");
+                    .path("/api/v1/native-apps/app-registry-id")
+                    .json_body(json!({
+                        "name": "My Display Name",
+                        "supportEmail": "support@example.com",
+                        "androidPackageName": "com.example.app"
+                    }));
                 then.status(200).json_body(json!({
                     "success": true,
                     "data": native_app_json()
@@ -485,6 +505,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
         )
         .await
         .expect("update should not need onboarding");
@@ -493,6 +514,193 @@ mod tests {
         get.assert_async().await;
         update.assert_async().await;
         assert_eq!(onboarding.calls_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn sync_create_requires_accepted_agreements_when_onboarding_is_pending() {
+        let app_registry = MockServer::start_async().await;
+        app_registry
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/v1/apps/app-registry-subgraph");
+                then.status(200).json_body(json!({
+                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                }));
+            })
+            .await;
+        let devx_core = MockServer::start_async().await;
+        let onboarding = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "PENDING"
+                    }
+                }));
+            })
+            .await;
+        let complete = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/cli");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "organizationId": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "ACTIVE"
+                    }
+                }));
+            })
+            .await;
+        let get = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::GET)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200)
+                    .json_body(json!({ "success": true, "data": null }));
+            })
+            .await;
+        let create = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let mut config = test_config();
+        apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+
+        let error = sync_native_extension(
+            &config,
+            "test-token",
+            &app_registry.base_url(),
+            &devx_core.base_url(),
+            false,
+        )
+        .await
+        .expect_err("pending onboarding must block create");
+
+        let envelope = cli_engine::build_error_envelope(&error, "applications");
+        assert_eq!(
+            envelope.error.as_ref().map(|item| item.code.as_str()),
+            Some("AGREEMENTS_REQUIRED")
+        );
+        assert!(
+            error.to_string().contains("agreements must be accepted"),
+            "{error}"
+        );
+        get.assert_async().await;
+        onboarding.assert_async().await;
+        assert_eq!(complete.calls_async().await, 0);
+        assert_eq!(create.calls_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn sync_create_completes_pending_onboarding_when_agreements_are_accepted() {
+        let app_registry = MockServer::start_async().await;
+        app_registry
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/v1/apps/app-registry-subgraph");
+                then.status(200).json_body(json!({
+                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                }));
+            })
+            .await;
+        let devx_core = MockServer::start_async().await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "PENDING"
+                    }
+                }));
+            })
+            .await;
+        let complete = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/cli");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "organizationId": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "ACTIVE"
+                    }
+                }));
+            })
+            .await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::GET)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200)
+                    .json_body(json!({ "success": true, "data": null }));
+            })
+            .await;
+        let create = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/api/v1/native-apps/app-registry-id")
+                    .json_body(json!({
+                        "organizationId": "550e8400-e29b-41d4-a716-446655440001",
+                        "name": "My Display Name",
+                        "description": "test",
+                        "supportEmail": "support@example.com",
+                        "appCategory": "",
+                        "merchantCategory": "",
+                        "androidPackageName": "com.example.app",
+                        "status": "draft"
+                    }));
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::PATCH)
+                    .path("/api/v1/native-apps/app-registry-id")
+                    .json_body(json!({ "supportEmail": "support@example.com" }));
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let mut config = test_config();
+        apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+
+        let registration = sync_native_extension(
+            &config,
+            "test-token",
+            &app_registry.base_url(),
+            &devx_core.base_url(),
+            true,
+        )
+        .await
+        .expect("accepted agreements should allow create");
+
+        assert_eq!(registration.operation, UpsertOperation::Created);
+        complete.assert_async().await;
+        create.assert_async().await;
     }
 
     #[tokio::test]
@@ -555,6 +763,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
         )
         .await
         .expect_err("remote update must fail");
