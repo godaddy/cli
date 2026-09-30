@@ -62,7 +62,7 @@ pub async fn ensure_ready_for_app_init(
         )));
     };
 
-    ensure_ready_for_app_init_at(token, base_url, accept_agreements).await
+    ensure_ready_for_app_init_at(token, &base_url, accept_agreements).await
 }
 
 /// Same gate as [`ensure_ready_for_app_init`], against an already resolved DevX Core URL.

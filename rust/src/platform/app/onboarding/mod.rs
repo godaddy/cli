@@ -4,7 +4,6 @@ mod flow;
 mod prompt;
 mod types;
 
-pub(crate) use client::OnboardingClient;
 pub use ensure::ensure_ready_for_app_init;
 pub(crate) use ensure::ensure_ready_for_app_init_at;
 // Only consumed by this module family's own `#[cfg(test)]` code
