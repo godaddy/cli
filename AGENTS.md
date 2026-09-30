@@ -48,6 +48,10 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 - `rust/src/shopping/product_actions.rs` maps Shopping line-item categories to post-purchase CLI guidance.
 - When adding a product purchasable through `shopping` that has a follow-up CLI flow, add its category-to-guide action there and cover it with a unit test. Keep the action list limited to product-specific next steps.
 
+## Purchase confirmation (Required)
+
+Commands that charge money or request user consent should follow the examples of the `domain purchase` and `shopping checkout complete` commands on insisting that agents require explicit consent from users.
+
 ## Command Patterns (Required)
 
 - Commands are `RuntimeCommandSpec` (or `RuntimeGroupSpec` for groups).

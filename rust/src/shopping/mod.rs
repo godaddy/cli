@@ -18,7 +18,12 @@ pub(crate) const SHOPPING_SCOPES: &[&str] = &[
     SHOPPING_ORDER_READ,
 ];
 
-pub(crate) const AGENT_AGREEMENT_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation. Do not infer agreement from a request to purchase.";
+pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or completing checkout, show the end \
+    user the checkout session's final total (including all fees), each \
+    required agreement's title AND link, and every important link. Then \
+    obtain their explicit confirmation to proceed. Do not summarize an \
+    agreement by name only — the user must be able to click through and \
+    read it. Do not infer approval from a request to purchase.";
 
 pub(crate) fn command_for_env(_env: &str, command: impl AsRef<str>) -> String {
     format!("shopping {}", command.as_ref())
