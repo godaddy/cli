@@ -87,7 +87,7 @@ declare_scopes! {
     /// app-registry mutation commands (`platform app init/update/enable/disable/
     /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
     /// requests it on demand (OAuth step-up). Read commands such as
-    /// `platform app enablements` use [`APP_REGISTRY_READ`] only.
+    /// `platform app enablement` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
@@ -343,6 +343,71 @@ fn walk_group(
     }
     for sub in &group.groups {
         walk_group(sub, path.clone(), out);
+    }
+}
+
+/// Maps every alias spelling of a command's invocation path (plus the
+/// canonical path itself) to that canonical path — e.g. both `"domain
+/// agreements"` and `"domain agreement"` map to `"domain agreement"`.
+///
+/// `--command` on `gddy auth scope` otherwise only recognizes the exact
+/// canonical path [`command_scopes`] derives from `group.name`/`spec.name`:
+/// without this, a `--command` value spelled with a hidden plural alias
+/// (one still accepted by the real parser) would be wrongly rejected as
+/// unknown here.
+pub(crate) fn command_path_aliases() -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for module in crate::all_modules() {
+        walk_group_aliases(
+            &cli_engine::build_module_group(&module),
+            Vec::new(),
+            vec![Vec::new()],
+            &mut out,
+        );
+    }
+    out
+}
+
+fn walk_group_aliases(
+    group: &cli_engine::RuntimeGroupSpec,
+    canonical_prefix: Vec<String>,
+    alias_prefixes: Vec<Vec<String>>,
+    out: &mut std::collections::HashMap<String, String>,
+) {
+    let mut canonical = canonical_prefix;
+    canonical.push(group.group.name.clone());
+
+    let mut group_names = vec![group.group.name.clone()];
+    group_names.extend(group.group.aliases.iter().cloned());
+
+    let mut new_alias_prefixes = Vec::new();
+    for prefix in &alias_prefixes {
+        for name in &group_names {
+            let mut variant = prefix.clone();
+            variant.push(name.clone());
+            new_alias_prefixes.push(variant);
+        }
+    }
+
+    for command in &group.commands {
+        let mut canonical_cmd = canonical.clone();
+        canonical_cmd.push(command.spec.name.clone());
+        let canonical_path = canonical_cmd.join(" ");
+
+        let mut cmd_names = vec![command.spec.name.clone()];
+        cmd_names.extend(command.spec.aliases.iter().cloned());
+
+        for prefix in &new_alias_prefixes {
+            for cmd_name in &cmd_names {
+                let mut variant = prefix.clone();
+                variant.push(cmd_name.clone());
+                out.insert(variant.join(" "), canonical_path.clone());
+            }
+        }
+    }
+
+    for sub in &group.groups {
+        walk_group_aliases(sub, canonical.clone(), new_alias_prefixes.clone(), out);
     }
 }
 
