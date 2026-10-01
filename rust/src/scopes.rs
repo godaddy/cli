@@ -99,7 +99,7 @@ declare_scopes! {
     DOMAINS_DNS_UPDATE => "domains.dns:update",
     /// Register a domain — the v3 registration-execute step (`domain purchase`).
     DOMAINS_CREATE => "domains.domain:create",
-    /// Replace a domain's nameservers (`domain nameservers set`).
+    /// Replace a domain's nameservers (`domain nameserver set`).
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
 
     /// Read hosting applications (`hosting app list/get/status`).
@@ -116,9 +116,9 @@ declare_scopes! {
     HOSTING_SOURCE_READ => "hosting.source:read",
     /// Create a source import (`hosting import create`).
     HOSTING_SOURCE_WRITE => "hosting.source:write",
-    /// Read application secrets (`hosting secrets list`).
+    /// Read application secrets (`hosting secret list`).
     HOSTING_SECRET_READ => "hosting.secret:read",
-    /// Write application secrets (`hosting secrets create/update/delete/sync`).
+    /// Write application secrets (`hosting secret create/update/delete/sync`).
     HOSTING_SECRET_WRITE => "hosting.secret:write",
     /// Read application logs (`hosting log list`).
     HOSTING_LOG_READ => "hosting.log:read",
@@ -152,7 +152,7 @@ declare_scopes! {
 }
 
 /// A requestable scope, its human description, and whether it is requested at
-/// login by default. Backs `gddy auth scopes`. Descriptions are hand-ported
+/// login by default. Backs `gddy auth scope`. Descriptions are hand-ported
 /// from the doc comments above — the only part of this table that can't be
 /// derived at runtime; which commands use a scope is instead derived live via
 /// [`command_scopes`].
@@ -162,7 +162,7 @@ pub struct ScopeInfo {
     pub default: bool,
 }
 
-/// Every requestable scope, described for `gddy auth scopes`. Keep in sync
+/// Every requestable scope, described for `gddy auth scope`. Keep in sync
 /// with the constants above (`scope_registry_covers_every_declared_scope`
 /// enforces the constant side of this; `scope_registry_default_flag_matches_default_oauth_scopes`
 /// enforces that the `default` flag exactly matches
@@ -316,7 +316,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
 /// Derived by walking each module's real command tree via
 /// [`cli_engine::build_module_group`] — the same tree `main` mounts — so this
 /// can never drift from what the CLI actually registers. Backs both `gddy
-/// auth scopes` and [`tests::scope_registry_non_default_entries_are_wired_to_a_command`].
+/// auth scope` and [`tests::scope_registry_non_default_entries_are_wired_to_a_command`].
 pub(crate) fn command_scopes() -> Vec<(String, Vec<String>)> {
     let mut out = Vec::new();
     for module in crate::all_modules() {
@@ -375,7 +375,7 @@ mod tests {
 
     /// [`SCOPE_REGISTRY`] must describe every scope requiring OAuth client
     /// registration — `ALL` plus the standalone directive scopes
-    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scopes` would silently omit a
+    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scope` would silently omit a
     /// scope an agent needs to plan an eager login around.
     #[test]
     fn scope_registry_covers_every_declared_scope() {
@@ -414,7 +414,7 @@ mod tests {
     /// [`SCOPE_REGISTRY`]'s `default` flag must exactly match
     /// [`crate::environments::DEFAULT_OAUTH_SCOPES`] — the module doc on
     /// [`SCOPE_REGISTRY`] used to call this out as an unenforced invariant;
-    /// this is that check. If they drift, `gddy auth scopes --defaults-only`
+    /// this is that check. If they drift, `gddy auth scope --defaults-only`
     /// would misdescribe which scopes actually get requested at login.
     #[test]
     fn scope_registry_default_flag_matches_default_oauth_scopes() {

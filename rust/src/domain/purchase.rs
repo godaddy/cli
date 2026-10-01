@@ -149,7 +149,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             the price. `purchase` accepts the token, records your consent to the \
             quote's legal agreements (--agree), then registers and waits for the \
             registry to finish. A usable payment method must be on file — add \
-            one with `gddy payment-methods add`.\n\
+            one with `gddy payment-method add`.\n\
             \n\
             {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}\n\
             \n\

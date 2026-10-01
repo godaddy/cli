@@ -1,4 +1,4 @@
-//! `gddy auth scopes` — list every OAuth scope the CLI can request, and which
+//! `gddy auth scope` — list every OAuth scope the CLI can request, and which
 //! commands need it.
 //!
 //! Lets an agent driving a multi-step workflow discover every scope it will
@@ -87,13 +87,14 @@ struct ScopesArgs {
 
 pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ScopesArgs, _, _, _>(
-        CommandSpec::from_args::<ScopesArgs>("scopes", "List requestable OAuth scopes")
+        CommandSpec::from_args::<ScopesArgs>("scope", "List requestable OAuth scopes")
+            .with_alias("scopes")
             .with_long(
                 "List every OAuth scope the CLI can request, its description, whether \
                  it's requested at login by default, and which commands need it.\n\
                  \n\
                  Useful for planning an eager login before a multi-step workflow: run \
-                 `gddy auth scopes --non-default` to see which scopes require an \
+                 `gddy auth scope --non-default` to see which scopes require an \
                  explicit `--scope`, then pass each one to `gddy auth login --scope <s>` \
                  up front to avoid an interactive step-up prompt mid-workflow.",
             )
@@ -146,10 +147,19 @@ mod tests {
         )
     }
 
-    /// `auth scopes` is pure static/derived data: it must run with no auth
+    /// `auth scope` is pure static/derived data: it must run with no auth
     /// provider registered at all, just like `auth status`.
     #[tokio::test]
     async fn auth_scopes_runs_without_auth() {
+        let output = cli()
+            .run(["gddy", "auth", "scope", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 0, "rendered output: {}", output.rendered);
+    }
+
+    /// The old plural name must keep working as a hidden alias.
+    #[tokio::test]
+    async fn auth_scopes_plural_alias_still_resolves() {
         let output = cli()
             .run(["gddy", "auth", "scopes", "--output", "json"])
             .await;

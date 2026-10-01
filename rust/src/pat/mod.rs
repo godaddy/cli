@@ -286,8 +286,10 @@ fn registry_path_err() -> Result<std::path::PathBuf, CliCoreError> {
 pub fn module() -> Module {
     Module::new("Admin", |_ctx| {
         RuntimeGroupSpec::new(
-            GroupSpec::new("pat", "Manage Personal Access Tokens (PATs)").with_long(
-                "Store and manage Personal Access Tokens for non-interactive GoDaddy \
+            GroupSpec::new("pat", "Manage Personal Access Tokens (PATs)")
+                .with_alias("pats")
+                .with_long(
+                    "Store and manage Personal Access Tokens for non-interactive GoDaddy \
                          authentication. PATs are created in the Developer Portal and are useful \
                          for CI/CD pipelines and scripts where browser-based OAuth is not \
                          possible.\n\
@@ -298,7 +300,7 @@ pub fn module() -> Module {
                          \n\
                          PATs can also be supplied with the GDDY_PAT or GDDY_PAT_<ENV> \
                          environment variables. See `gddy guide auth`.",
-            ),
+                ),
         )
         .with_command(add_command())
         .with_command(list_command())

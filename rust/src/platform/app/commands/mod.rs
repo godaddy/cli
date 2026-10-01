@@ -83,7 +83,8 @@ pub fn application_group() -> RuntimeGroupSpec {
                 `gddy platform app validate <name>` to check remote application state, and \
                 `gddy platform app deploy` to publish it.",
             )
-            .with_alias("application"),
+            .with_alias("application")
+            .with_alias("apps"),
     )
     .with_command(list::command())
     .with_command(info::command())

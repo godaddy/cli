@@ -88,7 +88,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
-                    "hosting secrets list --app-id <app-id>",
+                    "hosting secret list --app-id <app-id>",
                     "View updated secrets",
                 )
                 .with_param("app-id", NextActionParam::value(app_id)),

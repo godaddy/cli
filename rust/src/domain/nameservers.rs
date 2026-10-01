@@ -1,4 +1,4 @@
-//! `gddy domain nameservers` — manage a domain's nameservers (v3).
+//! `gddy domain nameserver` — manage a domain's nameservers (v3).
 
 use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
@@ -33,10 +33,9 @@ struct NameserversSetArgs {
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "nameservers",
-        "Manage a domain's nameservers",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new("nameserver", "Manage a domain's nameservers").with_alias("nameservers"),
+    )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<
         NameserversSetArgs,
         _,

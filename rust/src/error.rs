@@ -23,12 +23,12 @@ pub(crate) mod codes {
 
 mod fixes {
     pub(super) const NOT_FOUND: &str =
-        "Use discovery commands such as: gddy platform app list or gddy platform actions list.";
+        "Use discovery commands such as: gddy platform app list or gddy platform action list.";
     pub(super) const AMBIGUOUS_MATCH: &str =
         "Narrow the query, or add --method, to match exactly one operation.";
     pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
-    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scopes, or re-authenticate with: gddy auth login";
+    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
     pub(super) const CONFIG: &str = "Check your config with: gddy env info";
     pub(super) const SECURITY: &str =
         "Resolve security findings and rerun: gddy platform app deploy --name <name>";
@@ -287,7 +287,7 @@ mod tests {
         assert!(
             forbidden
                 .error_fix()
-                .is_some_and(|f| f.contains("auth scopes")),
+                .is_some_and(|f| f.contains("auth scope")),
             "{:?}",
             forbidden.error_fix()
         );

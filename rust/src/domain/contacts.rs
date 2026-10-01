@@ -1,4 +1,4 @@
-//! `gddy domain contacts` — manage the local default-contacts file used by
+//! `gddy domain contact` — manage the local default-contacts file used by
 //! `domain quote`/`purchase`. This is a local-file command group; no API/auth.
 
 use cli_engine::{
@@ -18,9 +18,10 @@ struct ContactsInitArgs {
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new(
-            "contacts",
+            "contact",
             "Manage saved default contacts for domain purchases",
         )
+        .with_alias("contacts")
         .with_long(
             "Manage the optional contacts.toml that supplies registrant/admin/billing/\
                  tech contacts for a registration. These are read at `gddy domain quote` \
@@ -87,7 +88,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
     ))
 }
 
-/// Decides what `contacts init` would report, or the error it would return,
+/// Decides what `contact init` would report, or the error it would return,
 /// given whether the file exists and `--force`. Shared by the real execution
 /// and dry-run paths so both agree on when this command would fail.
 fn init_action(
@@ -155,7 +156,7 @@ mod tests {
             .run([
                 "gddy",
                 "domain",
-                "contacts",
+                "contact",
                 "init",
                 "--force",
                 "--dry-run",
@@ -172,5 +173,28 @@ mod tests {
             action == "would create" || action == "would overwrite",
             "unexpected action: {rendered}"
         );
+    }
+
+    /// The old plural name must keep working as a hidden alias.
+    #[tokio::test]
+    async fn contacts_plural_alias_still_resolves() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_module(crate::domain::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "domain",
+                "contacts",
+                "init",
+                "--force",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
     }
 }

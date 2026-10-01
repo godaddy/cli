@@ -254,7 +254,7 @@ mod tests {
             .iter()
             .filter_map(|node| node["name"].as_str())
             .collect();
-        for expected in ["auth", "domain", "dns", "pat", "payment-methods"] {
+        for expected in ["auth", "domain", "dns", "pat", "payment-method"] {
             assert!(
                 names.contains(&expected),
                 "spec should publish {expected:?} among top-level modules: {names:?}"

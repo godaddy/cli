@@ -27,7 +27,7 @@ struct Args {
     #[arg(long, value_name = "TEXT")]
     query: Option<String>,
 
-    /// Product category to include. Run `shopping catalog categories` to list supported values. Repeat to include multiple categories.
+    /// Product category to include. Run `shopping catalog category` to list supported values. Repeat to include multiple categories.
     #[arg(long, value_name = "CATEGORY")]
     category: Vec<String>,
 

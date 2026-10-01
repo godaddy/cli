@@ -33,7 +33,7 @@ The list accepts up to five unique HTTPS URLs, each no longer than 2048 characte
 `gddy platform app add <subcommand>` appends to `godaddy.toml` without any network call:
 
 - `add action --name <name> --url <url>` — an HTTP endpoint the platform calls on the app's behalf.
-- `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook events` to see valid event types.
+- `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook event` to see valid event types.
 - `add extension <embed|checkout|blocks> ...` — a UI extension bundle (see that subcommand's own `--help`).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form or link. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
@@ -73,7 +73,7 @@ gddy platform app enablements --store-id <storeId>
 - `gddy platform app info --name <name>` / `list` — inspect a single app or list all of them (developer catalog, not store enablements).
 - `gddy platform app enablements --store-id <storeId>` — list apps enabled on a store (defaults: name, status, releaseVersion).
 - `gddy platform app archive <name>` — irreversible; confirm the name with `list` first.
-- `gddy platform actions` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
+- `gddy platform action` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
 
 ## See also
 

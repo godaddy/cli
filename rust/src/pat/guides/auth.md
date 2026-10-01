@@ -25,7 +25,7 @@ If you want to authenticate in advance, you can explicitly run:
 gddy auth login
 ```
 
-...and you can ask for specific scopes with repeatable `--scope x` arguments. To view a list of all available scopes, run `gddy auth scopes`.
+...and you can ask for specific scopes with repeatable `--scope x` arguments. To view a list of all available scopes, run `gddy auth scope`.
 
 If you want to check your current authentication status, run `gddy auth status`.
 

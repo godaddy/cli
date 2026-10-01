@@ -79,7 +79,7 @@ in a `contacts.toml` in your `gddy` config directory. The quickest start is to
 generate a template and edit it:
 
 ```
-gddy domain contacts init
+gddy domain contact init
 ```
 
 That writes a starter `contacts.toml` (with every role commented out) to:

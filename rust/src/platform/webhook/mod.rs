@@ -21,7 +21,7 @@ struct WebhookEventsResponse {
     events: Vec<WebhookEvent>,
 }
 
-/// Structured output returned by `webhook events`, matching the TS envelope shape.
+/// Structured output returned by `webhook event`, matching the TS envelope shape.
 #[derive(Serialize)]
 struct WebhookEventsOutput {
     events: Vec<WebhookEvent>,
@@ -95,14 +95,17 @@ async fn fetch_webhook_events(
 /// The webhook command group, composed below `gddy platform`.
 pub fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("webhook", "Manage webhook event types").with_long(
-            "Inspect the webhook event types your application can subscribe to.\n\
+        GroupSpec::new("webhook", "Manage webhook event types")
+            .with_alias("webhooks")
+            .with_long(
+                "Inspect the webhook event types your application can subscribe to.\n\
                      Use `gddy platform app add subscription` to attach a webhook \
                      subscription to an application.",
-        ),
+            ),
     )
     .with_command(RuntimeCommandSpec::new_with_context(
-        CommandSpec::new("events", "List available webhook event types")
+        CommandSpec::new("event", "List available webhook event types")
+            .with_alias("events")
             .with_long(
                 "Returns available webhook event types. Up to 50 events are shown; \
                          if there are more, the output includes a `full_output` field \
@@ -156,13 +159,27 @@ mod tests {
 
     use super::*;
 
-    /// `webhook events` calls the platform API, so it must stay fail-closed
+    /// `webhook event` calls the platform API, so it must stay fail-closed
     /// like every other authenticated command (parity with the deleted TS
     /// webhook-service test's "should throw authentication error"/"should
     /// throw error with null access token" cases — here the credential gate
     /// rejects before the handler ever builds a request).
     #[tokio::test]
     async fn webhook_events_requires_auth() {
+        let cli = cli_engine::Cli::new(
+            cli_engine::CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(cli_engine::Stage::Experimental)
+                .with_module(crate::platform::module()),
+        );
+        let output = cli
+            .run(["gddy", "platform", "webhook", "event", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 2, "{}", output.rendered);
+    }
+
+    /// The old plural leaf name must keep working as a hidden alias.
+    #[tokio::test]
+    async fn webhook_events_plural_alias_requires_auth() {
         let cli = cli_engine::Cli::new(
             cli_engine::CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(cli_engine::Stage::Experimental)
