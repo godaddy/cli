@@ -80,5 +80,5 @@ We're actively working to expand the CLI to cover additional GoDaddy products.
 The CLI also provides access to the GoDaddy Developer Platform for building apps that users of GoDaddy Commerce products can install to their stores.
 
 - `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
-- `gddy platform actions` — discover the action contracts an app can declare
+- `gddy platform action` — discover the action contracts an app can declare
 - `gddy platform webhook` — inspect webhook event types for app subscriptions

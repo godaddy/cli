@@ -22,7 +22,7 @@ pub fn module() -> Module {
                  • app          — Hosting applications (create, inspect, update, delete, restart)\n\
                  • deployment   — Build and deploy application source\n\
                  • source       — Import source code\n\
-                 • secrets      — Application secrets (create, update, delete, list)\n\
+                 • secret       — Application secrets (create, update, delete, list)\n\
                  • log          — Application log entries\n\
                  • runtime      — Application runtime configuration\n\
                  • domain       — Domains attached to an application\n\

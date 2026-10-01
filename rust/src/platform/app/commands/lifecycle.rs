@@ -24,7 +24,7 @@ pub(super) fn enable_command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<EnableDisableArgs>("enable", "Enable an application on a store")
             .with_long(
                 "Make a GoDaddy developer-platform application available on a \
-                specific store. Use `gddy platform app enablements --store-id \
+                specific store. Use `gddy platform app enablement --store-id \
                 <store-id>` to verify what is enabled on that store, and \
                 `gddy platform app disable` to reverse this. Both the \
                 application name and a store ID are required.",
@@ -44,7 +44,7 @@ pub(super) fn enable_command() -> RuntimeCommandSpec {
             Ok(
                 CommandResult::new(data["enableStoreApplication"].clone()).with_next_actions(vec![
                     next_action(
-                        "platform app enablements --store-id <store-id>",
+                        "platform app enablement --store-id <store-id>",
                         "List applications enabled on this store",
                     )
                     .with_param("store-id", required_value(&store_id)),
@@ -90,7 +90,7 @@ pub(super) fn disable_command() -> RuntimeCommandSpec {
                 CommandResult::new(data["disableStoreApplication"].clone()).with_next_actions(
                     vec![
                         next_action(
-                            "platform app enablements --store-id <store-id>",
+                            "platform app enablement --store-id <store-id>",
                             "List applications enabled on this store",
                         )
                         .with_param("store-id", required_value(&store_id)),

@@ -46,7 +46,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
-                next_action("hosting secrets list --app-id <app-id>", "View all secrets")
+                next_action("hosting secret list --app-id <app-id>", "View all secrets")
                     .with_param("app-id", NextActionParam::value(app_id)),
             ]))
         },

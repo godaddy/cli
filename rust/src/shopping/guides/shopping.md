@@ -20,9 +20,9 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 List the currently supported product categories:
 
 ```bash
-gddy shopping catalog categories
+gddy shopping catalog category
 # Fetch current categories instead of using the six-hour cache:
-gddy shopping catalog categories --refresh
+gddy shopping catalog category --refresh
 ```
 
 Search all available products or use a text query:
@@ -75,7 +75,7 @@ The response shows buyer details, checkout-session items, selected and available
 If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
 
 ```bash
-gddy payment-methods add
+gddy payment-method add
 ```
 
 ```bash

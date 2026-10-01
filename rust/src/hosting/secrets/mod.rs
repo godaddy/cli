@@ -9,12 +9,14 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("secrets", "Manage application secrets").with_long(
-            "Create, update, delete, and list secrets for a hosting application. \
+        GroupSpec::new("secret", "Manage application secrets")
+            .with_alias("secrets")
+            .with_long(
+                "Create, update, delete, and list secrets for a hosting application. \
              Secret values are write-only — list returns names only. \
              Use --variant to target PREVIEW (staging) or PUBLISH (production); \
              writes default to PREVIEW.",
-        ),
+            ),
     )
     .with_command(list::command())
     .with_command(create::command())

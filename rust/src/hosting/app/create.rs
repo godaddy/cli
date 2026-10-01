@@ -187,7 +187,7 @@ mod tests {
     fn create_err_keeps_default_fix_for_other_errors() {
         let fix = fix_for(403, "SOMETHING_ELSE", HostingAppType::Mhwp);
         assert!(
-            fix.as_deref().is_some_and(|f| f.contains("auth scopes")),
+            fix.as_deref().is_some_and(|f| f.contains("auth scope")),
             "{fix:?}"
         );
     }
@@ -196,7 +196,7 @@ mod tests {
     fn create_err_keeps_wordpress_hints_off_nodejs() {
         let fix = fix_for(403, "WORDPRESS_NOT_ENABLED", HostingAppType::Nodejs);
         assert!(
-            fix.as_deref().is_some_and(|f| f.contains("auth scopes")),
+            fix.as_deref().is_some_and(|f| f.contains("auth scope")),
             "{fix:?}"
         );
         let fix = fix_for(422, "APP_LIMIT_EXCEEDED", HostingAppType::Nodejs);

@@ -133,9 +133,9 @@ fn status_command() -> RuntimeCommandSpec {
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "operation",
-        "Check the status of async domain operations",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new("operation", "Check the status of async domain operations")
+            .with_alias("operations"),
+    )
     .with_command(status_command())
 }

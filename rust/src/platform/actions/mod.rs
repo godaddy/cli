@@ -77,13 +77,14 @@ struct DescribeArgs {
 /// The action-catalog command group, composed below `gddy platform`.
 pub fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("actions", "Discover available GoDaddy action contracts")
+        GroupSpec::new("action", "Discover available GoDaddy action contracts")
+            .with_alias("actions")
             .with_long(
                 "Browse the catalog of GoDaddy actions your application can declare.\n\
                      An action contract defines the name, and the input/output schema, \
                      of a capability your app exposes to the GoDaddy platform.\n\
-                     Use `gddy platform actions list` to see all available actions, and \
-                     `gddy platform actions describe` to inspect a specific action's schema.",
+                     Use `gddy platform action list` to see all available actions, and \
+                     `gddy platform action describe` to inspect a specific action's schema.",
             ),
     )
         .with_command(RuntimeCommandSpec::new(
@@ -93,7 +94,7 @@ pub fn group() -> RuntimeGroupSpec {
                      application can declare. Shows up to 50 actions by default; \
                      use --limit/--offset to page through the rest once the \
                      catalog grows past that.\n\
-                     Run `gddy platform actions describe <ACTION>` to see the full \
+                     Run `gddy platform action describe <ACTION>` to see the full \
                      input/output schema for a specific action.",
                 )
                 .with_system("actions")
@@ -112,7 +113,7 @@ pub fn group() -> RuntimeGroupSpec {
                     .collect();
                 Ok(CommandResult::new(json!(actions)).with_next_actions(vec![
                     next_action(
-                        "platform actions describe <action>",
+                        "platform action describe <action>",
                         "See an action's full schema",
                     )
                         .with_param("action", NextActionParam::required()),
@@ -127,7 +128,7 @@ pub fn group() -> RuntimeGroupSpec {
             .with_long(
                 "Prints the full JSON schema for the named action contract, \
                      including its expected input fields and the shape of its output.\n\
-                     Run `gddy platform actions list` for the list of valid action names.",
+                     Run `gddy platform action list` for the list of valid action names.",
             )
             .with_system("actions")
             .with_tier(Tier::Read)
@@ -136,7 +137,7 @@ pub fn group() -> RuntimeGroupSpec {
                 let name = args.action;
                 let schema = load_action_schema(&name).ok_or_else(|| {
                     cli_engine::CliCoreError::message(format!(
-                        "action {name:?} not found; run `gddy platform actions list` to see available actions"
+                        "action {name:?} not found; run `gddy platform action list` to see available actions"
                     ))
                 })?;
                 let result = protect_payload(schema, &format!("actions-describe-{name}"));

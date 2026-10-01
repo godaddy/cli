@@ -27,51 +27,61 @@ pub fn module() -> Module {
             ),
         )
         .with_group(
-            RuntimeGroupSpec::new(GroupSpec::new("domain", "Browse API domains").with_long(
-                "Browse the top-level API domains available in the embedded catalog. \
+            RuntimeGroupSpec::new(
+                GroupSpec::new("domain", "Browse API domains")
+                    .with_alias("domains")
+                    .with_long(
+                        "Browse the top-level API domains available in the embedded catalog. \
                      Each domain groups a related set of endpoints under a shared base URL. \
                      Use `api operation list --domain <domain>` to see the endpoints \
                      within a specific domain.",
-            ))
+                    ),
+            )
             .with_command(domain::command()),
         )
         .with_group(
             RuntimeGroupSpec::new(
-                GroupSpec::new("operation", "Browse and inspect API operations").with_long(
-                    "Browse the operations within a single API domain. \
+                GroupSpec::new("operation", "Browse and inspect API operations")
+                    .with_alias("operations")
+                    .with_long(
+                        "Browse the operations within a single API domain. \
                      Use `api domain list` first to find available domain names, \
                      then `api operation get <operationId>` to inspect full parameter \
                      and schema details for an individual operation.",
-                ),
+                    ),
             )
             .with_command(operation::list_command())
             .with_command(operation::get_command()),
         )
         .with_group(
             RuntimeGroupSpec::new(
-                GroupSpec::new("parameter", "Inspect an operation's parameters").with_long(
-                    "Inspect the parameters of a single operation, scoped by `--operation`. \
+                GroupSpec::new("parameter", "Inspect an operation's parameters")
+                    .with_alias("parameters")
+                    .with_long(
+                        "Inspect the parameters of a single operation, scoped by `--operation`. \
                      A request body counts as a parameter here too, under the synthetic name \
                      `body`.",
-                ),
+                    ),
             )
             .with_command(parameter::list_command())
             .with_command(parameter::get_command()),
         )
         .with_group(
             RuntimeGroupSpec::new(
-                GroupSpec::new("response", "Inspect an operation's responses").with_long(
-                    "Inspect the responses of a single operation, scoped by `--operation`.",
-                ),
+                GroupSpec::new("response", "Inspect an operation's responses")
+                    .with_alias("responses")
+                    .with_long(
+                        "Inspect the responses of a single operation, scoped by `--operation`.",
+                    ),
             )
             .with_command(response::list_command())
             .with_command(response::get_command()),
         )
         .with_group(
-            RuntimeGroupSpec::new(GroupSpec::new(
-                "schema",
-                "Inspect a named or inline API schema",
-            ))
+            RuntimeGroupSpec::new(
+                GroupSpec::new("schema", "Inspect a named or inline API schema")
+                    .with_alias("schemas"),
+            )
             .with_command(schema_cmd::get_command()),
         )
         .with_group(graphql::group())

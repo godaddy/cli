@@ -1,4 +1,4 @@
-//! `gddy domain agreements` — the legal agreements a TLD requires (v1).
+//! `gddy domain agreement` — the legal agreements a TLD requires (v1).
 
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
@@ -25,9 +25,10 @@ struct AgreementsArgs {
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AgreementsArgs, _, _, _>(
         CommandSpec::from_args::<AgreementsArgs>(
-            "agreements",
+            "agreement",
             "Show the legal agreements required to register a TLD",
         )
+        .with_alias("agreements")
         .with_long(
             "List the legal agreements you must consent to before registering under \
                  a TLD. `domain quote` also returns the agreements specific to a domain; \

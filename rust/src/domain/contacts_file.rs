@@ -10,7 +10,7 @@
 //! sends each role that is present; absent roles fall back to the account default.
 //!
 //! `domain purchase` only ever reads this file; the sole writer is
-//! `domain contacts init`, which scaffolds a commented starter template the user
+//! `domain contact init`, which scaffolds a commented starter template the user
 //! then edits by hand. See `gddy guide domain-purchase` for the format.
 
 use domains_client::types as api;
@@ -235,7 +235,7 @@ pub fn load() -> Result<ContactsFile, ContactsError> {
     }
 }
 
-/// A starter `contacts.toml` for `domain contacts init`.
+/// A starter `contacts.toml` for `domain contact init`.
 ///
 /// Every role is commented out, so the file parses to "no defaults" (all roles
 /// fall back to the account) until the user deliberately uncomments and fills a

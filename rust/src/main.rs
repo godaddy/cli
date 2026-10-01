@@ -33,7 +33,7 @@ use crate::next_action::next_action;
 
 /// The full set of `gddy` command modules, shared between `main`'s
 /// [`CliConfig`] wiring and anything that needs to walk the real command
-/// tree standalone (e.g. `auth scopes`'s live scope→command correlation via
+/// tree standalone (e.g. `auth scope`'s live scope→command correlation via
 /// [`cli_engine::build_module_group`]), so both draw from exactly one list.
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
@@ -71,7 +71,7 @@ async fn main() -> ExitCode {
                  • domain   — list your domains, check availability, get suggestions, and register new ones\n  \
                  • dns      — view and edit a domain's DNS records\n  \
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
-                 • payment-methods — manage the payment methods used for purchases\n\
+                 • payment-method — manage the payment methods used for purchases\n\
                  \n\
                  Most commands need authentication; run `gddy auth login` first, or use a PAT via `gddy pat add` / `GDDY_PAT` for non-interactive workflows (or just run a\n\
                  command and follow the prompt). Use `--env` to target an environment and\n\
@@ -243,7 +243,7 @@ mod tests {
         for path in [
             "platform",
             "platform app",
-            "platform actions",
+            "platform action",
             "platform webhook",
         ] {
             assert!(
@@ -261,7 +261,7 @@ mod tests {
             ),
             (
                 ["gddy", "platform", "webhook", "--help"].as_slice(),
-                "events",
+                "event",
             ),
             (
                 ["gddy", "platform", "application", "--help"].as_slice(),
@@ -356,7 +356,7 @@ mod tests {
             "dns",
             "env",
             "pat",
-            "payment-methods",
+            "payment-method",
             "tree",
         ] {
             assert!(

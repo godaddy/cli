@@ -44,7 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(client_err)?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
-                    "hosting secrets list --app-id <app-id>",
+                    "hosting secret list --app-id <app-id>",
                     "Verify the secret was removed",
                 )
                 .with_param("app-id", NextActionParam::value(app_id))

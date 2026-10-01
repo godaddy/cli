@@ -100,10 +100,13 @@ fn get_command() -> RuntimeCommandSpec {
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "type",
-        "Look up a named GraphQL object, input, or enum type",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new(
+            "type",
+            "Look up a named GraphQL object, input, or enum type",
+        )
+        .with_alias("types"),
+    )
     .with_command(get_command())
 }
 

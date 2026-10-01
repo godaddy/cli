@@ -1,4 +1,4 @@
-//! `gddy platform app enablements` — list apps enabled on a commerce store.
+//! `gddy platform app enablement` — list apps enabled on a commerce store.
 
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
@@ -57,9 +57,10 @@ fn flatten_enablements(data: Value) -> Value {
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<EnablementsArgs, _, _, _>(
         CommandSpec::from_args::<EnablementsArgs>(
-            "enablements",
+            "enablement",
             "List applications enabled on a store",
         )
+        .with_alias("enablements")
         .with_long(
             "List GoDaddy developer-platform applications currently enabled on \
             a specific commerce store. This is the read counterpart to \
@@ -188,7 +189,7 @@ mod tests {
                 "gddy",
                 "platform",
                 "app",
-                "enablements",
+                "enablement",
                 "--store-id",
                 "store-123",
                 "--output",
@@ -199,7 +200,7 @@ mod tests {
         const AUTH_FAILURE_EXIT: i32 = 2;
         assert_eq!(
             output.exit_code, AUTH_FAILURE_EXIT,
-            "platform app enablements must fail closed at auth resolution, got: {}",
+            "platform app enablement must fail closed at auth resolution, got: {}",
             output.rendered
         );
         let json: serde_json::Value =
@@ -210,5 +211,45 @@ mod tests {
             "expected an auth-provider resolution error, got: {}",
             output.rendered
         );
+    }
+
+    /// The old plural leaf name must keep working as a hidden alias — not
+    /// just "any exit code 2" (clap also returns that for an unrecognized
+    /// subcommand), but the exact same rejection as the canonical command.
+    #[tokio::test]
+    async fn platform_app_enablements_plural_alias_requires_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_default_auth_provider("godaddy")
+                .with_module(crate::platform::module()),
+        );
+
+        let canonical = cli
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "enablement",
+                "--store-id",
+                "store-123",
+                "--output",
+                "json",
+            ])
+            .await;
+        let aliased = cli
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "enablements",
+                "--store-id",
+                "store-123",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(aliased.exit_code, 2, "{}", aliased.rendered);
+        assert_eq!(aliased.rendered, canonical.rendered);
     }
 }
