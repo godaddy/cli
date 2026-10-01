@@ -61,7 +61,7 @@ gddy domain list                  # list domains in your account
 
 Most commands need authentication. You may be taken through an interactive login process if you are not currently logged in, if your login has expired, or if your last auth token needs additional permissions. Run `gddy auth login` to log in explicitly.
 
-For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead; store the PAT with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
+For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead. Run `gddy pat create` to open the page where you can generate one, then store it with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
 
 ## What you can do
 
