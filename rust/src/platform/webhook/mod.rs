@@ -177,7 +177,10 @@ mod tests {
         assert_eq!(output.exit_code, 2, "{}", output.rendered);
     }
 
-    /// The old plural leaf name must keep working as a hidden alias.
+    /// The old plural leaf name must keep working as a hidden alias — not just
+    /// "any exit code 2", which clap also returns for an unrecognized
+    /// subcommand, but the exact same rejection as the canonical `event`
+    /// invocation, proving the alias actually resolved to the real command.
     #[tokio::test]
     async fn webhook_events_plural_alias_requires_auth() {
         let cli = cli_engine::Cli::new(
@@ -185,10 +188,17 @@ mod tests {
                 .with_min_stage(cli_engine::Stage::Experimental)
                 .with_module(crate::platform::module()),
         );
-        let output = cli
+        let canonical = cli
+            .run(["gddy", "platform", "webhook", "event", "--output", "json"])
+            .await;
+        let aliased = cli
             .run(["gddy", "platform", "webhook", "events", "--output", "json"])
             .await;
-        assert_eq!(output.exit_code, 2, "{}", output.rendered);
+        assert_eq!(aliased.exit_code, 2, "{}", aliased.rendered);
+        assert_eq!(
+            aliased.rendered, canonical.rendered,
+            "the `events` alias must fail identically to the canonical `event` command"
+        );
     }
 
     // --- fetch_webhook_events: HTTP wiring ---

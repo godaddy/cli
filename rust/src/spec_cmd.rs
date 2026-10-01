@@ -319,7 +319,7 @@ mod tests {
             .iter()
             .filter_map(|node| node["name"].as_str())
             .collect();
-        for expected in ["login", "status", "logout", "scopes"] {
+        for expected in ["login", "status", "logout", "scope"] {
             assert!(
                 names.contains(&expected),
                 "auth should publish {expected:?} among its commands: {names:?}"
