@@ -29,7 +29,7 @@ fancy-regex = "0.14"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
 globset = "0.4"
-open = "5"
+open = "5.4.1"
 oxc_allocator = "0.143"
 oxc_ast = "0.143"
 oxc_ast_visit = "0.143"
