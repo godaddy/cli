@@ -35,7 +35,7 @@ Personal Access Tokens, or PATs, allow you to assign permissions to the CLI in c
 
 ### Creating a PAT
 
-1. Sign in to the [Personal Access Token page](https://developer.godaddy.com/personal-access-token).
+1. Run `gddy pat create` to open the [Personal Access Token page](https://developer.godaddy.com/personal-access-token) in your browser (or sign in there directly).
 2. Click **+ Generate Token**.
 3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (see the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes) — e.g. `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
 4. Click **Generate Token**. The token is shown once in a "Copy your new token" dialog — copy it immediately. You can't retrieve it again from the Personal Access Token page; if you lose it, revoke it and generate a new one.

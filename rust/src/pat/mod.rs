@@ -11,12 +11,15 @@
 //! with owner-only file permissions where the platform supports it. They can also
 //! be supplied at runtime via the `GDDY_PAT` or `GDDY_PAT_<ENV>` environment
 //! variables, which take precedence over the registry file.
+//!
+//! `gddy pat create` opens the Developer Portal in a browser so a new PAT can
+//! be generated; `gddy pat add` then stores the copied token.
 
 use std::collections::BTreeMap;
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, RuntimeCommandSpec,
-    RuntimeGroupSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, GroupSpec, Module, NextActionParam,
+    RuntimeCommandSpec, RuntimeGroupSpec, Tier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -292,6 +295,7 @@ pub fn module() -> Module {
                          for CI/CD pipelines and scripts where browser-based OAuth is not \
                          possible.\n\
                          \n\
+                         • create  — open the browser to generate a new PAT\n\
                          • add     — store a PAT for an environment (reads from stdin)\n\
                          • list    — show stored PATs (last-four only)\n\
                          • remove  — delete the PAT for an environment\n\
@@ -300,11 +304,52 @@ pub fn module() -> Module {
                          environment variables. See `gddy guide auth`.",
             ),
         )
+        .with_command(create_command())
         .with_command(add_command())
         .with_command(list_command())
         .with_command(remove_command())
     })
     .with_guides_from_markdown([("auth.md", include_bytes!("guides/auth.md").as_slice())])
+}
+
+fn create_command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_with_context(
+        CommandSpec::new(
+            "create",
+            "Open the browser to create a new Personal Access Token",
+        )
+        .with_long(
+            "Opens the GoDaddy Developer Portal page where you can generate a new \
+             Personal Access Token.\n\
+             Once you've copied the token, run `gddy pat add` to store it.",
+        )
+        .with_system("pat")
+        .with_tier(Tier::Mutate)
+        .no_auth(true),
+        |ctx| async move {
+            let env = environments::resolve(&ctx.middleware.env)?;
+            let url = format!("{}/personal-access-token", env.developer_url);
+            let opened = open::that(&url).is_ok();
+            Ok(CommandResult::new(json!({
+                "url": url,
+                "info": if opened {
+                    "Browser opened. Copy the generated token, then run `gddy pat add` \
+                     to store it."
+                } else {
+                    "Could not open browser. Visit the URL above to create a Personal \
+                     Access Token, then run `gddy pat add` to store it."
+                }
+            }))
+            .with_next_actions(vec![
+                next_action(
+                    "pat add --env <env> <name>",
+                    "Store the PAT you just created",
+                )
+                .with_param("env", NextActionParam::required())
+                .with_param("name", NextActionParam::required()),
+            ]))
+        },
+    )
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -507,6 +552,32 @@ mod tests {
     use cli_engine::{Cli, CliConfig};
 
     use super::*;
+
+    #[test]
+    fn create_command_url_for_prod_via_environments_module() {
+        // See `payment_methods`'s identically-shaped tests for why this takes
+        // `ENV_LOCK`: `environments::resolve` validates every field, not just
+        // `developer_url`, so this races against any test elsewhere in the
+        // crate that mutates a GDDY_* override var.
+        let _g = environments::test_support::ENV_LOCK.blocking_lock();
+        let env = environments::resolve("prod").expect("prod resolves");
+        assert_eq!(
+            format!("{}/personal-access-token", env.developer_url),
+            "https://developer.godaddy.com/personal-access-token"
+        );
+    }
+
+    #[test]
+    fn create_command_url_for_ote_via_environments_module() {
+        // See `create_command_url_for_prod_via_environments_module` for why
+        // this takes `ENV_LOCK`.
+        let _g = environments::test_support::ENV_LOCK.blocking_lock();
+        let env = environments::resolve("ote").expect("ote resolves");
+        assert_eq!(
+            format!("{}/personal-access-token", env.developer_url),
+            "https://developer.ote-godaddy.com/personal-access-token"
+        );
+    }
 
     #[test]
     fn rejects_tokens_without_the_pat_prefix() {
