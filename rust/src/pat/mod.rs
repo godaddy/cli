@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::environments;
-use crate::next_action::next_action;
+use crate::next_action::{next_action, required_value};
 use crate::output_schema::output_schema;
 
 output_schema!(PatListItem {
@@ -345,7 +345,7 @@ fn create_command() -> RuntimeCommandSpec {
                     "pat add --env <env> <name>",
                     "Store the PAT you just created",
                 )
-                .with_param("env", NextActionParam::required())
+                .with_param("env", required_value(&env.name))
                 .with_param("name", NextActionParam::required()),
             ]))
         },
@@ -565,6 +565,19 @@ mod tests {
             format!("{}/personal-access-token", env.developer_url),
             "https://developer.godaddy.com/personal-access-token"
         );
+    }
+
+    #[test]
+    fn create_commands_next_action_prefills_the_resolved_env() {
+        // The `pat add` next action must carry the environment `pat create`
+        // already resolved, not a blank placeholder — otherwise an automated
+        // consumer has to ask again and could store the token under the
+        // wrong registry key.
+        let _g = environments::test_support::ENV_LOCK.blocking_lock();
+        let env = environments::resolve("ote").expect("ote resolves");
+        let param = required_value(&env.name);
+        assert_eq!(param.value.as_deref(), Some("ote"));
+        assert!(param.required);
     }
 
     #[test]
