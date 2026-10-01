@@ -1024,7 +1024,7 @@ dependencies = [
 
 [[package]]
 name = "domains-client"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "bytes",
  "futures",
@@ -1370,7 +1370,7 @@ dependencies = [
 
 [[package]]
 name = "generate-api-catalog"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "godaddy-cli"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1623,7 +1623,7 @@ dependencies = [
 
 [[package]]
 name = "hosting-client"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "bytes",
  "futures",
@@ -3860,7 +3860,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shopping-client"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "bytes",
  "futures",

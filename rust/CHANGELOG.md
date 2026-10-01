@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.25](https://github.com/godaddy/cli/compare/v0.2.24...v0.2.25) (2026-10-01)
+
+
+### Features
+
+* **pat:** add gddy pat create to open the Developer Portal ([#306](https://github.com/godaddy/cli/issues/306)) ([354f3b8](https://github.com/godaddy/cli/commit/354f3b8d0fa5afa89ec462a9eb781359e68204c7))
+
+
+### Bug Fixes
+
+* **cli:** standardize noun pluralization and add plural aliases ([#305](https://github.com/godaddy/cli/issues/305)) ([0f679bd](https://github.com/godaddy/cli/commit/0f679bd15ee04b4475662115059161a0a2c506e8))
+
 ## [0.2.24](https://github.com/godaddy/cli/compare/v0.2.23...v0.2.24) (2026-09-29)
 
 
