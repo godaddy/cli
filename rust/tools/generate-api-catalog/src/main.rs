@@ -1,11 +1,13 @@
 mod dereference;
-mod domains_merge;
+mod domains_spec;
+mod email_spec;
 mod github;
 mod graphql;
-mod hosting_merge;
+mod hosting_spec;
 mod manifest;
 mod openapi;
-mod shopping_merge;
+mod shopping_spec;
+mod spec_normalize;
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -86,36 +88,37 @@ fn main() -> Result<()> {
     let ct_dir = tmpdir.join("__common-types");
     let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
 
-    // `domains` is a normal remote source (cloned like any commerce/location
-    // repo), but its v3 OpenAPI doc is *also* progenitor's codegen input for
-    // the domains-client crate once merged with the one v1 operation v3
-    // doesn't yet serve. Reuse this same clone rather than fetching it twice.
-    // The spec spans multiple files (external `$ref`s into models/enums/
-    // common-types dirs), so it needs the same dereferencing pass the
-    // catalog processing below uses, not a bare YAML parse.
     if let Some(domains_source) = sources.iter().find(|s| s.domain == "domains") {
-        domains_merge::refresh(
+        domains_spec::refresh(
             &domains_source.spec_file,
             common_types,
-            &domains_merge::domains_client_oas3_path(),
+            &domains_spec::domains_client_oas3_path(),
         )
         .context("failed to refresh domains-client codegen spec")?;
     }
     if let Some(shopping_source) = sources.iter().find(|s| s.domain == "shopping") {
-        shopping_merge::refresh(
+        shopping_spec::refresh(
             &shopping_source.spec_file,
             common_types,
-            &shopping_merge::shopping_client_oas3_path(),
+            &shopping_spec::shopping_client_oas3_path(),
         )
         .context("failed to refresh shopping-client codegen spec")?;
     }
     if let Some(hosting_source) = sources.iter().find(|s| s.domain == "hosting") {
-        hosting_merge::refresh(
+        hosting_spec::refresh(
             &hosting_source.spec_file,
             common_types,
-            &hosting_merge::hosting_client_oas3_path(),
+            &hosting_spec::hosting_client_oas3_path(),
         )
         .context("failed to refresh hosting-client codegen spec")?;
+    }
+    if let Some(email_source) = sources.iter().find(|s| s.domain == "email") {
+        email_spec::refresh(
+            &email_source.spec_file,
+            common_types,
+            &email_spec::email_client_oas3_path(),
+        )
+        .context("failed to refresh email-client codegen spec")?;
     }
 
     sources.extend(local_spec_sources(&source_manifest)?);

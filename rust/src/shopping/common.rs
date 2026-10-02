@@ -13,6 +13,7 @@ use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::{ClientError, build_client};
 
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<shopping_client::Client> {
+    crate::http::ensure_generated_client_transport_observer_registered();
     let required: Vec<String> = SHOPPING_SCOPES
         .iter()
         .map(|scope| (*scope).to_owned())

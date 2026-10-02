@@ -43,9 +43,9 @@ pub(crate) fn refresh(
     for (name, definition) in defs {
         schemas.insert(name, definition);
     }
-    rewrite_defs_refs(&mut spec);
-    remove_remaining_relative_refs(&mut spec);
-    remove_self_referencing_schemas(&mut spec);
+    crate::spec_normalize::rewrite_defs_refs(&mut spec);
+    crate::spec_normalize::remove_remaining_relative_refs(&mut spec);
+    crate::spec_normalize::remove_self_referencing_schemas(&mut spec);
     dealias_name_colliding_schemas(
         &mut spec,
         &[(
@@ -62,16 +62,16 @@ pub(crate) fn refresh(
         "servers".to_owned(),
         serde_json::json!([{ "url": HOST, "description": "Shopping API host" }]),
     );
-    prefix_paths(&mut spec)?;
+    crate::spec_normalize::prefix_paths(&mut spec, "/v1/shopping")?;
     remove_protocol_header_parameters(&mut spec);
-    retain_2xx_responses(&mut spec);
+    crate::spec_normalize::retain_2xx_responses(&mut spec);
     relax_response_schemas(&mut spec);
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
     preserve_payment_instrument_fields(&mut spec)?;
     add_completion_consent(&mut spec)?;
     add_idempotency_headers(&mut spec)?;
     prune_documentation_fields(&mut spec);
-    add_required_response_descriptions(&mut spec);
+    crate::spec_normalize::add_required_response_descriptions(&mut spec);
 
     let json = serde_json::to_string_pretty(&spec).context("serialize Shopping codegen spec")?;
     if let Some(parent) = out_path.parent() {
@@ -80,54 +80,6 @@ pub(crate) fn refresh(
     std::fs::write(out_path, json).with_context(|| format!("write {}", out_path.display()))?;
     eprintln!("   wrote {}", out_path.display());
     Ok(())
-}
-
-fn rewrite_defs_refs(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(reference)) = map.get("$ref")
-                && let Some(name) = reference.strip_prefix("#/$defs/")
-            {
-                map.insert(
-                    "$ref".to_owned(),
-                    Value::String(format!("#/components/schemas/{name}")),
-                );
-            }
-            for child in map.values_mut() {
-                rewrite_defs_refs(child);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                rewrite_defs_refs(value);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn remove_remaining_relative_refs(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if map
-                .get("$ref")
-                .and_then(Value::as_str)
-                .is_some_and(|reference| !reference.starts_with('#') && !reference.contains("://"))
-            {
-                map.clear();
-                return;
-            }
-            for child in map.values_mut() {
-                remove_remaining_relative_refs(child);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                remove_remaining_relative_refs(value);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// Progenitor names an operation's `oneOf` response enum from its
@@ -172,45 +124,6 @@ fn replace_ref(value: &mut Value, from: &str, to: &str) {
         }
         _ => {}
     }
-}
-
-fn remove_self_referencing_schemas(spec: &mut Value) {
-    let Some(schemas) = spec
-        .pointer_mut("/components/schemas")
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-    let names = schemas.keys().cloned().collect::<Vec<_>>();
-    for name in names {
-        let reference = format!("#/components/schemas/{name}");
-        if schemas
-            .get(&name)
-            .and_then(|schema| schema.get("$ref"))
-            .and_then(Value::as_str)
-            == Some(reference.as_str())
-        {
-            schemas.insert(name, serde_json::json!({}));
-        }
-    }
-}
-
-fn prefix_paths(spec: &mut Value) -> Result<()> {
-    let paths = spec
-        .as_object_mut()
-        .context("Shopping spec is not an object")?
-        .remove("paths")
-        .and_then(|paths| paths.as_object().cloned())
-        .context("Shopping spec has no paths")?;
-    let paths = paths
-        .into_iter()
-        .filter(|(path, _)| path.starts_with('/'))
-        .map(|(path, item)| (format!("/v1/shopping{path}"), item))
-        .collect();
-    spec.as_object_mut()
-        .expect("Shopping spec is an object")
-        .insert("paths".to_owned(), Value::Object(paths));
-    Ok(())
 }
 
 fn remove_protocol_header_parameters(spec: &mut Value) {
@@ -435,47 +348,6 @@ fn prune_named_schema_map(value: &mut Value) {
     if let Value::Object(map) = value {
         for child in map.values_mut() {
             prune_documentation_fields(child);
-        }
-    }
-}
-
-fn add_required_response_descriptions(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(responses) = map.get_mut("responses").and_then(Value::as_object_mut) {
-                for response in responses.values_mut().filter_map(Value::as_object_mut) {
-                    response
-                        .entry("description")
-                        .or_insert_with(|| Value::String("Response".to_owned()));
-                }
-            }
-            for child in map.values_mut() {
-                add_required_response_descriptions(child);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                add_required_response_descriptions(value);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn retain_2xx_responses(spec: &mut Value) {
-    let Some(paths) = spec.pointer_mut("/paths").and_then(Value::as_object_mut) else {
-        return;
-    };
-    for item in paths.values_mut().filter_map(Value::as_object_mut) {
-        for method in ["get", "post", "put", "delete", "patch"] {
-            let Some(responses) = item
-                .get_mut(method)
-                .and_then(|operation| operation.get_mut("responses"))
-                .and_then(Value::as_object_mut)
-            else {
-                continue;
-            };
-            responses.retain(|status, _| status.starts_with('2'));
         }
     }
 }

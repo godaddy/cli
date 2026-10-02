@@ -1028,6 +1028,7 @@ version = "0.2.25"
 dependencies = [
  "bytes",
  "futures",
+ "generated-client-support",
  "httpmock",
  "openapiv3",
  "prettyplease",
@@ -1065,6 +1066,27 @@ name = "either"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
+
+[[package]]
+name = "email-client"
+version = "0.2.21"
+dependencies = [
+ "bytes",
+ "futures",
+ "generated-client-support",
+ "httpmock",
+ "openapiv3",
+ "prettyplease",
+ "progenitor",
+ "progenitor-client",
+ "reqwest 0.13.4",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "email_address"
@@ -1386,6 +1408,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "generated-client-support"
+version = "0.2.21"
+dependencies = [
+ "http",
+ "httpmock",
+ "reqwest 0.13.4",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1460,9 +1493,11 @@ dependencies = [
  "cli-engine",
  "dirs",
  "domains-client",
+ "email-client",
  "fancy-regex 0.14.0",
  "flate2",
  "futures-util",
+ "generated-client-support",
  "globset",
  "hosting-client",
  "httpmock",
@@ -3864,6 +3899,7 @@ version = "0.2.25"
 dependencies = [
  "bytes",
  "futures",
+ "generated-client-support",
  "httpmock",
  "openapiv3",
  "prettyplease",
