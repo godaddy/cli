@@ -60,6 +60,31 @@ Commands that charge money or request user consent should follow the examples of
 - Return `Ok(CommandResult::new(json!({...})))` for success.
 - Prefer `crate::error::GddyError::{not_found,validation,auth,config,security,network,…}` (and `GddyError::from` for module client errors) so agents get stable `error.code` + top-level `fix`. Use `Err(cli_engine::CliCoreError::message("..."))` only for one-off cases that do not yet have a shared mapping.
 - Streaming commands use `RuntimeCommandSpec::new_streaming` and emit events via `StreamSender`.
+- Dry-run paths return `CommandResult::with_dry_run()`.
+- Next actions (suggested follow-up commands) use a command template plus structured params, not a `format!`-built command line like `--query '{query}'` (a quote in the value breaks it; metacharacters can inject commands). Param names must match the target command's args and the template's `<placeholder>`s.
+- Encode dynamic URL path segments with `api::http::encode_path_segment`.
+- Do not call `--debug transport` logging helpers for payloads that may hold customer, payment or order data.
+- Polling/retry wrappers map only the exhausted expected status (e.g. 404) to `not_found`; keep 429/5xx/network errors as-is.
+- Resolve the API base URL from the selected environment; do not add per-service URL overrides or `--env` flags on follow-up commands.
+
+## Reuse Before You Build (Required)
+
+Search the codebase and `cli-engine` before writing a helper; reviewers reject duplication.
+
+- Typed clients: generate with Progenitor from the OpenAPI spec (as existing generated clients in the workspace do). Do not hand-write `reqwest` clients that traverse `serde_json::Value`.
+- Rendering: prefer `cli-engine` rendering (`HumanViewDef`/`TableColumn`, structured next actions and its standard footer) over hand-formatted tables or local display logic. Only write custom rendering when `cli-engine` cannot express it.
+- Shared formatting (money, etc.): reuse existing helpers rather than adding per-module copies.
+
+## User-Facing Text (Required)
+
+- Write help, guides and output for customers: no internal system or API names, scopes, environments or implementation jargon.
+- Where an AI assistant must act differently from a human (e.g. consent before a charge), address it directly in a clearly marked `AI assistants:` note; never mix that into customer-facing prose.
+- Command descriptions are short imperatives from the user's point of view; give flags concrete examples and discoverable values; show where prerequisite values (IDs) come from.
+- Don't expose internals (retry mechanics, generated keys, etc.) in normal help or output; when something fails, put the suggested next step in the error `fix`.
+- Avoid raw JSON inputs in the main flow. Guides should use soft line breaks (hard breaks only in shell examples).
+- PR descriptions must match implemented behavior.
+
+Full checklist: [Command authoring](./docs/command-authoring.md).
 
 ## Code File Structure (Required)
 
