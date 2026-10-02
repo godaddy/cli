@@ -18,23 +18,18 @@ Prefer `cli-engine` rendering whenever it can express the output. Custom renderi
 
 ## 2. Correctness and security
 
-- **Encode dynamic path segments.** Caller-supplied IDs containing `/`, `?`, `#` or `%` must not change URL structure. Encode them with `encode_path_segment` when assembling URLs by hand, and cover those characters in a test. Generated (Progenitor) clients already percent-encode path parameters, so pass raw values to their setters; pre-encoding would double-encode `%`.
-- **Build next actions from a command template plus structured params, never by formatting a command line.** Don't write `format!("... --query '{query}'")`: 
-a quote in the value breaks the command, and shell metacharacters can inject another one. Instead, declare the command and pass each value 
-(e.g. a search query or pagination cursor) as a named param; the consumer fills them in and handles quoting. Param names must match the target command's args, 
-`<hyphenated-placeholder>` names in the template must match those params, and don't declare params the target command doesn't accept.
-- **Mark dry runs.** Every dry-run path returns `CommandResult::with_dry_run()` so envelope and audit consumers can tell a preview from an executed mutation. Mark every command with external effects as mutating so the engine's dry-run safeguard prevents unintended calls, and have dry-run validate and read every prerequisite the real call needs, so it fails wherever the real call would rather than reporting an impossible success.
-- **Keep next actions honest.** Emit them only when they are executable and appropriate to the returned state. Never include consent-bypass flags (e.g. `--agree`) in suggested commands, and re-present approval guidance after material changes so stale approval isn't reused.
-- **Constrain inputs at parse time.** Restrict flags to the API's documented values in argument parsing so invalid input fails locally with clear help, not after a network request.
-- **Fail with actionable validation errors.** Every user-correctable input or manifest failure gets a stable validation error with a `fix`. Never silently turn malformed configuration into an empty payload.
-- **Don't mask API results.** Surface in-band API errors as errors. Preserve empty acknowledgements explicitly; don't substitute default "success" objects or cache errors as empty data.
-- **Honor protocol semantics.** Handle case-insensitive headers, relative pagination links and query-bearing paths, while preserving the original request value.
-- **Report ambiguity.** When several catalog entries match, return an explicit ambiguity result rather than silently picking the first.
-- **Keep output consistent.** Output schemas, default-field projections and every execution mode must agree; document mode-only fields as optional, since default rendering can otherwise discard the useful result. Test the rendered, default-projected output, and state each test's real scope.
-- **Don't log sensitive payloads.** Avoid the `--debug transport` logging helpers for requests or responses that may contain customer, payment or order data.
-- **Map only the error you mean to map.** When polling or retrying for eventual consistency, only the exhausted expected status (e.g. 404) becomes `not_found`. 
-Network errors, 429s and 5xxs keep their real error mapping.
-- **Use the selected environment.** Don't add private per-service URL overrides or `--env` flags on follow-up commands.
+- **Encode dynamic path segments.** IDs containing `/`, `?`, `#` or `%` must not change URL structure. Use `encode_path_segment` for hand-built URLs and test those characters. Generated (Progenitor) clients already encode path params, so pass raw values to them; pre-encoding double-encodes `%`.
+- **Build next actions from a command template plus structured params, never a formatted command line.** A quote in a value breaks `format!("... --query '{query}'")`, and shell metacharacters can inject commands. Param names must match the target command's args and the template's `<placeholder>`s.
+- **Keep next actions honest.** Emit them only when executable and appropriate to the returned state. Never include consent-bypass flags (e.g. `--agree`), and re-present approval guidance after material changes so stale approval isn't reused.
+- **Make dry runs faithful.** Mark commands with external effects as mutating so the engine's dry-run safeguard applies. Dry-run validates and reads every prerequisite the real call needs, so it fails where the real call would, and returns `CommandResult::with_dry_run()` so consumers can tell a preview from an executed mutation.
+- **Keep output consistent across modes.** Preview and real runs return the same fields in camelCase, and the preview says what the real run would do (e.g. items that would fail are reported separately). Output schemas and default-field projections must include every field users should see, or default rendering drops it.
+- **Test what users see.** Assert on rendered output with default fields, not just the helper that builds it. A test comment must state what the test actually exercises; rendering a hand-written JSON literal doesn't prove the handler produces it.
+- **Validate early, fail actionably.** Restrict flags to the API's documented values at argument parsing. Every user-correctable input or config failure gets a stable validation error with a `fix`; never turn malformed config into an empty payload.
+- **Don't turn failures or "no content" into fake successes.** APIs may report failure inside a 2xx response (an error object, or error-severity `messages`), which generated clients can deserialize as a valid empty result. Return an error and never cache it, or a transient failure is served as truth until the cache expires. A 202/204 with no body stays null/none, not `Default::default()`, which prints as a real, empty resource.
+- **Follow HTTP and API conventions.** Header names are case-insensitive (`idempotency-key` matches a spec header `Idempotency-Key`). Pagination links may be relative, so read the token from the query string rather than requiring an absolute URL. Strip a user-supplied query string (`/v1/items?limit=10`) when matching the catalog, but keep it on the request.
+- **Don't log sensitive payloads.** Avoid the `--debug transport` helpers for requests or responses that may contain customer, payment or order data.
+- **Map only the error you mean to map.** When polling for eventual consistency, only the exhausted expected status (e.g. 404) becomes `not_found`; network errors, 429s and 5xxs keep their real mapping.
+- **Use the selected environment.** No private per-service URL overrides or `--env` flags on follow-up commands.
 
 ## 3. Write for the customer
 
@@ -42,8 +37,7 @@ Users don't know our system names, API names or environments.
 
 - Help text, guides and output must not leak internal terms (service names, scopes, environment plumbing, implementation jargon).
 - Command descriptions are short imperatives from the user's point of view.
-- Text may address AI assistants directly when they must behave differently from a human (e.g. obtaining explicit user consent before a charge). 
-Put it in a clearly marked `AI assistants:` note, and keep it separate from the customer-facing prose.
+- Text may address AI assistants directly when they must behave differently from a human (e.g. obtaining explicit user consent before a charge). Put it in a clearly marked `AI assistants:` note, and keep it separate from the customer-facing prose.
 - Prefer common terms users already know. If an API resource name differs, define it once in the guide.
 - Every flag gets concrete examples and discoverable values. Don't ask for things the system can infer, and don't assume users know standards by name.
 - If a command needs a value produced by an earlier command (an ID, a selection), that command's output and the guide must show where to get it.

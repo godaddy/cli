@@ -66,7 +66,7 @@ Commands that charge money or request user consent should follow the examples of
 - Do not call `--debug transport` logging helpers for payloads that may hold customer, payment or order data.
 - Constrain flags to the API's documented values at argument parsing, so bad input fails locally with clear help.
 - Correctable input or config failures use a stable validation error with an actionable `fix`; never turn malformed config into an empty payload.
-- Surface in-band API errors as errors and preserve empty acknowledgements as-is; do not substitute default "success" objects or cache errors as empty data.
+- If an API returns an error payload inside a 2xx response, treat it as an error: don't let a typed client turn it into an empty success, and don't cache it. Keep an empty 202/204 response distinct (null/none) rather than substituting a default object that looks like a real, empty resource.
 - Polling/retry wrappers map only the exhausted expected status (e.g. 404) to `not_found`; keep 429/5xx/network errors as-is.
 - Resolve the API base URL from the selected environment; do not add per-service URL overrides or `--env` flags on follow-up commands.
 
