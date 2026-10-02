@@ -215,7 +215,7 @@ pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
 /// Validate every value of a repeatable `--nameserver`-style flag as a
 /// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
 /// with the flag's own name — used by both `quote` (the registration
-/// profile's nameservers) and `nameservers set` (the target domain's
+/// profile's nameservers) and `nameserver set` (the target domain's
 /// nameservers) so a bad host isn't reported as if it were some other
 /// (already-valid) domain argument.
 pub(super) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>> {
@@ -358,7 +358,7 @@ pub(crate) fn format_api_error(
     if status == 402 {
         msg.push_str(
             "\n\nThis usually means your account has no usable payment method. Add one with \
-             `gddy payment-methods add` (a credit card or Good-as-Gold balance is required for domain \
+             `gddy payment-method add` (a credit card or Good-as-Gold balance is required for domain \
              purchases), then try again.",
         );
     }
@@ -656,7 +656,7 @@ mod tests {
             false,
         );
         assert!(msg.contains("402 Payment Required"), "{msg}");
-        assert!(msg.contains("gddy payment-methods add"), "{msg}");
+        assert!(msg.contains("gddy payment-method add"), "{msg}");
     }
 
     #[test]
@@ -752,7 +752,7 @@ mod tests {
 
     #[test]
     fn validate_nameserver_hosts_rejects_bad_shape_with_flag_context() {
-        // Regression: `quote`'s and `nameservers set`'s `--nameserver` values
+        // Regression: `quote`'s and `nameserver set`'s `--nameserver` values
         // must go through the same shape check as a domain arg, but the error
         // must say `--nameserver`, not claim the bad value is "the domain".
         let err = validate_nameserver_hosts(vec!["bad ns".to_string()])

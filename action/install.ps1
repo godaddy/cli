@@ -23,7 +23,12 @@
 [CmdletBinding()]
 param(
     [string]$Prefix,
-    [string]$Version
+    [string]$Version,
+    # Skips the persistent (registry) user PATH update below, only setting
+    # PATH for the current session. Intended for callers (e.g. the
+    # accompanying GitHub Action) that manage PATH themselves and don't want
+    # this install to leave a stale entry behind on long-lived machines.
+    [switch]$SkipPathUpdate
 )
 
 Set-StrictMode -Version Latest
@@ -132,16 +137,21 @@ try {
 
     # ── 4. PATH ──────────────────────────────────────────────────────────────
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    # Wrap in @(...): Windows PowerShell 5.1 (unlike pwsh 7+) doesn't add an
-    # auto Count property to a bare $null/single-string pipeline result, so
-    # this throws under Set-StrictMode when there are 0 or 1 matches.
-    $onPath = @($userPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Prefix.TrimEnd('\') }).Count -gt 0
-    if (-not $onPath) {
-        $newPath = if ([string]::IsNullOrEmpty($userPath)) { $Prefix } else { "$userPath;$Prefix" }
-        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-        $env:Path = "$env:Path;$Prefix"  # current session
-        Write-Info "Added $Prefix to your user PATH (restart your shell for new shells to see it)."
+    if ($SkipPathUpdate) {
+        $env:Path = "$env:Path;$Prefix"  # current session only
+        Write-Info "Skipping persistent user PATH update for $Prefix (caller manages PATH)."
+    } else {
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        # Wrap in @(...): Windows PowerShell 5.1 (unlike pwsh 7+) doesn't add an
+        # auto Count property to a bare $null/single-string pipeline result, so
+        # this throws under Set-StrictMode when there are 0 or 1 matches.
+        $onPath = @($userPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Prefix.TrimEnd('\') }).Count -gt 0
+        if (-not $onPath) {
+            $newPath = if ([string]::IsNullOrEmpty($userPath)) { $Prefix } else { "$userPath;$Prefix" }
+            [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+            $env:Path = "$env:Path;$Prefix"  # current session
+            Write-Info "Added $Prefix to your user PATH (restart your shell for new shells to see it)."
+        }
     }
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $work -ErrorAction SilentlyContinue

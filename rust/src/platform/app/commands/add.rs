@@ -102,6 +102,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
         _,
     >(
         CommandSpec::from_args::<ActionArgs>("action", "Add an action to godaddy.toml")
+            .with_alias("actions")
             .with_long(
                 "Append an action entry to the godaddy.toml manifest in the \
                 current directory. An action is an HTTP endpoint that the \
@@ -140,11 +141,12 @@ pub(super) fn group() -> RuntimeGroupSpec {
             "subscription",
             "Add a webhook subscription to godaddy.toml",
         )
+        .with_alias("subscriptions")
         .with_long(
             "Append a webhook subscription entry to the godaddy.toml manifest \
             in the current directory. A subscription routes platform events to \
             an HTTPS endpoint. Provide one or more event types with --events; \
-            run `gddy platform webhook events` to discover the full list of \
+            run `gddy platform webhook event` to discover the full list of \
             valid event types.",
         )
         .with_system("applications")

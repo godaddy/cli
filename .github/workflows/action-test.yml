@@ -1,0 +1,65 @@
+name: Test setup-gddy action
+
+# Exercises action/action.yml itself against real GitHub Releases, on all
+# three OSes the CLI ships for. Path-filtered so it doesn't run on unrelated
+# CLI-only PRs — see the "action" release-please package in
+# release-please-config.json for why this is versioned separately from gddy.
+
+on:
+  pull_request:
+    paths:
+      - "action/**"
+      - ".github/workflows/action-test.yml"
+  push:
+    branches: [main]
+    paths:
+      - "action/**"
+
+jobs:
+  latest:
+    name: Install latest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run action
+        id: gddy
+        uses: ./action
+
+      - name: Verify gddy is installed and on PATH
+        shell: bash
+        run: |
+          gddy --version
+          test -n "${{ steps.gddy.outputs.version }}"
+          test -n "${{ steps.gddy.outputs.path }}"
+
+  pinned-version:
+    name: Install pinned version (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run action
+        id: gddy
+        uses: ./action
+        with:
+          version: v0.2.23
+
+      - name: Verify pinned version was installed
+        shell: bash
+        run: |
+          gddy --version
+          case "${{ steps.gddy.outputs.version }}" in
+            *0.2.23*) ;;
+            *) echo "expected v0.2.23, got '${{ steps.gddy.outputs.version }}'" >&2; exit 1 ;;
+          esac

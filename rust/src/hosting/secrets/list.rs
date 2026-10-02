@@ -42,7 +42,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .unwrap_or_default();
             Ok(CommandResult::new(json!(items)).with_next_actions(vec![
                 next_action(
-                    "hosting secrets create --app-id <app-id> --name <name> --value <value>",
+                    "hosting secret create --app-id <app-id> --name <name> --value <value>",
                     "Add a new secret",
                 )
                 .with_param("app-id", NextActionParam::value(app_id)),

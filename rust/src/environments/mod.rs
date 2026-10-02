@@ -179,6 +179,7 @@ devx_core_url = "https://api.developer.commerce.dev-godaddy.com"
 
         assert_eq!(resolved.domains_api_url, "https://api.dev-godaddy.com");
         assert_eq!(resolved.account_url, "https://account.dev-godaddy.com");
+        assert_eq!(resolved.developer_url, "https://developer.dev-godaddy.com");
         assert_eq!(
             resolved.devx_core_url,
             "https://api.developer.commerce.dev-godaddy.com"

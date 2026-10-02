@@ -1,4 +1,4 @@
-//! `gddy auth scopes` — list every OAuth scope the CLI can request, and which
+//! `gddy auth scope` — list every OAuth scope the CLI can request, and which
 //! commands need it.
 //!
 //! Lets an agent driving a multi-step workflow discover every scope it will
@@ -12,7 +12,7 @@ use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, T
 use serde_json::json;
 
 use crate::output_schema::output_schema;
-use crate::scopes::{SCOPE_REGISTRY, command_scopes};
+use crate::scopes::{SCOPE_REGISTRY, command_path_aliases, command_scopes};
 
 output_schema!(ScopeEntry {
     "scope": "string";
@@ -87,13 +87,14 @@ struct ScopesArgs {
 
 pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ScopesArgs, _, _, _>(
-        CommandSpec::from_args::<ScopesArgs>("scopes", "List requestable OAuth scopes")
+        CommandSpec::from_args::<ScopesArgs>("scope", "List requestable OAuth scopes")
+            .with_alias("scopes")
             .with_long(
                 "List every OAuth scope the CLI can request, its description, whether \
                  it's requested at login by default, and which commands need it.\n\
                  \n\
                  Useful for planning an eager login before a multi-step workflow: run \
-                 `gddy auth scopes --non-default` to see which scopes require an \
+                 `gddy auth scope --non-default` to see which scopes require an \
                  explicit `--scope`, then pass each one to `gddy auth login --scope <s>` \
                  up front to avoid an interactive step-up prompt mid-workflow.",
             )
@@ -106,14 +107,15 @@ pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
             let scopes_by_command = command_scopes();
             let entries = build_entries(&scopes_by_command);
             let filtered = if let Some(path) = args.command.filter(|s| !s.is_empty()) {
-                if !scopes_by_command.iter().any(|(p, _)| p == &path) {
+                let canonical_path = command_path_aliases().get(&path).cloned().unwrap_or(path);
+                if !scopes_by_command.iter().any(|(p, _)| p == &canonical_path) {
                     return Err(CliCoreError::message(format!(
-                        "unknown command {path:?}; run `gddy tree` to see available commands"
+                        "unknown command {canonical_path:?}; run `gddy tree` to see available commands"
                     )));
                 }
                 entries
                     .into_iter()
-                    .filter(|e| e.commands.iter().any(|c| c == &path))
+                    .filter(|e| e.commands.iter().any(|c| c == &canonical_path))
                     .collect::<Vec<_>>()
             } else if args.defaults_only {
                 entries.into_iter().filter(|e| e.default).collect()
@@ -146,10 +148,19 @@ mod tests {
         )
     }
 
-    /// `auth scopes` is pure static/derived data: it must run with no auth
+    /// `auth scope` is pure static/derived data: it must run with no auth
     /// provider registered at all, just like `auth status`.
     #[tokio::test]
     async fn auth_scopes_runs_without_auth() {
+        let output = cli()
+            .run(["gddy", "auth", "scope", "--output", "json"])
+            .await;
+        assert_eq!(output.exit_code, 0, "rendered output: {}", output.rendered);
+    }
+
+    /// The old plural name must keep working as a hidden alias.
+    #[tokio::test]
+    async fn auth_scopes_plural_alias_still_resolves() {
         let output = cli()
             .run(["gddy", "auth", "scopes", "--output", "json"])
             .await;
@@ -212,6 +223,41 @@ mod tests {
             scopes,
             std::collections::BTreeSet::from(["domains.domain:read", "domains.domain:create"])
         );
+    }
+
+    /// `--command` must also recognize a path spelled with an old plural
+    /// alias (`domain agreements`, not the canonical `domain agreement`) —
+    /// the same compatibility guarantee the parser itself gives that alias.
+    #[tokio::test]
+    async fn auth_scopes_command_filter_normalizes_an_aliased_path() {
+        let aliased = cli()
+            .run([
+                "gddy",
+                "auth",
+                "scopes",
+                "--command",
+                "domain agreements",
+                "--output",
+                "json",
+            ])
+            .await;
+        let canonical = cli()
+            .run([
+                "gddy",
+                "auth",
+                "scopes",
+                "--command",
+                "domain agreement",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(
+            aliased.exit_code, 0,
+            "rendered output: {}",
+            aliased.rendered
+        );
+        assert_eq!(aliased.rendered, canonical.rendered);
     }
 
     /// An unknown `--command` path is a user error, not a silently empty list.

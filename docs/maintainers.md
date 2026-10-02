@@ -8,6 +8,7 @@ If you are a new developer on this project, read the following to get started:
 
 - [`cli-engine` concepts](https://github.com/godaddy/cli-engine/blob/main/cli-engine/docs/concepts.md) goes over the components making up GoDaddy CLIs.
 - [This repo's docs](../docs/)
+- [Command authoring checklist](./command-authoring.md) covers conventions for adding commands and command groups.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) gives some general tips for setting up your workspace for development.
 
 If you are doing agentic coding and see your agent struggling with following standards correctly, contributions to [`AGENTS.md`](../AGENTS.md) are greatly appreciated.

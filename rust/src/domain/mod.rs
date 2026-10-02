@@ -4,8 +4,8 @@
 //! host (see the [`domains_client`] crate):
 //!
 //! * **v3** (Domain Lifecycle Management API) — `available`, `suggest`, `get`,
-//!   `quote`, `purchase` (quote → register), and `nameservers set`.
-//! * **v1** — `list` (the shopper's domains) and `agreements` (a TLD's legal
+//!   `quote`, `purchase` (quote → register), and `nameserver set`.
+//! * **v1** — `list` (the shopper's domains) and `agreement` (a TLD's legal
 //!   agreements), which v3 does not yet serve.
 //!
 //! All of these authenticate with an OAuth bearer token from
@@ -55,6 +55,7 @@ pub fn module() -> Module {
                 "domain",
                 "List your domains, check availability, and register new ones",
             )
+            .with_alias("domains")
             .with_long(
                 "Work with domains on your GoDaddy account and the public registry.\n\
              \n\
@@ -62,11 +63,11 @@ pub fn module() -> Module {
              • available / suggest — find a name to register\n\
              • quote             — price a registration and see required agreements\n\
              • purchase          — register a new domain (charges your account)\n\
-             • nameservers set   — point a domain at custom nameservers\n\
+             • nameserver set    — point a domain at custom nameservers\n\
              • operation status  — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`, and `nameservers set` needs\n\
+             `domains.domain:create`, and `nameserver set` needs\n\
              `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )

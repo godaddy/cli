@@ -6,7 +6,7 @@ name: main alpha
 # prerelease on the fixed `alpha` tag, overwritten on each push.
 #
 # This repo is PUBLIC, so the install flow uses plain `curl` against the public
-# release assets — no `gh` or auth required (see install.sh).
+# release assets — no `gh` or auth required (see action/install.sh).
 
 on:
   push:
@@ -198,5 +198,5 @@ jobs:
             dist/gddy-aarch64-apple-darwin.tar.gz \
             dist/gddy-x86_64-pc-windows-msvc.zip \
             dist/gddy-checksums-sha256.txt \
-            install.sh \
-            install.ps1
+            action/install.sh \
+            action/install.ps1

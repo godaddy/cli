@@ -16,6 +16,7 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
             "app",
             "Create, inspect, update, and delete hosting applications",
         )
+        .with_alias("apps")
         .with_long(format!(
             "Work with hosting applications. Use --app-type on list and create to \
              specify the product type (currently {}).",

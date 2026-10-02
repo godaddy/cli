@@ -22,6 +22,17 @@ Both installers download, checksum-verify, and install the binary for your platf
 
 Once installed, `gddy update check` / `gddy update apply` handles upgrades in place.
 
+### GitHub Actions
+
+Use [`godaddy/cli/action`](action/action.yml) to install `gddy` inside a workflow:
+
+```yaml
+- uses: godaddy/cli/action@action-v1
+- run: gddy --version
+```
+
+Pin an exact `gddy` release with `with: { version: v0.2.23 }`; omit it for latest. The action is versioned independently of the CLI itself — `action-v1` always points at the latest `action-v1.x.y` release.
+
 ### Agentic Skills
 
 To install Claude Code skills for the `gddy` CLI, run the following:
@@ -50,7 +61,7 @@ gddy domain list                  # list domains in your account
 
 Most commands need authentication. You may be taken through an interactive login process if you are not currently logged in, if your login has expired, or if your last auth token needs additional permissions. Run `gddy auth login` to log in explicitly.
 
-For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead; store the PAT with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
+For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead. Run `gddy pat create` to open the page where you can generate one, then store it with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
 
 ## What you can do
 
@@ -69,5 +80,5 @@ We're actively working to expand the CLI to cover additional GoDaddy products.
 The CLI also provides access to the GoDaddy Developer Platform for building apps that users of GoDaddy Commerce products can install to their stores.
 
 - `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
-- `gddy platform actions` — discover the action contracts an app can declare
+- `gddy platform action` — discover the action contracts an app can declare
 - `gddy platform webhook` — inspect webhook event types for app subscriptions

@@ -8,6 +8,7 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("catalog", "Explore GoDaddy's product catalog")
+            .with_alias("catalogs")
             .with_long("Search GoDaddy's product catalog and retrieve product details."),
     )
     .with_command(categories::command())

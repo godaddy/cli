@@ -33,7 +33,7 @@ The list accepts up to five unique HTTPS URLs, each no longer than 2048 characte
 Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`:
 
 - `add action --name <name> --url <url>` — an HTTP endpoint the platform calls on the app's behalf.
-- `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook events` to see valid event types.
+- `add subscription --name <name> --url <url> --events <event...>` — a webhook route for platform events; run `gddy platform webhook event` to see valid event types.
 - `add extension <embed|checkout|blocks> ...` — a UI extension bundle (see that subcommand's own `--help`).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...` — placement metadata for a merchant-facing settings form or link. This only writes placement fields (group/slug/entryPath/order/capabilities/icon); the presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
@@ -60,20 +60,20 @@ Bundles, security-scans, and uploads the extensions declared in `godaddy.toml`, 
 ```sh
 gddy platform app enable <name> --store-id <storeId>
 gddy platform app disable <name> --store-id <storeId>
-gddy platform app enablements --store-id <storeId>
+gddy platform app enablement --store-id <storeId>
 ```
 
 `enable` / `disable` make the application (and everything in its latest release — actions, subscriptions, extensions, settings) available on, or remove it from, one store. Settings have no inheritance across releases: a store already enabled against an older release does not pick up settings added by a newer one until `enable` is re-run for that store.
 
-`enablements` is the read counterpart: it lists which applications are currently enabled on that store (empty list if none). Use it to verify an `enable` or audit what is bound to a store. Default output fields are `name`, `status`, and `releaseVersion` (the enabled release’s version string — not the full release object). Pass `--fields id,label` or `--fields all` to include the application id and/or label. App listing (`list` / `info`) is separate — those show developer apps in App Registry, not per-store enablements.
+`enablement` is the read counterpart: it lists which applications are currently enabled on that store (empty list if none). Use it to verify an `enable` or audit what is bound to a store. Default output fields are `name`, `status`, and `releaseVersion` (the enabled release’s version string — not the full release object). Pass `--fields id,label` or `--fields all` to include the application id and/or label. App listing (`list` / `info`) is separate — those show developer apps in App Registry, not per-store enablements.
 
 ## Other useful commands
 
 - `gddy platform app validate <name>` — check *remote* application state (URL/proxy-url set, not INACTIVE), as opposed to `config validate`'s local manifest check.
 - `gddy platform app info --name <name>` / `list` — inspect a single app or list all of them (developer catalog, not store enablements).
-- `gddy platform app enablements --store-id <storeId>` — list apps enabled on a store (defaults: name, status, releaseVersion).
+- `gddy platform app enablement --store-id <storeId>` — list apps enabled on a store (defaults: name, status, releaseVersion).
 - `gddy platform app archive <name>` — irreversible; confirm the name with `list` first.
-- `gddy platform actions` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
+- `gddy platform action` / `gddy platform webhook` — browse the platform's action and webhook-event catalogs (used when choosing values for `add action`/`add subscription`).
 
 ## See also
 
