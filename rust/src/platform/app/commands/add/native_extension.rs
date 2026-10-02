@@ -1,5 +1,7 @@
 //! `gddy platform app add native-extension` — synchronize a native Android app record.
 
+use std::io::IsTerminal;
+
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Stage, Tier};
 use serde_json::json;
 
@@ -110,6 +112,7 @@ pub(super) async fn sync_native_extension(
     app_registry_url: &str,
     devx_core_url: &str,
     accept_agreements: bool,
+    is_tty: bool,
 ) -> cli_engine::Result<NativeExtensionRegistration> {
     let app_registry =
         crate::platform::app::client::ApplicationClient::new(app_registry_url, token.to_owned());
@@ -140,6 +143,7 @@ pub(super) async fn sync_native_extension(
                 token,
                 devx_core_url,
                 accept_agreements,
+                is_tty,
             )
             .await
             .map(|outcome| outcome.org_id)
@@ -198,6 +202,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &app_registry_url,
                 &devx_core_url,
                 args.accept_agreements,
+                std::io::stdin().is_terminal(),
             )
             .await?;
             crate::config::write_config(&path, &config).map_err(|error| {
@@ -434,6 +439,7 @@ mod tests {
             &app_registry.base_url(),
             &devx_core.base_url(),
             false,
+            false,
         )
         .await
         .expect("sync native extension");
@@ -505,6 +511,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
             false,
         )
         .await
@@ -584,6 +591,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
             false,
         )
         .await
@@ -694,6 +702,7 @@ mod tests {
             &app_registry.base_url(),
             &devx_core.base_url(),
             true,
+            false,
         )
         .await
         .expect("accepted agreements should allow create");
@@ -763,6 +772,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
             false,
         )
         .await

@@ -523,6 +523,7 @@ mod tests {
             &app_registry.base_url(),
             &devx_core.base_url(),
             false,
+            false,
         )
         .await
         .expect("sync native extension");
@@ -602,6 +603,7 @@ mod tests {
             "test-token",
             &app_registry.base_url(),
             &devx_core.base_url(),
+            false,
             false,
         )
         .await
