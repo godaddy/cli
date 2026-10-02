@@ -290,13 +290,19 @@ impl HostingClient {
     /// `hosting.database.tunnel:execute` scope in addition to `hosting.deployment:execute`,
     /// so publish authority alone does not yield a database-tunnel agent token.
     ///
-    /// This mint lives under the Node.js-specific `/v1/hosting/nodejs` path
-    /// rather than the flattened `/v1/hosting` base the other methods use, so it
-    /// is spelled out with a leading `/nodejs` segment to reach the server route.
-    pub async fn get_agent_token(&self, app_id: &str) -> Result<Value, ClientError> {
+    /// The product rides as a prefix on the app id —
+    /// `/v1/hosting/apps/{app_type}-{id}/agent-token` (e.g. `NODEJS-{id}`) — rather
+    /// than a product path segment, matching how the hosting app collection is
+    /// addressed; the origin strips the prefix back to the raw nanoid. `app_type`
+    /// is the wire value from `HostingAppType::as_str` (e.g. `NODEJS`).
+    pub async fn get_agent_token(
+        &self,
+        app_id: &str,
+        app_type: &str,
+    ) -> Result<Value, ClientError> {
         // Secret response: the body is a minted bearer token, so it must never
         // reach the `--debug transport` trace (cli-engine would print it in full).
-        self.post_empty_json_secret_response(&format!("/nodejs/apps/{app_id}/agent-token"))
+        self.post_empty_json_secret_response(&format!("/apps/{app_type}-{app_id}/agent-token"))
             .await
     }
 

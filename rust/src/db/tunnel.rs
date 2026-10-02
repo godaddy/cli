@@ -9,7 +9,7 @@
 //! matching `platform app deploy`.
 //!
 //! Auth: the CLI mints a short-lived agent token from the hosting API
-//! (`POST /v1/hosting/nodejs/apps/:id/agent-token`) using your GoDaddy OAuth
+//! (`POST /v1/hosting/apps/NODEJS-:id/agent-token`) using your GoDaddy OAuth
 //! credential, stepped up to the dedicated `hosting.database.tunnel:execute`
 //! scope alongside deploy-execute — the tunnel scope is a separate grant, so
 //! authority to publish a deployment does not by itself grant raw database
@@ -36,6 +36,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 
 use crate::error::GddyError;
 use crate::hosting::client::HostingClient;
+use crate::hosting::common::HostingAppType;
 use crate::http::api_url_for_env;
 use crate::scopes::HOSTING_DATABASE_TUNNEL_EXECUTE as DATABASE_TUNNEL;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
@@ -65,6 +66,11 @@ struct TunnelArgs {
     /// an agent token for this app and connects to its assigned agent.
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
+
+    /// Hosting product of the app (e.g. `nodejs`). Selects which product's
+    /// agent mints the tunnel token.
+    #[arg(long = "product", value_name = "PRODUCT", ignore_case = true)]
+    product: HostingAppType,
 
     /// Local TCP port MySQL clients connect to.
     #[arg(long, value_name = "PORT", default_value_t = 3306)]
@@ -177,7 +183,7 @@ async fn run_tunnel(
     sender
         .send(json!({ "type": "step", "name": "authorize", "status": "started" }))
         .await;
-    let (agent_url, token) = match mint_agent_token(ctx, &args.app_id).await {
+    let (agent_url, token) = match mint_agent_token(ctx, &args.app_id, args.product).await {
         Ok(pair) => pair,
         Err(e) => return Err(fail(sender, e).await),
     };
@@ -305,13 +311,14 @@ async fn run_tunnel(
 async fn mint_agent_token(
     ctx: &CommandContext,
     app_id: &str,
+    product: HostingAppType,
 ) -> cli_engine::Result<(String, String)> {
     let required = vec![DEPLOY_EXECUTE.to_owned(), DATABASE_TUNNEL.to_owned()];
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
     let client = HostingClient::new(base_url, token);
     let resp = client
-        .get_agent_token(app_id)
+        .get_agent_token(app_id, product.as_str())
         .await
         .map_err(|e| GddyError::from(e).into_cli_error())?;
     let agent_url = field_str(&resp, "agentUrl")?;
@@ -597,6 +604,25 @@ fn map_ws_err(err: tokio_tungstenite::tungstenite::Error) -> GddyError {
 #[cfg(test)]
 mod tests {
     use super::build_tunnel_ws_url;
+
+    #[test]
+    fn product_flag_parses_case_insensitively_to_wire_value() {
+        use crate::hosting::common::HostingAppType;
+        use clap::Parser;
+
+        // Wrap the flattened args so clap can parse them standalone in a test.
+        #[derive(Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            args: super::TunnelArgs,
+        }
+
+        let wrap = Wrap::try_parse_from(["db-tunnel", "--app-id", "app-1", "--product", "nodejs"])
+            .expect("--product nodejs should parse");
+        assert_eq!(wrap.args.product, HostingAppType::Nodejs);
+        // The lowercase CLI value maps to the uppercase wire value sent as `?appType=`.
+        assert_eq!(wrap.args.product.as_str(), "NODEJS");
+    }
 
     #[test]
     fn rejects_plaintext_schemes() {
