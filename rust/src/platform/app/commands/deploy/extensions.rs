@@ -345,6 +345,7 @@ mod tests {
             dependencies: vec![],
             extensions,
             settings: vec![],
+            native_extension: None,
         }
     }
 

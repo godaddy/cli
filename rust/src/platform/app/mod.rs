@@ -1,6 +1,7 @@
 mod client;
 mod commands;
 mod extension;
+pub(crate) mod native_app_client;
 mod onboarding;
 mod public_url;
 

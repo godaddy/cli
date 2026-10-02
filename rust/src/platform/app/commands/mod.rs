@@ -6,6 +6,11 @@ use cli_engine::{GroupSpec, NextAction, NextActionParam, RuntimeGroupSpec};
 use crate::http::api_url_for_env;
 use crate::next_action::{next_action, required_value};
 
+/// Feature-flag key for native-app CLI surfaces. `Stage::Experimental`.
+/// `platform app add native-extension` declares it. `platform app release`
+/// consults it before attaching `nativeExtensions`.
+pub(crate) const NATIVE_APPS_FLAG_KEY: &str = "native-apps";
+
 mod add;
 mod add_extension;
 mod config;

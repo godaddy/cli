@@ -79,6 +79,7 @@ output_schema!(ApplicationRelease {
     "version": "string";
     "description": "string", optional;
     "createdAt": "string";
+    "nativeExtensions": "[]object", optional;
 });
 
 output_schema!(ValidationResult {
@@ -113,4 +114,12 @@ output_schema!(ConfigSetting {
     "group": "string";
     "slug": "string";
     "entryPath": "string";
+});
+
+output_schema!(ConfigNativeExtension {
+    "applicationId": "string";
+    "operation": "string";
+    "name": "string", optional;
+    "supportContact": "string";
+    "androidPackageName": "string";
 });

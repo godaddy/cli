@@ -264,6 +264,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 dependencies: vec![],
                 extensions: None,
                 settings: vec![],
+                native_extension: None,
             };
             let cwd = match std::env::current_dir() {
                 Ok(dir) => dir,

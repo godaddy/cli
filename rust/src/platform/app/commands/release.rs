@@ -12,6 +12,8 @@ use crate::config::settings_form::{
 use crate::next_action::next_action;
 use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 
+mod native_extension;
+
 /// Build one `uiExtensions` release entry, enforcing the API's one-target-per-
 /// extension limit. `target` is omitted when the extension has no targets.
 fn ui_extension_entry(
@@ -238,7 +240,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let config_path = crate::config::config_path(Some(&ctx.middleware.env));
             let manifest_dir = config_path.parent().unwrap_or_else(|| Path::new(""));
             // Pulls actions/subscriptions/uiExtensions/settings from godaddy.toml; see load_manifest.
-            let (actions, subscriptions, ui_extensions, settings) =
+            let (actions, subscriptions, ui_extensions, settings, native_extension) =
                 match load_manifest(&config_path)? {
                     Some(config) => {
                         let actions: Vec<Value> = config
@@ -260,14 +262,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             .unwrap_or_default();
                         let ui_extensions = build_ui_extensions(&config)?;
                         let settings = build_settings(&config, manifest_dir)?;
-                        (actions, subscriptions, ui_extensions, settings)
+                        let native_extension = native_extension::native_extension_draft_if_visible(
+                            &config,
+                            &ctx.middleware.flag_policy,
+                        );
+                        (
+                            actions,
+                            subscriptions,
+                            ui_extensions,
+                            settings,
+                            native_extension,
+                        )
                     }
-                    None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                    None => (Vec::new(), Vec::new(), Vec::new(), Vec::new(), None),
                 };
             input["actions"] = json!(actions);
             input["subscriptions"] = json!(subscriptions);
             input["uiExtensions"] = json!(ui_extensions);
             input["settings"] = json!(settings);
+            native_extension::apply_native_extensions(
+                &mut input,
+                &ui_extensions,
+                native_extension.as_ref(),
+            )?;
 
             let client = super::make_client(&ctx).await?;
             let data = client

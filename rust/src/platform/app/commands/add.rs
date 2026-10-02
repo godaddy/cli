@@ -8,6 +8,8 @@ use serde_json::json;
 
 use super::schemas::{ConfigAction, ConfigSetting, ConfigSubscription};
 
+mod native_extension;
+
 #[derive(Debug, Clone, clap::Args)]
 struct ActionArgs {
     /// Unique action name written into godaddy.toml.
@@ -88,9 +90,9 @@ struct SubscriptionArgs {
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("add", "Add components to an application").with_long(
-            "Append actions, webhook subscriptions, or UI extensions to the \
-            godaddy.toml manifest in the current directory. Run `gddy platform \
-            app deploy` to publish the updated manifest.",
+            "Add actions, webhook subscriptions, or UI extensions to the \
+             godaddy.toml manifest in the current directory. Components are \
+             published by a later deploy or release.",
         ),
     )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<
@@ -243,11 +245,382 @@ pub(super) fn group() -> RuntimeGroupSpec {
             )
         },
     ))
+    .with_command(native_extension::command())
     .with_group(super::add_extension::group())
 }
 
 #[cfg(test)]
 mod tests {
+    use httpmock::{Method, MockServer};
+    use serde_json::json;
+
+    fn test_config() -> crate::config::Config {
+        crate::config::Config {
+            name: "my-app".to_owned(),
+            client_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+            description: Some("test".to_owned()),
+            version: "1.2.3".to_owned(),
+            url: "https://example.com".to_owned(),
+            proxy_url: "https://proxy.example.com".to_owned(),
+            authorization_scopes: vec!["openid".to_owned()],
+            redirect_uris: None,
+            actions: vec![],
+            subscriptions: None,
+            dependencies: vec![],
+            extensions: None,
+            settings: vec![],
+            native_extension: None,
+        }
+    }
+
+    fn native_args(support_contact: &str) -> super::native_extension::NativeExtensionArgs {
+        super::native_extension::NativeExtensionArgs {
+            name: Some("My Display Name".to_owned()),
+            support_contact: support_contact.to_owned(),
+            android_package_name: "com.example.app".to_owned(),
+            accept_agreements: false,
+        }
+    }
+
+    fn native_app_json() -> serde_json::Value {
+        json!({
+            "applicationId": "app-registry-id",
+            "name": "My Display Name",
+            "description": "test",
+            "supportEmail": "support@example.com",
+            "appCategory": "",
+            "merchantCategory": "",
+            "androidPackageName": "com.example.app",
+            "status": "draft",
+            "released": false
+        })
+    }
+
+    #[test]
+    fn native_extension_subcommand_accepts_required_and_optional_flags() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--name",
+                "My Display Name",
+                "--support-contact",
+                "support@example.com",
+                "--android-package-name",
+                "com.example.app",
+                "--accept-agreements",
+            ])
+            .expect("native-extension flags should be accepted");
+    }
+
+    #[test]
+    fn native_extension_subcommand_name_is_optional() {
+        super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--support-contact",
+                "support@example.com",
+                "--android-package-name",
+                "com.example.app",
+            ])
+            .expect("--name is optional");
+    }
+
+    #[test]
+    fn native_extension_subcommand_requires_support_contact() {
+        let err = super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--android-package-name",
+                "com.example.app",
+            ])
+            .expect_err("--support-contact is required");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("support-contact"),
+            "unexpected clap error: {msg}"
+        );
+    }
+
+    #[test]
+    fn native_extension_subcommand_requires_android_package_name() {
+        let err = super::group()
+            .clap_command()
+            .try_get_matches_from([
+                "add",
+                "native-extension",
+                "--support-contact",
+                "support@example.com",
+            ])
+            .expect_err("--android-package-name is required");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("android-package-name"),
+            "unexpected clap error: {msg}"
+        );
+    }
+
+    #[test]
+    fn apply_native_extension_overwrites_and_round_trips_through_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        let mut config = test_config();
+        crate::config::write_config(&path, &config).expect("write base");
+
+        super::native_extension::apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+        crate::config::write_config(&path, &config).expect("write native_extension");
+
+        let read_back = crate::config::read_config(&path).expect("read back");
+        let native = read_back
+            .native_extension
+            .expect("native_extension section written");
+        assert_eq!(native.name.as_deref(), Some("My Display Name"));
+        assert_eq!(native.support_contact, "support@example.com");
+        assert_eq!(native.android_package_name, "com.example.app");
+
+        super::native_extension::apply_native_extension(
+            &mut config,
+            None,
+            "other@example.com".to_owned(),
+            "com.example.other".to_owned(),
+        );
+        crate::config::write_config(&path, &config).expect("overwrite");
+        let overwritten = crate::config::read_config(&path).expect("read overwrite");
+        let native = overwritten.native_extension.expect("still present");
+        assert_eq!(native.name, None);
+        assert_eq!(native.support_contact, "other@example.com");
+        assert_eq!(native.android_package_name, "com.example.other");
+    }
+
+    #[test]
+    fn invalid_support_email_is_rejected_during_local_preparation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        crate::config::write_config(&path, &test_config()).expect("write base config");
+
+        let error =
+            super::native_extension::prepare_native_extension(&path, &native_args("not-an-email"))
+                .expect_err("invalid support email must fail");
+
+        assert!(error.to_string().contains("valid email address"), "{error}");
+        assert!(
+            crate::config::read_config(&path)
+                .expect("read unchanged config")
+                .native_extension
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn application_name_lookup_uses_registry_id_not_oauth_client_id() {
+        let data = json!({
+            "application": {
+                "id": "app-registry-id",
+                "clientId": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "my-app"
+            }
+        });
+        assert_eq!(
+            super::native_extension::application_id(&data, "my-app").expect("application id"),
+            "app-registry-id"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_resolves_application_and_organization_then_creates_draft() {
+        let app_registry = MockServer::start_async().await;
+        let app_lookup = app_registry
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .is_true(|request| request.body_string().contains(r#""name":"my-app""#));
+                then.status(200).json_body(json!({
+                    "data": {
+                        "application": {
+                            "id": "app-registry-id",
+                            "name": "my-app"
+                        }
+                    }
+                }));
+            })
+            .await;
+        let devx_core = MockServer::start_async().await;
+        let onboarding = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/api/v1/onboarding/status")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "ACTIVE"
+                    }
+                }));
+            })
+            .await;
+        let get = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::GET)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200)
+                    .json_body(json!({ "success": true, "data": null }));
+            })
+            .await;
+        let create = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/api/v1/native-apps/app-registry-id")
+                    .json_body(json!({
+                        "organizationId": "550e8400-e29b-41d4-a716-446655440001",
+                        "name": "My Display Name",
+                        "description": "test",
+                        "supportEmail": "support@example.com",
+                        "appCategory": "",
+                        "merchantCategory": "",
+                        "androidPackageName": "com.example.app",
+                        "status": "draft"
+                    }));
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let support_patch = devx_core
+            .mock_async(|when, then| {
+                when.method(Method::PATCH)
+                    .path("/api/v1/native-apps/app-registry-id")
+                    .json_body(json!({ "supportEmail": "support@example.com" }));
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        let mut config = test_config();
+        super::native_extension::apply_native_extension(
+            &mut config,
+            Some("My Display Name".to_owned()),
+            "support@example.com".to_owned(),
+            "com.example.app".to_owned(),
+        );
+
+        let registration = super::native_extension::sync_native_extension(
+            &config,
+            "test-token",
+            &app_registry.base_url(),
+            &devx_core.base_url(),
+            false,
+            false,
+        )
+        .await
+        .expect("sync native extension");
+
+        assert_eq!(registration.application_id, "app-registry-id");
+        assert_eq!(
+            registration.operation,
+            crate::platform::app::native_app_client::UpsertOperation::Created
+        );
+        app_lookup.assert_async().await;
+        onboarding.assert_async().await;
+        get.assert_async().await;
+        create.assert_async().await;
+        support_patch.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn remote_failure_leaves_local_manifest_unchanged() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        crate::config::write_config(&path, &test_config()).expect("write base config");
+        let prepared = super::native_extension::prepare_native_extension(
+            &path,
+            &native_args("support@example.com"),
+        )
+        .expect("prepare native extension");
+
+        let app_registry = MockServer::start_async().await;
+        app_registry
+            .mock_async(|when, then| {
+                when.method(Method::POST)
+                    .path("/v1/apps/app-registry-subgraph");
+                then.status(200).json_body(json!({
+                    "data": { "application": { "id": "app-registry-id" } }
+                }));
+            })
+            .await;
+        let devx_core = MockServer::start_async().await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "status": "ACTIVE"
+                    }
+                }));
+            })
+            .await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::GET)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": native_app_json()
+                }));
+            })
+            .await;
+        devx_core
+            .mock_async(|when, then| {
+                when.method(Method::PATCH)
+                    .path("/api/v1/native-apps/app-registry-id");
+                then.status(409).json_body(json!({
+                    "success": false,
+                    "error": {
+                        "code": "PACKAGE_NAME_IMMUTABLE",
+                        "message": "Package name cannot change after release"
+                    }
+                }));
+            })
+            .await;
+
+        let error = super::native_extension::sync_native_extension(
+            &prepared,
+            "test-token",
+            &app_registry.base_url(),
+            &devx_core.base_url(),
+            false,
+            false,
+        )
+        .await
+        .expect_err("remote update must fail");
+
+        assert!(
+            error.to_string().contains("PACKAGE_NAME_IMMUTABLE"),
+            "{error}"
+        );
+        assert!(
+            crate::config::read_config(&path)
+                .expect("read original manifest")
+                .native_extension
+                .is_none()
+        );
+    }
+
     #[test]
     fn settings_subcommand_accepts_presentation_file_flag() {
         super::group()

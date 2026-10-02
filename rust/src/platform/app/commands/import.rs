@@ -162,11 +162,11 @@ fn read_existing_config(
 }
 
 /// Guards against carrying a *different* application's locally-authored
-/// sections (actions, dependencies, extensions, settings, version) into the
-/// application being imported, e.g. running `import b` in a directory whose
-/// `godaddy.toml` still describes application `a`. Returns `None` when there
-/// is nothing to preserve (no existing manifest, or one that's confirmed to
-/// belong to `name`).
+/// sections (actions, dependencies, extensions, settings, native_extension,
+/// version) into the application being imported, e.g. running `import b` in a
+/// directory whose `godaddy.toml` still describes application `a`. Returns
+/// `None` when there is nothing to preserve (no existing manifest, or one
+/// that's confirmed to belong to `name`).
 fn existing_config_for(
     existing: Option<crate::config::Config>,
     name: &str,
@@ -183,7 +183,7 @@ fn existing_config_for(
             "godaddy.toml in this directory belongs to application '{}', not '{name}'. Re-run \
              in a directory with '{name}''s manifest (or none), or pass --force to overwrite it \
              and discard '{}'s locally-authored sections (actions, dependencies, extensions, \
-             settings).",
+             settings, native_extension).",
             cfg.name, cfg.name
         )));
     }
@@ -280,9 +280,9 @@ pub(super) async fn run(
     let webhook_subscriptions = subscriptions_from_latest_release(app, &proxy_url);
 
     // Preserve locally-authored fields the API doesn't track (actions,
-    // dependencies, extensions, settings), if a godaddy.toml for *this*
-    // application already exists; this command only syncs identity, version,
-    // and webhook subscriptions, not the whole manifest.
+    // dependencies, extensions, settings, native_extension), if a godaddy.toml
+    // for *this* application already exists; this command only syncs identity,
+    // version, and webhook subscriptions, not the whole manifest.
     let existing = read_existing_config(&config_path)?;
     let existing = existing_config_for(existing, &name, force)?;
 
@@ -317,7 +317,8 @@ pub(super) async fn run(
         .as_ref()
         .map(|c| c.settings.clone())
         .unwrap_or_default();
-    let extensions = existing.and_then(|c| c.extensions);
+    let extensions = existing.as_ref().and_then(|c| c.extensions.clone());
+    let native_extension = existing.and_then(|c| c.native_extension);
 
     let config = crate::config::Config {
         name: name.clone(),
@@ -335,6 +336,7 @@ pub(super) async fn run(
         dependencies,
         extensions,
         settings,
+        native_extension,
     };
 
     crate::config::write_config(&config_path, &config).map_err(|e| {
@@ -386,7 +388,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             release's webhook subscriptions, and write them to a godaddy.toml manifest \
             in the current directory. Syncs identity, version, and webhook subscriptions \
             from the remote application, while preserving locally-authored sections \
-            (actions, dependencies, extensions, settings). Read-only against the API (no \
+            (actions, dependencies, extensions, settings, native_extension). \
+            Read-only against the API (no \
             application is created, no .env is written), so it's safe to re-run to \
             re-sync webhook subscriptions after a new release. Use `gddy platform app \
             update` to change label/description; url, proxy-url, and scopes are not \
@@ -440,6 +443,7 @@ mod tests {
             dependencies: vec![],
             extensions: None,
             settings: vec![],
+            native_extension: None,
         }
     }
 

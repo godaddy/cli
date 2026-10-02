@@ -82,6 +82,7 @@ mod tests {
             dependencies: vec![],
             extensions: None,
             settings: vec![],
+            native_extension: None,
         }
     }
 
