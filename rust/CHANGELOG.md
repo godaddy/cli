@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.26](https://github.com/godaddy/cli/compare/v0.2.25...v0.2.26) (2026-10-02)
+
+
+### Features
+
+* **platform:** add native Android extension support behind the native-apps flag ([#296](https://github.com/godaddy/cli/issues/296)) ([65888d4](https://github.com/godaddy/cli/commit/65888d416aa6bd159246949f6e2e438a6522a30a))
+
 ## [0.2.25](https://github.com/godaddy/cli/compare/v0.2.24...v0.2.25) (2026-10-01)
 
 
