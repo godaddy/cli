@@ -60,10 +60,13 @@ Commands that charge money or request user consent should follow the examples of
 - Return `Ok(CommandResult::new(json!({...})))` for success.
 - Prefer `crate::error::GddyError::{not_found,validation,auth,config,security,network,…}` (and `GddyError::from` for module client errors) so agents get stable `error.code` + top-level `fix`. Use `Err(cli_engine::CliCoreError::message("..."))` only for one-off cases that do not yet have a shared mapping.
 - Streaming commands use `RuntimeCommandSpec::new_streaming` and emit events via `StreamSender`.
-- Dry-run paths return `CommandResult::with_dry_run()`.
-- Next actions (suggested follow-up commands) use a command template plus structured params, not a `format!`-built command line like `--query '{query}'` (a quote in the value breaks it; metacharacters can inject commands). Param names must match the target command's args and the template's `<placeholder>`s.
-- Encode dynamic URL path segments with `api::http::encode_path_segment`.
+- Commands with external effects are marked mutating so the engine's dry-run safeguard applies. Dry-run paths validate and read every prerequisite the real call needs (so they fail where it would) and return `CommandResult::with_dry_run()`.
+- Next actions (suggested follow-up commands) use a command template plus structured params, not a `format!`-built command line like `--query '{query}'` (a quote in the value breaks it; metacharacters can inject commands). Param names must match the target command's args and the template's `<placeholder>`s. Emit next actions only when executable and appropriate to the returned state, and never include consent-bypass flags (e.g. `--agree`) in them.
+- Encode dynamic path segments with `api::http::encode_path_segment` when assembling URLs by hand. Generated (Progenitor) clients already percent-encode path parameters; pass them raw to avoid double encoding.
 - Do not call `--debug transport` logging helpers for payloads that may hold customer, payment or order data.
+- Constrain flags to the API's documented values at argument parsing, so bad input fails locally with clear help.
+- Correctable input or config failures use a stable validation error with an actionable `fix`; never turn malformed config into an empty payload.
+- Surface in-band API errors as errors and preserve empty acknowledgements as-is; do not substitute default "success" objects or cache errors as empty data.
 - Polling/retry wrappers map only the exhausted expected status (e.g. 404) to `not_found`; keep 429/5xx/network errors as-is.
 - Resolve the API base URL from the selected environment; do not add per-service URL overrides or `--env` flags on follow-up commands.
 
