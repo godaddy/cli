@@ -300,11 +300,12 @@ impl HostingClient {
             .await
     }
 
-    /// Start (or reuse) an on-demand database-tunnel relay for a Managed WordPress
-    /// app, served by the Airo API at `/v1/airo/hosting/apps/:id/database-tunnel`,
-    /// outside the `/v1/hosting` base. Same scopes as
-    /// [`get_agent_token`](Self::get_agent_token). Response shape:
-    /// `{ sessionId, url, pollUrl, token, variant, expiresAt, reused }`.
+    /// Start an on-demand database-tunnel relay for a Managed WordPress app,
+    /// closing any tunnel already open for it. Served by the Airo API at
+    /// `/v1/airo/hosting/apps/:id/database-tunnel`, outside the `/v1/hosting`
+    /// base. Same scopes as [`get_agent_token`](Self::get_agent_token).
+    /// Response shape: `{ sessionId, url, pollUrl, token, variant, expiresAt,
+    /// replaced, database: { user, password, name } }`.
     pub async fn ensure_airo_database_tunnel_session(
         &self,
         app_id: &str,

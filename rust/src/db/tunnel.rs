@@ -16,10 +16,12 @@
 //! - Node.js Hosting: `POST /v1/hosting/nodejs/apps/:id/agent-token` returns the
 //!   app's agent URL and an agent token.
 //! - `--product wordpress`: Managed WordPress has no per-app agent, so
-//!   `POST /v1/airo/hosting/apps/:id/database-tunnel` starts (or reuses) an
-//!   on-demand relay speaking the same WebSocket protocol, and returns its URL,
-//!   a readiness `pollUrl` and a relay token. The CLI waits for `pollUrl` to
-//!   answer before listening.
+//!   `POST /v1/airo/hosting/apps/:id/database-tunnel` starts an on-demand relay
+//!   speaking the same WebSocket protocol — closing any tunnel already open for
+//!   the app — and returns its URL, a readiness `pollUrl`, a relay token and
+//!   WordPress's database login. The CLI waits for `pollUrl` to answer before
+//!   listening, and writes the login to a private option file
+//!   ([`super::tunnel_credentials`]) rather than printing it.
 //!
 //! The token goes out as `Authorization: Bearer`. The URL and token both come
 //! from the service — neither is a user-supplied flag.
@@ -40,6 +42,7 @@ use tokio_tungstenite::tungstenite::http::{HeaderValue, header::AUTHORIZATION};
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config};
 
+use super::tunnel_credentials::{DbCredentials, OptionFile, client_host, connect_hint};
 use crate::error::GddyError;
 use crate::hosting::client::HostingClient;
 use crate::http::api_url_for_env;
@@ -66,8 +69,8 @@ const MAX_AGENT_FRAME_BYTES: usize = 32 * 1024 * 1024;
 const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long to wait for a freshly scheduled WordPress relay to answer its
-/// readiness probe. Matches hosting's startup grace for a relay that has not
-/// heartbeated yet; past it the session is treated as dead anyway.
+/// readiness probe: long enough for Nomad to pull the image, place the job and
+/// route its hostname.
 const RELAY_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
 
 const RELAY_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
@@ -131,7 +134,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
              automatically. Pass `--product wordpress` for a Managed WordPress \
              site, which starts a short-lived relay and can take up to a few \
              minutes before the port opens; the default is a Node.js Hosting \
-             app. Runs until interrupted (Ctrl-C).",
+             app. A WordPress site has one tunnel at a time: opening a new one \
+             closes the previous one. Its database login is written to a \
+             private MySQL option file, never printed, and the CLI prints the \
+             `mysql --defaults-extra-file=...` command that uses it. Runs until \
+             interrupted (Ctrl-C).",
         )
         .with_system("database")
         .with_tier(Tier::Mutate)
@@ -212,6 +219,14 @@ async fn run_tunnel(
     sender
         .send(json!({ "type": "step", "name": "authorize", "status": "completed" }))
         .await;
+    if target.replaced {
+        sender
+            .send(json!({
+                "type": "warning",
+                "message": "A database tunnel was already open for this app and has been closed; a site has one tunnel at a time.",
+            }))
+            .await;
+    }
 
     let ws_url = match build_tunnel_ws_url(&target.endpoint, &args.app_id) {
         Ok(url) => url,
@@ -245,6 +260,18 @@ async fn run_tunnel(
         .local_addr()
         .map(|a| a.to_string())
         .unwrap_or_else(|_| bind_addr.clone());
+    let local_port = listener.local_addr().map_or(args.port, |a| a.port());
+
+    // Held until this function returns, which removes the file.
+    let option_file = match &target.database {
+        Some(creds) => {
+            match OptionFile::write(creds, &client_host(&args.listen_host), local_port) {
+                Ok(file) => Some(file),
+                Err(e) => return Err(fail(sender, e.into_cli_error()).await),
+            }
+        }
+        None => None,
+    };
 
     sender
         .send(json!({
@@ -277,13 +304,11 @@ async fn run_tunnel(
             .await;
     }
     sender
-        .send(json!({
-            "type": "hint",
-            "message": format!(
-                "Connect a MySQL client with TLS so the local hop is encrypted, e.g.: mysql --ssl-mode=REQUIRED -h {} -P {} -u <user> -p",
-                args.listen_host, args.port
-            ),
-        }))
+        .send(connect_hint(
+            &args.listen_host,
+            local_port,
+            option_file.as_ref(),
+        ))
         .await;
 
     let token = token.as_str();
@@ -339,12 +364,15 @@ async fn run_tunnel(
 }
 
 /// Where the tunnel connects: the base URL of the WebSocket endpoint, the bearer
-/// token it accepts, and — for an on-demand relay — the probe to wait on first.
+/// token it accepts, and — for an on-demand relay — the probe to wait on first,
+/// the database login, and whether an earlier tunnel was closed to make room.
 #[derive(Debug, PartialEq, Eq)]
 struct TunnelTarget {
     endpoint: String,
     token: String,
     ready_url: Option<String>,
+    database: Option<DbCredentials>,
+    replaced: bool,
 }
 
 /// Mint a short-lived tunnel token for `app_id`. Steps the CLI's OAuth
@@ -375,11 +403,18 @@ fn parse_tunnel_target(resp: &Value, product: TunnelProduct) -> cli_engine::Resu
             endpoint: field_str(resp, "agentUrl")?,
             token: field_str(resp, "token")?,
             ready_url: None,
+            database: None,
+            replaced: false,
         },
         TunnelProduct::Wordpress => TunnelTarget {
             endpoint: field_str(resp, "url")?,
             token: field_str(resp, "token")?,
             ready_url: Some(field_str(resp, "pollUrl")?),
+            database: DbCredentials::from_mint(resp).map_err(GddyError::into_cli_error)?,
+            replaced: resp
+                .get("replaced")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         },
     })
 }
@@ -397,8 +432,8 @@ fn field_str(resp: &Value, key: &str) -> cli_engine::Result<String> {
         })
 }
 
-/// Poll the relay's readiness probe until it answers 2xx. A reused session
-/// answers on the first probe; a new one needs its job scheduled and routed.
+/// Poll the relay's readiness probe until it answers 2xx; a new relay needs its
+/// job scheduled and its hostname routed first.
 async fn wait_for_relay(poll_url: &str, endpoint: &str) -> Result<(), GddyError> {
     let probe = validate_poll_url(poll_url, endpoint)?;
     let http = crate::http::make_http_client();
@@ -418,7 +453,7 @@ async fn wait_for_relay(poll_url: &str, endpoint: &str) -> Result<(), GddyError>
                 "the database tunnel relay did not become ready within {}s",
                 RELAY_READY_TIMEOUT.as_secs()
             ))
-            .with_fix("Retry the command; the relay is reused if it finishes starting. If it keeps failing, contact support."));
+            .with_fix("Retry the command; each retry starts a fresh relay. If it keeps failing, contact support."));
         }
         tokio::time::sleep(RELAY_POLL_INTERVAL).await;
     }
@@ -851,6 +886,8 @@ mod tests {
                 endpoint: "https://agent.example".to_owned(),
                 token: "t".to_owned(),
                 ready_url: None,
+                database: None,
+                replaced: false,
             }
         );
     }
@@ -862,6 +899,8 @@ mod tests {
             "url": "https://dbt-s1.c1.pma.example",
             "pollUrl": "https://dbt-s1.c1.pma.example/healthz",
             "token": "relay-token",
+            "replaced": true,
+            "database": { "user": "wp_u", "password": "wp_p", "name": "wp_db" },
         });
         let target = super::parse_tunnel_target(&resp, super::TunnelProduct::Wordpress)
             .expect("wordpress target");
@@ -871,6 +910,22 @@ mod tests {
             target.ready_url.as_deref(),
             Some("https://dbt-s1.c1.pma.example/healthz")
         );
+        assert!(target.replaced);
+        let db = target.database.expect("database login");
+        assert_eq!((db.user.as_str(), db.name.as_str()), ("wp_u", "wp_db"));
+    }
+
+    #[test]
+    fn wordpress_target_without_database_or_replaced_still_parses() {
+        let resp = serde_json::json!({
+            "url": "https://dbt-s1.example",
+            "pollUrl": "https://dbt-s1.example/healthz",
+            "token": "t",
+        });
+        let target = super::parse_tunnel_target(&resp, super::TunnelProduct::Wordpress)
+            .expect("wordpress target");
+        assert!(target.database.is_none());
+        assert!(!target.replaced);
     }
 
     #[test]

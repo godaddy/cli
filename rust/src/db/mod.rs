@@ -6,6 +6,7 @@
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 
 mod tunnel;
+mod tunnel_credentials;
 
 /// The `Database` module: the `db` command group.
 pub fn module() -> Module {
