@@ -173,7 +173,7 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
             TableColumn::new("path", "Path"),
             TableColumn::new("summary", "Summary"),
             TableColumn::new("parameters.items", "Parameters").nested(vec![
-                TableColumn::new("name", "Name"),
+                TableColumn::new("name", "Name").essential(true),
                 TableColumn::new("in", "In"),
                 TableColumn::new("required", "Required"),
                 TableColumn::new("type", "Type"),
@@ -181,7 +181,7 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
                 TableColumn::new("description", "Description"),
             ]),
             TableColumn::new("responses.items", "Responses").nested(vec![
-                TableColumn::new("status", "Status"),
+                TableColumn::new("status", "Status").essential(true),
                 TableColumn::new("type", "Type"),
                 TableColumn::new("schemaId", "Schema ID"),
                 TableColumn::new("description", "Description"),

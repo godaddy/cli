@@ -39,7 +39,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(vec![
             TableColumn::new("agreementKey", "Agreement Key"),
             TableColumn::new("title", "Title"),
-            TableColumn::new("url", "URL").no_truncate(true),
+            TableColumn::new("url", "URL").essential(true),
         ])
         .with_json_schema::<types::V1LegalAgreement>()
         .with_scopes(&[DOMAINS_READ]),

@@ -1,7 +1,8 @@
 //! `dns list` — list DNS records for a domain, with optional type/name filters.
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, PaginationConfig, RuntimeCommandSpec, Tier,
+    Alignment, CliCoreError, CommandResult, CommandSpec, PaginationConfig, RuntimeCommandSpec,
+    TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
@@ -28,6 +29,31 @@ struct ListArgs {
     name: Option<String>,
 }
 
+/// A record is unreadable without its type/name/data, so those three are
+/// `essential` — never hidden or shrunk for width, even on a narrow terminal
+/// — while the rest are nice-to-haves that still yield to width pressure.
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("type", "Type").essential(true),
+        TableColumn::new("name", "Name").essential(true),
+        TableColumn::new("data", "Data").essential(true),
+        TableColumn::new("ttl", "TTL").align(Alignment::Right),
+        TableColumn::new("priority", "Priority").align(Alignment::Right),
+        TableColumn::new("recordId", "Record ID"),
+        TableColumn::new("service", "Service"),
+        TableColumn::new("protocol", "Protocol"),
+        TableColumn::new("port", "Port").align(Alignment::Right),
+        TableColumn::new("weight", "Weight").align(Alignment::Right),
+        TableColumn::new("tag", "Tag"),
+        TableColumn::new("flag", "Flag").align(Alignment::Right),
+        TableColumn::new("usage", "Usage"),
+        TableColumn::new("selector", "Selector"),
+        TableColumn::new("matchingType", "Matching Type"),
+        TableColumn::new("certificateData", "Certificate Data").no_truncate(true),
+        TableColumn::new("parameters", "Parameters"),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ListArgs, _, _, _>(
         CommandSpec::from_args::<ListArgs>("list", "List DNS records for a domain")
@@ -40,6 +66,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("type,name,data,ttl")
             .with_json_schema::<types::DnsRecord>()
+            .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ])
             .with_pagination(PaginationConfig {
                 max_limit: 500,
@@ -103,6 +130,27 @@ mod tests {
                 max_limit: 500,
                 ..Default::default()
             })
+        );
+    }
+
+    /// `view_columns()` declares 17 columns — far more than fit an
+    /// 80-column terminal (the fixed width non-TTY test runs get) once
+    /// their headers are laid out side by side. Type/name/data must survive
+    /// that squeeze regardless, since a record is unreadable without them;
+    /// everything else is free to be hidden.
+    #[test]
+    fn essential_fields_survive_width_based_hiding() {
+        let out = build_list_output(&[a_record()]).expect("serializes");
+
+        let rendered = cli_engine::preview_human_view(out, &view_columns());
+
+        let header_line = rendered.lines().next().expect("header line");
+        assert!(header_line.contains("TYPE"), "{rendered}");
+        assert!(header_line.contains("NAME"), "{rendered}");
+        assert!(header_line.contains("DATA"), "{rendered}");
+        assert!(
+            rendered.contains("hidden to fit the display width"),
+            "fixture must actually overflow 80 columns to exercise hiding: {rendered}"
         );
     }
 

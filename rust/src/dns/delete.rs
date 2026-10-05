@@ -140,8 +140,8 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("action", "Action"),
         TableColumn::new("records", "Records").nested(vec![
             TableColumn::new("recordId", "Record ID"),
-            TableColumn::new("data", "Data"),
-            TableColumn::new("status", "Status"),
+            TableColumn::new("data", "Data").essential(true),
+            TableColumn::new("status", "Status").essential(true),
         ]),
     ]
 }
@@ -392,8 +392,7 @@ mod tests {
     fn dry_run_delete_preview_renders_records_as_a_nested_table() {
         let existing = vec![test_record("r1", "1.2.3.4")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
-        let envelope = cli_engine::Envelope::success(preview, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(preview, &view_columns());
         assert!(rendered.contains("Records:"), "{rendered}");
         assert!(rendered.contains("RECORD ID"), "{rendered}");
         assert!(rendered.contains("r1"), "{rendered}");

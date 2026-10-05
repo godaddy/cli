@@ -59,19 +59,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 TableColumn::new("summary", "Summary"),
                 TableColumn::new("returnType", "Return Type"),
                 TableColumn::new("returnFields", "Return Fields").nested(vec![
-                    TableColumn::new("name", "Name"),
+                    TableColumn::new("name", "Name").essential(true),
                     TableColumn::new("type", "Type"),
                     TableColumn::new("description", "Description"),
                 ]),
                 TableColumn::new("callRequirements", "Call Requirements").nested(vec![
-                    TableColumn::new("name", "Name"),
+                    TableColumn::new("name", "Name").essential(true),
                     TableColumn::new("in", "In"),
                     TableColumn::new("required", "Required"),
                     TableColumn::new("type", "Type"),
                     TableColumn::new("description", "Description"),
                 ]),
                 TableColumn::new("arguments", "Arguments").nested(vec![
-                    TableColumn::new("name", "Name"),
+                    TableColumn::new("name", "Name").essential(true),
                     TableColumn::new("required", "Required"),
                     TableColumn::new("type", "Type"),
                     TableColumn::new("description", "Description"),

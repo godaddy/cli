@@ -53,7 +53,7 @@ fn get_command() -> RuntimeCommandSpec {
             TableColumn::new("name", "Name"),
             TableColumn::new("kind", "Kind"),
             TableColumn::new("fields", "Fields").nested(vec![
-                TableColumn::new("name", "Name"),
+                TableColumn::new("name", "Name").essential(true),
                 TableColumn::new("type", "Type"),
                 TableColumn::new("description", "Description"),
             ]),

@@ -29,7 +29,7 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 full detail.",
             )
             .with_view(vec![
-                TableColumn::new("status", "Status"),
+                TableColumn::new("status", "Status").essential(true),
                 TableColumn::new("type", "Type"),
                 TableColumn::new("schemaId", "Schema ID"),
                 TableColumn::new("description", "Description"),
