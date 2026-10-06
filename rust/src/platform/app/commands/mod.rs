@@ -6,11 +6,17 @@ use cli_engine::{GroupSpec, NextAction, NextActionParam, RuntimeGroupSpec};
 use crate::http::api_url_for_env;
 use crate::next_action::{next_action, required_value};
 
+/// Feature-flag key for native-app CLI surfaces. `Stage::Experimental`.
+/// `platform app add native-extension` declares it. `platform app release`
+/// consults it before attaching `nativeExtensions`.
+pub(crate) const NATIVE_APPS_FLAG_KEY: &str = "native-apps";
+
 mod add;
 mod add_extension;
 mod config;
 mod deploy;
 mod enablements;
+mod import;
 mod info;
 mod init;
 mod lifecycle;
@@ -38,6 +44,14 @@ fn client_err(e: crate::platform::app::client::ClientError) -> cli_engine::CliCo
 
 fn validation_err(message: impl Into<String>) -> cli_engine::CliCoreError {
     crate::error::GddyError::validation(message).into_cli_error()
+}
+
+/// Add the optional manifest field to a create/update input without collapsing
+/// the meaningful distinction between an omitted key and an explicit empty list.
+fn add_redirect_uris_to_input(input: &mut serde_json::Value, redirect_uris: Option<&[String]>) {
+    if let Some(redirect_uris) = redirect_uris {
+        input["redirectUris"] = serde_json::json!(redirect_uris);
+    }
 }
 
 /// Next-actions after mutating local godaddy.toml (add action/subscription/extension).
@@ -69,15 +83,18 @@ pub fn application_group() -> RuntimeGroupSpec {
                 "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
                 developer-platform app described by a godaddy.toml manifest in your working \
                 directory. Use `gddy platform app init` to create one, `gddy platform app \
-                config validate` to check the local manifest, `gddy platform app validate \
-                <name>` to check remote application state, and `gddy platform app deploy` to \
-                publish it.",
+                import <name>` to sync an already-registered app's config into a local \
+                manifest, `gddy platform app config validate` to check the local manifest, \
+                `gddy platform app validate <name>` to check remote application state, and \
+                `gddy platform app deploy` to publish it.",
             )
-            .with_alias("application"),
+            .with_alias("application")
+            .with_alias("apps"),
     )
     .with_command(list::command())
     .with_command(info::command())
     .with_command(init::command())
+    .with_command(import::command())
     .with_command(validate::command())
     .with_command(update::command())
     .with_command(lifecycle::enable_command())
@@ -104,5 +121,24 @@ mod tests {
         let name = &actions[0].params["name"];
         assert!(name.required);
         assert_eq!(name.value.as_deref(), None);
+    }
+
+    #[test]
+    fn redirect_uri_input_preserves_omitted_vs_empty() {
+        let mut omitted = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut omitted, None);
+        assert!(omitted.get("redirectUris").is_none());
+
+        let mut clear = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut clear, Some(&[]));
+        assert_eq!(clear["redirectUris"], serde_json::json!([]));
+
+        let mut populated = serde_json::json!({});
+        let redirects = vec!["https://auth.example.net/callback".to_owned()];
+        super::add_redirect_uris_to_input(&mut populated, Some(&redirects));
+        assert_eq!(
+            populated["redirectUris"],
+            serde_json::json!(["https://auth.example.net/callback"])
+        );
     }
 }

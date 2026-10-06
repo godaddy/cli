@@ -71,14 +71,16 @@ fn normalized_extension_source(
 
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
-        GroupSpec::new("extension", "Add an extension to godaddy.toml").with_long(
-            "Append a UI extension entry to the godaddy.toml manifest in the \
+        GroupSpec::new("extension", "Add an extension to godaddy.toml")
+            .with_alias("extensions")
+            .with_long(
+                "Append a UI extension entry to the godaddy.toml manifest in the \
             current directory. Extensions are JavaScript bundles that the \
             platform renders inside store surfaces. Three types are supported: \
             embed (inline widget), checkout (checkout-flow widget), and blocks \
             (content blocks). Run `gddy platform app deploy` to bundle and \
             upload the registered extensions.",
-        ),
+            ),
     )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<
         UiExtensionArgs,

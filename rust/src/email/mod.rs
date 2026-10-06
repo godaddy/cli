@@ -8,13 +8,15 @@ mod list;
 
 pub(crate) use common::{body_has_issue, client_err, client_err_with_fix, make_client};
 
-use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
+use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 pub fn module() -> Module {
     Module::new("Email", |_ctx| {
         RuntimeGroupSpec::new(
-            GroupSpec::new("email", "Create, list, and inspect GoDaddy Email mailboxes").with_long(
-                "Manage GoDaddy Business Emails.\n\
+            GroupSpec::new("email", "Create, list, and inspect GoDaddy Email mailboxes")
+                .with_alias("emails")
+                .with_long(
+                    "Manage GoDaddy Business Emails.\n\
              \n\
              • check-eligibility — see which account(s) an address can be created\n\
              \x20  under, and what consent is outstanding\n\
@@ -22,19 +24,18 @@ pub fn module() -> Module {
              • list / get        — your existing mailboxes and their details\n\
              \n\
              check-eligibility/list/get need the `email.mailbox:read` scope; create needs\n\
-             `email.mailbox:create`. Run `gddy auth scopes --command \"email <subcommand>\"`\n\
+             `email.mailbox:create`. Run `gddy auth scope --command \"email <subcommand>\"`\n\
              for details, or `gddy auth login --scope <scope>` to step up.\n\
              \n\
              See `gddy guide email` for what an account ID is and how the\n\
              check-eligibility → create flow works.",
-            ),
+                ),
         )
         .with_command(list::command())
         .with_command(get::command())
         .with_command(create::command())
         .with_command(check_eligibility::command())
     })
-    .with_feature_flag("email", Stage::Beta)
     .with_guides_from_markdown([("email.md", include_bytes!("guides/email.md").as_slice())])
 }
 

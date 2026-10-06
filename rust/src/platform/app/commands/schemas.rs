@@ -21,7 +21,21 @@ output_schema!(ApplicationInit {
     "url": "string";
     "proxyUrl": "string";
     "authorizationScopes": "[]string";
+    "redirectUris": "[]string", optional;
     "oauthGrantTypes": "[]string", optional;
+    "subscriptions": "[]object", optional;
+    "filesWritten": "object";
+});
+
+output_schema!(ApplicationImport {
+    "id": "string";
+    "name": "string";
+    "status": "string";
+    "clientId": "string";
+    "url": "string";
+    "proxyUrl": "string";
+    "authorizationScopes": "[]string";
+    "redirectUris": "[]string", optional;
     "subscriptions": "[]object", optional;
     "filesWritten": "object";
 });
@@ -36,6 +50,7 @@ output_schema!(ApplicationUpdate {
     "url": "string", optional;
     "proxyUrl": "string", optional;
     "authorizationScopes": "[]string";
+    "redirectUris": "[]string", optional;
 });
 
 output_schema!(ApplicationRef {
@@ -64,6 +79,7 @@ output_schema!(ApplicationRelease {
     "version": "string";
     "description": "string", optional;
     "createdAt": "string";
+    "nativeExtensions": "[]object", optional;
 });
 
 output_schema!(ValidationResult {
@@ -98,4 +114,12 @@ output_schema!(ConfigSetting {
     "group": "string";
     "slug": "string";
     "entryPath": "string";
+});
+
+output_schema!(ConfigNativeExtension {
+    "applicationId": "string";
+    "operation": "string";
+    "name": "string", optional;
+    "supportContact": "string";
+    "androidPackageName": "string";
 });

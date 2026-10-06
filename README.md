@@ -2,10 +2,6 @@
 
 Agent-first CLI for interacting with the GoDaddy Developer Platform.
 
-> Looking for the original, TypeScript-based `godaddy` CLI (`@godaddy/cli` on
-> npm)? It's maintained on the `original` branch — including its
-> `godaddy-cli` agent skill, which isn't installable from this branch.
-
 ## Installation
 
 ### macOS / Linux (and Git Bash / MSYS2 / Cygwin on Windows)
@@ -25,6 +21,17 @@ gddy --version
 Both installers download, checksum-verify, and install the binary for your platform. If you'd rather install by hand, download the archives from the [latest release](https://github.com/godaddy/cli/releases/latest) and put the binary on your `PATH`.
 
 Once installed, `gddy update check` / `gddy update apply` handles upgrades in place.
+
+### GitHub Actions
+
+Use [`godaddy/cli/action`](action/action.yml) to install `gddy` inside a workflow:
+
+```yaml
+- uses: godaddy/cli/action@action-v1
+- run: gddy --version
+```
+
+Pin an exact `gddy` release with `with: { version: v0.2.23 }`; omit it for latest. The action is versioned independently of the CLI itself — `action-v1` always points at the latest `action-v1.x.y` release.
 
 ### Agentic Skills
 
@@ -54,7 +61,7 @@ gddy domain list                  # list domains in your account
 
 Most commands need authentication. You may be taken through an interactive login process if you are not currently logged in, if your login has expired, or if your last auth token needs additional permissions. Run `gddy auth login` to log in explicitly.
 
-For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead; store the PAT with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
+For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead. Run `gddy pat create` to open the page where you can generate one, then store it with `gddy pat add` or use it in a `GDDY_PAT` environment variable.
 
 ## What you can do
 
@@ -62,20 +69,16 @@ Use `gddy --help` or `gddy tree` to get a comprehensive list of available comman
 
 - `domain` — list your domains, check availability, get suggestions, and register new ones
 - `dns` — view and edit a domain's DNS records
+- `hosting`
+- `email`
+- `shopping`
 
 We're actively working to expand the CLI to cover additional GoDaddy products.
 
 ### Developer Platform
 
-The Developer Platform command tree is currently an Experimental preview. [Enable
-Experimental commands](./docs/feature-flags.md) in your environment:
-
-```bash
-export GDDY_MIN_STAGE=experimental
-```
-
-...then begin with `gddy platform app init`.
+The CLI also provides access to the GoDaddy Developer Platform for building apps that users of GoDaddy Commerce products can install to their stores.
 
 - `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
-- `gddy platform actions` — discover the action contracts an app can declare
+- `gddy platform action` — discover the action contracts an app can declare
 - `gddy platform webhook` — inspect webhook event types for app subscriptions

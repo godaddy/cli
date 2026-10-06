@@ -59,6 +59,18 @@ pub struct GddyEnvConfig {
     )]
     pub account_url: String,
 
+    /// Base URL for the GoDaddy Developer Portal (e.g. generating a Personal
+    /// Access Token). Defaults to `developer.godaddy.com` for prod and
+    /// `developer.{env}-godaddy.com` for other environments; overridable via
+    /// `GDDY_DEVELOPER_URL` or local config.
+    #[env_config(
+        from_toml = parse_url_from_toml,
+        env = "DEVELOPER_URL",
+        from_env = parse_url,
+        default_fn = default_developer_url
+    )]
+    pub developer_url: String,
+
     /// Base URL for the DevX Core API gateway used by onboarding. Custom
     /// environments set this in `environments.toml`; built-in environments
     /// receive their defaults from `BaseEnvConfig`. Shell overrides are
@@ -110,6 +122,10 @@ fn default_account_url(sources: &SourceChain<'_>) -> String {
     derive_account_url(sources.env_name().unwrap_or_default())
 }
 
+fn default_developer_url(sources: &SourceChain<'_>) -> String {
+    derive_developer_url(sources.env_name().unwrap_or_default())
+}
+
 fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
     // A custom environment must configure this value explicitly. The empty
     // default keeps the field optional for unrelated CLI commands; callers
@@ -118,11 +134,22 @@ fn default_devx_core_url(_sources: &SourceChain<'_>) -> String {
 }
 
 fn derive_account_url(env_name: &str) -> String {
+    derive_godaddy_subdomain_url("https://account.godaddy.com", env_name)
+}
+
+fn derive_developer_url(env_name: &str) -> String {
+    derive_godaddy_subdomain_url("https://developer.godaddy.com", env_name)
+}
+
+/// Applies GoDaddy's internal-environment hostname convention to a canonical
+/// `https://{subdomain}.godaddy.com` URL: prod keeps the bare domain, every
+/// other environment gets `{env}-godaddy.com` via [`substitute_env_host`].
+/// Shared by `account_url` and `developer_url`, which only differ by subdomain.
+fn derive_godaddy_subdomain_url(bare_prod_url: &str, env_name: &str) -> String {
     if env_name == "prod" {
-        return "https://account.godaddy.com".to_owned();
+        return bare_prod_url.to_owned();
     }
-    substitute_env_host("https://account.godaddy.com", env_name)
-        .unwrap_or_else(|| "https://account.godaddy.com".to_owned())
+    substitute_env_host(bare_prod_url, env_name).unwrap_or_else(|| bare_prod_url.to_owned())
 }
 
 /// Applies GoDaddy's internal-environment hostname convention
@@ -365,6 +392,34 @@ mod tests {
         assert_eq!(resolved.account_url, "https://account.override.test");
     }
 
+    #[test]
+    fn developer_url_defaults_to_bare_domain_for_prod() {
+        let resolved = test_environment("prod", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.godaddy.com")
+        });
+        assert_eq!(resolved.developer_url, "https://developer.godaddy.com");
+    }
+
+    #[test]
+    fn developer_url_defaults_to_prefixed_domain_for_non_prod() {
+        let resolved = test_environment("ote", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.ote-godaddy.com")
+        });
+        assert_eq!(resolved.developer_url, "https://developer.ote-godaddy.com");
+    }
+
+    #[test]
+    fn developer_url_override_is_respected() {
+        let resolved = test_environment("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+                .with("developer_url", "https://developer.override.test")
+        });
+        assert_eq!(resolved.developer_url, "https://developer.override.test");
+    }
+
     fn test_environment_with_app_id(
         name: &str,
         extend: impl FnOnce(EnvTable) -> EnvTable,
@@ -426,6 +481,18 @@ mod tests {
                 .with("api_url", "https://api.example.test")
         });
         assert_eq!(resolved.account_url, "https://account.override.test");
+    }
+
+    #[test]
+    fn env_var_overrides_developer_url() {
+        let _g = ENV_LOCK.blocking_lock();
+        let _guard = EnvGuard::set("GDDY_DEVELOPER_URL", "https://developer.override.test");
+
+        let resolved = test_environment_with_app_id("dev", |t| {
+            t.with("client_id", "cid")
+                .with("api_url", "https://api.example.test")
+        });
+        assert_eq!(resolved.developer_url, "https://developer.override.test");
     }
 
     #[test]

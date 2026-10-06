@@ -48,6 +48,10 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 - `rust/src/shopping/product_actions.rs` maps Shopping line-item categories to post-purchase CLI guidance.
 - When adding a product purchasable through `shopping` that has a follow-up CLI flow, add its category-to-guide action there and cover it with a unit test. Keep the action list limited to product-specific next steps.
 
+## Purchase confirmation (Required)
+
+Commands that charge money or request user consent should follow the examples of the `domain purchase` and `shopping checkout complete` commands on insisting that agents require explicit consent from users.
+
 ## Command Patterns (Required)
 
 - Commands are `RuntimeCommandSpec` (or `RuntimeGroupSpec` for groups).
@@ -56,6 +60,34 @@ GoDaddy CLI is a Rust binary (edition 2024) built using:
 - Return `Ok(CommandResult::new(json!({...})))` for success.
 - Prefer `crate::error::GddyError::{not_found,validation,auth,config,security,network,…}` (and `GddyError::from` for module client errors) so agents get stable `error.code` + top-level `fix`. Use `Err(cli_engine::CliCoreError::message("..."))` only for one-off cases that do not yet have a shared mapping.
 - Streaming commands use `RuntimeCommandSpec::new_streaming` and emit events via `StreamSender`.
+- Commands with external effects are marked mutating so the engine's dry-run safeguard applies. Dry-run paths validate and read every prerequisite the real call needs (so they fail where it would) and return `CommandResult::with_dry_run()`.
+- Next actions (suggested follow-up commands) use a command template plus structured params, not a `format!`-built command line like `--query '{query}'` (a quote in the value breaks it; metacharacters can inject commands). Param names must match the target command's args and the template's `<placeholder>`s. Emit next actions only when executable and appropriate to the returned state, and never include consent-bypass flags (e.g. `--agree`) in them.
+- Encode dynamic path segments with `api::http::encode_path_segment` when assembling URLs by hand. Generated (Progenitor) clients already percent-encode path parameters; pass them raw to avoid double encoding.
+- Do not call `--debug transport` logging helpers for payloads that may hold customer, payment or order data.
+- Constrain flags to the API's documented values at argument parsing, so bad input fails locally with clear help.
+- Correctable input or config failures use a stable validation error with an actionable `fix`; never turn malformed config into an empty payload.
+- If an API returns an error payload inside a 2xx response, treat it as an error: don't let a typed client turn it into an empty success, and don't cache it. Keep an empty 202/204 response distinct (null/none) rather than substituting a default object that looks like a real, empty resource.
+- Polling/retry wrappers map only the exhausted expected status (e.g. 404) to `not_found`; keep 429/5xx/network errors as-is.
+- Resolve the API base URL from the selected environment; do not add per-service URL overrides or `--env` flags on follow-up commands.
+
+## Reuse Before You Build (Required)
+
+Search the codebase and `cli-engine` before writing a helper; reviewers reject duplication.
+
+- Typed clients: generate with Progenitor from the OpenAPI spec (as existing generated clients in the workspace do). Do not hand-write `reqwest` clients that traverse `serde_json::Value`.
+- Rendering: prefer `cli-engine` rendering (`HumanViewDef`/`TableColumn`, structured next actions and its standard footer) over hand-formatted tables or local display logic. Only write custom rendering when `cli-engine` cannot express it.
+- Shared formatting (money, etc.): reuse existing helpers rather than adding per-module copies.
+
+## User-Facing Text (Required)
+
+- Write help, guides and output for customers: no internal system or API names, scopes, environments or implementation jargon.
+- Where an AI assistant must act differently from a human (e.g. consent before a charge), address it directly in a clearly marked `AI assistants:` note; never mix that into customer-facing prose.
+- Command descriptions are short imperatives from the user's point of view; give flags concrete examples and discoverable values; show where prerequisite values (IDs) come from.
+- Don't expose internals (retry mechanics, generated keys, etc.) in normal help or output; when something fails, put the suggested next step in the error `fix`.
+- Avoid raw JSON inputs in the main flow. Guides should use soft line breaks (hard breaks only in shell examples).
+- PR descriptions must match implemented behavior.
+
+Full checklist: [Command authoring](./docs/command-authoring.md).
 
 ## Code File Structure (Required)
 

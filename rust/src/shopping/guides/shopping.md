@@ -20,9 +20,9 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 List the currently supported product categories:
 
 ```bash
-gddy shopping catalog categories
+gddy shopping catalog category
 # Fetch current categories instead of using the six-hour cache:
-gddy shopping catalog categories --refresh
+gddy shopping catalog category --refresh
 ```
 
 Search all available products or use a text query:
@@ -75,7 +75,7 @@ The response shows buyer details, checkout-session items, selected and available
 If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
 
 ```bash
-gddy payment-methods add
+gddy payment-method add
 ```
 
 ```bash
@@ -102,8 +102,8 @@ gddy shopping checkout update <checkout-id> \
 
 Before checkout completion, review the checkout session, its payment method, required agreements, and every important link.
 The `--agree` flag on checkout completion acknowledges and accepts all required agreements; use it only after that review.
-AI assistants: Before using `--agree` or completing checkout, show all required agreements and important links to the end user and obtain their explicit confirmation.
-Do not infer agreement from a request to purchase:
+
+AI assistants: Before using `--agree` or completing checkout, show the end user the checkout session's final total (including all fees), each required agreement's title AND link, and every important link. Then obtain their explicit confirmation to proceed. Do not summarize an agreement by name only — the user must be able to click through and read it. Do not infer approval from a request to purchase:
 
 ```bash
 gddy shopping checkout complete <checkout-id> --agree

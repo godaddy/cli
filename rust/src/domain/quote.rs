@@ -9,9 +9,10 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, validate_domain_name,
+    api_error, fees_to_json, format_money, make_client, period_label, validate_domain_name,
     validate_nameserver_hosts,
 };
+use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -32,39 +33,13 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
-    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
-    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's acknowledged
+    // via `fees`, in addition to `price`.
     "inventory": "string", optional;
     "fees": "[]object", optional;
 });
-
-/// Render a quote's `fees` array (e.g. a premium domain's one-time acquisition
-/// surcharge) as `{type, amount, currency}` objects for display — mirrors how
-/// `quote_to_json` renders prices via [`format_money`]. `None` (rather than an
-/// empty array) when the quote carried no fees, so the field is omitted from
-/// output entirely instead of showing an empty list.
-fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
-    if fees.is_empty() {
-        return None;
-    }
-    Some(json!(
-        fees.iter()
-            .map(|f| {
-                let mut out = json!({});
-                if let Some(t) = f.type_.as_ref() {
-                    out["type"] = json!(t.to_string());
-                }
-                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
-                    out["amount"] = json!(amount);
-                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
-                        out["currency"] = json!(code.to_string());
-                    }
-                }
-                out
-            })
-            .collect::<Vec<_>>()
-    ))
-}
 
 /// Build the inline registration profile (contacts + preferences) sent with a
 /// quote. Always returns a profile: `auto_renew` and `privacy` are always set
@@ -206,6 +181,32 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     out
 }
 
+/// The `next_action` a successful, available quote points at: registering with
+/// the cached token. Carries the price-confirmation instruction so an AI
+/// assistant reading this from `--output json` is told to relay the price to
+/// the end user before adding `--confirm`. `show_agent_note` should be `false`
+/// for `--output human` — a human reading their own terminal doesn't need to
+/// be told to show themselves the price and confirm with themselves.
+///
+/// Deliberately omits `--agree`/`--confirm` from the suggested command — an
+/// assistant that executes `next_actions[].command` verbatim without those
+/// flags hits the gates (and their price-confirmation errors) instead of
+/// silently charging the account. Mirrors shopping's `agreement_review_action`,
+/// which never suggests `checkout complete --agree` either.
+fn purchase_next_action(quote_token: String, show_agent_note: bool) -> cli_engine::NextAction {
+    let description = if show_agent_note {
+        format!(
+            "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm. \
+             {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+        )
+    } else {
+        "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm."
+            .to_owned()
+    };
+    next_action("domain purchase --quote-token <quote-token>", description)
+        .with_param("quote-token", NextActionParam::value(quote_token))
+}
+
 /// Split a quote's required agreements into (types, human-title lines) for the
 /// quote cache — the types are echoed into `consent.agreementTypes` at purchase,
 /// the titles drive the `--agree` review prompt.
@@ -298,7 +299,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Read)
         .with_default_fields(
-            "domain,available,price,renewalPrice,currency,period,periodLabel,quoteToken,expiresAt,agreements",
+            "domain,available,price,renewalPrice,currency,period,periodLabel,inventory,fees,quoteToken,expiresAt,agreements",
         )
         .with_output_schema::<DomainQuoteResult>()
         .with_view(view_columns())
@@ -396,13 +397,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     // find it. Warn so the user knows to re-quote on this host.
                     tracing::warn!(error = %e, "could not cache the quote for purchase");
                 }
-                next_actions.push(
-                    next_action(
-                        "domain purchase --quote-token <quote-token> --agree --confirm",
-                        "Register at the quoted price (within ~10 minutes)",
-                    )
-                    .with_param("quote-token", NextActionParam::value(token)),
-                );
+                next_actions.push(purchase_next_action(
+                    token,
+                    ctx.middleware.output_format != "human",
+                ));
             } else {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
@@ -422,8 +420,63 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{command, view_columns};
+    use super::{command, purchase_next_action, view_columns};
     use serde_json::json;
+
+    #[test]
+    fn purchase_next_action_tells_ai_assistants_to_confirm_price_first() {
+        let action = purchase_next_action("quote-token-1".to_owned(), true);
+
+        assert_eq!(
+            action.command,
+            "gddy domain purchase --quote-token <quote-token>"
+        );
+        // Regression: the suggested command must never bake in --agree/--confirm
+        // — an assistant that executes `next_actions[].command` verbatim must
+        // hit the gates (and their price-confirmation errors), not silently
+        // charge the account. Mirrors shopping's equivalent regression check.
+        assert!(!action.command.contains("--agree"));
+        assert!(!action.command.contains("--confirm"));
+        assert!(
+            action
+                .description
+                .contains("requires --agree and --confirm")
+        );
+        assert_eq!(
+            action.params["quote-token"].value.as_deref(),
+            Some("quote-token-1")
+        );
+        assert!(action.description.contains("AI assistants:"));
+        assert!(
+            action
+                .description
+                .contains("show the end user the exact price from `domain quote`")
+        );
+        assert!(
+            action
+                .description
+                .contains("Do not infer confirmation from a general request to buy")
+        );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(action.description.contains("title AND link"));
+        assert!(
+            action
+                .description
+                .contains("Do not summarize an agreement by name only")
+        );
+    }
+
+    #[test]
+    fn purchase_next_action_omits_agent_note_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let action = purchase_next_action("quote-token-1".to_owned(), false);
+
+        assert!(!action.description.contains("AI assistants:"));
+        assert!(action.description.contains("Register at the quoted price"));
+    }
 
     #[test]
     fn default_fields_includes_renewal_price() {
@@ -433,6 +486,13 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    #[test]
+    fn default_fields_includes_inventory_and_fees() {
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
+        assert!(fields.split(',').any(|f| f == "fees"), "{fields}");
     }
 
     #[test]

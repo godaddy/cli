@@ -46,7 +46,8 @@ impl DetailedError for AgreementsRequiredError {
     }
 }
 
-/// Ensure the authenticated customer has an active org before `application init`.
+/// Ensure the authenticated customer has an active org before creating an
+/// application or a native-app record.
 ///
 /// Prompts only for `PENDING` users. Does not run during `auth login`.
 pub async fn ensure_ready_for_app_init(
@@ -61,6 +62,23 @@ pub async fn ensure_ready_for_app_init(
         )));
     };
 
+    ensure_ready_for_app_init_at(
+        token,
+        &base_url,
+        accept_agreements,
+        io::stdin().is_terminal(),
+    )
+    .await
+}
+
+/// Same gate as [`ensure_ready_for_app_init`], against an already resolved DevX
+/// Core URL and a caller-supplied terminal state.
+pub(crate) async fn ensure_ready_for_app_init_at(
+    token: &str,
+    base_url: &str,
+    accept_agreements: bool,
+    is_tty: bool,
+) -> Result<EnsureOutcome, CliCoreError> {
     let client = OnboardingClient::new(base_url);
     let status = client.status(token).await.map_err(|error| {
         CliCoreError::message(format!(
@@ -68,7 +86,6 @@ pub async fn ensure_ready_for_app_init(
         ))
     })?;
 
-    let is_tty = io::stdin().is_terminal();
     let prompt_accepted = if status.status == "PENDING" && is_tty {
         // Keep the stdin lock off the async path so the command future stays `Send`.
         let prompt_result = {

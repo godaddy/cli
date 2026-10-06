@@ -7,7 +7,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, comma_joined, format_money, make_client, term_for_period};
+use super::common::{
+    api_error, comma_joined, fees_to_json, format_money, make_client, term_for_period,
+};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -20,9 +22,16 @@ output_schema!(DomainSuggestResult {
     // Present only when the API returns a formattable price for that term.
     "price1Year": "string", optional;
     "renewalPrice1Year": "string", optional;
+    "fees1Year": "[]object", optional;
     "price2Year": "string", optional;
     "renewalPrice2Year": "string", optional;
+    "fees2Year": "[]object", optional;
     "currency": "string", optional;
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's in that term's
+    // per-term `fees` (`fees1Year`/`fees2Year`), in addition to the price fields.
+    "inventory": "string", optional;
 });
 
 /// Convert a count-style flag value to the `NonZeroU64` the suggest query params
@@ -39,14 +48,24 @@ fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
 /// auto-alignment for no-view columns doesn't apply to them — they're
 /// right-aligned explicitly here instead so decimal points line up across
 /// rows of differently-priced suggestions.
+///
+/// `fees1Year`/`fees2Year` aren't `.nested(...)`, unlike `available`/`quote`'s
+/// `fees` column: each row here is one suggestion in an array-of-objects
+/// table, and cli-engine renders a cell inside such a row as a single flat
+/// line — nesting is a no-op there. A plain column still surfaces a premium
+/// suggestion's fee data (as a compact inline value) instead of it being
+/// entirely absent from the table, which is the regression this guards.
 fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("price1Year", "1yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
+        TableColumn::new("fees1Year", "1yr Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
+        TableColumn::new("fees2Year", "2yr Fees"),
         TableColumn::new("currency", "Currency"),
+        TableColumn::new("inventory", "Inventory"),
     ]
 }
 
@@ -54,7 +73,10 @@ fn view_columns() -> Vec<TableColumn> {
 /// `TermPrice` entries into scalar price/renewal-price fields (v3 returns
 /// indicative pricing as a `prices` array, which doesn't project into a table).
 /// `None` when the suggestion has no domain, so every emitted object matches the
-/// schema (`domain` required).
+/// schema (`domain` required). Each term's `fees` (e.g. a premium domain's
+/// one-time acquisition surcharge, in addition to the price fields) is
+/// surfaced alongside it as `fees1Year`/`fees2Year`, via the same
+/// [`fees_to_json`] shape `quote`/`available` use.
 fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
     let domain = s.domain.as_deref()?;
     let mut obj = json!({ "domain": domain });
@@ -68,6 +90,9 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
         if let Some(r) = t.renewal_price.as_ref().and_then(format_money) {
             obj["renewalPrice1Year"] = json!(r);
         }
+        if let Some(fees) = t.fees.as_ref().and_then(|f| fees_to_json(f)) {
+            obj["fees1Year"] = fees;
+        }
     }
     if let Some(t) = term_2yr {
         if let Some(p) = t.price.as_ref().and_then(format_money) {
@@ -75,6 +100,9 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
         }
         if let Some(r) = t.renewal_price.as_ref().and_then(format_money) {
             obj["renewalPrice2Year"] = json!(r);
+        }
+        if let Some(fees) = t.fees.as_ref().and_then(|f| fees_to_json(f)) {
+            obj["fees2Year"] = fees;
         }
     }
     // Only emit `currency` when a code is present — never a JSON null (the
@@ -87,6 +115,9 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
         .and_then(|m| m.currency_code.as_ref());
     if let Some(code) = currency_code {
         obj["currency"] = json!(code.to_string());
+    }
+    if let Some(inventory) = s.inventory.as_ref() {
+        obj["inventory"] = json!(inventory.to_string());
     }
     Some(obj)
 }
@@ -142,7 +173,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("domain,price1Year,renewalPrice1Year,currency")
+            .with_default_fields("domain,price1Year,renewalPrice1Year,currency,inventory,fees1Year")
             .with_output_schema::<DomainSuggestResult>()
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
@@ -187,8 +218,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::super::common::comma_joined;
-    use super::{command, nonzero, suggestion_to_json};
+    use super::{command, nonzero, suggestion_to_json, view_columns};
     use domains_client::types;
+    use serde_json::json;
 
     /// Builds a standalone `clap::Command` from the real `--limit` arg
     /// definition (not a re-declared copy), so this exercises the actual
@@ -334,5 +366,75 @@ mod tests {
             prices: None,
         };
         assert!(suggestion_to_json(&suggestion).is_none());
+    }
+
+    #[test]
+    fn surfaces_a_premium_terms_fees_and_inventory() {
+        let premium_term = types::TermPrice {
+            fees: Some(vec![types::Fee {
+                fee: Some(money(390000, "USD")),
+                type_: Some(types::FeeType(
+                    "ONE_TIME_PREMIUM_DOMAIN_PURCHASE".to_string(),
+                )),
+            }]),
+            ..term(1, 2299, 2299)
+        };
+        let suggestion = types::Suggestion {
+            domain: Some("premium-example.com".to_string()),
+            inventory: Some(types::InventoryType::Premium),
+            prices: Some(vec![premium_term]),
+        };
+        let obj = suggestion_to_json(&suggestion).expect("domain is present");
+        assert_eq!(obj["inventory"], "PREMIUM");
+        assert_eq!(
+            obj["fees1Year"],
+            serde_json::json!([{
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "amount": "3900.00",
+                "currency": "USD",
+            }])
+        );
+        assert!(obj.get("fees2Year").is_none(), "{obj}");
+    }
+
+    #[test]
+    fn default_fields_includes_inventory_and_fees_1_year() {
+        // Same class of regression as `available`/`quote`'s equivalent
+        // tests: `apply_pipeline` projects every output — human table and
+        // default `--output json` alike — down to `default_fields` unless
+        // `--fields` is passed explicitly.
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
+        assert!(fields.split(',').any(|f| f == "fees1Year"), "{fields}");
+    }
+
+    #[test]
+    fn fees_render_in_the_human_table() {
+        // Regression (Copilot review, PR #294): `fees1Year`/`fees2Year` were
+        // emitted into JSON but `view_columns()` had no column for either,
+        // so the human table silently dropped a premium suggestion's
+        // surcharge even though `--output json` had it. Narrowed to just
+        // `fees1Year` (rather than the full `view_columns()`, which doesn't
+        // fit an 80-column non-tty test width alongside every other column)
+        // so the assertion is about this column existing and rendering its
+        // value, not about column-hiding under width pressure — with only
+        // one column, cli-engine always keeps it (truncated if it must)
+        // rather than hiding it.
+        let suggestions = json!([{
+            "domain": "premium-example.com",
+            "fees1Year": [{"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3500.00", "currency": "USD"}],
+        }]);
+        let columns: Vec<_> = view_columns()
+            .into_iter()
+            .filter(|c| c.field == "fees1Year")
+            .collect();
+        let envelope = cli_engine::Envelope::success(suggestions, "domain");
+        let rendered = cli_engine::render_human_with_view(&envelope, Some(&columns), "");
+        assert!(rendered.contains("1YR FEES"), "{rendered}");
+        assert!(
+            rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("3500.00"), "{rendered}");
     }
 }

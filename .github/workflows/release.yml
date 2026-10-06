@@ -29,8 +29,10 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
+      rust_release_created: ${{ steps.release.outputs['rust--release_created'] }}
       tag_name: ${{ steps.release.outputs['rust--tag_name'] }}
+      action_release_created: ${{ steps.release.outputs['action--release_created'] }}
+      action_tag_name: ${{ steps.release.outputs['action--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 #v5.0.0
         id: release
@@ -40,10 +42,38 @@ jobs:
           manifest-file: .release-please-manifest.json
           target-branch: main
 
+  action-release:
+    name: Finalize action release
+    needs: release-please
+    if: needs.release-please.outputs.action_release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      # This release has no binaries attached — it must never become the
+      # repo's "latest" release, or the CLI's own
+      # `releases/latest/download/install.sh` one-liner 404s.
+      - name: Keep gddy as the repo's "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ needs.release-please.outputs.action_tag_name }}" --latest=false
+
+      - name: Move floating major tag
+        run: |
+          TAG="${{ needs.release-please.outputs.action_tag_name }}"
+          MAJOR="action-v$(echo "$TAG" | sed -E 's/^action-v([0-9]+)\..*/\1/')"
+          git tag -f "$MAJOR" "$TAG"
+          git push origin "$MAJOR" --force
+
   build:
     name: Build ${{ matrix.target }}
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_only == true)
+    if: needs.release-please.outputs.rust_release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_only == true)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -268,8 +298,8 @@ jobs:
             dist/gddy-*.tar.gz \
             dist/gddy-*.zip \
             dist/gddy-checksums-sha256.txt \
-            install.sh \
-            install.ps1 \
+            action/install.sh \
+            action/install.ps1 \
             --clobber
           # Publish only now assets are complete; stays a draft if build fails.
           gh release edit "$TAG" --draft=false --latest

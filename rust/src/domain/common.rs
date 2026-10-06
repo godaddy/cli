@@ -3,6 +3,7 @@
 //! `gddy domain` subcommand lives in its own sibling module and draws from here.
 
 use cli_engine::{CliCoreError, CommandContext, Credential, Result};
+use serde_json::json;
 
 use crate::environments;
 
@@ -68,6 +69,35 @@ pub(super) fn format_money(money: &types::SimpleMoney) -> Option<String> {
             .unwrap_or(""),
         false,
         false,
+    ))
+}
+
+/// Render a `fees` array (e.g. a premium domain's one-time acquisition
+/// surcharge) as `{type, amount, currency}` objects for display. Shared by
+/// `available`/`suggest`/`quote`, all of which surface a `types::Fee` list
+/// from the domains API. `None` (rather than an empty array) when there are
+/// no fees, so the field is omitted from output entirely instead of showing
+/// an empty list.
+pub(super) fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
+    if fees.is_empty() {
+        return None;
+    }
+    Some(json!(
+        fees.iter()
+            .map(|f| {
+                let mut out = json!({});
+                if let Some(t) = f.type_.as_ref() {
+                    out["type"] = json!(t.to_string());
+                }
+                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
+                    out["amount"] = json!(amount);
+                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
+                        out["currency"] = json!(code.to_string());
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
     ))
 }
 
@@ -185,7 +215,7 @@ pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
 /// Validate every value of a repeatable `--nameserver`-style flag as a
 /// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
 /// with the flag's own name — used by both `quote` (the registration
-/// profile's nameservers) and `nameservers set` (the target domain's
+/// profile's nameservers) and `nameserver set` (the target domain's
 /// nameservers) so a bad host isn't reported as if it were some other
 /// (already-valid) domain argument.
 pub(super) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>> {
@@ -328,7 +358,7 @@ pub(crate) fn format_api_error(
     if status == 402 {
         msg.push_str(
             "\n\nThis usually means your account has no usable payment method. Add one with \
-             `gddy payment-methods add` (a credit card or Good-as-Gold balance is required for domain \
+             `gddy payment-method add` (a credit card or Good-as-Gold balance is required for domain \
              purchases), then try again.",
         );
     }
@@ -540,6 +570,32 @@ mod tests {
     }
 
     #[test]
+    fn fees_to_json_renders_type_amount_and_currency() {
+        let fee = types::Fee {
+            fee: Some(money(Some(390000), "USD")),
+            type_: Some(types::FeeType(
+                "ONE_TIME_PREMIUM_DOMAIN_PURCHASE".to_string(),
+            )),
+        };
+        let rendered = fees_to_json(&[fee]).expect("non-empty fees render Some");
+        assert_eq!(
+            rendered,
+            json!([{
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "amount": "3900.00",
+                "currency": "USD",
+            }])
+        );
+    }
+
+    #[test]
+    fn fees_to_json_is_none_for_an_empty_list() {
+        // `available`/`suggest`/`quote` all gate on this to omit `fees`
+        // entirely rather than emit an empty array.
+        assert_eq!(fees_to_json(&[]), None);
+    }
+
+    #[test]
     fn format_money_uses_iso4217_minor_units_per_currency() {
         // v3 `value` is in the currency's ISO-4217 minor units — USD `1199` is
         // $11.99, NOT micro-units (the regression that rendered real prices as 0.00).
@@ -600,7 +656,7 @@ mod tests {
             false,
         );
         assert!(msg.contains("402 Payment Required"), "{msg}");
-        assert!(msg.contains("gddy payment-methods add"), "{msg}");
+        assert!(msg.contains("gddy payment-method add"), "{msg}");
     }
 
     #[test]
@@ -696,7 +752,7 @@ mod tests {
 
     #[test]
     fn validate_nameserver_hosts_rejects_bad_shape_with_flag_context() {
-        // Regression: `quote`'s and `nameservers set`'s `--nameserver` values
+        // Regression: `quote`'s and `nameserver set`'s `--nameserver` values
         // must go through the same shape check as a domain arg, but the error
         // must say `--nameserver`, not claim the bad value is "the domain".
         let err = validate_nameserver_hosts(vec!["bad ns".to_string()])

@@ -10,10 +10,9 @@ use crate::config::ConfigError;
 use crate::next_action::{next_action, required_value};
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "config",
-        "Inspect the local godaddy.toml manifest",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new("config", "Inspect the local godaddy.toml manifest").with_alias("configs"),
+    )
     .with_command(RuntimeCommandSpec::new_with_context(
         CommandSpec::new("validate", "Validate the local godaddy.toml manifest")
             .with_long(

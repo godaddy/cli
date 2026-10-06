@@ -11,7 +11,11 @@ struct DeploymentGetArgs {
     app_id: String,
 
     /// Deployment ID.
-    #[arg(long = "deployment-id", value_name = "DEPLOYMENT_ID")]
+    #[arg(
+        long = "deployment-id",
+        value_name = "DEPLOYMENT_ID",
+        allow_hyphen_values = true
+    )]
     deployment_id: String,
 }
 
@@ -40,4 +44,28 @@ pub(super) fn command() -> RuntimeCommandSpec {
             ]))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::{Args, FromArgMatches};
+
+    #[test]
+    fn deployment_id_starting_with_hyphen_is_parsed_as_a_value() {
+        let cmd = DeploymentGetArgs::augment_args(clap::Command::new("get"));
+        let matches = cmd
+            .try_get_matches_from([
+                "get",
+                "--app-id",
+                "NODEJS-rf2dwbzqux",
+                "--deployment-id",
+                "-yfNpdQN6X",
+            ])
+            .expect("hyphen-prefixed deployment ID should not be mistaken for a flag");
+        let args =
+            DeploymentGetArgs::from_arg_matches(&matches).expect("args should parse into struct");
+
+        assert_eq!(args.deployment_id, "-yfNpdQN6X");
+    }
 }

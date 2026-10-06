@@ -173,7 +173,7 @@ impl ApplicationClient {
 
     pub async fn update_application(&self, id: &str, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) { updateApplication(id: $id, input: $input) { id clientId label name description status url proxyUrl authorizationScopes } }",
+            "query": "mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) { updateApplication(id: $id, input: $input) { id clientId label name description status url proxyUrl authorizationScopes redirectUris } }",
             "variables": { "id": id, "input": input }
         }))
         .await
@@ -181,7 +181,7 @@ impl ApplicationClient {
 
     pub async fn create_release(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } settings { id groupSlug appSettingSlug entryPath capabilities order title } } }",
+            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } nativeExtensions { id name packageName contact platform } settings { id groupSlug appSettingSlug entryPath capabilities order title } } }",
             "variables": { "input": input }
         }))
         .await
@@ -246,7 +246,7 @@ impl ApplicationClient {
 
     pub async fn create_application(&self, input: Value) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "mutation CreateApplication($input: MutationCreateApplicationInput!) { createApplication(input: $input) { id clientId clientSecret label name description status url proxyUrl authorizationScopes secret publicKey } }",
+            "query": "mutation CreateApplication($input: MutationCreateApplicationInput!) { createApplication(input: $input) { id clientId clientSecret label name description status url proxyUrl authorizationScopes redirectUris secret publicKey } }",
             "variables": { "input": input }
         }))
         .await
@@ -254,7 +254,7 @@ impl ApplicationClient {
 
     pub async fn get_application_with_releases(&self, name: &str) -> Result<Value, ClientError> {
         self.query(json!({
-            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
+            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes redirectUris clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
             "variables": { "name": name }
         }))
         .await
@@ -585,6 +585,64 @@ mod tests {
         assert_eq!(
             data["createRelease"]["settings"][0]["entryPath"],
             "/settings/godaddy-tax"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_release_sends_native_extensions_input_and_selects_them() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/apps/app-registry-subgraph")
+                    .header("authorization", "Bearer test-token")
+                    .is_true(|req| {
+                        let body = req.body_string();
+                        body.contains("CreateRelease")
+                            && body.contains(
+                                "nativeExtensions { id name packageName contact platform }",
+                            )
+                            && body.contains(r#""platform":"ANDROID""#)
+                            && body.contains(r#""packageName":"com.example.app""#)
+                    });
+                then.status(200).json_body(json!({
+                    "data": {
+                        "createRelease": {
+                            "id": "rel-1",
+                            "version": "1.0.11",
+                            "nativeExtensions": [{
+                                "id": "ne-1",
+                                "name": "My Display Name",
+                                "packageName": "com.example.app",
+                                "contact": "support@example.com",
+                                "platform": "ANDROID"
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+
+        let input = json!({
+            "applicationId": "app-123",
+            "version": "1.0.11",
+            "nativeExtensions": [{
+                "platform": "ANDROID",
+                "name": "My Display Name",
+                "contact": "support@example.com",
+                "packageName": "com.example.app"
+            }]
+        });
+        let data = ApplicationClient::new(server.base_url(), "test-token")
+            .create_release(input)
+            .await
+            .expect("create release");
+
+        mock.assert_async().await;
+        assert_eq!(data["createRelease"]["nativeExtensions"][0]["id"], "ne-1");
+        assert_eq!(
+            data["createRelease"]["nativeExtensions"][0]["packageName"],
+            "com.example.app"
         );
     }
 

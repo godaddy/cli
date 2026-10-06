@@ -108,7 +108,7 @@ Not all domain subcommands lead naturally into a purchase. These ignore the flag
 
 - `gddy domain list` — shows owned domains, not a purchase path
 - `gddy domain get` — inspects an existing domain
-- `gddy domain contacts init` — local file setup, no purchase context
+- `gddy domain contact init` — local file setup, no purchase context
 - `gddy domain dns *` — DNS management for existing domains
 
 #### Primary entry: `gddy domain register`
@@ -321,7 +321,7 @@ gddy domain register example.com \
 
 2. **Fail-open on auth errors:** If the payment check API returns 401/403 (e.g. the scope isn't available yet), we skip the gate optimistically. The purchase step will catch the real 402 failure with a clear error. This prevents a missing scope from blocking the entire wizard.
 
-3. **Single retry loop:** We don't poll indefinitely. The user gets one chance to add a payment method and confirm. If it still fails, they get a clear error with the `gddy payment-methods add` fallback command.
+3. **Single retry loop:** We don't poll indefinitely. The user gets one chance to add a payment method and confirm. If it still fails, they get a clear error with the `gddy payment-method add` fallback command.
 
 4. **Non-interactive mode:** In `--non-interactive` mode, this step silently checks and fails immediately with a clear error message if no payment method exists (no prompts, no browser open). This gives CI scripts a fast-fail before the paid API call.
 
@@ -419,7 +419,7 @@ output by default, JSON as opt-in for when it's actually needed.
 | Availability check fails | Retry prompt with clear error |
 | Quote API returns unavailable | Suggest alternatives, loop back to Step 1 |
 | Quote expires mid-wizard | Auto-refresh quote before executing |
-| Payment method removed mid-wizard | Server returns 402 at purchase → clear error with `payment-methods add` |
+| Payment method removed mid-wizard | Server returns 402 at purchase → clear error with `payment-method add` |
 | Registration fails (server) | Show operation ID, suggest `gddy domain operation status` |
 | User presses Ctrl+C | Clean exit, no state persisted, no charge |
 | Network timeout on any step | Retry with exponential backoff (3 attempts) |

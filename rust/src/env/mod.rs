@@ -126,13 +126,15 @@ struct EnvSetArgs {
 pub fn module() -> Module {
     Module::new("Admin", |_ctx| {
         RuntimeGroupSpec::new(
-            GroupSpec::new("env", "Manage active GoDaddy environment").with_long(
-                "Control which GoDaddy environment (e.g. prod, ote) all commands talk to.\n\
+            GroupSpec::new("env", "Manage active GoDaddy environment")
+                .with_alias("envs")
+                .with_long(
+                    "Control which GoDaddy environment (e.g. prod, ote) all commands talk to.\n\
                      The active environment determines the API endpoints used for \
                      every request.\n\
                      Use `gddy env set` to switch environments; the selection is \
                      persisted to ~/.gdenv and survives new shell sessions.",
-            ),
+                ),
         )
         .with_command(RuntimeCommandSpec::new(
             CommandSpec::new("list", "List available environments")

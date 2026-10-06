@@ -34,3 +34,19 @@ pub fn module() -> Module {
         ),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn platform_overview_guide_does_not_document_native_extension() {
+        let guide = include_str!("guides/platform-overview.md");
+        assert!(
+            !guide.contains("native-extension"),
+            "overview guide still documents add native-extension"
+        );
+        assert!(
+            !guide.contains("[native_extension]"),
+            "overview guide still documents the native_extension section"
+        );
+    }
+}

@@ -10,6 +10,7 @@ mod environments;
 mod error;
 mod hosting;
 mod http;
+mod malware;
 mod next_action;
 mod output_schema;
 mod pat;
@@ -18,6 +19,8 @@ mod platform;
 mod scopes;
 mod scopes_cmd;
 mod shopping;
+#[cfg(feature = "dev-portal-spec")]
+mod spec_cmd;
 mod summary;
 mod truncation;
 mod update;
@@ -30,7 +33,7 @@ use crate::next_action::next_action;
 
 /// The full set of `gddy` command modules, shared between `main`'s
 /// [`CliConfig`] wiring and anything that needs to walk the real command
-/// tree standalone (e.g. `auth scopes`'s live scope→command correlation via
+/// tree standalone (e.g. `auth scope`'s live scope→command correlation via
 /// [`cli_engine::build_module_group`]), so both draw from exactly one list.
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
@@ -41,6 +44,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         email::module(),
         env::module(),
         hosting::module(),
+        malware::module(),
         pat::module(),
         payment_methods::module(),
         platform::module(),
@@ -58,7 +62,7 @@ async fn main() -> ExitCode {
 
     let auth_provider = Arc::new(auth::GoDaddyAuthProvider::new());
 
-    let cli = Cli::new(
+    let config =
         CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
             .with_long(
                 "gddy is the command-line interface to the GoDaddy developer platform.\n\
@@ -67,7 +71,7 @@ async fn main() -> ExitCode {
                  • domain   — list your domains, check availability, get suggestions, and register new ones\n  \
                  • dns      — view and edit a domain's DNS records\n  \
                  • api      — explore and call GoDaddy REST API endpoints directly\n  \
-                 • payment-methods — manage the payment methods used for purchases\n\
+                 • payment-method — manage the payment methods used for purchases\n\
                  \n\
                  Most commands need authentication; run `gddy auth login` first, or use a PAT via `gddy pat add` / `GDDY_PAT` for non-interactive workflows (or just run a\n\
                  command and follow the prompt). Use `--env` to target an environment and\n\
@@ -95,8 +99,12 @@ async fn main() -> ExitCode {
                 Ok(())
             }))
             .with_on_shutdown(Arc::new(update::maybe_print_update_notice))
-            .with_modules(all_modules()),
-    );
+            .with_modules(all_modules());
+
+    #[cfg(feature = "dev-portal-spec")]
+    let config = config.with_command(spec_cmd::spec_command());
+
+    let cli = Cli::new(config);
 
     execute_without_stdout_lock(&cli).await
 }
@@ -130,36 +138,31 @@ mod tests {
 
     use cli_engine::{Cli, CliConfig, Stage, environments::EnvTable};
 
-    /// Regression test for a real bug found while wiring feature-flagging up
-    /// properly: with no `min_stage` override anywhere, cli-engine's own
-    /// default (`Stage::Ga`) hides `hosting`. Guards that the *global* default
-    /// stays `Ga` per product decision — i.e. beta and experimental modules
-    /// stay hidden absent an environment override.
     #[tokio::test]
-    async fn beta_and_experimental_modules_stay_hidden_at_the_default_min_stage() {
+    async fn hosting_email_and_shopping_are_visible_at_the_default_min_stage() {
         let cli = Cli::new(
             CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
                 .with_min_stage(Stage::Ga)
                 .with_modules(super::all_modules()),
         );
         let output = cli.run(["gddy", "hosting", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "hosting should stay hidden at the Ga default: {}",
+            "hosting should be visible at the Ga default: {}",
             output.rendered
         );
 
         let output = cli.run(["gddy", "email", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "email should stay hidden at the Ga default: {}",
+            "email should be visible at the Ga default: {}",
             output.rendered
         );
 
         let output = cli.run(["gddy", "shopping", "--help"]).await;
-        assert_ne!(
+        assert_eq!(
             output.exit_code, 0,
-            "shopping should stay hidden at the Ga default: {}",
+            "shopping should be visible at the Ga default: {}",
             output.rendered
         );
     }
@@ -179,14 +182,8 @@ mod tests {
         );
     }
 
-    /// The other half of the guard: an environment whose resolved
-    /// `min_stage` is lower than the global default reveals those same
-    /// modules. This is exactly the mechanism `environments.toml`'s
-    /// `min_stage`/`feature_overrides` keys are meant to drive (there is no
-    /// per-environment env var equivalent — see `crate::environments`'s
-    /// module doc).
     #[tokio::test]
-    async fn an_environment_min_stage_override_reveals_beta_and_experimental_modules() {
+    async fn an_environment_min_stage_override_reveals_experimental_modules() {
         let environments = Arc::new(
             cli_engine::environments::Environments::new("dev")
                 .with_environment("dev", EnvTable::new().with("min_stage", "experimental")),
@@ -198,24 +195,10 @@ mod tests {
                 .with_startup_args(Vec::<&str>::new())
                 .with_modules(super::all_modules()),
         );
-        let output = cli.run(["gddy", "hosting", "--help"]).await;
+        let output = cli.run(["gddy", "db", "--help"]).await;
         assert_eq!(
             output.exit_code, 0,
-            "hosting should be revealed under an Experimental-min_stage environment: {}",
-            output.rendered
-        );
-
-        let output = cli.run(["gddy", "email", "--help"]).await;
-        assert_eq!(
-            output.exit_code, 0,
-            "email should be revealed under an Experimental-min_stage environment: {}",
-            output.rendered
-        );
-
-        let output = cli.run(["gddy", "shopping", "--help"]).await;
-        assert_eq!(
-            output.exit_code, 0,
-            "shopping should be revealed under an Experimental-min_stage environment: {}",
+            "db should be revealed under an Experimental-min_stage environment: {}",
             output.rendered
         );
     }
@@ -260,7 +243,7 @@ mod tests {
         for path in [
             "platform",
             "platform app",
-            "platform actions",
+            "platform action",
             "platform webhook",
         ] {
             assert!(
@@ -278,7 +261,7 @@ mod tests {
             ),
             (
                 ["gddy", "platform", "webhook", "--help"].as_slice(),
-                "events",
+                "event",
             ),
             (
                 ["gddy", "platform", "application", "--help"].as_slice(),
@@ -373,7 +356,7 @@ mod tests {
             "dns",
             "env",
             "pat",
-            "payment-methods",
+            "payment-method",
             "tree",
         ] {
             assert!(
@@ -435,6 +418,93 @@ mod tests {
                 output.rendered
             );
         }
+    }
+
+    #[tokio::test]
+    async fn native_extension_is_hidden_at_ga_and_visible_at_experimental() {
+        let hidden = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_module(super::platform::module()),
+        );
+        let output = hidden
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "add",
+                "native-extension",
+                "--help",
+            ])
+            .await;
+        assert_ne!(
+            output.exit_code, 0,
+            "native-extension should stay hidden at the Ga default: {}",
+            output.rendered
+        );
+
+        let add_help = hidden
+            .run(["gddy", "platform", "app", "add", "--help"])
+            .await;
+        assert_eq!(add_help.exit_code, 0, "{}", add_help.rendered);
+        assert!(
+            !add_help.rendered.contains("native-extension"),
+            "add help should not list native-extension at Ga: {}",
+            add_help.rendered
+        );
+
+        let release_help = hidden
+            .run(["gddy", "platform", "app", "release", "--help"])
+            .await;
+        assert_eq!(release_help.exit_code, 0, "{}", release_help.rendered);
+
+        let revealed = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_module(super::platform::module()),
+        );
+        let output = revealed
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "add",
+                "native-extension",
+                "--help",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("--support-contact"),
+            "missing --support-contact: {}",
+            output.rendered
+        );
+        assert!(
+            output.rendered.contains("--android-package-name"),
+            "missing --android-package-name: {}",
+            output.rendered
+        );
+    }
+
+    #[tokio::test]
+    async fn platform_app_add_help_omits_native_extension_copy_at_ga() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_module(super::platform::module()),
+        );
+        let output = cli.run(["gddy", "platform", "app", "add", "--help"]).await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            !output.rendered.contains("native extension"),
+            "add help still names a native extension: {}",
+            output.rendered
+        );
+        assert!(
+            !output.rendered.contains("DevX Core"),
+            "add help still names DevX Core: {}",
+            output.rendered
+        );
     }
 
     // `--env` actually re-routing command execution to the targeted

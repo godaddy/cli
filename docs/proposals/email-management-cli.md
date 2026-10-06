@@ -132,6 +132,9 @@ needs field usage before graduating to GA). `Stage::Experimental` matches
 what it does support; the open items below are about coordination, not about
 the shape of the API changing further.
 
+**Resolved:** shipped as `Beta`, then promoted straight to GA alongside
+`hosting` and `shopping` — see `rust/src/email/mod.rs`.
+
 ### 2. Update/delete: omit or stub?
 
 The API doesn't implement `email:update`/`email:delete` routes yet, even

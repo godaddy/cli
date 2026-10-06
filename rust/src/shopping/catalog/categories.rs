@@ -43,7 +43,8 @@ output_schema!(CatalogCategoriesOutput {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
-        CommandSpec::from_args::<Args>("categories", "List supported product categories")
+        CommandSpec::from_args::<Args>("category", "List supported product categories")
+            .with_alias("categories")
             .with_long(
                 "List the supported product categories currently available in the Shopping catalog. \
                  The list is derived from up to 50 catalog products and cached for six hours. Use \

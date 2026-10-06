@@ -4,8 +4,8 @@
 //! host (see the [`domains_client`] crate):
 //!
 //! * **v3** (Domain Lifecycle Management API) — `available`, `suggest`, `get`,
-//!   `quote`, `purchase` (quote → register), and `nameservers set`.
-//! * **v1** — `list` (the shopper's domains) and `agreements` (a TLD's legal
+//!   `quote`, `purchase` (quote → register), and `nameserver set`.
+//! * **v1** — `list` (the shopper's domains) and `agreement` (a TLD's legal
 //!   agreements), which v3 does not yet serve.
 //!
 //! All of these authenticate with an OAuth bearer token from
@@ -36,6 +36,18 @@ mod suggest;
 // reuses the repeatable-argument helper.
 pub(crate) use common::{api_error, format_api_error, make_client};
 
+/// Shown wherever an AI assistant driving `purchase` might look — its help
+/// text, the `--confirm`/`--agree` gate error messages, and the `next_action`
+/// from `quote` that points at it — so a purchase's price is always relayed to
+/// the end user before the account is actually charged. See AGENTS.md's
+/// "Purchase confirmation" section.
+pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or --confirm, show the end user the exact \
+    price from `domain quote` (including any fees) and each required legal \
+    agreement's title AND link (from `domain quote`'s `requiredAgreements`), and \
+    obtain their explicit confirmation to proceed. Do not summarize an agreement \
+    by name only — the user must be able to click through and read it. Do not \
+    infer confirmation from a general request to buy or register a domain.";
+
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {
         RuntimeGroupSpec::new(
@@ -43,6 +55,7 @@ pub fn module() -> Module {
                 "domain",
                 "List your domains, check availability, and register new ones",
             )
+            .with_alias("domains")
             .with_long(
                 "Work with domains on your GoDaddy account and the public registry.\n\
              \n\
@@ -50,11 +63,11 @@ pub fn module() -> Module {
              • available / suggest — find a name to register\n\
              • quote             — price a registration and see required agreements\n\
              • purchase          — register a new domain (charges your account)\n\
-             • nameservers set   — point a domain at custom nameservers\n\
+             • nameserver set    — point a domain at custom nameservers\n\
              • operation status  — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`, and `nameservers set` needs\n\
+             `domains.domain:create`, and `nameserver set` needs\n\
              `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )

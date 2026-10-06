@@ -463,7 +463,7 @@ pub(crate) fn no_saved_payment_method_action(
         .is_some_and(|payment| payment.instruments.is_empty())
         .then(|| {
             next_action(
-                "payment-methods add",
+                "payment-method add",
                 format!(
                     "No saved payment method is available. Add one at {account_url}/payment-methods/add-payment, then retrieve this checkout session again."
                 ),
@@ -774,7 +774,7 @@ mod tests {
         ] {
             let action = no_saved_payment_method_action(&empty_instruments, account_url)
                 .expect("empty list should require a payment method");
-            assert_eq!(action.command, "gddy payment-methods add");
+            assert_eq!(action.command, "gddy payment-method add");
             assert!(
                 action
                     .description

@@ -339,11 +339,13 @@ mod tests {
             url: "https://example.com".to_owned(),
             proxy_url: "https://proxy.example.com".to_owned(),
             authorization_scopes: vec![],
+            redirect_uris: None,
             actions: vec![],
             subscriptions: None,
             dependencies: vec![],
             extensions,
             settings: vec![],
+            native_extension: None,
         }
     }
 

@@ -115,6 +115,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "tunnel",
             "Bridge a local port to an app's MySQL over the agent WebSocket",
         )
+        .with_alias("tunnels")
         .with_long(
             "Open a local TCP listener and forward raw MySQL traffic to an \
              application's agent over a WebSocket. Each client connection gets \
