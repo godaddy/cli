@@ -18,6 +18,9 @@
 
 # Product paths with an assigned team, if one has been assigned yet — infra always requested, plus the product team's owners once its users list is non-empty.
 
+# db — `gddy db` commands
+rust/src/db/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @daleksic-godaddy @dcanic-godaddy @mcolakovic-godaddy
+
 # dns — TODO: get list of reviewers for DNS
 rust/src/dns/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
 
