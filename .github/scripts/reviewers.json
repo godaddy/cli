@@ -18,6 +18,12 @@
 
   "productPaths": [
     {
+      "comment": "`gddy db` commands",
+      "label": "db",
+      "patterns": ["rust/src/db/**"],
+      "users": ["daleksic-godaddy", "dcanic-godaddy", "mcolakovic-godaddy"]
+    },
+    {
       "comment": "TODO: get list of reviewers for DNS",
       "label": "dns",
       "patterns": ["rust/src/dns/**"],
