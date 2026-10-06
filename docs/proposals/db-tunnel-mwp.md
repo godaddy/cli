@@ -160,6 +160,14 @@ sequenceDiagram
    - the app is torn down, archived, or moved to another system or owner;
    - the sweep finds the session expired.
 
+   hosting sends the STOP on the cell's priority queue, the same queue the job
+   was deployed through, so it does not wait behind the bulk deploy backlog.
+   Two queues are not ordered, and even one queue is ordered only on a best-effort
+   basis, so a STOP can still arrive before its job registers. To cover that,
+   every later stop or mint for the app sends the STOP again for each stopped
+   session whose relay could still be running (expiry plus drain not yet
+   passed). A repeated STOP is harmless.
+
 ### Expiry
 
 | Setting | Value | Effect |
@@ -314,7 +322,7 @@ To rotate, add the new key to the map and deploy, then switch the key id.
 | Route | Caller | Auth | Answer |
 | --- | --- | --- | --- |
 | `POST /hosting/v1/systems/:systemId/apps/:appId/db-tunnel` | airo-go, support tools | `JWTOrCert` (airo console or CTK certificate) plus `RequireAppInSystem` | `200 {sessionId, domain, url, pollUrl, token, variant, expiresAt, replaced}`. `400` bad request, `404` app not in system, `409` no database for the variant or a concurrent mint, `500` no database address, `503` not configured, cell unreachable, no relay hostname, or the previous session could not be stopped. |
-| `POST /hosting/v1/systems/:systemId/apps/:appId/db-tunnel/stop` | support tools | same | `200 {stopped, failed, unrevoked}`, or `204` if nothing was live. `unrevoked` counts sessions whose stop could not be sent; they stay live, so a retry sends it again. |
+| `POST /hosting/v1/systems/:systemId/apps/:appId/db-tunnel/stop` | support tools | same | `200 {stopped, resent, failed, unrevoked}`, or `204` if nothing was live. `unrevoked` counts sessions whose stop could not be sent; they stay live, so a retry sends it again. `resent` counts stopped sessions whose STOP was sent again because their relay could still be running; a failed resend counts in `failed` only. |
 
 Both answers carry `Cache-Control: no-store`. Attribution is
 `X-On-Behalf-Of` when present, otherwise the body's `createdBy`, otherwise the
