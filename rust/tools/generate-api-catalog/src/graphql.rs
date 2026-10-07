@@ -283,11 +283,14 @@ pub(crate) fn synthesize_graphql_domain(
             .strip_prefix('v')
             .unwrap_or(&source.spec_version)
             .to_owned(),
-        base_url: String::new(),
+        base_url: source.graphql_base_url.clone().unwrap_or_default(),
         endpoints: vec![CatalogEndpoint {
             operation_id: "graphql".to_owned(),
             method: "POST".to_owned(),
-            path: "/graphql".to_owned(),
+            path: source
+                .graphql_endpoint_path
+                .clone()
+                .unwrap_or_else(|| "/graphql".to_owned()),
             summary: "GraphQL API".to_owned(),
             description: Some(format!("GraphQL endpoint with {op_count} operations")),
             parameters: None,

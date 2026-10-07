@@ -1,0 +1,17 @@
+mutation CreateApplication($input: MutationCreateApplicationInput!) {
+  createApplication(input: $input) {
+    id
+    clientId
+    clientSecret
+    label
+    name
+    description
+    status
+    url
+    proxyUrl
+    authorizationScopes
+    redirectUris
+    secret
+    publicKey
+  }
+}

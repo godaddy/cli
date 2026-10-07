@@ -1,0 +1,11 @@
+mutation ActivateRelease($applicationId: ID!, $releaseId: ID!) {
+  activateRelease(applicationId: $applicationId, releaseId: $releaseId) {
+    id
+    version
+    description
+    status
+    activatedAt
+    createdAt
+    updatedAt
+  }
+}

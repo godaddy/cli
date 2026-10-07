@@ -1,3 +1,4 @@
+mod app_registry_spec;
 mod dereference;
 mod domains_spec;
 mod email_spec;
@@ -119,6 +120,13 @@ fn main() -> Result<()> {
             &email_spec::email_client_oas3_path(),
         )
         .context("failed to refresh email-client codegen spec")?;
+    }
+    if let Some(app_registry_source) = sources.iter().find(|s| s.domain == "app-registry") {
+        app_registry_spec::refresh(
+            &app_registry_source.spec_file,
+            &app_registry_spec::app_registry_client_schema_path(),
+        )
+        .context("failed to refresh platform-app-client codegen schema")?;
     }
 
     sources.extend(local_spec_sources(&source_manifest)?);
@@ -299,5 +307,42 @@ mod tests {
                 "endpoint-count drift for '{domain}': file has {actual}, manifest says {manifest_count}"
             );
         }
+    }
+
+    /// A GraphQL source's committed catalog entry must serve from the host and
+    /// path declared in `api-catalog-sources.json`; otherwise `gddy api call`
+    /// would send requests to the wrong place.
+    #[test]
+    fn committed_graphql_catalogs_use_the_declared_endpoint() {
+        let dir = resolve_output_dir();
+        let source_manifest = load_source_manifest().expect("load source manifest");
+
+        let mut checked = 0;
+        for source in source_manifest
+            .remote
+            .iter()
+            .filter(|source| source.endpoint_path.is_some())
+        {
+            let catalog: Value = serde_json::from_str(
+                &std::fs::read_to_string(dir.join(format!("{}.json", source.domain)))
+                    .unwrap_or_else(|e| panic!("read {}.json: {e}", source.domain)),
+            )
+            .unwrap_or_else(|e| panic!("parse {}.json: {e}", source.domain));
+
+            assert_eq!(
+                catalog["baseUrl"].as_str(),
+                source.base_url.as_deref(),
+                "baseUrl drift for '{}'",
+                source.domain
+            );
+            assert_eq!(
+                catalog["endpoints"][0]["path"].as_str(),
+                source.endpoint_path.as_deref(),
+                "endpoint path drift for '{}'",
+                source.domain
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "expected at least one GraphQL catalog source");
     }
 }

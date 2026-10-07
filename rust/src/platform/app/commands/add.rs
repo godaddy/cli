@@ -423,15 +423,20 @@ mod tests {
 
     #[test]
     fn application_name_lookup_uses_registry_id_not_oauth_client_id() {
-        let data = json!({
-            "application": {
-                "id": "app-registry-id",
-                "clientId": "550e8400-e29b-41d4-a716-446655440000",
-                "name": "my-app"
-            }
-        });
+        // The OAuth client id is deliberately not part of the lookup's
+        // selection at all, so it cannot be mistaken for the registry id.
+        let application = platform_app_client::application::ApplicationApplication {
+            id: "app-registry-id".to_owned(),
+            label: "My App".to_owned(),
+            name: "my-app".to_owned(),
+            description: None,
+            status: platform_app_client::application::ApplicationStatus::ACTIVE,
+            url: None,
+            proxy_url: None,
+        };
         assert_eq!(
-            super::native_extension::application_id(&data, "my-app").expect("application id"),
+            super::native_extension::application_id(Some(&application), "my-app")
+                .expect("application id"),
             "app-registry-id"
         );
     }
@@ -449,7 +454,9 @@ mod tests {
                     "data": {
                         "application": {
                             "id": "app-registry-id",
-                            "name": "my-app"
+                            "label": "My App",
+                            "name": "my-app",
+                            "status": "ACTIVE"
                         }
                     }
                 }));
@@ -557,7 +564,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;

@@ -3,7 +3,8 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
 };
-use serde_json::{Value, json};
+use platform_app_client::create_application::MutationCreateApplicationInput;
+use serde_json::json;
 
 use super::schemas::ApplicationInit;
 use crate::next_action::{next_action, required_value};
@@ -62,15 +63,6 @@ struct InitArgs {
     force: bool,
 }
 
-fn redirect_uris_from_application(app: &Value) -> Option<Vec<String>> {
-    app["redirectUris"].as_array().map(|redirect_uris| {
-        redirect_uris
-            .iter()
-            .filter_map(|uri| uri.as_str().map(str::to_owned))
-            .collect()
-    })
-}
-
 fn validate_resolved_redirect_uris(
     redirect_uris: Option<&[String]>,
     app_url: &str,
@@ -79,10 +71,6 @@ fn validate_resolved_redirect_uris(
         crate::error::GddyError::validation(format!("Invalid application configuration: {message}"))
             .into_cli_error()
     })
-}
-
-fn create_result_redirect_uris(app: &Value, requested: Option<&[String]>) -> Option<Vec<String>> {
-    redirect_uris_from_application(app).or_else(|| requested.map(<[String]>::to_vec))
 }
 
 /// `filesWritten` is a small path-by-kind object (`config`/`env`), so it
@@ -226,27 +214,31 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ensure_ready_for_app_init(&credential.token, &env, accept_agreements).await?;
 
             let client = super::make_client(&ctx).await?;
-            let mut input = json!({
-                "name": name,
-                "label": label,
-                "description": description,
-                "url": url,
-                "proxyUrl": proxy_url,
-                "organizationId": &onboarding.org_id,
-                "authorizationScopes": scopes,
-            });
-            super::add_redirect_uris_to_input(&mut input, redirect_uris.as_deref());
-            let data = client
-                .create_application(input)
+            let app = client
+                .create_application(MutationCreateApplicationInput {
+                    name: name.clone(),
+                    label: label.clone(),
+                    description: Some(description.clone()),
+                    url: Some(url.clone()),
+                    proxy_url: Some(proxy_url.clone()),
+                    organization_id: Some(onboarding.org_id.clone()),
+                    authorization_scopes: Some(scopes.clone()),
+                    redirect_uris: redirect_uris.clone(),
+                    distribution_type: None,
+                })
                 .await
-                .map_err(super::client_err)?;
-
-            let app = &data["createApplication"];
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "createApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
             // Credentials/secrets the API returns (all selected by create_application).
-            let client_id = app["clientId"].as_str().unwrap_or("").to_owned();
-            let client_secret = app["clientSecret"].as_str().unwrap_or("").to_owned();
-            let secret = app["secret"].as_str().unwrap_or("").to_owned();
-            let public_key = app["publicKey"].as_str().unwrap_or("").to_owned();
+            let client_id = app.client_id.clone().unwrap_or_default();
+            let client_secret = app.client_secret.clone().unwrap_or_default();
+            let secret = app.secret.clone().unwrap_or_default();
+            let public_key = app.public_key.clone().unwrap_or_default();
 
             // Best-effort local writes: app create already succeeded. Only paths that
             // actually write are included in filesWritten.
@@ -303,12 +295,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            let app_id = app["id"].as_str().unwrap_or("").to_owned();
-            let result_redirect_uris = create_result_redirect_uris(app, redirect_uris.as_deref());
-            let mut result = json!({
+            let app_id = app.id.clone();
+            let result = json!({
                 "id": app_id,
                 "name": name,
-                "status": app["status"].as_str().unwrap_or("").to_owned(),
+                "status": app.status,
                 "clientId": client_id,
                 "orgId": onboarding.org_id,
                 "url": url,
@@ -316,8 +307,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "authorizationScopes": scopes,
                 "oauthGrantTypes": ["authorization_code", "client_credentials"],
                 "filesWritten": files_written,
+                "redirectUris": app.redirect_uris,
             });
-            super::add_redirect_uris_to_input(&mut result, result_redirect_uris.as_deref());
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action(
                     "platform app add action --name <name> --url <url>",
@@ -347,25 +338,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use serde_json::json;
 
-    use super::{
-        create_result_redirect_uris, init_view_columns, redirect_uris_from_application,
-        validate_resolved_redirect_uris,
-    };
-
-    #[test]
-    fn redirect_uris_from_application_preserves_missing_empty_and_populated_values() {
-        assert_eq!(redirect_uris_from_application(&json!({})), None);
-        assert_eq!(
-            redirect_uris_from_application(&json!({ "redirectUris": [] })),
-            Some(vec![])
-        );
-        assert_eq!(
-            redirect_uris_from_application(&json!({
-                "redirectUris": ["https://auth.example.net/callback"]
-            })),
-            Some(vec!["https://auth.example.net/callback".to_owned()])
-        );
-    }
+    use super::{init_view_columns, validate_resolved_redirect_uris};
 
     #[test]
     fn resolved_url_override_is_validated_before_create() {
@@ -378,22 +351,6 @@ mod tests {
                 .to_string()
                 .contains("duplicates an automatically registered redirect URI"),
             "{error}"
-        );
-    }
-
-    #[test]
-    fn create_result_redirect_uris_prefers_api_response_and_falls_back_to_request() {
-        let requested = vec!["https://requested.example.net/callback".to_owned()];
-        assert_eq!(
-            create_result_redirect_uris(&json!({}), Some(&requested)),
-            Some(requested)
-        );
-        assert_eq!(
-            create_result_redirect_uris(
-                &json!({ "redirectUris": ["https://api.example.net/callback"] }),
-                None,
-            ),
-            Some(vec!["https://api.example.net/callback".to_owned()])
         );
     }
 

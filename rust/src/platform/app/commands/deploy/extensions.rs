@@ -2,6 +2,9 @@
 //! by [`super::command`]'s deploy orchestration.
 
 use cli_engine::StreamSender;
+use platform_app_client::generate_release_upload_url::{
+    MutationGenerateReleaseUploadUrlInput, UploadContentType,
+};
 use serde_json::{Value, json};
 
 use crate::platform::app::client::{ApplicationClient, UploadOptions};
@@ -263,34 +266,33 @@ pub(super) async fn deploy_extension(
             .send(json!({ "type": "progress", "name": "extension.upload", "status": "started", "extensionName": ext_name, "target": target }))
             .await;
 
-        let mut upload_input = json!({
-            "applicationId": application_id,
-            "releaseId": release_id,
-            "contentType": "JS",
-        });
-        if let Some(t) = target {
-            upload_input["target"] = json!(t);
-        }
+        let upload_input = MutationGenerateReleaseUploadUrlInput {
+            application_id: application_id.to_owned(),
+            release_id: release_id.to_owned(),
+            content_type: UploadContentType::JS,
+            target: target.clone(),
+        };
 
-        let upload_data = client
+        let upload = client
             .generate_upload_url(upload_input)
             .await
-            .map_err(super::super::client_err)?;
+            .map_err(super::super::client_err)?
+            .ok_or_else(|| {
+                crate::error::GddyError::unexpected(
+                    "generateReleaseUploadUrl returned no data".to_owned(),
+                )
+                .into_cli_error()
+            })?;
 
-        let upload = &upload_data["generateReleaseUploadUrl"];
-        let upload_url = upload["url"].as_str().unwrap_or("").to_owned();
-        let upload_id = upload["uploadId"].as_str().unwrap_or("").to_owned();
-        let max_size_bytes = upload["maxSizeBytes"].as_u64();
+        let upload_url = upload.url;
+        let upload_id = upload.upload_id;
+        let max_size_bytes = u64::try_from(upload.max_size_bytes).ok();
 
-        // Parse required headers from ["key:value"] array
+        // Parse required headers from ["key:value"] entries.
         let mut headers = serde_json::Map::new();
-        if let Some(arr) = upload["requiredHeaders"].as_array() {
-            for h in arr {
-                if let Some(s) = h.as_str()
-                    && let Some((k, v)) = s.split_once(':')
-                {
-                    headers.insert(k.trim().to_owned(), json!(v.trim()));
-                }
+        for h in &upload.required_headers {
+            if let Some((k, v)) = h.split_once(':') {
+                headers.insert(k.trim().to_owned(), json!(v.trim()));
             }
         }
 
