@@ -13,9 +13,9 @@
 //! deploy-execute — the tunnel scope is a separate grant, so authority to
 //! publish a deployment does not by itself grant raw database read/write.
 //!
-//! - Node.js Hosting: `POST /v1/hosting/nodejs/apps/:id/agent-token` returns the
-//!   app's agent URL and an agent token.
-//! - `--product wordpress`: Managed WordPress has no per-app agent, so
+//! - `--product nodejs`: `POST /v1/hosting/apps/NODEJS-:id/agent-token` returns
+//!   the app's agent URL and an agent token.
+//! - `--product mhwp`: Managed WordPress has no per-app agent, so
 //!   `POST /v1/airo/hosting/apps/:id/database-tunnel` starts an on-demand relay
 //!   speaking the same WebSocket protocol — closing any tunnel already open for
 //!   the app — and returns its URL, a readiness `pollUrl` and a relay token.
@@ -43,6 +43,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 
 use crate::error::GddyError;
 use crate::hosting::client::HostingClient;
+use crate::hosting::common::HostingAppType;
 use crate::http::api_url_for_env;
 use crate::scopes::HOSTING_DATABASE_TUNNEL_EXECUTE as DATABASE_TUNNEL;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
@@ -82,6 +83,11 @@ struct TunnelArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
+    /// Hosting product of the app: `nodejs` for Node.js Hosting, `mhwp` for a
+    /// Managed WordPress site. Selects which service mints the tunnel token.
+    #[arg(long = "product", value_name = "PRODUCT", ignore_case = true)]
+    product: HostingAppType,
+
     /// Local TCP port MySQL clients connect to.
     #[arg(long, value_name = "PORT", default_value_t = 3306)]
     port: u16,
@@ -96,17 +102,6 @@ struct TunnelArgs {
     /// the network. Off by default; the default loopback bind needs no flag.
     #[arg(long = "allow-non-loopback")]
     allow_non_loopback: bool,
-
-    /// Product the app belongs to. Selects which service mints the tunnel token:
-    /// Node.js Hosting, or the Airo API for Managed WordPress sites.
-    #[arg(long, value_enum, value_name = "PRODUCT", default_value_t = TunnelProduct::Nodejs)]
-    product: TunnelProduct,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum TunnelProduct {
-    Nodejs,
-    Wordpress,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -130,10 +125,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
              `--ssl-mode=REQUIRED`) so the session is encrypted across the local \
              hop as well; the database may require it. The CLI authorizes with \
              your GoDaddy credentials and connects to the app's assigned agent \
-             automatically. Pass `--product wordpress` for a Managed WordPress \
-             site, which starts a short-lived relay and can take up to a few \
-             minutes before the port opens; the default is a Node.js Hosting \
-             app. A WordPress site has one tunnel at a time: opening a new one \
+             automatically. Pass `--product nodejs` for a Node.js Hosting app, \
+             or `--product mhwp` for a Managed WordPress site, which starts a \
+             short-lived relay and can take up to a few minutes before the port \
+             opens. A WordPress site has one tunnel at a time: opening a new one \
              closes the previous one. Log in with your own database user and \
              password, as for a Node.js app. Runs until interrupted (Ctrl-C).",
         )
@@ -368,29 +363,29 @@ struct TunnelTarget {
 async fn mint_tunnel_target(
     ctx: &CommandContext,
     app_id: &str,
-    product: TunnelProduct,
+    product: HostingAppType,
 ) -> cli_engine::Result<TunnelTarget> {
     let required = vec![DEPLOY_EXECUTE.to_owned(), DATABASE_TUNNEL.to_owned()];
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
     let client = HostingClient::new(base_url, token);
     let minted = match product {
-        TunnelProduct::Nodejs => client.get_agent_token(app_id).await,
-        TunnelProduct::Wordpress => client.ensure_airo_database_tunnel_session(app_id).await,
+        HostingAppType::Nodejs => client.get_agent_token(app_id, product.as_str()).await,
+        HostingAppType::Mhwp => client.ensure_airo_database_tunnel_session(app_id).await,
     };
     let resp = minted.map_err(|e| GddyError::from(e).into_cli_error())?;
     parse_tunnel_target(&resp, product)
 }
 
-fn parse_tunnel_target(resp: &Value, product: TunnelProduct) -> cli_engine::Result<TunnelTarget> {
+fn parse_tunnel_target(resp: &Value, product: HostingAppType) -> cli_engine::Result<TunnelTarget> {
     Ok(match product {
-        TunnelProduct::Nodejs => TunnelTarget {
+        HostingAppType::Nodejs => TunnelTarget {
             endpoint: field_str(resp, "agentUrl")?,
             token: field_str(resp, "token")?,
             ready_url: None,
             replaced: false,
         },
-        TunnelProduct::Wordpress => TunnelTarget {
+        HostingAppType::Mhwp => TunnelTarget {
             endpoint: field_str(resp, "url")?,
             token: field_str(resp, "token")?,
             ready_url: Some(field_str(resp, "pollUrl")?),
@@ -734,6 +729,25 @@ mod tests {
     use super::build_tunnel_ws_url;
 
     #[test]
+    fn product_flag_parses_case_insensitively_to_wire_value() {
+        use crate::hosting::common::HostingAppType;
+        use clap::Parser;
+
+        // Wrap the flattened args so clap can parse them standalone in a test.
+        #[derive(Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            args: super::TunnelArgs,
+        }
+
+        let wrap = Wrap::try_parse_from(["db-tunnel", "--app-id", "app-1", "--product", "nodejs"])
+            .expect("--product nodejs should parse");
+        assert_eq!(wrap.args.product, HostingAppType::Nodejs);
+        // The lowercase CLI value maps to the uppercase wire value sent as `?appType=`.
+        assert_eq!(wrap.args.product.as_str(), "NODEJS");
+    }
+
+    #[test]
     fn rejects_plaintext_schemes() {
         // The agent URL comes from the service, never the operator, so a
         // cleartext value is a control-plane fault — reject it rather than
@@ -826,7 +840,8 @@ mod tests {
     }
 
     #[test]
-    fn product_defaults_to_nodejs_and_accepts_wordpress() {
+    fn product_is_required_and_accepts_mhwp() {
+        use crate::hosting::common::HostingAppType;
         use clap::Parser;
 
         #[derive(clap::Parser)]
@@ -835,12 +850,11 @@ mod tests {
             args: super::TunnelArgs,
         }
 
-        let default = Cli::try_parse_from(["t", "--app-id", "abc123"]).expect("parse default");
-        assert_eq!(default.args.product, super::TunnelProduct::Nodejs);
+        assert!(Cli::try_parse_from(["t", "--app-id", "abc123"]).is_err());
 
-        let wp = Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "wordpress"])
-            .expect("parse wordpress");
-        assert_eq!(wp.args.product, super::TunnelProduct::Wordpress);
+        let wp = Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "mhwp"])
+            .expect("parse mhwp");
+        assert_eq!(wp.args.product, HostingAppType::Mhwp);
 
         assert!(Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "php"]).is_err());
     }
@@ -862,7 +876,8 @@ mod tests {
     fn nodejs_target_uses_agent_url_without_readiness_probe() {
         let resp = serde_json::json!({ "agentUrl": "https://agent.example", "token": "t" });
         let target =
-            super::parse_tunnel_target(&resp, super::TunnelProduct::Nodejs).expect("nodejs target");
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Nodejs)
+                .expect("nodejs target");
         assert_eq!(
             target,
             super::TunnelTarget {
@@ -883,8 +898,9 @@ mod tests {
             "token": "relay-token",
             "replaced": true,
         });
-        let target = super::parse_tunnel_target(&resp, super::TunnelProduct::Wordpress)
-            .expect("wordpress target");
+        let target =
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .expect("wordpress target");
         assert_eq!(target.endpoint, "https://dbt-s1.c1.pma.example");
         assert_eq!(target.token, "relay-token");
         assert_eq!(
@@ -901,17 +917,24 @@ mod tests {
             "pollUrl": "https://dbt-s1.example/healthz",
             "token": "t",
         });
-        let target = super::parse_tunnel_target(&resp, super::TunnelProduct::Wordpress)
-            .expect("wordpress target");
+        let target =
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .expect("wordpress target");
         assert!(!target.replaced);
     }
 
     #[test]
     fn wordpress_target_requires_poll_url() {
         let resp = serde_json::json!({ "url": "https://dbt-s1.example", "token": "t" });
-        assert!(super::parse_tunnel_target(&resp, super::TunnelProduct::Wordpress).is_err());
+        assert!(
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .is_err()
+        );
         let legacy = serde_json::json!({ "agentUrl": "https://agent.example", "token": "t" });
-        assert!(super::parse_tunnel_target(&legacy, super::TunnelProduct::Wordpress).is_err());
+        assert!(
+            super::parse_tunnel_target(&legacy, crate::hosting::common::HostingAppType::Mhwp)
+                .is_err()
+        );
     }
 
     #[test]

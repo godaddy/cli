@@ -1,4 +1,4 @@
-# Proposal: `gddy db tunnel --product wordpress` — MySQL access for Managed WordPress
+# Proposal: `gddy db tunnel --product mhwp` — MySQL access for Managed WordPress
 
 Status: draft. The CLI side is implemented. The server side is not live yet.
 
@@ -18,12 +18,14 @@ the same WebSocket protocol as the agent, so the CLI's relay code is shared.
 ## Usage
 
 ```bash
-gddy db tunnel --app-id <app-id> --product wordpress [--port 3306]
+gddy db tunnel --app-id <app-id> --product mhwp [--port 3306]
 mysql --ssl-mode=REQUIRED -h 127.0.0.1 -P 3306 -u <user> -p
 ```
 
-`--product` defaults to `nodejs`. It only selects the mint endpoint. Everything
-else follows from the mint response.
+`--product` is required: `nodejs` for Node.js Hosting, `mhwp` for Managed
+WordPress (case-insensitive, the same values as `--app-type` on other hosting
+commands). It only selects the mint endpoint. Everything else follows from the
+mint response.
 
 ## What the CLI does
 

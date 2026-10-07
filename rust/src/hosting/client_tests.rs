@@ -538,7 +538,7 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
     let mock = server
         .mock_async(|when, then| {
             when.method(POST)
-                .path("/v1/hosting/nodejs/apps/app-1/agent-token")
+                .path("/v1/hosting/apps/NODEJS-app-1/agent-token")
                 .header("authorization", "Bearer test-token")
                 .json_body(json!({}));
             then.status(200).json_body(json!({
@@ -549,7 +549,7 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
         .await;
 
     let body = client(&server.base_url())
-        .get_agent_token("app-1")
+        .get_agent_token("app-1", "NODEJS")
         .await
         .expect("get agent token");
 
