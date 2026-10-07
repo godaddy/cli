@@ -147,7 +147,7 @@ impl HostingClient {
 
     // Spec has no request body; Akamai still 411s a POST with no Content-Length.
     async fn post_empty_json(&self, path: &str) -> Result<Value, ClientError> {
-        self.post_empty_json_inner(self.url(path), true).await
+        self.post_empty_json_inner(path, true).await
     }
 
     /// Like [`post_empty_json`](Self::post_empty_json), but the response body is
@@ -157,17 +157,17 @@ impl HostingClient {
     /// verbatim and offers no body-redaction hook, so the suppression happens
     /// here, at the one call site that needs it.
     async fn post_empty_json_secret_response(&self, path: &str) -> Result<Value, ClientError> {
-        self.post_empty_json_inner(self.url(path), false).await
+        self.post_empty_json_inner(path, false).await
     }
 
     async fn post_empty_json_inner(
         &self,
-        url: String,
+        path: &str,
         log_response_body: bool,
     ) -> Result<Value, ClientError> {
         let request = self
             .http
-            .request(Method::POST, url)
+            .request(Method::POST, self.url(path))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id())
             .json(&json!({}))
@@ -306,22 +306,19 @@ impl HostingClient {
             .await
     }
 
-    /// Start an on-demand database-tunnel relay for a Managed WordPress app,
-    /// closing any tunnel already open for it. Served by the Airo API at
-    /// `/v1/airo/hosting/apps/:id/database-tunnel`, outside the `/v1/hosting`
-    /// base. Same scopes as [`get_agent_token`](Self::get_agent_token).
-    /// Response shape: `{ sessionId, url, pollUrl, token, variant, expiresAt,
-    /// replaced }`.
-    pub async fn ensure_airo_database_tunnel_session(
+    /// Start an on-demand database-tunnel relay for an app, closing any tunnel
+    /// already open for it: `/v1/hosting/apps/{app_type}-{id}/database-tunnel`
+    /// (e.g. `MHWP-{id}`), prefixed like [`get_agent_token`](Self::get_agent_token)
+    /// and minted with the same scopes. Response shape: `{ sessionId, url,
+    /// pollUrl, token, variant, expiresAt, replaced }`.
+    pub async fn ensure_database_tunnel_session(
         &self,
         app_id: &str,
+        app_type: &str,
     ) -> Result<Value, ClientError> {
-        let url = format!(
-            "{}/v1/airo/hosting/apps/{app_id}/database-tunnel",
-            self.base_url
-        );
         // Secret response: the body carries the relay's bearer token.
-        self.post_empty_json_inner(url, false).await
+        self.post_empty_json_secret_response(&format!("/apps/{app_type}-{app_id}/database-tunnel"))
+            .await
     }
 
     pub async fn list_deployments(

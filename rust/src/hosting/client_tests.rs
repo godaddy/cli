@@ -559,12 +559,12 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
 }
 
 #[tokio::test]
-async fn ensure_airo_database_tunnel_session_posts_to_airo_path() {
+async fn ensure_database_tunnel_session_posts_to_prefixed_app_path() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
             when.method(POST)
-                .path("/v1/airo/hosting/apps/app-1/database-tunnel")
+                .path("/v1/hosting/apps/MHWP-app-1/database-tunnel")
                 .header("authorization", "Bearer test-token")
                 .json_body(json!({}));
             then.status(200).json_body(json!({
@@ -577,9 +577,9 @@ async fn ensure_airo_database_tunnel_session_posts_to_airo_path() {
         .await;
 
     let body = client(&server.base_url())
-        .ensure_airo_database_tunnel_session("app-1")
+        .ensure_database_tunnel_session("app-1", "MHWP")
         .await
-        .expect("ensure airo database tunnel session");
+        .expect("ensure database tunnel session");
 
     mock.assert_async().await;
     assert_eq!(body["url"], "https://dbt-s1.c1.pma.example");

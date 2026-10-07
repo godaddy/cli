@@ -16,7 +16,7 @@
 //! - `--product nodejs`: `POST /v1/hosting/apps/NODEJS-:id/agent-token` returns
 //!   the app's agent URL and an agent token.
 //! - `--product mhwp`: Managed WordPress has no per-app agent, so
-//!   `POST /v1/airo/hosting/apps/:id/database-tunnel` starts an on-demand relay
+//!   `POST /v1/hosting/apps/MHWP-:id/database-tunnel` starts an on-demand relay
 //!   speaking the same WebSocket protocol — closing any tunnel already open for
 //!   the app — and returns its URL, a readiness `pollUrl` and a relay token.
 //!   The CLI waits for `pollUrl` to answer before listening. As with Node.js,
@@ -371,7 +371,11 @@ async fn mint_tunnel_target(
     let client = HostingClient::new(base_url, token);
     let minted = match product {
         HostingAppType::Nodejs => client.get_agent_token(app_id, product.as_str()).await,
-        HostingAppType::Mhwp => client.ensure_airo_database_tunnel_session(app_id).await,
+        HostingAppType::Mhwp => {
+            client
+                .ensure_database_tunnel_session(app_id, product.as_str())
+                .await
+        }
     };
     let resp = minted.map_err(|e| GddyError::from(e).into_cli_error())?;
     parse_tunnel_target(&resp, product)

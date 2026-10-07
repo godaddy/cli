@@ -29,7 +29,7 @@ mint response.
 
 ## What the CLI does
 
-1. **Mint.** `POST {api base}/v1/airo/hosting/apps/{appId}/database-tunnel`,
+1. **Mint.** `POST {api base}/v1/hosting/apps/MHWP-{appId}/database-tunnel`,
    with an OAuth token that has the deploy-execute scope and
    `hosting.database.tunnel:execute`. The response is never logged, because it
    holds the relay token.
