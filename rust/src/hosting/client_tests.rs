@@ -557,3 +557,32 @@ async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
     assert_eq!(body["agentUrl"], "https://app-1.agent.example");
     assert_eq!(body["token"], "minted-agent-jwt");
 }
+
+#[tokio::test]
+async fn ensure_database_tunnel_session_posts_to_prefixed_app_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/MHWP-app-1/database-tunnel")
+                .header("authorization", "Bearer test-token")
+                .json_body(json!({}));
+            then.status(200).json_body(json!({
+                "sessionId": "s1",
+                "url": "https://dbt-s1.c1.pma.example",
+                "pollUrl": "https://dbt-s1.c1.pma.example/healthz",
+                "token": "relay-token"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .ensure_database_tunnel_session("app-1", "MHWP")
+        .await
+        .expect("ensure database tunnel session");
+
+    mock.assert_async().await;
+    assert_eq!(body["url"], "https://dbt-s1.c1.pma.example");
+    assert_eq!(body["pollUrl"], "https://dbt-s1.c1.pma.example/healthz");
+    assert_eq!(body["token"], "relay-token");
+}

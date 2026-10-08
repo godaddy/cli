@@ -306,6 +306,21 @@ impl HostingClient {
             .await
     }
 
+    /// Start an on-demand database-tunnel relay for an app, closing any tunnel
+    /// already open for it: `/v1/hosting/apps/{app_type}-{id}/database-tunnel`
+    /// (e.g. `MHWP-{id}`), prefixed like [`get_agent_token`](Self::get_agent_token)
+    /// and minted with the same scopes. Response shape: `{ sessionId, url,
+    /// pollUrl, token, variant, expiresAt, replaced }`.
+    pub async fn ensure_database_tunnel_session(
+        &self,
+        app_id: &str,
+        app_type: &str,
+    ) -> Result<Value, ClientError> {
+        // Secret response: the body carries the relay's bearer token.
+        self.post_empty_json_secret_response(&format!("/apps/{app_type}-{app_id}/database-tunnel"))
+            .await
+    }
+
     pub async fn list_deployments(
         &self,
         app_id: &str,
