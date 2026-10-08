@@ -71,6 +71,7 @@
       "comment": "gddy platform commands",
       "label": "platform",
       "patterns": [
+        "rust/src/api/**",
         "rust/src/platform/**"
       ],
       "users": [
