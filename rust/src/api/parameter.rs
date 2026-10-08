@@ -42,10 +42,10 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
-            .with_pagination(PaginationConfig {
-                default_limit: OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
-                max_limit: OPERATION_CHILD_LIST_MAX_LIMIT,
-            }),
+            .with_pagination(PaginationConfig::new(
+                OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
+                OPERATION_CHILD_LIST_MAX_LIMIT,
+            )),
         |_cred, args: ParameterListArgs| async move {
             let operation = args.operation.as_str();
             let catalog = catalog();

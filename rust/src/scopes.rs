@@ -77,6 +77,16 @@ macro_rules! declare_scopes {
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
 
+/// OIDC directive scope marking the request as an identity (not just
+/// authorization) request — some IDPs only populate profile claims when this
+/// is present alongside [`PROFILE`], even though `profile` alone is meant to
+/// carry the claims.
+pub const OPENID: &str = "openid";
+
+/// OIDC directive scope requesting standard profile claims (`name`,
+/// `given_name`, `preferred_username`, etc.) on the token.
+pub const PROFILE: &str = "profile";
+
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
     /// Read the caller's registered applications. Requested at login by default
@@ -306,6 +316,16 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: OFFLINE_ACCESS,
         description: "Request a refresh token",
+        default: true,
+    },
+    ScopeInfo {
+        scope: OPENID,
+        description: "Mark the request as an OIDC identity request",
+        default: true,
+    },
+    ScopeInfo {
+        scope: PROFILE,
+        description: "Request standard OIDC profile claims on the token",
         default: true,
     },
 ];
