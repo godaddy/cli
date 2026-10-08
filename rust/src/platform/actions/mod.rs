@@ -102,10 +102,7 @@ pub fn group() -> RuntimeGroupSpec {
                 .no_auth(true)
                 .with_default_fields("name,description")
                 .with_output_schema::<ActionSummary>()
-                .with_pagination(PaginationConfig {
-                    default_limit: 50,
-                    max_limit: 200,
-                }),
+                .with_pagination(PaginationConfig::new(50, 200)),
             |_cred, _args| async move {
                 let actions: Vec<_> = ACTIONS
                     .iter()

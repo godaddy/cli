@@ -19,15 +19,16 @@
 //!
 //! `ALL` does NOT cover every scope requiring client registration, though:
 //! directive scopes like [`OFFLINE_ACCESS`] aren't `resource:action` grants, so
-//! they're declared outside [`declare_scopes!`]/`ALL` but still need the same
-//! server-side registration. When syncing the OAuth client's configuration,
-//! diff against `ALL` *plus* every such standalone constant, not `ALL` alone.
+//! they're declared outside [`declare_scopes!`]/`ALL` (and listed in
+//! [`DIRECTIVES`]) but still need the same server-side registration. When
+//! syncing the OAuth client's configuration, diff against `ALL` *plus*
+//! [`DIRECTIVES`], not `ALL` alone.
 //!
 //! # Adding a scope (READ THIS)
 //!
 //! 1. Add a constant to the [`declare_scopes!`] block below (or, for a directive
 //!    scope that isn't a `resource:action` permission, declare it standalone
-//!    like [`OFFLINE_ACCESS`]). Constants in `declare_scopes!` are automatically
+//!    like [`OFFLINE_ACCESS`], and add it to [`DIRECTIVES`]). Constants in `declare_scopes!` are automatically
 //!    included in [`ALL`] — you cannot add one there without registering it in
 //!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
@@ -52,10 +53,10 @@ macro_rules! declare_scopes {
         /// registration in sync with this list.
         ///
         /// NOT the complete set of scopes requiring OAuth client registration:
-        /// [`OFFLINE_ACCESS`] is a directive scope (not a `resource:action` permission)
-        /// and is deliberately excluded, but still must be registered on the client
-        /// server-side. Diff the client's configuration against `ALL` *plus*
-        /// [`OFFLINE_ACCESS`], not `ALL` alone.
+        /// the directive scopes in [`DIRECTIVES`] (e.g. [`OFFLINE_ACCESS`]) aren't
+        /// `resource:action` permissions and are deliberately excluded, but still must
+        /// be registered on the client server-side. Diff the client's configuration
+        /// against `ALL` *plus* [`DIRECTIVES`], not `ALL` alone.
         ///
         /// Not referenced by production code (the individual constants are what
         /// commands use); it exists as the authoritative registry to diff against
@@ -76,6 +77,21 @@ macro_rules! declare_scopes {
 /// authorization server will refuse or silently drop it just like any other
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
+
+/// OIDC directive scope marking the request as an identity (not just
+/// authorization) request — some IDPs only populate profile claims when this
+/// is present alongside [`PROFILE`], even though `profile` alone is meant to
+/// carry the claims.
+pub const OPENID: &str = "openid";
+
+/// OIDC directive scope requesting standard profile claims (`name`,
+/// `given_name`, `preferred_username`, etc.) on the token.
+pub const PROFILE: &str = "profile";
+
+/// Every standalone directive scope — the scopes that require OAuth client
+/// registration but, not being `resource:action` permissions, live outside
+/// [`ALL`]. Diff the client's configuration against `ALL` *plus* this list.
+pub const DIRECTIVES: &[&str] = &[OFFLINE_ACCESS, OPENID, PROFILE];
 
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
@@ -308,6 +324,16 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         description: "Request a refresh token",
         default: true,
     },
+    ScopeInfo {
+        scope: OPENID,
+        description: "Mark the request as an OIDC identity request",
+        default: true,
+    },
+    ScopeInfo {
+        scope: PROFILE,
+        description: "Request standard OIDC profile claims on the token",
+        default: true,
+    },
 ];
 
 /// Every leaf command's space-separated invocation path (e.g. `"domain
@@ -439,14 +465,13 @@ mod tests {
     }
 
     /// [`SCOPE_REGISTRY`] must describe every scope requiring OAuth client
-    /// registration — `ALL` plus the standalone directive scopes
-    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scope` would silently omit a
+    /// registration — `ALL` plus the standalone [`DIRECTIVES`] — or `gddy auth scope` would silently omit a
     /// scope an agent needs to plan an eager login around.
     #[test]
     fn scope_registry_covers_every_declared_scope() {
         let registered: std::collections::HashSet<&str> =
             SCOPE_REGISTRY.iter().map(|info| info.scope).collect();
-        for scope in ALL.iter().copied().chain([OFFLINE_ACCESS]) {
+        for scope in ALL.iter().chain(DIRECTIVES).copied() {
             assert!(
                 registered.contains(scope),
                 "scope {scope:?} is declared but missing from SCOPE_REGISTRY"

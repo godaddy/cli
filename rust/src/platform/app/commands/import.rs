@@ -557,9 +557,7 @@ mod tests {
                 "config": "/home/user/project/godaddy.toml",
             },
         });
-        let envelope = cli_engine::Envelope::success(result, "applications");
-        let rendered =
-            cli_engine::render_human_with_view(&envelope, Some(&import_view_columns()), "");
+        let rendered = cli_engine::preview_human_view(result, &import_view_columns());
         assert!(rendered.contains("Files Written:"), "{rendered}");
         assert!(rendered.contains("godaddy.toml"), "{rendered}");
     }

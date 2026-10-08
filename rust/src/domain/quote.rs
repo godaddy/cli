@@ -506,8 +506,7 @@ mod tests {
             "period": 1,
             "periodLabel": "1 year",
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("1 year"), "{rendered}");
     }
 
@@ -536,8 +535,7 @@ mod tests {
                 "nameServers": ["ns01.domaincontrol.com", "ns02.domaincontrol.com"],
             },
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Required Agreements:"), "{rendered}");
         assert!(rendered.contains("Registration Agreement"), "{rendered}");
         assert!(rendered.contains("Resolved Settings:"), "{rendered}");
@@ -560,8 +558,7 @@ mod tests {
                 {"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3900.00", "currency": "USD"},
             ],
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
         assert!(rendered.contains("Fees:"), "{rendered}");
@@ -582,8 +579,7 @@ mod tests {
             "domain": "example.com",
             "available": true,
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(!rendered.contains("null"), "{rendered}");
     }
 }

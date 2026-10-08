@@ -249,9 +249,7 @@ mod tests {
             &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
         );
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        let envelope = cli_engine::Envelope::success(preview, "domain");
-        let rendered =
-            cli_engine::render_human_with_view(&envelope, Some(&super::super::view_columns()), "");
+        let rendered = cli_engine::preview_human_view(preview, &super::super::view_columns());
         assert!(rendered.contains("Plan:"), "{rendered}");
         assert!(rendered.contains("RECORD ID"), "{rendered}");
         assert!(rendered.contains("replace"), "{rendered}");

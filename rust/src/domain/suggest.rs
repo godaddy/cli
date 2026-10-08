@@ -428,8 +428,7 @@ mod tests {
             .into_iter()
             .filter(|c| c.field == "fees1Year")
             .collect();
-        let envelope = cli_engine::Envelope::success(suggestions, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&columns), "");
+        let rendered = cli_engine::preview_human_view(suggestions, &columns);
         assert!(rendered.contains("1YR FEES"), "{rendered}");
         assert!(
             rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),

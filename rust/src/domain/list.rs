@@ -248,10 +248,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_default_fields("domain,status,expiresAt,autoRenew")
             .with_json_schema::<types::Domain>()
             .with_scopes(&[DOMAINS_READ])
-            .with_pagination(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            }),
+            .with_pagination(PaginationConfig::new(0, 500)),
         |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
             let statuses = parse_statuses(&args.status)?;
@@ -303,10 +300,7 @@ mod tests {
     fn opts_into_pagination_with_no_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            })
+            Some(PaginationConfig::new(0, 500))
         );
     }
 
