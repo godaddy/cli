@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.26](https://github.com/godaddy/cli/compare/v0.2.25...v0.2.26) (2026-10-08)
+
+
+### Features
+
+* **db:** mint tunnel token via product-prefixed app id, add --product ([4822eea](https://github.com/godaddy/cli/commit/4822eea3c8af6cfacac5b27952b7bc8be743b7fd))
+* **db:** mint tunnel token via product-prefixed app id, add --product ([3bf7dbe](https://github.com/godaddy/cli/commit/3bf7dbeb68ca1ce8fb23c8ddb072f7c5467a56f4))
+* **email:** convert Email API client to a spec-generated (progenitor) client ([#280](https://github.com/godaddy/cli/issues/280)) ([7cc2dbb](https://github.com/godaddy/cli/commit/7cc2dbbe10749e6fbe8c3351e9da0b8e9d92fa5d))
+* **platform:** add native Android extension support behind the native-apps flag ([#296](https://github.com/godaddy/cli/issues/296)) ([65888d4](https://github.com/godaddy/cli/commit/65888d416aa6bd159246949f6e2e438a6522a30a))
+
+
+### Bug Fixes
+
+* **dns:** pair retained values before position in the set plan ([#257](https://github.com/godaddy/cli/issues/257)) ([27a408b](https://github.com/godaddy/cli/commit/27a408b02f2327989874228022ecf59284505c7b))
+
 ## [0.2.25](https://github.com/godaddy/cli/compare/v0.2.24...v0.2.25) (2026-10-01)
 
 
