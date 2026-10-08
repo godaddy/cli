@@ -77,8 +77,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 (`--body '{...}'`), as individual fields (`--field key=value`, \
                 repeatable), or from a JSON file (`--file body.json`); `--file` \
                 takes precedence over `--body`, and `--field`/`--param` values are \
-                merged on top of either, so the body must be a JSON object when \
-                you use them. Use the global `--expr`/`--filter` \
+                merged on top of either, so a `--body`/`--file` body must be a \
+                JSON object when you use `--field` or `--param` values that go \
+                in the body. Use the global `--expr`/`--filter` \
                 flags (JMESPath) to extract or filter response data, and \
                 `--include` to see response headers alongside the body.",
             )
@@ -557,6 +558,37 @@ mod tests {
             "{}",
             output.rendered
         );
+    }
+
+    /// `--param` values routed to the path or a header don't touch the body, so
+    /// they stay valid alongside a non-object `--body`; only `--field` and
+    /// body-bound `--param` values need an object.
+    #[tokio::test]
+    async fn call_dry_run_allows_non_body_params_with_a_non_object_body() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_module(crate::api::module()),
+        );
+        let output = cli
+            .run([
+                "gddy",
+                "api",
+                "call",
+                "updateNameservers",
+                "--method",
+                "PUT",
+                "--body",
+                "[\"ns1.example.com\"]",
+                "--param",
+                "domain-name=example.com",
+                "--param",
+                "Idempotency-Key=11111111-1111-1111-1111-111111111111",
+                "--dry-run",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
     }
 
     /// Missing a required `--param` for a resolved operation id (here a

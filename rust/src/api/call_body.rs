@@ -44,12 +44,14 @@ pub(super) fn build_request_body(
     let base = request_body.get_or_insert_with(|| json!({}));
     let Some(obj) = base.as_object_mut() else {
         return Err(crate::error::GddyError::validation(format!(
-            "--field/--param values can only be added to a JSON object body, but the {source} \
-             body is {}",
+            "--field values (and --param values that belong in the body) can only be added to a \
+             JSON object body, but the {source} body is {}",
             json_kind(base)
         ))
         .with_fix(
-            "Make the body a JSON object, or drop --field/--param and put those values in the body",
+            "Make the body a JSON object, or remove --field and the --param values meant for the \
+             body and put them in the body instead. --param values for the path, query, or \
+             headers can stay.",
         )
         .into_cli_error());
     };
