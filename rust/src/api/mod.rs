@@ -3,6 +3,7 @@
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 mod call;
+mod call_body;
 mod catalog;
 mod domain;
 mod graphql;

@@ -5,6 +5,7 @@
 use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use serde_json::{Value, json};
 
+use super::call_body::build_request_body;
 use super::catalog::{
     Endpoint, catalog, graphql_operation_redirect_error, locate_by_path, resolve_graphql_operation,
     resolve_operation,
@@ -76,7 +77,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 (`--body '{...}'`), as individual fields (`--field key=value`, \
                 repeatable), or from a JSON file (`--file body.json`); `--file` \
                 takes precedence over `--body`, and `--field`/`--param` values are \
-                merged on top of either. Use the global `--expr`/`--filter` \
+                merged on top of either, so the body must be a JSON object when \
+                you use them. Use the global `--expr`/`--filter` \
                 flags (JMESPath) to extract or filter response data, and \
                 `--include` to see response headers alongside the body.",
             )
@@ -140,6 +142,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 validate_required_params(ep, &path, &parts, &extra_headers)?;
             }
 
+            // Build the body (`--file` > `--body`, with `--field`/`--param`
+            // merged on top) before the dry-run short-circuit, for the same
+            // reason: an unreadable file, malformed JSON, or fields that can't
+            // merge into the body must fail in a dry run too.
+            let request_body = build_request_body(
+                args.file.as_deref(),
+                args.body.as_deref(),
+                &args.field,
+                &parts.body,
+            )?;
+
             // `--dry-run` is statically tagged `Tier::Mutate` since the method
             // is only known at runtime, but a GET/HEAD is safe to actually run
             // (and more useful previewed as real data than as a generic
@@ -173,52 +186,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
             };
             let url = format!("{base_url}{path}");
             let url = append_query(&url, &parts.query)?;
-
-            // Build request body: -F file > -d body, then merge -f fields on top
-            let mut request_body: Option<Value> = None;
-
-            if let Some(file_path) = args.file.as_deref() {
-                let content = std::fs::read_to_string(file_path).map_err(|e| {
-                    crate::error::GddyError::validation(format!(
-                        "failed to read file '{file_path}': {e}"
-                    ))
-                    .into_cli_error()
-                })?;
-                request_body = Some(serde_json::from_str(&content).map_err(|e| {
-                    crate::error::GddyError::validation(format!(
-                        "invalid JSON in '{file_path}': {e}"
-                    ))
-                    .into_cli_error()
-                })?);
-            } else if let Some(body_str) = args.body.as_deref() {
-                request_body = Some(serde_json::from_str(body_str).map_err(|e| {
-                    crate::error::GddyError::validation(format!("invalid JSON body: {e}"))
-                        .into_cli_error()
-                })?);
-            }
-
-            let fields = &args.field;
-            if !fields.is_empty() || !parts.body.is_empty() {
-                let body = request_body.get_or_insert_with(|| json!({}));
-                for s in fields {
-                    let (key, val) = split_kv(s).ok_or_else(|| {
-                        crate::error::GddyError::validation(format!(
-                            "invalid field format '{s}': expected key=value"
-                        ))
-                        .into_cli_error()
-                    })?;
-                    if let Some(obj) = body.as_object_mut() {
-                        obj.insert(key.to_owned(), json!(val));
-                    }
-                }
-                // `--param` body values are merged on top of `--field`, so a
-                // repeated key resolves in `--param`'s favor.
-                for (key, val) in &parts.body {
-                    if let Some(obj) = body.as_object_mut() {
-                        obj.insert(key.clone(), json!(val));
-                    }
-                }
-            }
 
             let client = crate::http::make_http_client();
 
@@ -485,6 +452,46 @@ mod tests {
             "{}",
             output.rendered
         );
+    }
+
+    /// `--field` can't be merged into a non-object `--body`; that must fail
+    /// under `--dry-run` as it would for real, not preview a request that
+    /// silently drops the field. Malformed `--body` JSON fails the same way.
+    #[tokio::test]
+    async fn call_dry_run_rejects_fields_on_a_non_object_body_and_bad_json() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_module(crate::api::module()),
+        );
+        for (body, expected) in [
+            ("[1,2]", "JSON object body"),
+            ("null", "JSON object body"),
+            ("{not json", "invalid JSON body"),
+        ] {
+            let output = cli
+                .run([
+                    "gddy",
+                    "api",
+                    "call",
+                    "/v1/example",
+                    "--method",
+                    "POST",
+                    "--body",
+                    body,
+                    "--field",
+                    "a=1",
+                    "--dry-run",
+                    "--output",
+                    "json",
+                ])
+                .await;
+            assert_ne!(output.exit_code, 0, "{body}: {}", output.rendered);
+            assert!(
+                output.rendered.contains(expected),
+                "{body}: {}",
+                output.rendered
+            );
+        }
     }
 
     /// A bare operation id with no catalog match must be rejected with a
