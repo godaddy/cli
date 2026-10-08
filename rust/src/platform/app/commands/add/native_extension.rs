@@ -3,6 +3,7 @@
 use std::io::IsTerminal;
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Stage, Tier};
+use platform_app_client::application::ApplicationApplication;
 use serde_json::json;
 
 use super::super::schemas::ConfigNativeExtension;
@@ -83,18 +84,19 @@ pub(super) fn prepare_native_extension(
     Ok(config)
 }
 
-pub(super) fn application_id(data: &serde_json::Value, name: &str) -> cli_engine::Result<String> {
-    let application = &data["application"];
-    if application.is_null() {
+pub(super) fn application_id(
+    application: Option<&ApplicationApplication>,
+    name: &str,
+) -> cli_engine::Result<String> {
+    let Some(application) = application else {
         return Err(crate::error::GddyError::not_found(format!(
             "application {name:?} was not found"
         ))
         .with_system("applications")
         .into_cli_error());
-    }
+    };
 
-    application["id"]
-        .as_str()
+    Some(application.id.as_str())
         .filter(|id| !id.is_empty())
         .map(str::to_owned)
         .ok_or_else(|| {
@@ -114,13 +116,14 @@ pub(super) async fn sync_native_extension(
     accept_agreements: bool,
     is_tty: bool,
 ) -> cli_engine::Result<NativeExtensionRegistration> {
+    crate::http::ensure_generated_client_transport_observer_registered();
     let app_registry =
         crate::platform::app::client::ApplicationClient::new(app_registry_url, token.to_owned());
     let application = app_registry
         .get_application(&config.name)
         .await
         .map_err(super::super::client_err)?;
-    let application_id = application_id(&application, &config.name)?;
+    let application_id = application_id(application.as_ref(), &config.name)?;
 
     let native = config
         .native_extension
@@ -344,15 +347,19 @@ mod tests {
 
     #[test]
     fn application_name_lookup_uses_registry_id_not_oauth_client_id() {
-        let data = json!({
-            "application": {
-                "id": "app-registry-id",
-                "clientId": "550e8400-e29b-41d4-a716-446655440000",
-                "name": "my-app"
-            }
-        });
+        // The OAuth client id is deliberately not part of the lookup's
+        // selection at all, so it cannot be mistaken for the registry id.
+        let application = ApplicationApplication {
+            id: "app-registry-id".to_owned(),
+            label: "My App".to_owned(),
+            name: "my-app".to_owned(),
+            description: None,
+            status: platform_app_client::application::ApplicationStatus::ACTIVE,
+            url: None,
+            proxy_url: None,
+        };
         assert_eq!(
-            application_id(&data, "my-app").expect("application id"),
+            application_id(Some(&application), "my-app").expect("application id"),
             "app-registry-id"
         );
     }
@@ -367,7 +374,7 @@ mod tests {
                     .header("authorization", "Bearer test-token")
                     .is_true(|request| request.body_string().contains(r#""name":"my-app""#));
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;
@@ -461,7 +468,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;
@@ -531,7 +538,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;
@@ -620,7 +627,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id", "name": "my-app" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;
@@ -726,7 +733,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
                 }));
             })
             .await;

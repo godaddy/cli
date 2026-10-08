@@ -26,10 +26,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }),
         |ctx| async move {
             let client = super::make_client(&ctx).await?;
-            let data = client
+            let apps = client
                 .list_applications()
                 .await
                 .map_err(super::client_err)?;
+            let data = serde_json::to_value(apps).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode applications: {e}"))
+                    .into_cli_error()
+            })?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "platform app info --name <name>",

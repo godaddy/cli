@@ -35,6 +35,9 @@ pub(crate) struct SpecSource {
     pub(crate) spec_version: String,
     pub(crate) graphql_only: bool,
     pub(crate) catalog: bool,
+    /// Where a GraphQL-only source is served; always set when `graphql_only`.
+    pub(crate) graphql_base_url: Option<String>,
+    pub(crate) graphql_endpoint_path: Option<String>,
 }
 
 fn github_client() -> Result<reqwest::blocking::Client> {
@@ -67,12 +70,13 @@ fn github_client() -> Result<reqwest::blocking::Client> {
 fn list_repos_for_owner_path(
     client: &reqwest::blocking::Client,
     owner_path: &str,
+    org: &str,
 ) -> Result<Vec<GithubRepo>> {
     let mut repos = Vec::new();
     let mut page = 1u32;
     loop {
         let url = format!(
-            "{GITHUB_API_BASE}/{owner_path}/{GITHUB_ORG}/repos?per_page={GITHUB_PAGE_SIZE}&page={page}&type=public&sort=full_name&direction=asc"
+            "{GITHUB_API_BASE}/{owner_path}/{org}/repos?per_page={GITHUB_PAGE_SIZE}&page={page}&type=public&sort=full_name&direction=asc"
         );
         let resp = client
             .get(&url)
@@ -96,13 +100,13 @@ fn list_repos_for_owner_path(
     Ok(repos)
 }
 
-fn list_org_repos(client: &reqwest::blocking::Client) -> Vec<GithubRepo> {
-    match list_repos_for_owner_path(client, "orgs") {
+fn list_org_repos(client: &reqwest::blocking::Client, org: &str) -> Vec<GithubRepo> {
+    match list_repos_for_owner_path(client, "orgs", org) {
         Ok(repos) if !repos.is_empty() => return repos,
         Ok(_) => {}
         Err(e) => eprintln!("WARNING: GitHub orgs API failed: {e}"),
     }
-    match list_repos_for_owner_path(client, "users") {
+    match list_repos_for_owner_path(client, "users", org) {
         Ok(repos) => repos,
         Err(e) => {
             eprintln!("WARNING: GitHub users API also failed: {e}");
@@ -227,6 +231,29 @@ fn clone_repo(clone_url: &str, target: &Path, git_ref: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// Short commit SHA `repo_dir` is checked out at — used as the `spec_version`
+/// for a `specPath`-driven source, which (unlike a `-specification` repo's
+/// `v{N}` directory) carries no version number of its own; the SHA at least
+/// records which commit a vendored spec came from. Falls back to `"HEAD"` if
+/// `git` can't resolve it (shouldn't happen against a repo we just cloned).
+fn git_short_sha(repo_dir: &Path) -> String {
+    git_command()
+        .args([
+            "-C",
+            &repo_dir.to_string_lossy(),
+            "rev-parse",
+            "--short",
+            "HEAD",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "HEAD".to_owned())
+}
+
 fn parse_repo_overrides() -> Option<Vec<String>> {
     let raw = std::env::var("API_CATALOG_REPOS").ok()?;
     let repos: Vec<String> = raw
@@ -257,13 +284,85 @@ fn parse_repo_ref_overrides() -> HashMap<String, String> {
     map
 }
 
+/// A GraphQL schema carries no server URL, so a GraphQL-only source must say
+/// where it is served (otherwise the explorer would build calls against an
+/// empty host); OpenAPI sources already carry `servers` and must not set it.
+fn validate_graphql_endpoint(source: &RemoteCatalogSource, graphql_only: bool) -> Result<()> {
+    let repo = &source.repository;
+    match (graphql_only, &source.base_url, &source.endpoint_path) {
+        (true, Some(_), Some(path)) if path.starts_with('/') => Ok(()),
+        (true, Some(_), Some(_)) => {
+            bail!("catalog source '{repo}': endpointPath must start with '/'")
+        }
+        (true, _, _) => bail!(
+            "catalog source '{repo}' is a GraphQL schema, so api-catalog-sources.json must set both baseUrl and endpointPath for it"
+        ),
+        (false, None, None) => Ok(()),
+        (false, _, _) => bail!(
+            "catalog source '{repo}' is not a GraphQL schema; baseUrl/endpointPath only apply to GraphQL sources"
+        ),
+    }
+}
+
+/// Resolves one `API_CATALOG_REPOS` entry to a declared source. Accepts
+/// `org/repository`, or a bare `repository` when exactly one declared source
+/// has that name (repository names are only unique within an org).
+fn find_override_source<'a>(
+    remote: &'a [RemoteCatalogSource],
+    entry: &str,
+) -> Result<&'a RemoteCatalogSource> {
+    let matches: Vec<&RemoteCatalogSource> = remote
+        .iter()
+        .filter(|source| match entry.split_once('/') {
+            Some((org, repository)) => source.org == org && source.repository == repository,
+            None => source.repository == entry,
+        })
+        .collect();
+    match matches.as_slice() {
+        [source] => Ok(source),
+        [] => bail!(
+            "API_CATALOG_REPOS contains '{entry}', which is not declared in api-catalog-sources.json"
+        ),
+        _ => bail!(
+            "API_CATALOG_REPOS entry '{entry}' is ambiguous; use org/repository (one of: {})",
+            matches
+                .iter()
+                .map(|source| format!("{}/{}", source.org, source.repository))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+/// Looks up the `API_CATALOG_REPO_REFS` ref for one source. `org/repository`
+/// is always honored; the legacy bare `repository` key applies only when no
+/// other declared source shares that repository name, so a ref meant for one
+/// org can never make another org's same-named repo check out the wrong commit.
+fn find_ref_override<'a>(
+    remote: &[RemoteCatalogSource],
+    ref_overrides: &'a HashMap<String, String>,
+    org: &str,
+    repository: &str,
+) -> Option<&'a str> {
+    if let Some(git_ref) = ref_overrides.get(&format!("{org}/{repository}")) {
+        return Some(git_ref.as_str());
+    }
+    let shared = remote
+        .iter()
+        .filter(|source| source.repository == repository)
+        .count()
+        > 1;
+    if shared {
+        return None;
+    }
+    ref_overrides.get(repository).map(String::as_str)
+}
+
 pub(crate) fn discover_spec_sources(
     manifest: &CatalogSourceManifest,
 ) -> Result<(Vec<SpecSource>, PathBuf)> {
     let client = github_client()?;
-    let all_repos = list_org_repos(&client);
-    let repo_map: HashMap<&str, &GithubRepo> =
-        all_repos.iter().map(|r| (r.name.as_str(), r)).collect();
+    let mut repos_by_org: HashMap<String, Vec<GithubRepo>> = HashMap::new();
 
     let overrides = parse_repo_overrides();
     let ref_overrides = parse_repo_ref_overrides();
@@ -271,17 +370,7 @@ pub(crate) fn discover_spec_sources(
         Some(repositories) => {
             let selected: Vec<&RemoteCatalogSource> = repositories
                 .iter()
-                .map(|repository| {
-                    manifest
-                        .remote
-                        .iter()
-                        .find(|source| source.repository == *repository)
-                        .with_context(|| {
-                            format!(
-                                "API_CATALOG_REPOS contains '{repository}', which is not declared in api-catalog-sources.json"
-                            )
-                        })
-                })
+                .map(|entry| find_override_source(&manifest.remote, entry))
                 .collect::<Result<_>>()?;
             selected
         }
@@ -307,22 +396,42 @@ pub(crate) fn discover_spec_sources(
 
     for source in selected {
         let repo_name = &source.repository;
-        let clone_url = if let Some(repo) = repo_map.get(repo_name.as_str()) {
+        let org = source.org.as_str();
+        let repos = repos_by_org
+            .entry(org.to_owned())
+            .or_insert_with(|| list_org_repos(&client, org));
+        let clone_url = if let Some(repo) = repos.iter().find(|r| r.name == *repo_name) {
             if repo.archived || repo.disabled || repo.private {
                 bail!("catalog source repository '{repo_name}' is unavailable");
             }
             repo.clone_url.clone()
         } else {
-            format!("https://github.com/{GITHUB_ORG}/{repo_name}.git")
+            format!("https://github.com/{org}/{repo_name}.git")
         };
-        let repo_dir = tmpdir.join(repo_name);
-        let git_ref = ref_overrides.get(repo_name.as_str()).map(String::as_str);
+        // Nested under `org` (not just `repo_name`) so two sources named the
+        // same repo in different orgs — now possible since `org` is
+        // per-source — don't clone into, and clobber, the same temp path.
+        let repo_dir = tmpdir.join(org).join(repo_name);
+        let git_ref = find_ref_override(&manifest.remote, &ref_overrides, org, repo_name);
 
         clone_repo(&clone_url, &repo_dir, git_ref)
             .with_context(|| format!("failed to clone declared catalog source '{repo_name}'"))?;
 
-        let (version, spec_file, graphql_only) = find_latest_spec_file(&repo_dir)
-            .with_context(|| format!("catalog source '{repo_name}' has no versioned spec file"))?;
+        let (version, spec_file, graphql_only) = match &source.spec_path {
+            Some(explicit) => {
+                let path = repo_dir.join(explicit);
+                if !path.exists() {
+                    bail!("catalog source '{repo_name}' has no spec file at '{explicit}'");
+                }
+                let graphql_only = path.extension().and_then(|e| e.to_str()) == Some("graphql");
+                (git_short_sha(&repo_dir), path, graphql_only)
+            }
+            None => find_latest_spec_file(&repo_dir).with_context(|| {
+                format!("catalog source '{repo_name}' has no versioned spec file")
+            })?,
+        };
+
+        validate_graphql_endpoint(source, graphql_only)?;
 
         let domain = source.domain.clone();
         if !used_domains.insert(domain.clone()) {
@@ -337,6 +446,8 @@ pub(crate) fn discover_spec_sources(
             spec_version: version,
             graphql_only,
             catalog: source.catalog,
+            graphql_base_url: source.base_url.clone(),
+            graphql_endpoint_path: source.endpoint_path.clone(),
         });
     }
 
@@ -372,6 +483,8 @@ pub(crate) fn local_spec_sources(manifest: &CatalogSourceManifest) -> Result<Vec
             spec_version,
             graphql_only: false,
             catalog: true,
+            graphql_base_url: None,
+            graphql_endpoint_path: None,
         });
     }
     Ok(sources)
@@ -456,5 +569,112 @@ mod tests {
             .expect("authorization header");
         assert!(header.starts_with("AUTHORIZATION: basic "));
         assert!(!header.contains("test-token"));
+    }
+
+    fn source(org: &str, repository: &str) -> RemoteCatalogSource {
+        RemoteCatalogSource {
+            domain: repository.to_owned(),
+            repository: repository.to_owned(),
+            catalog: true,
+            org: org.to_owned(),
+            spec_path: None,
+            base_url: None,
+            endpoint_path: None,
+        }
+    }
+
+    #[test]
+    fn graphql_sources_must_declare_where_they_are_served() {
+        let mut graphql = source("org-a", "gql");
+        assert!(validate_graphql_endpoint(&graphql, true).is_err());
+
+        graphql.base_url = Some("https://api.example.com".to_owned());
+        assert!(
+            validate_graphql_endpoint(&graphql, true).is_err(),
+            "endpointPath is required too"
+        );
+
+        graphql.endpoint_path = Some("graphql".to_owned());
+        assert!(
+            validate_graphql_endpoint(&graphql, true).is_err(),
+            "endpointPath must be absolute"
+        );
+
+        graphql.endpoint_path = Some("/graphql".to_owned());
+        validate_graphql_endpoint(&graphql, true).expect("fully specified GraphQL source");
+    }
+
+    #[test]
+    fn openapi_sources_must_not_set_graphql_endpoint_fields() {
+        let mut openapi = source("org-a", "rest");
+        validate_graphql_endpoint(&openapi, false).expect("plain OpenAPI source");
+
+        openapi.endpoint_path = Some("/graphql".to_owned());
+        assert!(validate_graphql_endpoint(&openapi, false).is_err());
+    }
+
+    #[test]
+    fn override_resolves_bare_and_org_qualified_names() {
+        let remote = [source("org-a", "alpha"), source("org-b", "beta")];
+
+        assert_eq!(
+            find_override_source(&remote, "alpha")
+                .expect("bare name")
+                .org,
+            "org-a"
+        );
+        assert_eq!(
+            find_override_source(&remote, "org-b/beta")
+                .expect("qualified name")
+                .repository,
+            "beta"
+        );
+        assert!(find_override_source(&remote, "org-a/beta").is_err());
+        assert!(find_override_source(&remote, "missing").is_err());
+    }
+
+    #[test]
+    fn override_requires_org_when_a_repository_name_is_shared() {
+        let remote = [source("org-a", "shared"), source("org-b", "shared")];
+
+        let error = find_override_source(&remote, "shared")
+            .expect_err("bare name is ambiguous")
+            .to_string();
+        assert!(error.contains("org-a/shared") && error.contains("org-b/shared"));
+        assert_eq!(
+            find_override_source(&remote, "org-b/shared")
+                .expect("qualified name")
+                .org,
+            "org-b"
+        );
+    }
+
+    #[test]
+    fn bare_ref_override_is_ignored_when_a_repository_name_is_shared() {
+        let refs: HashMap<String, String> = [
+            ("unique".to_owned(), "v1".to_owned()),
+            ("shared".to_owned(), "v2".to_owned()),
+            ("org-b/shared".to_owned(), "v3".to_owned()),
+        ]
+        .into();
+        let remote = [
+            source("org-a", "unique"),
+            source("org-a", "shared"),
+            source("org-b", "shared"),
+        ];
+
+        assert_eq!(
+            find_ref_override(&remote, &refs, "org-a", "unique"),
+            Some("v1")
+        );
+        assert_eq!(
+            find_ref_override(&remote, &refs, "org-a", "shared"),
+            None,
+            "a bare key must not leak onto an ambiguous repository name"
+        );
+        assert_eq!(
+            find_ref_override(&remote, &refs, "org-b", "shared"),
+            Some("v3")
+        );
     }
 }
