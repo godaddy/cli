@@ -545,8 +545,9 @@ mod tests {
     /// the `import` handler actually builds (`config` path, confirmed by
     /// inspection) as a nested property bag — a column/field name mismatch
     /// would silently drop the write summary from human output and print a
-    /// raw JSON blob instead. Renders a hand-built envelope rather than
-    /// calling the handler, which would need a live app-registry API call.
+    /// raw JSON blob instead. Renders hand-built fixture data through the
+    /// view rather than calling the handler, which would need a live
+    /// app-registry API call.
     #[test]
     fn import_result_renders_files_written_as_a_nested_property_bag() {
         let result = json!({
@@ -557,9 +558,7 @@ mod tests {
                 "config": "/home/user/project/godaddy.toml",
             },
         });
-        let envelope = cli_engine::Envelope::success(result, "applications");
-        let rendered =
-            cli_engine::render_human_with_view(&envelope, Some(&import_view_columns()), "");
+        let rendered = cli_engine::preview_human_view(result, &import_view_columns());
         assert!(rendered.contains("Files Written:"), "{rendered}");
         assert!(rendered.contains("godaddy.toml"), "{rendered}");
     }

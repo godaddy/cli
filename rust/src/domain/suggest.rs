@@ -57,14 +57,16 @@ fn nonzero(n: i64) -> Option<std::num::NonZeroU64> {
 /// entirely absent from the table, which is the regression this guards.
 fn view_columns() -> Vec<TableColumn> {
     vec![
-        TableColumn::new("domain", "Domain"),
-        TableColumn::new("price1Year", "1yr Price").align(Alignment::Right),
+        TableColumn::new("domain", "Domain").essential(true),
+        TableColumn::new("price1Year", "1yr Price")
+            .align(Alignment::Right)
+            .essential(true),
         TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
         TableColumn::new("fees1Year", "1yr Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
         TableColumn::new("fees2Year", "2yr Fees"),
-        TableColumn::new("currency", "Currency"),
+        TableColumn::new("currency", "Currency").essential(true),
         TableColumn::new("inventory", "Inventory"),
     ]
 }
@@ -428,13 +430,40 @@ mod tests {
             .into_iter()
             .filter(|c| c.field == "fees1Year")
             .collect();
-        let envelope = cli_engine::Envelope::success(suggestions, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&columns), "");
+        let rendered = cli_engine::preview_human_view(suggestions, &columns);
         assert!(rendered.contains("1YR FEES"), "{rendered}");
         assert!(
             rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
             "{rendered}"
         );
         assert!(rendered.contains("3500.00"), "{rendered}");
+    }
+
+    /// A suggestion is meaningless without its domain, price, and the
+    /// currency that price is denominated in (prices render as bare numbers),
+    /// so those survive width-based hiding; the full column set overflows an
+    /// 80-column terminal, so something else must be hidden instead.
+    #[test]
+    fn domain_price_and_currency_survive_width_based_hiding() {
+        let suggestions = json!([{
+            "domain": "example.com",
+            "price1Year": "11.99",
+            "renewalPrice1Year": "19.99",
+            "price2Year": "23.98",
+            "renewalPrice2Year": "39.98",
+            "currency": "USD",
+            "inventory": "PREMIUM",
+        }]);
+
+        let rendered = cli_engine::preview_human_view(suggestions, &view_columns());
+
+        let header_line = rendered.lines().next().expect("header line");
+        assert!(header_line.contains("DOMAIN"), "{rendered}");
+        assert!(header_line.contains("1YR PRICE"), "{rendered}");
+        assert!(header_line.contains("CURRENCY"), "{rendered}");
+        assert!(
+            rendered.contains("hidden to fit the display width"),
+            "fixture must actually overflow 80 columns to exercise hiding: {rendered}"
+        );
     }
 }
