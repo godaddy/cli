@@ -220,8 +220,7 @@ mod tests {
             vec![("1.2.3.4".to_string(), Ok(()))],
         )
         .expect("all created -> success payload");
-        let envelope = cli_engine::Envelope::success(payload, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(payload, &view_columns());
         assert!(rendered.contains("Results:"), "{rendered}");
         assert!(rendered.contains("1.2.3.4"), "{rendered}");
         assert!(rendered.contains("created"), "{rendered}");

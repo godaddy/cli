@@ -280,8 +280,7 @@ mod tests {
                 },
             ],
         });
-        let envelope = cli_engine::Envelope::success(available, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
         assert!(rendered.contains("Terms:"), "{rendered}");
         assert!(rendered.contains("1 year"), "{rendered}");
         assert!(rendered.contains("2 years"), "{rendered}");
@@ -344,8 +343,7 @@ mod tests {
             "definitive": true,
             "inventory": "PREMIUM",
         });
-        let envelope = cli_engine::Envelope::success(available, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
     }

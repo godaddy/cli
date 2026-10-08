@@ -512,7 +512,7 @@ mod tests {
     /// Same ambiguity, but through human output — covers that rendering
     /// path directly, since every other test here only exercises
     /// `--output json`. Human error rendering is `Error: {message}` /
-    /// `Fix: {fix}` (`cli_engine::output::human::render_human_with_view`).
+    /// `Fix: {fix}`.
     #[tokio::test]
     async fn operation_get_multiple_fuzzy_matches_human_output_shows_message_and_candidates() {
         let output = operation_cli()

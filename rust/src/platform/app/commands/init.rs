@@ -414,9 +414,7 @@ mod tests {
                 "env": "/home/user/project/.env",
             },
         });
-        let envelope = cli_engine::Envelope::success(result, "applications");
-        let rendered =
-            cli_engine::render_human_with_view(&envelope, Some(&init_view_columns()), "");
+        let rendered = cli_engine::preview_human_view(result, &init_view_columns());
         assert!(rendered.contains("Files Written:"), "{rendered}");
         assert!(rendered.contains("godaddy.toml"), "{rendered}");
         assert!(rendered.contains(".env"), "{rendered}");
