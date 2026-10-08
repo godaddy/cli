@@ -1,6 +1,6 @@
 [package]
 name = "generated-client-support"
-version = "0.2.21"
+version = "0.2.26"
 edition = "2024"
 license = "Proprietary"
 description = "Shared hand-written support code for progenitor-generated API clients (domains-client, shopping-client, email-client, ...): transport observation and authenticated-client construction."
