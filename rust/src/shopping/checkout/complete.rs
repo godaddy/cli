@@ -9,7 +9,7 @@ use shopping_client::types::{
 
 use crate::next_action::next_action;
 use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
-use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::SHOPPING_PURCHASE_SCOPES;
 use crate::shopping::client::ClientError;
 use crate::shopping::common::{
     CheckoutInput, client_err, make_client, payment_selection_body, reject_response_errors,
@@ -229,7 +229,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Mutate)
             .mutates(true)
             .handles_dry_run(true)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_PURCHASE_SCOPES)
             .auth_optional()
             .with_view_id(CHECKOUT_COMPLETE_VIEW_ID),
         |ctx, args: Args| async move {

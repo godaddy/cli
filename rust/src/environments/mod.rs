@@ -72,14 +72,6 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
     ]
 });
 
-/// Scopes requested at login by default.
-pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
-    crate::scopes::APP_REGISTRY_READ,
-    crate::scopes::DOMAINS_READ,
-    crate::scopes::OFFLINE_ACCESS,
-    crate::scopes::OPENID,
-    crate::scopes::PROFILE,
-];
 pub const APP_ID: &str = "gddy";
 
 pub fn env_prefix(name: &str) -> String {

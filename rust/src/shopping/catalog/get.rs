@@ -11,7 +11,7 @@ use crate::shopping::common::{
     client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
 };
 use crate::shopping::human::{CATALOG_GET_VIEW_ID, catalog_product_response};
-use crate::shopping::{SHOPPING_SCOPES, command_for_env};
+use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
 output_schema!(CatalogProductOutput {
     "ucp": "object";
@@ -35,7 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long("View one product or purchase option by ID, including available options and prices.")
             .with_system("shopping")
             .with_tier(Tier::Read)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_CATALOG_SCOPES)
             .with_output_schema::<CatalogProductOutput>()
             .with_view_id(CATALOG_GET_VIEW_ID),
         |ctx, args: Args| async move {

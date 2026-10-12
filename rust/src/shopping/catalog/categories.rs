@@ -14,7 +14,7 @@ use shopping_client::types::{
 };
 
 use crate::output_schema::output_schema;
-use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::SHOPPING_CATALOG_SCOPES;
 use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
@@ -52,7 +52,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_CATALOG_SCOPES)
             .with_output_schema::<CatalogCategoriesOutput>()
             .with_view_id(CATALOG_CATEGORIES_VIEW_ID),
         |ctx, args: Args| async move {

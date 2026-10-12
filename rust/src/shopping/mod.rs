@@ -12,11 +12,16 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 use crate::scopes::{SHOPPING_CATALOG_READ, SHOPPING_CHECKOUT_EXECUTE, SHOPPING_ORDER_READ};
 
-pub(crate) const SHOPPING_SCOPES: &[&str] = &[
-    SHOPPING_CATALOG_READ,
-    SHOPPING_CHECKOUT_EXECUTE,
-    SHOPPING_ORDER_READ,
-];
+/// Catalog browsing only reads the public product catalog, so it is a login
+/// default and must not drag the purchase scopes into a step-up.
+pub(crate) const SHOPPING_CATALOG_SCOPES: &[&str] = &[SHOPPING_CATALOG_READ];
+
+/// Checkout spends money, so the checkout commands step up on first use; the
+/// order read that follows a purchase rides along so a later `order get` is
+/// already covered. `order get` itself declares only [`SHOPPING_ORDER_READ`],
+/// so reading an order never asks for spending authority.
+pub(crate) const SHOPPING_PURCHASE_SCOPES: &[&str] =
+    &[SHOPPING_CHECKOUT_EXECUTE, SHOPPING_ORDER_READ];
 
 pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or completing checkout, show the end \
     user the checkout session's final total (including all fees), each \

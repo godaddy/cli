@@ -5,7 +5,7 @@ use cli_engine::{
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
-use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::SHOPPING_PURCHASE_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments, update_response,
@@ -94,7 +94,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Mutate)
             .mutates(true)
             .handles_dry_run(true)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_PURCHASE_SCOPES)
             .auth_optional()
             .with_output_schema::<CheckoutOutput>()
             .with_view_id(CHECKOUT_VIEW_ID),
