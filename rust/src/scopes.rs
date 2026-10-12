@@ -91,10 +91,9 @@ pub const OFFLINE_ACCESS: &str = "offline_access";
 declare_scopes! {
     /// Read the caller's registered applications.
     APP_REGISTRY_READ => "apps.app-registry:read",
-    /// Create/update/archive the caller's registered applications. The
-    /// app-registry mutation commands (`platform app init/update/enable/
-    /// disable/archive/release/deploy`) still declare it via `with_scopes` so a
-    /// token obtained before it was a default steps up. Read commands such as
+    /// Create/update/archive the caller's registered applications. Declared by
+    /// the app-registry mutation commands (`platform app init/update/enable/
+    /// disable/archive/release/deploy`); read commands such as
     /// `platform app enablement` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
@@ -334,10 +333,10 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
 ];
 
 /// Scopes requested at login: every [`SCOPE_REGISTRY`] entry with
-/// `default: true`, in registry order. One wide login instead of a consent
-/// screen per command: every scope step-up is a browser round trip through
-/// the consent screen, so a first-time session that buys a domain, buys
-/// hosting and deploys a site needs three prompts, not a dozen.
+/// `default: true`, in registry order. Each scope step-up is a browser round
+/// trip through the consent screen, so the login grant is wide on purpose: a
+/// first-time session that buys a domain, buys hosting and deploys a site sees
+/// a consent screen at login and at each purchase, and nowhere else.
 pub static DEFAULT_OAUTH_SCOPES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     SCOPE_REGISTRY
         .iter()
@@ -493,9 +492,9 @@ mod tests {
     /// Every permission scope in [`ALL`] must be wired to at least one live
     /// command via `.with_scopes`, or it's dead — declared, registered on the
     /// OAuth client and (if a default) requested on every login, yet reachable
-    /// by no command. Defaults are deliberately not exempt: with most scopes
-    /// now defaults, exempting them would let a scope outlive its last command
-    /// unnoticed.
+    /// by no command. Defaults are not exempt: a default that no command uses
+    /// is still shown on every consent screen, so it is the worst kind of
+    /// stale entry.
     #[test]
     fn every_permission_scope_is_wired_to_a_command() {
         let used: std::collections::HashSet<String> = command_scopes()
