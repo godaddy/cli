@@ -72,7 +72,6 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
     ]
 });
 
-pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
 
 pub fn env_prefix(name: &str) -> String {
