@@ -102,6 +102,7 @@ pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
     crate::scopes::EMAIL_READ,
     crate::scopes::EMAIL_CREATE,
     crate::scopes::SECURITY_MALWARE_SCAN,
+    crate::scopes::SHOPPING_CATALOG_READ,
     crate::scopes::OFFLINE_ACCESS,
 ];
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";

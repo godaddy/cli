@@ -81,10 +81,12 @@ pub const OFFLINE_ACCESS: &str = "offline_access";
 /// ([`crate::environments::DEFAULT_OAUTH_SCOPES`]); each is requested only
 /// when a command that declares it runs, so its consent screen appears at the
 /// moment the user expects to confirm the action. The bar: the scope spends
-/// money ([`DOMAINS_CREATE`], `SHOPPING_*`), can take a site offline
+/// money ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`] with the
+/// [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site offline
 /// ([`DOMAINS_NAMESERVER_UPDATE`]), destroys a resource
 /// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
-/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]).
+/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Browsing the public catalog
+/// ([`SHOPPING_CATALOG_READ`]) is none of those and is a login default.
 ///
 /// Like [`ALL`], not referenced by production code: the module tests enforce
 /// `DEFAULT_OAUTH_SCOPES == (ALL \ STEP_UP_ONLY) ∪ {OFFLINE_ACCESS}`.
@@ -94,7 +96,6 @@ pub const STEP_UP_ONLY: &[&str] = &[
     DOMAINS_NAMESERVER_UPDATE,
     HOSTING_APPLICATION_DELETE,
     HOSTING_DATABASE_TUNNEL_EXECUTE,
-    SHOPPING_CATALOG_READ,
     SHOPPING_CHECKOUT_EXECUTE,
     SHOPPING_ORDER_READ,
 ];
@@ -313,7 +314,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: SHOPPING_CATALOG_READ,
         description: "Browse and resolve Shopping catalog products",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SHOPPING_CHECKOUT_EXECUTE,

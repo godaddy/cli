@@ -9,15 +9,14 @@ use shopping_client::types::{
 
 use crate::error::GddyError;
 use crate::next_action::next_action;
-use crate::shopping::SHOPPING_SCOPES;
 use crate::shopping::client::{ClientError, build_client};
 
-pub(crate) async fn make_client(ctx: &CommandContext) -> Result<shopping_client::Client> {
+pub(crate) async fn make_client(
+    ctx: &CommandContext,
+    scopes: &[&str],
+) -> Result<shopping_client::Client> {
     crate::http::ensure_generated_client_transport_observer_registered();
-    let required: Vec<String> = SHOPPING_SCOPES
-        .iter()
-        .map(|scope| (*scope).to_owned())
-        .collect();
+    let required: Vec<String> = scopes.iter().map(|scope| (*scope).to_owned()).collect();
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = crate::environments::resolve(&ctx.middleware.env)?.api_url;
     build_client(base_url, token).map_err(client_err)

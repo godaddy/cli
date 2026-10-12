@@ -13,7 +13,7 @@ use crate::shopping::common::{
     client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
 };
 use crate::shopping::human::{CATALOG_SEARCH_VIEW_ID, catalog_search_response};
-use crate::shopping::{SHOPPING_SCOPES, command_for_env};
+use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
 output_schema!(CatalogSearchOutput {
     "products": "[]object";
@@ -54,7 +54,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_CATALOG_SCOPES)
             .with_output_schema::<CatalogSearchOutput>()
             .with_view_id(CATALOG_SEARCH_VIEW_ID),
         |ctx, args: Args| async move {
@@ -67,7 +67,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )?;
             merge_context_currency(&mut request.context, args.currency.as_deref());
             merge_pagination(&mut request, args.limit);
-            let client = make_client(&ctx).await?;
+            let client = make_client(&ctx, SHOPPING_CATALOG_SCOPES).await?;
             let response = decode::<SearchCatalogResponse>(
                 client
                     .search_catalog()

@@ -2,7 +2,7 @@ use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::Value;
 use shopping_client::types::Checkout;
 
-use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::SHOPPING_PURCHASE_SCOPES;
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 
@@ -34,10 +34,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_PURCHASE_SCOPES)
             .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {
-            let client = make_client(&ctx).await?;
+            let client = make_client(&ctx, SHOPPING_PURCHASE_SCOPES).await?;
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
