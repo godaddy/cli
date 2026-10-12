@@ -37,7 +37,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(SHOPPING_PURCHASE_SCOPES)
             .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {
-            let client = make_client(&ctx, SHOPPING_PURCHASE_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;

@@ -127,7 +127,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }))
                 .with_dry_run());
             }
-            let client = make_client(&ctx, SHOPPING_PURCHASE_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let checkout = crate::shopping::client::create_checkout(
                 &client,
                 body,

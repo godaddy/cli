@@ -73,7 +73,7 @@ async fn refresh_categories(
     ctx: &cli_engine::CommandContext,
     cache_path: Option<&Path>,
 ) -> cli_engine::Result<Vec<String>> {
-    let client = make_client(ctx, SHOPPING_CATALOG_SCOPES).await?;
+    let client = make_client(ctx).await?;
     let request = CatalogSearchSearchRequest {
         pagination: Some(PaginationRequest {
             limit: CATALOG_CATEGORY_LIMIT,

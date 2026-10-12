@@ -1,5 +1,5 @@
 use crate::output_schema::output_schema;
-use crate::shopping::SHOPPING_PURCHASE_SCOPES;
+use crate::scopes::SHOPPING_ORDER_READ;
 use crate::shopping::client::get_order;
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{ORDER_VIEW_ID, order_response};
@@ -38,11 +38,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("shopping")
             .with_tier(Tier::Read)
-            .with_scopes(SHOPPING_PURCHASE_SCOPES)
+            .with_scopes(&[SHOPPING_ORDER_READ])
             .with_output_schema::<OrderOutput>()
             .with_view_id(ORDER_VIEW_ID),
         |ctx, args: Args| async move {
-            let client = make_client(&ctx, SHOPPING_PURCHASE_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let order = if args.wait {
                 let (order, _) = wait_for_order(
                     &client,

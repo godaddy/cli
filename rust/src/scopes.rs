@@ -31,7 +31,13 @@
 //!    included in [`ALL`] — you cannot add one there without registering it in
 //!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
-//! 3. **Register the same scope on the CLI's OAuth client**, or it will be
+//! 3. Decide whether it is a login default or step-up only. Defaults go in
+//!    [`crate::environments::DEFAULT_OAUTH_SCOPES`] with `default: true` in
+//!    [`SCOPE_REGISTRY`]; anything that spends money, takes a site offline,
+//!    deletes a whole billable resource, or is raw data access goes in
+//!    [`STEP_UP_ONLY`] with `default: false`. The module tests fail until all
+//!    three agree.
+//! 4. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
 //!
 //! This registry covers the scopes the CLI requests for *itself* (login defaults
@@ -103,28 +109,28 @@ pub const STEP_UP_ONLY: &[&str] = &[
 ];
 
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
+// Every scope below is requested at login by default unless its doc says
+// "Step-up only" (and it is listed in `STEP_UP_ONLY`).
 declare_scopes! {
-    /// Read the caller's registered applications. Requested at login by default
-    /// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+    /// Read the caller's registered applications.
     APP_REGISTRY_READ => "apps.app-registry:read",
-    /// Create/update/archive the caller's registered applications. Requested at
-    /// login by default; the app-registry mutation commands (`platform app
-    /// init/update/enable/disable/archive/release/deploy`) still declare it via
-    /// `with_scopes` so a token obtained before it was a default steps up.
-    /// Read commands such as `platform app enablement` use
-    /// [`APP_REGISTRY_READ`] only.
+    /// Create/update/archive the caller's registered applications. The
+    /// app-registry mutation commands (`platform app init/update/enable/
+    /// disable/archive/release/deploy`) still declare it via `with_scopes` so a
+    /// token obtained before it was a default steps up. Read commands such as
+    /// `platform app enablement` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
     /// (`domain list/get/available/suggest/agreements/quote`, `dns list`.)
-    /// Requested at login by default (see
-    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
     DOMAINS_READ => "domains.domain:read",
     /// Create/replace/delete DNS records (`dns add/set/delete`).
     DOMAINS_DNS_UPDATE => "domains.dns:update",
     /// Register a domain — the v3 registration-execute step (`domain purchase`).
+    /// Step-up only: spends money.
     DOMAINS_CREATE => "domains.domain:create",
-    /// Replace a domain's nameservers (`domain nameserver set`).
+    /// Replace a domain's nameservers (`domain nameserver set`). Step-up only:
+    /// can take a live site offline.
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
 
     /// Read hosting applications (`hosting app list/get/status`).
@@ -133,7 +139,8 @@ declare_scopes! {
     HOSTING_APPLICATION_CREATE => "hosting.application:create",
     /// Update a hosting application (`hosting app update`).
     HOSTING_APPLICATION_UPDATE => "hosting.application:update",
-    /// Delete a hosting application (`hosting app delete`).
+    /// Delete a hosting application (`hosting app delete`). Step-up only:
+    /// deletes a whole billable resource.
     HOSTING_APPLICATION_DELETE => "hosting.application:delete",
     /// Trigger deployments and restarts (`hosting app restart`, `hosting deployment publish`).
     HOSTING_DEPLOYMENT_EXECUTE => "hosting.deployment:execute",
@@ -158,7 +165,7 @@ declare_scopes! {
     /// Open a raw MySQL-over-WebSocket tunnel to a hosting app's database
     /// (`db tunnel`). A dedicated grant, separate from
     /// [`HOSTING_DEPLOYMENT_EXECUTE`]: authority to publish a deployment does
-    /// not by itself grant raw database read/write.
+    /// not by itself grant raw database read/write. Step-up only: raw data access.
     HOSTING_DATABASE_TUNNEL_EXECUTE => "hosting.database.tunnel:execute",
 
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
@@ -170,9 +177,11 @@ declare_scopes! {
     SECURITY_MALWARE_SCAN => "security.website-security-scan:execute",
     /// Browse and resolve Shopping catalog products.
     SHOPPING_CATALOG_READ => "shopping.catalog:read",
-    /// Create, update, read, and complete Shopping checkout sessions.
+    /// Create, update, read, and complete Shopping checkout sessions. Step-up
+    /// only: spends money.
     SHOPPING_CHECKOUT_EXECUTE => "shopping.checkout:execute",
-    /// Read completed Shopping orders.
+    /// Read completed Shopping orders. Step-up only, granted alongside
+    /// [`SHOPPING_CHECKOUT_EXECUTE`] so the order read after a purchase is covered.
     SHOPPING_ORDER_READ => "shopping.order:read",
 }
 
@@ -341,7 +350,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
 /// Derived by walking each module's real command tree via
 /// [`cli_engine::build_module_group`] — the same tree `main` mounts — so this
 /// can never drift from what the CLI actually registers. Backs both `gddy
-/// auth scope` and [`tests::scope_registry_non_default_entries_are_wired_to_a_command`].
+/// auth scope` and [`tests::every_permission_scope_is_wired_to_a_command`].
 pub(crate) fn command_scopes() -> Vec<(String, Vec<String>)> {
     let mut out = Vec::new();
     for module in crate::all_modules() {
@@ -479,24 +488,22 @@ mod tests {
         }
     }
 
-    /// Every non-default scope in [`SCOPE_REGISTRY`] must be wired to at
-    /// least one live command via `.with_scopes`, or it's dead — declared and
-    /// registered on the OAuth client but unreachable by any command, which
-    /// is either a stale entry or a scope some command forgot to declare.
-    /// Default scopes are exempt: they're requested at login by default
-    /// regardless of which commands request them.
+    /// Every permission scope in [`ALL`] must be wired to at least one live
+    /// command via `.with_scopes`, or it's dead — declared, registered on the
+    /// OAuth client and (if a default) requested on every login, yet reachable
+    /// by no command. Defaults are deliberately not exempt: with most scopes
+    /// now defaults, exempting them would let a scope outlive its last command
+    /// unnoticed.
     #[test]
-    fn scope_registry_non_default_entries_are_wired_to_a_command() {
+    fn every_permission_scope_is_wired_to_a_command() {
         let used: std::collections::HashSet<String> = command_scopes()
             .into_iter()
             .flat_map(|(_, scopes)| scopes)
             .collect();
-        for info in SCOPE_REGISTRY {
+        for scope in ALL {
             assert!(
-                info.default || used.contains(info.scope),
-                "scope {:?} is in SCOPE_REGISTRY with default: false but no \
-                 command declares it via .with_scopes",
-                info.scope
+                used.contains(*scope),
+                "scope {scope:?} is declared but no command declares it via .with_scopes"
             );
         }
     }
@@ -543,13 +550,17 @@ mod tests {
             .filter(|scope| !step_up_only.contains(scope))
             .chain([OFFLINE_ACCESS])
             .collect();
-        let actual: std::collections::HashSet<&str> = crate::environments::DEFAULT_OAUTH_SCOPES
-            .iter()
-            .copied()
-            .collect();
+        let defaults = crate::environments::DEFAULT_OAUTH_SCOPES;
+        let actual: std::collections::HashSet<&str> = defaults.iter().copied().collect();
         assert_eq!(
             actual, expected,
             "DEFAULT_OAUTH_SCOPES must be every scope in ALL except STEP_UP_ONLY, plus OFFLINE_ACCESS"
+        );
+        // Sets hide duplicates; a repeated default would be sent twice on every login.
+        assert_eq!(
+            defaults.len(),
+            actual.len(),
+            "DEFAULT_OAUTH_SCOPES contains a duplicate entry"
         );
     }
 }

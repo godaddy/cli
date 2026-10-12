@@ -67,7 +67,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )?;
             merge_context_currency(&mut request.context, args.currency.as_deref());
             merge_pagination(&mut request, args.limit);
-            let client = make_client(&ctx, SHOPPING_CATALOG_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let response = decode::<SearchCatalogResponse>(
                 client
                     .search_catalog()

@@ -44,7 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ..Default::default()
             };
             merge_context_currency(&mut request.context, args.currency.as_deref());
-            let client = make_client(&ctx, SHOPPING_CATALOG_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let response = decode::<LookupCatalogResponse>(
                 client
                     .lookup_catalog()

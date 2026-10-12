@@ -143,7 +143,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 buyer_phone: args.buyer_phone,
                 payment_instrument: args.payment_instrument,
             };
-            let client = make_client(&ctx, SHOPPING_PURCHASE_SCOPES).await?;
+            let client = make_client(&ctx).await?;
             let current_checkout = crate::shopping::client::get_checkout(&client, &args.id)
                 .await
                 .map_err(client_err)?;
