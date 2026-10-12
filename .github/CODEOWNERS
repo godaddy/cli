@@ -42,5 +42,6 @@ rust/src/payment_methods/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy
 rust/src/shopping/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jrogers1-godaddy @mbansiwal-godaddy @sswaminathan-godaddy
 
 # platform — gddy platform commands
+rust/src/api/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @dsingh5-godaddy @nmolham-godaddy @sgopalan-godaddy @smukherjee-godaddy @tmittal-godaddy @wcole1-godaddy
 rust/src/platform/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @dsingh5-godaddy @nmolham-godaddy @sgopalan-godaddy @smukherjee-godaddy @tmittal-godaddy @wcole1-godaddy
 
