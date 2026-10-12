@@ -64,7 +64,7 @@ fn build_provider(env: &GddyEnvConfig) -> PkceAuthProvider {
         environments::DEFAULT_OAUTH_SCOPES,
     )
     .with_app_id(environments::APP_ID)
-    .with_redirect_uri(environments::REDIRECT_URI)
+    .with_ephemeral_redirect_port()
     .with_environments(Arc::clone(environments::instance()))
 }
 
@@ -124,14 +124,13 @@ fn log_resolved_oauth(env: &GddyEnvConfig) {
         auth_url_from_env_var = auth_url_ovr.is_some(),
         token_url = %token_url_ovr.as_deref().unwrap_or(&env.token_url),
         token_url_from_env_var = token_url_ovr.is_some(),
-        redirect_uri = environments::REDIRECT_URI,
+        redirect_uri = "http://127.0.0.1:<ephemeral>/callback",
         "resolved OAuth client for login/token exchange"
     );
 }
 
 /// Rejects any scope in `requested` that isn't registered in [`scopes`] —
-/// [`scopes::ALL`] plus the standalone [`scopes::OFFLINE_ACCESS`] directive
-/// scope.
+/// [`scopes::ALL`] plus the standalone [`scopes::DIRECTIVES`] scopes.
 ///
 /// A scope missing from that list is, by construction, either misspelled or
 /// was never registered on the CLI's OAuth client (see the "Adding a scope"
@@ -143,7 +142,7 @@ fn validate_requested_scopes(requested: &[String]) -> Result<()> {
     let unknown: Vec<&str> = requested
         .iter()
         .map(String::as_str)
-        .filter(|scope| *scope != scopes::OFFLINE_ACCESS && !scopes::ALL.contains(scope))
+        .filter(|scope| !scopes::DIRECTIVES.contains(scope) && !scopes::ALL.contains(scope))
         .filter(|scope| seen.insert(*scope))
         .collect();
     if unknown.is_empty() {
@@ -263,8 +262,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_requested_scopes_accepts_offline_access() {
-        assert!(validate_requested_scopes(&[scopes::OFFLINE_ACCESS.to_owned()]).is_ok());
+    fn validate_requested_scopes_accepts_directive_scopes() {
+        for scope in scopes::DIRECTIVES {
+            assert!(
+                validate_requested_scopes(&[(*scope).to_owned()]).is_ok(),
+                "directive scope {scope:?} was rejected"
+            );
+        }
     }
 
     #[test]

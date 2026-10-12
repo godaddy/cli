@@ -44,10 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("operationId,domain,method,path,summary")
             .with_output_schema::<ApiEndpoint>()
-            .with_pagination(PaginationConfig {
-                max_limit: 100,
-                ..Default::default()
-            }),
+            .with_pagination(PaginationConfig::new(0, 100)),
         |_cred, args: SearchArgs| async move {
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
@@ -130,10 +127,7 @@ mod tests {
     fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                max_limit: 100,
-                ..Default::default()
-            })
+            Some(PaginationConfig::new(0, 100))
         );
     }
 }

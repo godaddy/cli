@@ -68,10 +68,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_json_schema::<types::DnsRecord>()
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ])
-            .with_pagination(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            }),
+            .with_pagination(PaginationConfig::new(0, 500)),
         |ctx, args: ListArgs| async move {
             let domain = args.domain;
             let type_opt = args.record_type;
@@ -126,10 +123,7 @@ mod tests {
     fn opts_into_pagination_with_no_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            })
+            Some(PaginationConfig::new(0, 500))
         );
     }
 

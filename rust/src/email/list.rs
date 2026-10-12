@@ -35,10 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("email")
             .with_tier(Tier::Read)
             .with_scopes(&[EMAIL_READ])
-            .with_pagination(PaginationConfig {
-                default_limit: 25,
-                max_limit: 500,
-            }),
+            .with_pagination(PaginationConfig::new(25, 500)),
         |ctx, args: ListArgs| async move {
             let client = make_client(&ctx, &[EMAIL_READ]).await?;
             let mailboxes = fetch_mailboxes(
@@ -124,10 +121,7 @@ mod tests {
     fn opts_into_pagination_with_a_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                default_limit: 25,
-                max_limit: 500,
-            })
+            Some(PaginationConfig::new(25, 500))
         );
     }
 
