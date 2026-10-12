@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.28](https://github.com/godaddy/cli/compare/v0.2.27...v0.2.28) (2026-10-12)
+
+
+### Features
+
+* **auth:** request a product-area scope bundle at login, step up only for sensitive scopes ([#317](https://github.com/godaddy/cli/issues/317)) ([cea21f5](https://github.com/godaddy/cli/commit/cea21f57f054620f134674288f5a648aa9a54f28))
+* **auth:** upgrade cli-engine to 0.10.1; log in with an ephemeral callback port and OIDC scopes ([#314](https://github.com/godaddy/cli/issues/314)) ([b30e3a1](https://github.com/godaddy/cli/commit/b30e3a1d985b12e2f188249250d2fadf4eb14b94))
+
+
+### Bug Fixes
+
+* **deps:** update quinn-proto and chacha20 to clear security advisories ([#318](https://github.com/godaddy/cli/issues/318)) ([306c921](https://github.com/godaddy/cli/commit/306c9210ec9a32e9f11b7c8012d813d51ab8147f))
+
 ## [0.2.27](https://github.com/godaddy/cli/compare/v0.2.26...v0.2.27) (2026-10-12)
 
 
