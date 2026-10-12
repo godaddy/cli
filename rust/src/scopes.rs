@@ -78,15 +78,17 @@ macro_rules! declare_scopes {
 pub const OFFLINE_ACCESS: &str = "offline_access";
 
 /// Permission scopes kept out of the login bundle
-/// ([`crate::environments::DEFAULT_OAUTH_SCOPES`]); each is requested only
-/// when a command that declares it runs, so its consent screen appears at the
-/// moment the user expects to confirm the action. The bar: the scope spends
-/// money ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`] with the
-/// [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site offline
-/// ([`DOMAINS_NAMESERVER_UPDATE`]), destroys a resource
+/// ([`crate::environments::DEFAULT_OAUTH_SCOPES`]): each is requested only
+/// when a command that declares it runs, so its consent screen appears when
+/// the user expects to confirm the action. A scope is listed when the action
+/// it exists for spends money ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`]
+/// plus the [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site
+/// offline ([`DOMAINS_NAMESERVER_UPDATE`]), deletes a whole billable resource
 /// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
-/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Browsing the public catalog
-/// ([`SHOPPING_CATALOG_READ`]) is none of those and is a login default.
+/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Editing scopes that also permit
+/// deleting a sub-resource (`dns delete`, `hosting secret delete`) stay
+/// defaults: the authorization server offers no finer split, and prompting
+/// for `domains.dns:update` would put consent back into every site setup.
 ///
 /// Like [`ALL`], not referenced by production code: the module tests enforce
 /// `DEFAULT_OAUTH_SCOPES == (ALL \ STEP_UP_ONLY) ∪ {OFFLINE_ACCESS}`.
