@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.27](https://github.com/godaddy/cli/compare/v0.2.26...v0.2.27) (2026-10-12)
+
+
+### Bug Fixes
+
+* **api:** reject --field/--param on a non-object request body ([#315](https://github.com/godaddy/cli/issues/315)) ([51056a2](https://github.com/godaddy/cli/commit/51056a23e1f5e0c7655ee58e09acc9cb3ecc0e0f))
+* **output:** keep key columns visible on narrow terminals ([#311](https://github.com/godaddy/cli/issues/311)) ([a8ada02](https://github.com/godaddy/cli/commit/a8ada0255dd81dfecaaa5ebfb8f13972d9b92541))
+
 ## [0.2.26](https://github.com/godaddy/cli/compare/v0.2.25...v0.2.26) (2026-10-08)
 
 
