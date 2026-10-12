@@ -31,12 +31,12 @@
 //!    included in [`ALL`] — you cannot add one there without registering it in
 //!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
-//! 3. Decide whether it is a login default or step-up only. Defaults go in
-//!    [`crate::environments::DEFAULT_OAUTH_SCOPES`] with `default: true` in
-//!    [`SCOPE_REGISTRY`]; anything that spends money, takes a site offline,
-//!    deletes a whole billable resource, or is raw data access goes in
-//!    [`STEP_UP_ONLY`] with `default: false`. The module tests fail until all
-//!    three agree.
+//! 3. Add its [`SCOPE_REGISTRY`] entry and set `default`. `true` means it is
+//!    requested at login; `false` means step-up only, requested when a command
+//!    that declares it runs. Use `false` only when the action spends money,
+//!    can take a site offline, deletes a whole billable resource, or is raw
+//!    data access. The login request ([`DEFAULT_OAUTH_SCOPES`]) is derived
+//!    from these flags, so there is nothing else to keep in sync.
 //! 4. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
 //!
@@ -46,6 +46,8 @@
 //! assigned to a third-party app created via `gddy platform app init`, or the
 //! ad-hoc scopes `gddy api call --scope …` derives from the API catalog at
 //! runtime.
+
+use std::sync::LazyLock;
 
 /// Declares each scope constant and derives [`ALL`] from the same list, so a
 /// scope cannot exist without being part of the authoritative registry.
@@ -73,7 +75,7 @@ macro_rules! declare_scopes {
 
 /// OIDC directive scope requesting a `refresh_token` alongside the access
 /// token. Requested at login by default (see
-/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+/// [`DEFAULT_OAUTH_SCOPES`]).
 ///
 /// Deliberately declared outside [`declare_scopes!`]/[`ALL`]: unlike the
 /// scopes below, it isn't a `resource:action` permission grant, so it fails
@@ -83,34 +85,9 @@ macro_rules! declare_scopes {
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
 
-/// Permission scopes kept out of the login bundle
-/// ([`crate::environments::DEFAULT_OAUTH_SCOPES`]): each is requested only
-/// when a command that declares it runs, so its consent screen appears when
-/// the user expects to confirm the action. A scope is listed when the action
-/// it exists for spends money ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`]
-/// plus the [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site
-/// offline ([`DOMAINS_NAMESERVER_UPDATE`]), deletes a whole billable resource
-/// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
-/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Editing scopes that also permit
-/// deleting a sub-resource (`dns delete`, `hosting secret delete`) stay
-/// defaults: the authorization server offers no finer split, and prompting
-/// for `domains.dns:update` would put consent back into every site setup.
-///
-/// Like [`ALL`], not referenced by production code: the module tests enforce
-/// `DEFAULT_OAUTH_SCOPES == (ALL \ STEP_UP_ONLY) ∪ {OFFLINE_ACCESS}`.
-#[allow(dead_code)]
-pub const STEP_UP_ONLY: &[&str] = &[
-    DOMAINS_CREATE,
-    DOMAINS_NAMESERVER_UPDATE,
-    HOSTING_APPLICATION_DELETE,
-    HOSTING_DATABASE_TUNNEL_EXECUTE,
-    SHOPPING_CHECKOUT_EXECUTE,
-    SHOPPING_ORDER_READ,
-];
-
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
-// Every scope below is requested at login by default unless its doc says
-// "Step-up only" (and it is listed in `STEP_UP_ONLY`).
+// Every scope below is requested at login by default unless its SCOPE_REGISTRY
+// entry has `default: false` (its doc says "Step-up only").
 declare_scopes! {
     /// Read the caller's registered applications.
     APP_REGISTRY_READ => "apps.app-registry:read",
@@ -196,11 +173,23 @@ pub struct ScopeInfo {
     pub default: bool,
 }
 
-/// Every requestable scope, described for `gddy auth scope`. Keep in sync
-/// with the constants above (`scope_registry_covers_every_declared_scope`
-/// enforces the constant side of this; `scope_registry_default_flag_matches_default_oauth_scopes`
-/// enforces that the `default` flag exactly matches
-/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+/// Every requestable scope, described for `gddy auth scope`, and the single
+/// source of truth for which scopes the login request carries: entries with
+/// `default: true` make up [`DEFAULT_OAUTH_SCOPES`]; `default: false` entries
+/// are step-up only and are requested when a command that declares them runs.
+///
+/// A scope is step-up only when the action it exists for spends money
+/// ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`] plus the
+/// [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site offline
+/// ([`DOMAINS_NAMESERVER_UPDATE`]), deletes a whole billable resource
+/// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
+/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Editing scopes that also permit
+/// deleting a sub-resource (`dns delete`, `hosting secret delete`) stay
+/// defaults: the authorization server offers no finer split, and prompting
+/// for `domains.dns:update` would put consent back into every site setup.
+///
+/// `scope_registry_covers_every_declared_scope` keeps this table in sync with
+/// the constants above.
 pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: APP_REGISTRY_READ,
@@ -343,6 +332,19 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         default: true,
     },
 ];
+
+/// Scopes requested at login: every [`SCOPE_REGISTRY`] entry with
+/// `default: true`, in registry order. One wide login instead of a consent
+/// screen per command: every scope step-up is a browser round trip through
+/// the consent screen, so a first-time session that buys a domain, buys
+/// hosting and deploys a site needs three prompts, not a dozen.
+pub static DEFAULT_OAUTH_SCOPES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    SCOPE_REGISTRY
+        .iter()
+        .filter(|info| info.default)
+        .map(|info| info.scope)
+        .collect()
+});
 
 /// Every leaf command's space-separated invocation path (e.g. `"domain
 /// purchase"`) paired with the scopes it declares via `.with_scopes`.
@@ -508,59 +510,53 @@ mod tests {
         }
     }
 
-    /// [`SCOPE_REGISTRY`]'s `default` flag must exactly match
-    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`] — the module doc on
-    /// [`SCOPE_REGISTRY`] used to call this out as an unenforced invariant;
-    /// this is that check. If they drift, `gddy auth scope --defaults-only`
-    /// would misdescribe which scopes actually get requested at login.
+    /// [`SCOPE_REGISTRY`] must not list a scope twice, or `gddy auth scope`
+    /// would show it twice and [`DEFAULT_OAUTH_SCOPES`] would request it twice.
     #[test]
-    fn scope_registry_default_flag_matches_default_oauth_scopes() {
-        let default_in_registry: std::collections::HashSet<&str> = SCOPE_REGISTRY
+    fn scope_registry_entries_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for info in SCOPE_REGISTRY {
+            assert!(
+                seen.insert(info.scope),
+                "duplicate scope in SCOPE_REGISTRY: {:?}",
+                info.scope
+            );
+        }
+    }
+
+    /// The login request is derived from the registry's `default` flags, so it
+    /// must be exactly those entries and must always carry [`OFFLINE_ACCESS`]
+    /// (without it no refresh token is issued and every session re-prompts).
+    #[test]
+    fn default_oauth_scopes_are_the_registry_defaults() {
+        let expected: Vec<&str> = SCOPE_REGISTRY
             .iter()
             .filter(|info| info.default)
             .map(|info| info.scope)
             .collect();
-        let default_oauth_scopes: std::collections::HashSet<&str> =
-            crate::environments::DEFAULT_OAUTH_SCOPES
-                .iter()
-                .copied()
-                .collect();
-        assert_eq!(
-            default_in_registry, default_oauth_scopes,
-            "SCOPE_REGISTRY's `default` flags must match \
-             crate::environments::DEFAULT_OAUTH_SCOPES exactly"
-        );
+        assert_eq!(*DEFAULT_OAUTH_SCOPES, expected);
+        assert!(DEFAULT_OAUTH_SCOPES.contains(&OFFLINE_ACCESS));
     }
 
-    /// Every permission scope is a login default unless listed in
-    /// [`STEP_UP_ONLY`], so adding a scope to `declare_scopes!` without touching
-    /// the defaults fails here and forces an explicit choice.
+    /// The step-up-only set is a deliberate policy decision (spends money,
+    /// takes a site offline, deletes a billable resource, or raw data access),
+    /// so pin it: flipping a `default` flag either way must be an explicit
+    /// change here, not a side effect of editing the registry.
     #[test]
-    fn default_oauth_scopes_are_all_scopes_minus_step_up_only() {
-        let step_up_only: std::collections::HashSet<&str> = STEP_UP_ONLY.iter().copied().collect();
-        for scope in STEP_UP_ONLY {
-            assert!(
-                ALL.contains(scope),
-                "STEP_UP_ONLY entry {scope:?} is not a declared permission scope"
-            );
-        }
-        let expected: std::collections::HashSet<&str> = ALL
+    fn step_up_only_scopes_are_exactly_the_sensitive_ones() {
+        let non_default: std::collections::BTreeSet<&str> = SCOPE_REGISTRY
             .iter()
-            .copied()
-            .filter(|scope| !step_up_only.contains(scope))
-            .chain([OFFLINE_ACCESS])
+            .filter(|info| !info.default)
+            .map(|info| info.scope)
             .collect();
-        let defaults = crate::environments::DEFAULT_OAUTH_SCOPES;
-        let actual: std::collections::HashSet<&str> = defaults.iter().copied().collect();
-        assert_eq!(
-            actual, expected,
-            "DEFAULT_OAUTH_SCOPES must be every scope in ALL except STEP_UP_ONLY, plus OFFLINE_ACCESS"
-        );
-        // Sets hide duplicates; a repeated default would be sent twice on every login.
-        assert_eq!(
-            defaults.len(),
-            actual.len(),
-            "DEFAULT_OAUTH_SCOPES contains a duplicate entry"
-        );
+        let expected = std::collections::BTreeSet::from([
+            DOMAINS_CREATE,
+            DOMAINS_NAMESERVER_UPDATE,
+            HOSTING_APPLICATION_DELETE,
+            HOSTING_DATABASE_TUNNEL_EXECUTE,
+            SHOPPING_CHECKOUT_EXECUTE,
+            SHOPPING_ORDER_READ,
+        ]);
+        assert_eq!(non_default, expected);
     }
 }

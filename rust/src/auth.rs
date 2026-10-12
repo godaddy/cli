@@ -61,7 +61,7 @@ fn build_provider(env: &GddyEnvConfig) -> PkceAuthProvider {
         env.auth_url.clone(),
         env.token_url.clone(),
         env.client_id.clone(),
-        environments::DEFAULT_OAUTH_SCOPES,
+        scopes::DEFAULT_OAUTH_SCOPES.as_slice(),
     )
     .with_app_id(environments::APP_ID)
     .with_redirect_uri(environments::REDIRECT_URI)
