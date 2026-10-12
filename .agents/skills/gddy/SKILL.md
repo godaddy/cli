@@ -42,7 +42,7 @@ The `gddy` CLI is self-documenting. Use:
 
 ## Authentication
 
-Interactive three-legged OAuth happens automatically if there is no auth token, if the auth token is expired, or if additional permissions are required. When you run a command that requires auth, it will open the user's web browser. You can list available OAuth scopes with `gddy auth scope` then have users authenticate up front with `gddy auth login --scope <a> --scope <b>` if you want to avoid auth interruptions in the middle of a session. Run `gddy auth --help` for more auth details or use `gddy guide auth` for a full walkthrough.
+Interactive three-legged OAuth happens automatically if there is no auth token, if the auth token is expired, or if additional permissions are required. When you run a command that requires auth, it will open the user's web browser. Login grants almost every scope up front, so most sessions see one consent screen. The exceptions are sensitive actions (purchases, nameserver changes, deleting an app, database access): the first command that needs one opens a consent screen on purpose. Run `gddy auth scope --non-default` to see which commands those are and tell the user to expect a browser prompt there, rather than pre-granting them at login. Run `gddy auth --help` for more auth details or use `gddy guide auth` for a full walkthrough.
 
 For non-interactive workflows, you can use a [Personal Access Token (PAT)](https://developer.godaddy.com/en/docs/api-users/auth) instead. Run `gddy pat create` to open the Developer Portal in the user's browser so they can generate one, then store it securely with `gddy pat add` or set it in a `GDDY_PAT` environment variable.
 

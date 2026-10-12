@@ -529,13 +529,26 @@ mod tests {
     /// (without it no refresh token is issued and every session re-prompts).
     #[test]
     fn default_oauth_scopes_are_the_registry_defaults() {
-        let expected: Vec<&str> = SCOPE_REGISTRY
+        let by_scope: std::collections::HashMap<&str, bool> = SCOPE_REGISTRY
             .iter()
-            .filter(|info| info.default)
-            .map(|info| info.scope)
+            .map(|info| (info.scope, info.default))
             .collect();
-        assert_eq!(*DEFAULT_OAUTH_SCOPES, expected);
+        for scope in DEFAULT_OAUTH_SCOPES.iter() {
+            assert_eq!(
+                by_scope.get(scope),
+                Some(&true),
+                "{scope:?} is requested at login but is not a `default: true` registry entry"
+            );
+        }
+        let default_count = by_scope.values().filter(|default| **default).count();
+        assert_eq!(
+            DEFAULT_OAUTH_SCOPES.len(),
+            default_count,
+            "a default entry is missing or duplicated"
+        );
         assert!(DEFAULT_OAUTH_SCOPES.contains(&OFFLINE_ACCESS));
+        assert!(!DEFAULT_OAUTH_SCOPES.contains(&DOMAINS_CREATE));
+        assert!(!DEFAULT_OAUTH_SCOPES.contains(&SHOPPING_CHECKOUT_EXECUTE));
     }
 
     /// The step-up-only set is a deliberate policy decision (spends money,
