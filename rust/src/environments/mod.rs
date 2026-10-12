@@ -72,10 +72,36 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
     ]
 });
 
-/// Scopes requested at login by default.
+/// Scopes requested at login by default: every permission scope in
+/// [`crate::scopes::ALL`] except [`crate::scopes::STEP_UP_ONLY`], plus
+/// [`crate::scopes::OFFLINE_ACCESS`] for a refresh token.
+///
+/// One wide login instead of a consent screen per command: every scope
+/// step-up is a browser round trip through the consent screen, so a
+/// first-time session that buys a domain, buys hosting and deploys a site
+/// should need three prompts, not a dozen. See `STEP_UP_ONLY` for what stays
+/// out and why.
 pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
     crate::scopes::APP_REGISTRY_READ,
+    crate::scopes::APP_REGISTRY_WRITE,
     crate::scopes::DOMAINS_READ,
+    crate::scopes::DOMAINS_DNS_UPDATE,
+    crate::scopes::HOSTING_APPLICATION_READ,
+    crate::scopes::HOSTING_APPLICATION_CREATE,
+    crate::scopes::HOSTING_APPLICATION_UPDATE,
+    crate::scopes::HOSTING_DEPLOYMENT_EXECUTE,
+    crate::scopes::HOSTING_SOURCE_READ,
+    crate::scopes::HOSTING_SOURCE_WRITE,
+    crate::scopes::HOSTING_SECRET_READ,
+    crate::scopes::HOSTING_SECRET_WRITE,
+    crate::scopes::HOSTING_LOG_READ,
+    crate::scopes::HOSTING_DOMAIN_READ,
+    crate::scopes::HOSTING_DOMAIN_WRITE,
+    crate::scopes::HOSTING_SUBSCRIPTION_READ,
+    crate::scopes::HOSTING_SUBSCRIPTION_WRITE,
+    crate::scopes::EMAIL_READ,
+    crate::scopes::EMAIL_CREATE,
+    crate::scopes::SECURITY_MALWARE_SCAN,
     crate::scopes::OFFLINE_ACCESS,
 ];
 pub const REDIRECT_URI: &str = "http://localhost:7443/callback";

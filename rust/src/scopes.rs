@@ -77,17 +77,39 @@ macro_rules! declare_scopes {
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
 
+/// Permission scopes kept out of the login bundle
+/// ([`crate::environments::DEFAULT_OAUTH_SCOPES`]); each is requested only
+/// when a command that declares it runs, so its consent screen appears at the
+/// moment the user expects to confirm the action. The bar: the scope spends
+/// money ([`DOMAINS_CREATE`], `SHOPPING_*`), can take a site offline
+/// ([`DOMAINS_NAMESERVER_UPDATE`]), destroys a resource
+/// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
+/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]).
+///
+/// Like [`ALL`], not referenced by production code: the module tests enforce
+/// `DEFAULT_OAUTH_SCOPES == (ALL \ STEP_UP_ONLY) ∪ {OFFLINE_ACCESS}`.
+#[allow(dead_code)]
+pub const STEP_UP_ONLY: &[&str] = &[
+    DOMAINS_CREATE,
+    DOMAINS_NAMESERVER_UPDATE,
+    HOSTING_APPLICATION_DELETE,
+    HOSTING_DATABASE_TUNNEL_EXECUTE,
+    SHOPPING_CATALOG_READ,
+    SHOPPING_CHECKOUT_EXECUTE,
+    SHOPPING_ORDER_READ,
+];
+
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
 declare_scopes! {
     /// Read the caller's registered applications. Requested at login by default
     /// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
     APP_REGISTRY_READ => "apps.app-registry:read",
-    /// Create/update/archive the caller's registered applications. NOT requested
-    /// at login by default (it's a rare operation for most customers); the
-    /// app-registry mutation commands (`platform app init/update/enable/disable/
-    /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
-    /// requests it on demand (OAuth step-up). Read commands such as
-    /// `platform app enablement` use [`APP_REGISTRY_READ`] only.
+    /// Create/update/archive the caller's registered applications. Requested at
+    /// login by default; the app-registry mutation commands (`platform app
+    /// init/update/enable/disable/archive/release/deploy`) still declare it via
+    /// `with_scopes` so a token obtained before it was a default steps up.
+    /// Read commands such as `platform app enablement` use
+    /// [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
@@ -176,7 +198,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: APP_REGISTRY_WRITE,
         description: "Create, update, or archive the caller's registered applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: DOMAINS_READ,
@@ -186,7 +208,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: DOMAINS_DNS_UPDATE,
         description: "Create, replace, or delete DNS records",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: DOMAINS_CREATE,
@@ -201,17 +223,17 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_APPLICATION_READ,
         description: "Read hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_CREATE,
         description: "Create a hosting application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_UPDATE,
         description: "Update a hosting application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_DELETE,
@@ -221,52 +243,52 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_DEPLOYMENT_EXECUTE,
         description: "Trigger deployments and restarts",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SOURCE_READ,
         description: "Read source imports for hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SOURCE_WRITE,
         description: "Create source imports for hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SECRET_READ,
         description: "Read application secret names",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SECRET_WRITE,
         description: "Create, update, or delete application secrets",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_LOG_READ,
         description: "Read application logs",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DOMAIN_READ,
         description: "Read domains attached to hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DOMAIN_WRITE,
         description: "Attach or detach domains from hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SUBSCRIPTION_READ,
         description: "Read hosting subscriptions",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SUBSCRIPTION_WRITE,
         description: "Attach a hosting subscription to an application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DATABASE_TUNNEL_EXECUTE,
@@ -276,17 +298,17 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: EMAIL_READ,
         description: "Read mailboxes and check mailbox-creation eligibility",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: EMAIL_CREATE,
         description: "Create a mailbox",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SECURITY_MALWARE_SCAN,
         description: "Trigger an on-demand malware scan",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SHOPPING_CATALOG_READ,
@@ -497,6 +519,34 @@ mod tests {
             default_in_registry, default_oauth_scopes,
             "SCOPE_REGISTRY's `default` flags must match \
              crate::environments::DEFAULT_OAUTH_SCOPES exactly"
+        );
+    }
+
+    /// Every permission scope is a login default unless listed in
+    /// [`STEP_UP_ONLY`], so adding a scope to `declare_scopes!` without touching
+    /// the defaults fails here and forces an explicit choice.
+    #[test]
+    fn default_oauth_scopes_are_all_scopes_minus_step_up_only() {
+        let step_up_only: std::collections::HashSet<&str> = STEP_UP_ONLY.iter().copied().collect();
+        for scope in STEP_UP_ONLY {
+            assert!(
+                ALL.contains(scope),
+                "STEP_UP_ONLY entry {scope:?} is not a declared permission scope"
+            );
+        }
+        let expected: std::collections::HashSet<&str> = ALL
+            .iter()
+            .copied()
+            .filter(|scope| !step_up_only.contains(scope))
+            .chain([OFFLINE_ACCESS])
+            .collect();
+        let actual: std::collections::HashSet<&str> = crate::environments::DEFAULT_OAUTH_SCOPES
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "DEFAULT_OAUTH_SCOPES must be every scope in ALL except STEP_UP_ONLY, plus OFFLINE_ACCESS"
         );
     }
 }
