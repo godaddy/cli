@@ -57,9 +57,9 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("deleted", "Deleted").align(Alignment::Right),
         TableColumn::new("action", "Action"),
         TableColumn::new("plan", "Plan").nested(vec![
-            TableColumn::new("action", "Action"),
+            TableColumn::new("action", "Action").essential(true),
             TableColumn::new("recordId", "Record ID"),
-            TableColumn::new("data", "Data"),
+            TableColumn::new("data", "Data").essential(true),
         ]),
     ]
 }

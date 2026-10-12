@@ -41,11 +41,13 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("currency", "Currency"),
         TableColumn::new("inventory", "Inventory"),
         TableColumn::new("terms", "Terms").nested(vec![
-            TableColumn::new("periodLabel", "Period"),
-            TableColumn::new("price", "Price").align(Alignment::Right),
+            TableColumn::new("periodLabel", "Period").essential(true),
+            TableColumn::new("price", "Price")
+                .align(Alignment::Right)
+                .essential(true),
             TableColumn::new("firstTermPrice", "First-Term Price").align(Alignment::Right),
             TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
-            TableColumn::new("fees", "Fees"),
+            TableColumn::new("fees", "Fees").essential(true),
         ]),
     ]
 }
@@ -280,8 +282,7 @@ mod tests {
                 },
             ],
         });
-        let envelope = cli_engine::Envelope::success(available, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
         assert!(rendered.contains("Terms:"), "{rendered}");
         assert!(rendered.contains("1 year"), "{rendered}");
         assert!(rendered.contains("2 years"), "{rendered}");
@@ -344,8 +345,7 @@ mod tests {
             "definitive": true,
             "inventory": "PREMIUM",
         });
-        let envelope = cli_engine::Envelope::success(available, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
     }

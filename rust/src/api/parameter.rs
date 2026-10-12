@@ -32,7 +32,7 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 parameter's full details.",
             )
             .with_view(vec![
-                TableColumn::new("name", "Name"),
+                TableColumn::new("name", "Name").essential(true),
                 TableColumn::new("in", "In"),
                 TableColumn::new("required", "Required"),
                 TableColumn::new("type", "Type"),
