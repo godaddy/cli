@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
 use cli_engine::NextAction;
-use shopping_client::types::{Checkout, LookupResponse};
+use shopping_client::types::LookupResponse;
+
+use crate::shopping::client::Checkout;
 
 use crate::next_action::next_action;
 
@@ -45,11 +47,12 @@ pub(crate) fn post_purchase_actions(catalog_response: &LookupResponse) -> Vec<Ne
 #[cfg(test)]
 mod tests {
     use shopping_client::types::{
-        CatalogLookupLookupResponse, CatalogLookupLookupResponseProductsItem, Category, Checkout,
-        Item, LineItem, LookupResponse,
+        CatalogLookupLookupResponse, CatalogLookupLookupResponseProductsItem, Category, Item,
+        LineItem, LookupResponse,
     };
 
     use super::{post_purchase_actions, purchased_product_ids};
+    use crate::shopping::client::Checkout;
 
     fn line_item(id: Option<&str>) -> LineItem {
         LineItem {

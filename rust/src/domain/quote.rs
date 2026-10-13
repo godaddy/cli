@@ -50,7 +50,7 @@ fn build_profile(
     privacy: bool,
     renew_auto: bool,
     name_servers: &[String],
-) -> Result<types::InlineRegistrationProfile> {
+) -> Result<types::Profile> {
     let file = super::contacts_file::load().map_err(|e| CliCoreError::message(e.to_string()))?;
     let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
     let registrant = to_api(super::contacts_file::Role::Registrant)?;
@@ -85,7 +85,7 @@ fn build_profile(
         )
     });
 
-    Ok(types::InlineRegistrationProfile {
+    Ok(types::Profile {
         auto_renew: Some(renew_auto),
         contacts: contacts_obj,
         name_servers,
@@ -129,10 +129,8 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     if let Some(renewal) = quote.renewal_price.as_ref().and_then(format_money) {
         out["renewalPrice"] = json!(renewal);
     }
-    if let Some(period) = quote.period {
-        out["period"] = json!(period.get());
-        out["periodLabel"] = json!(period_label(period.get()));
-    }
+    out["period"] = json!(quote.period.get());
+    out["periodLabel"] = json!(period_label(quote.period.get()));
     if let Some(token) = quote.quote_token.as_ref() {
         out["quoteToken"] = json!(token.to_string());
     }
@@ -375,7 +373,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 };
                 let cached = super::quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
-                    period: quote.period.map_or(period, |p| p.get()),
+                    period: quote.period.get(),
                     agreement_types,
                     agreement_titles,
                     price: view

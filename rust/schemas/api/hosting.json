@@ -3737,6 +3737,6 @@
     }
   ],
   "name": "hosting",
-  "title": "Hosting API",
+  "title": "Hosted Application Lifecycle Management API",
   "version": "1.0.0"
 }

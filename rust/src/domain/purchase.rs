@@ -223,17 +223,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // as a confusing server-side QUOTE_MISMATCH. A clear re-quote message
             // is better than a mismatched charge attempt.
             let profile = match cached.profile.as_ref() {
-                Some(v) => Some(
-                    serde_json::from_value::<types::InlineRegistrationProfile>(v.clone()).map_err(
-                        |e| {
-                            CliCoreError::message(format!(
-                                "the cached quote for {domain} is corrupt or from an older CLI \
-                                 version (could not read its registration profile: {e}); re-run \
-                                 `gddy domain quote {domain}` for a fresh quote."
-                            ))
-                        },
-                    )?,
-                ),
+                Some(v) => Some(serde_json::from_value::<types::Profile>(v.clone()).map_err(
+                    |e| {
+                        CliCoreError::message(format!(
+                            "the cached quote for {domain} is corrupt or from \
+                            an older CLI version (could not read its \
+                            registration profile: {e}); re-run \
+                            `gddy domain quote {domain}` for a fresh quote."
+                        ))
+                    },
+                )?),
                 None => None,
             };
 

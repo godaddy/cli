@@ -1314,7 +1314,7 @@
       "name": "Proprietary",
       "url": "https://www.godaddy.com/legal/agreements/software-license-agreement"
     },
-    "title": "Hosting API",
+    "title": "Hosted Application Lifecycle Management API",
     "version": "1.0.0"
   },
   "openapi": "3.0.3",
