@@ -71,6 +71,7 @@ pub(crate) fn refresh(
     remove_protocol_header_parameters(&mut spec);
     crate::spec_normalize::retain_2xx_responses(&mut spec);
     relax_response_schemas(&mut spec);
+    capture_open_response_properties(&mut spec)?;
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
     preserve_payment_instrument_fields(&mut spec)?;
     add_idempotency_headers(&mut spec)?;
@@ -152,6 +153,61 @@ fn remove_protocol_header_parameters(spec: &mut Value) {
                 )
             });
         }
+    }
+}
+
+/// Response schemas declared as open objects (`additionalProperties: true`)
+/// whose undeclared keys the typed client must keep, so `--output json` shows
+/// what the API returned (e.g. catalog `subscription_type`, `term_type`).
+///
+/// Request-only schemas (`buyer`, `context`, `signals`, the checkout request
+/// bodies, ...) are deliberately absent: a catch-all field would also be
+/// required when the CLI builds them by hand.
+const OPEN_RESPONSE_SCHEMAS: &[&str] = &[
+    "product-metadata_base_schema",
+    "product-metadata_hosting_schema",
+    "email_schema",
+    "ssl_schema",
+    "variant-metadata_base_schema",
+    "variant-metadata_hosting_schema",
+];
+
+/// Progenitor's type generator ignores `additionalProperties: true` but turns
+/// the equally permissive `{}` into a flattened `extra` map holding every key
+/// the schema does not name. Rewrites each open object in
+/// [`OPEN_RESPONSE_SCHEMAS`] (including its `allOf` branches) accordingly.
+fn capture_open_response_properties(spec: &mut Value) -> Result<()> {
+    let schemas = spec
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+        .context("Shopping component schemas are missing")?;
+    for name in OPEN_RESPONSE_SCHEMAS {
+        let schema = schemas
+            .get_mut(*name)
+            .with_context(|| format!("Shopping {name} schema is missing"))?;
+        open_additional_properties(schema);
+    }
+    Ok(())
+}
+
+fn open_additional_properties(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if map.contains_key("properties")
+                && map.get("additionalProperties") == Some(&Value::Bool(true))
+            {
+                map.insert("additionalProperties".to_owned(), serde_json::json!({}));
+            }
+            for child in map.values_mut() {
+                open_additional_properties(child);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                open_additional_properties(value);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -383,8 +439,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ensure_refs_resolved, preserve_payment_instrument_fields, prune_documentation_fields,
-        relax, repoint_schema_refs,
+        OPEN_RESPONSE_SCHEMAS, capture_open_response_properties, ensure_refs_resolved,
+        preserve_payment_instrument_fields, prune_documentation_fields, relax, repoint_schema_refs,
     };
 
     #[test]
@@ -546,6 +602,58 @@ mod tests {
                 .is_none(),
             "the nested schema's own doc string must still be pruned"
         );
+    }
+
+    fn spec_with_open_response_schemas() -> serde_json::Value {
+        let mut schemas = serde_json::Map::new();
+        for name in OPEN_RESPONSE_SCHEMAS {
+            schemas.insert(
+                (*name).to_owned(),
+                json!({
+                    "allOf": [
+                        {"additionalProperties": true, "properties": {"a": {"type": "string"}}, "type": "object"}
+                    ]
+                }),
+            );
+        }
+        schemas.insert(
+            "buyer".to_owned(),
+            json!({"additionalProperties": true, "properties": {"email": {"type": "string"}}, "type": "object"}),
+        );
+        json!({"components": {"schemas": schemas}})
+    }
+
+    #[test]
+    fn capturing_open_response_properties_keeps_unknown_keys_for_response_schemas_only() {
+        let mut spec = spec_with_open_response_schemas();
+
+        capture_open_response_properties(&mut spec).expect("schemas are present");
+
+        for name in OPEN_RESPONSE_SCHEMAS {
+            let branch = spec
+                .pointer(&format!("/components/schemas/{name}/allOf/0"))
+                .expect("branch");
+            assert_eq!(branch["additionalProperties"], json!({}), "{name}");
+            assert!(branch["properties"].get("a").is_some(), "{name}");
+        }
+        assert_eq!(
+            spec.pointer("/components/schemas/buyer/additionalProperties"),
+            Some(&json!(true)),
+            "request-side schemas stay untouched"
+        );
+    }
+
+    #[test]
+    fn capturing_open_response_properties_fails_when_a_named_schema_disappears() {
+        let mut spec = spec_with_open_response_schemas();
+        spec.pointer_mut("/components/schemas")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("schemas")
+            .remove("ssl_schema");
+
+        let error = capture_open_response_properties(&mut spec).expect_err("schema is missing");
+
+        assert!(error.to_string().contains("ssl_schema"), "{error}");
     }
 
     #[test]
