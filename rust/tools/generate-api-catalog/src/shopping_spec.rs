@@ -45,12 +45,7 @@ pub(crate) fn refresh(
         schemas.insert(name, definition);
     }
     crate::spec_normalize::rewrite_defs_refs(&mut spec);
-    crate::spec_normalize::remove_remaining_relative_refs(&mut spec);
-    let unresolved = crate::dereference::collect_unresolved_refs(&spec);
-    anyhow::ensure!(
-        unresolved.is_empty(),
-        "Shopping spec has unresolved external $refs: {unresolved:?}"
-    );
+    ensure_refs_resolved(&spec)?;
     crate::spec_normalize::remove_self_referencing_schemas(&mut spec);
 
     // `get_product_response` is a bare `$ref` alias whose derived Rust name
@@ -88,6 +83,17 @@ pub(crate) fn refresh(
     }
     std::fs::write(out_path, json).with_context(|| format!("write {}", out_path.display()))?;
     eprintln!("   wrote {}", out_path.display());
+    Ok(())
+}
+
+/// Fails if any `$ref` still points outside the document, so a missing or moved
+/// schema file stops the refresh instead of leaving a weakened type behind.
+fn ensure_refs_resolved(spec: &Value) -> Result<()> {
+    let unresolved = crate::dereference::collect_unresolved_refs(spec);
+    anyhow::ensure!(
+        unresolved.is_empty(),
+        "Shopping spec has unresolved external $refs: {unresolved:?}"
+    );
     Ok(())
 }
 
@@ -377,7 +383,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        preserve_payment_instrument_fields, prune_documentation_fields, relax, repoint_schema_refs,
+        ensure_refs_resolved, preserve_payment_instrument_fields, prune_documentation_fields,
+        relax, repoint_schema_refs,
     };
 
     #[test]
@@ -432,6 +439,19 @@ mod tests {
         let expected = response.clone();
         relax(&mut response);
         assert_eq!(response, expected);
+    }
+
+    #[test]
+    fn unresolved_refs_fail_the_refresh_instead_of_being_dropped() {
+        let relative = json!({"components": {"schemas": {"a": {"$ref": "./models/Missing.yaml"}}}});
+        let error = ensure_refs_resolved(&relative).expect_err("relative ref is unresolved");
+        assert!(error.to_string().contains("Missing.yaml"), "{error}");
+
+        let absolute = json!({"a": {"$ref": "https://example.com/missing.json"}});
+        assert!(ensure_refs_resolved(&absolute).is_err());
+
+        let local = json!({"a": {"$ref": "#/components/schemas/b"}, "b": {"type": "string"}});
+        assert!(ensure_refs_resolved(&local).is_ok());
     }
 
     #[test]
