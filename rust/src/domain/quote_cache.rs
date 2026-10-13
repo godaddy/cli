@@ -155,11 +155,11 @@ fn save_to(
 }
 
 /// Where the user can point the cache instead, if their platform allows it.
-/// macOS resolves the config directory from the account's home folder only.
+/// Only Linux honors an environment variable: macOS and Windows resolve the
+/// config folder from the account's home or known-folder settings, which a
+/// process-level variable doesn't change.
 fn relocation_hint() -> Option<&'static str> {
-    if cfg!(windows) {
-        Some("To save it somewhere else, set APPDATA to a writable folder")
-    } else if cfg!(target_os = "macos") {
+    if cfg!(any(windows, target_os = "macos")) {
         None
     } else {
         Some("To save it somewhere else, set XDG_CONFIG_HOME to a writable folder")
@@ -167,11 +167,11 @@ fn relocation_hint() -> Option<&'static str> {
 }
 
 /// How to make a missing config directory resolvable, phrased to follow
-/// "ensure ..." in a sentence. Platform-specific because each OS derives it
-/// from a different variable.
+/// "please" in a sentence. Platform-specific because each OS derives it
+/// differently.
 pub(super) fn no_config_dir_fix() -> &'static str {
     if cfg!(windows) {
-        "make sure APPDATA points to a writable folder"
+        "make sure your Windows user profile folders are available"
     } else if cfg!(target_os = "macos") {
         "make sure HOME points to your home folder"
     } else {
@@ -190,8 +190,8 @@ fn save_failed_error(path: &Path, domain: &str, cause: &cli_engine::CliCoreError
         path.display()
     ))
     .with_fix(format!(
-        "Make {dir} writable (or free up disk space), then run `gddy domain quote {domain}` \
-         again. Quotes are free.{relocate}"
+        "Resolve the problem above (for example, make {dir} writable or free up disk space), \
+         then run `gddy domain quote {domain}` again. Quotes are free.{relocate}"
     ))
 }
 
