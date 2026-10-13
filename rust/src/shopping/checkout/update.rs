@@ -2,7 +2,7 @@ use cli_engine::{CommandResult, CommandSpec, NextAction, RuntimeCommandSpec, Tie
 use shopping_client::types::Checkout;
 
 use super::create::agreement_review_action;
-use crate::shopping::SHOPPING_SCOPES;
+use crate::shopping::SHOPPING_PURCHASE_SCOPES;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments, reject_response_errors, update_response,
@@ -130,7 +130,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Mutate)
             .mutates(true)
             .handles_dry_run(true)
-            .with_scopes(SHOPPING_SCOPES)
+            .with_scopes(SHOPPING_PURCHASE_SCOPES)
             .auth_optional()
             .with_view_id(CHECKOUT_VIEW_ID),
         |ctx, args: Args| async move {

@@ -1,7 +1,8 @@
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, PaginationConfig,
+    RuntimeCommandSpec, Tier,
 };
-use serde_json::{Value, json};
+use email_client::types;
 
 use crate::email::client::{ClientError, EmailClient};
 use crate::email::{client_err, make_client};
@@ -34,10 +35,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("email")
             .with_tier(Tier::Read)
             .with_scopes(&[EMAIL_READ])
-            .with_pagination(PaginationConfig {
-                default_limit: 25,
-                max_limit: 500,
-            }),
+            .with_pagination(PaginationConfig::new(25, 500)),
         |ctx, args: ListArgs| async move {
             let client = make_client(&ctx, &[EMAIL_READ]).await?;
             let mailboxes = fetch_mailboxes(
@@ -49,7 +47,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await
             .map_err(client_err)?;
-            Ok(CommandResult::new(json!(mailboxes)).with_next_actions(vec![
+            let value = serde_json::to_value(&mailboxes).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize mailboxes: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(vec![
                 next_action("email get <mailbox-id>", "Get a mailbox by ID")
                     .with_param("mailbox-id", NextActionParam::required()),
             ]))
@@ -71,7 +72,7 @@ async fn fetch_mailboxes(
     fields: Option<&str>,
     limit: i64,
     offset: i64,
-) -> Result<Vec<Value>, ClientError> {
+) -> Result<Vec<types::Mailbox>, ClientError> {
     let target = if limit > 0 {
         let extra = offset.saturating_add(limit).saturating_add(1);
         Some(usize::try_from(extra).unwrap_or(usize::MAX))
@@ -82,25 +83,11 @@ async fn fetch_mailboxes(
     let mut mailboxes = Vec::new();
     let mut page: u32 = 1;
     loop {
-        let mut query: Vec<(&str, String)> = vec![
-            ("page", page.to_string()),
-            ("pageSize", SERVER_PAGE_SIZE_CAP.to_string()),
-        ];
-        if let Some(status) = status {
-            query.push(("status", status.to_owned()));
-        }
-        if let Some(fields) = fields {
-            query.push(("field", fields.to_owned()));
-        }
-
-        let data = client.list_mailboxes(&query).await?;
-        let page_items = data
-            .get("items")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let got = page_items.len();
-        mailboxes.extend(page_items);
+        let list = client
+            .list_mailboxes(status, page, SERVER_PAGE_SIZE_CAP as u32, fields)
+            .await?;
+        let got = list.items.len();
+        mailboxes.extend(list.items);
 
         let exhausted = got < SERVER_PAGE_SIZE_CAP;
         let covered = match target {
@@ -134,17 +121,18 @@ mod tests {
     fn opts_into_pagination_with_a_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                default_limit: 25,
-                max_limit: 500,
-            })
+            Some(PaginationConfig::new(25, 500))
         );
     }
 
-    fn page_of(n: usize, start: usize) -> Vec<Value> {
+    fn page_of(n: usize, start: usize) -> Vec<serde_json::Value> {
         (start..start + n)
             .map(|i| json!({ "mailboxId": format!("mbx-{i}"), "status": "ACTIVE" }))
             .collect()
+    }
+
+    fn client_for(server: &MockServer) -> EmailClient {
+        EmailClient::new(server.base_url(), "test-token").expect("client should build")
     }
 
     #[tokio::test]
@@ -160,7 +148,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = client_for(&server);
         let mailboxes = fetch_mailboxes(&client, None, None, 2, 0)
             .await
             .expect("fetch mailboxes");
@@ -191,7 +179,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = client_for(&server);
         let mailboxes = fetch_mailboxes(&client, None, None, 5, 99)
             .await
             .expect("fetch mailboxes");
@@ -223,7 +211,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = client_for(&server);
         let mailboxes = fetch_mailboxes(&client, None, None, 0, 0)
             .await
             .expect("fetch mailboxes");
@@ -247,7 +235,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = client_for(&server);
         fetch_mailboxes(&client, Some("ACTIVE"), Some("mailboxId,status"), 10, 0)
             .await
             .expect("fetch mailboxes");

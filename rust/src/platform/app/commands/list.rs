@@ -20,10 +20,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status")
             .with_output_schema::<ApplicationSummary>()
-            .with_pagination(PaginationConfig {
-                max_limit: 200,
-                ..Default::default()
-            }),
+            .with_pagination(PaginationConfig::new(0, 200)),
         |ctx| async move {
             let client = super::make_client(&ctx).await?;
             let data = client
@@ -56,10 +53,7 @@ mod tests {
     fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                max_limit: 200,
-                ..Default::default()
-            })
+            Some(PaginationConfig::new(0, 200))
         );
     }
 

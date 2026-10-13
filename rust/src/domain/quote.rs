@@ -259,15 +259,17 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("irreversible", "Irreversible"),
         TableColumn::new("inventory", "Inventory"),
         TableColumn::new("fees", "Fees").nested(vec![
-            TableColumn::new("type", "Type"),
-            TableColumn::new("amount", "Amount").align(Alignment::Right),
-            TableColumn::new("currency", "Currency"),
+            TableColumn::new("type", "Type").essential(true),
+            TableColumn::new("amount", "Amount")
+                .align(Alignment::Right)
+                .essential(true),
+            TableColumn::new("currency", "Currency").essential(true),
         ]),
         TableColumn::new("agreements", "Agreements"),
         TableColumn::new("requiredAgreements", "Required Agreements").nested(vec![
             TableColumn::new("agreementType", "Type"),
             TableColumn::new("title", "Title"),
-            TableColumn::new("url", "URL").no_truncate(true),
+            TableColumn::new("url", "URL").essential(true),
         ]),
         TableColumn::new("resolved", "Resolved Settings").nested(vec![
             TableColumn::new("contactSource", "Contact Source"),
@@ -506,8 +508,7 @@ mod tests {
             "period": 1,
             "periodLabel": "1 year",
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("1 year"), "{rendered}");
     }
 
@@ -517,9 +518,10 @@ mod tests {
     /// `quote_to_json`, and `resolved` is `ResolvedSettings` serialized via
     /// serde, whose `#[serde(rename = ...)]` attributes were cross-checked
     /// for the field names used below) as nested blocks — a mismatch would
-    /// silently drop them from `--fields all` output. Renders a hand-built
-    /// envelope rather than calling `quote_to_json`, which would need a
-    /// live `RegistrationQuote` built through its generated builder.
+    /// silently drop them from `--fields all` output. Renders hand-built
+    /// fixture data through the view rather than calling `quote_to_json`,
+    /// which would need a live `RegistrationQuote` built through its
+    /// generated builder.
     #[test]
     fn quote_result_renders_required_agreements_and_resolved_as_nested_blocks() {
         let quote = json!({
@@ -536,8 +538,7 @@ mod tests {
                 "nameServers": ["ns01.domaincontrol.com", "ns02.domaincontrol.com"],
             },
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Required Agreements:"), "{rendered}");
         assert!(rendered.contains("Registration Agreement"), "{rendered}");
         assert!(rendered.contains("Resolved Settings:"), "{rendered}");
@@ -560,8 +561,7 @@ mod tests {
                 {"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3900.00", "currency": "USD"},
             ],
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
         assert!(rendered.contains("Fees:"), "{rendered}");
@@ -582,8 +582,7 @@ mod tests {
             "domain": "example.com",
             "available": true,
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(!rendered.contains("null"), "{rendered}");
     }
 }

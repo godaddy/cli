@@ -77,8 +77,8 @@ mod tests {
         let manifest = load_source_manifest().expect("load source manifest");
         let expected = manifest.expected_domains();
 
-        assert_eq!(expected.len(), 22);
-        assert_eq!(manifest.remote.len(), 23);
+        assert_eq!(expected.len(), 23);
+        assert_eq!(manifest.remote.len(), 24);
         assert_eq!(
             manifest
                 .remote

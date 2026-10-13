@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.2.28](https://github.com/godaddy/cli/compare/v0.2.27...v0.2.28) (2026-10-12)
+
+
+### Features
+
+* **auth:** request a product-area scope bundle at login, step up only for sensitive scopes ([#317](https://github.com/godaddy/cli/issues/317)) ([cea21f5](https://github.com/godaddy/cli/commit/cea21f57f054620f134674288f5a648aa9a54f28))
+* **auth:** upgrade cli-engine to 0.10.1; log in with an ephemeral callback port and OIDC scopes ([#314](https://github.com/godaddy/cli/issues/314)) ([b30e3a1](https://github.com/godaddy/cli/commit/b30e3a1d985b12e2f188249250d2fadf4eb14b94))
+
+
+### Bug Fixes
+
+* **deps:** update quinn-proto and chacha20 to clear security advisories ([#318](https://github.com/godaddy/cli/issues/318)) ([306c921](https://github.com/godaddy/cli/commit/306c9210ec9a32e9f11b7c8012d813d51ab8147f))
+
+## [0.2.27](https://github.com/godaddy/cli/compare/v0.2.26...v0.2.27) (2026-10-12)
+
+
+### Bug Fixes
+
+* **api:** reject --field/--param on a non-object request body ([#315](https://github.com/godaddy/cli/issues/315)) ([51056a2](https://github.com/godaddy/cli/commit/51056a23e1f5e0c7655ee58e09acc9cb3ecc0e0f))
+* **output:** keep key columns visible on narrow terminals ([#311](https://github.com/godaddy/cli/issues/311)) ([a8ada02](https://github.com/godaddy/cli/commit/a8ada0255dd81dfecaaa5ebfb8f13972d9b92541))
+
+## [0.2.26](https://github.com/godaddy/cli/compare/v0.2.25...v0.2.26) (2026-10-08)
+
+
+### Features
+
+* **db:** mint tunnel token via product-prefixed app id, add --product ([4822eea](https://github.com/godaddy/cli/commit/4822eea3c8af6cfacac5b27952b7bc8be743b7fd))
+* **db:** mint tunnel token via product-prefixed app id, add --product ([3bf7dbe](https://github.com/godaddy/cli/commit/3bf7dbeb68ca1ce8fb23c8ddb072f7c5467a56f4))
+* **email:** convert Email API client to a spec-generated (progenitor) client ([#280](https://github.com/godaddy/cli/issues/280)) ([7cc2dbb](https://github.com/godaddy/cli/commit/7cc2dbbe10749e6fbe8c3351e9da0b8e9d92fa5d))
+* **platform:** add native Android extension support behind the native-apps flag ([#296](https://github.com/godaddy/cli/issues/296)) ([65888d4](https://github.com/godaddy/cli/commit/65888d416aa6bd159246949f6e2e438a6522a30a))
+
+
+### Bug Fixes
+
+* **dns:** pair retained values before position in the set plan ([#257](https://github.com/godaddy/cli/issues/257)) ([27a408b](https://github.com/godaddy/cli/commit/27a408b02f2327989874228022ecf59284505c7b))
+
 ## [0.2.25](https://github.com/godaddy/cli/compare/v0.2.24...v0.2.25) (2026-10-01)
 
 

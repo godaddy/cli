@@ -173,7 +173,7 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
             TableColumn::new("path", "Path"),
             TableColumn::new("summary", "Summary"),
             TableColumn::new("parameters.items", "Parameters").nested(vec![
-                TableColumn::new("name", "Name"),
+                TableColumn::new("name", "Name").essential(true),
                 TableColumn::new("in", "In"),
                 TableColumn::new("required", "Required"),
                 TableColumn::new("type", "Type"),
@@ -181,7 +181,7 @@ pub(super) fn get_command() -> RuntimeCommandSpec {
                 TableColumn::new("description", "Description"),
             ]),
             TableColumn::new("responses.items", "Responses").nested(vec![
-                TableColumn::new("status", "Status"),
+                TableColumn::new("status", "Status").essential(true),
                 TableColumn::new("type", "Type"),
                 TableColumn::new("schemaId", "Schema ID"),
                 TableColumn::new("description", "Description"),
@@ -512,7 +512,7 @@ mod tests {
     /// Same ambiguity, but through human output — covers that rendering
     /// path directly, since every other test here only exercises
     /// `--output json`. Human error rendering is `Error: {message}` /
-    /// `Fix: {fix}` (`cli_engine::output::human::render_human_with_view`).
+    /// `Fix: {fix}`.
     #[tokio::test]
     async fn operation_get_multiple_fuzzy_matches_human_output_shows_message_and_candidates() {
         let output = operation_cli()

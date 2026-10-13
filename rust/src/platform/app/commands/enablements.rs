@@ -18,7 +18,7 @@ struct EnablementsArgs {
 
 fn view_columns() -> Vec<TableColumn> {
     vec![
-        TableColumn::new("name", "Name"),
+        TableColumn::new("name", "Name").essential(true),
         TableColumn::new("status", "Status"),
         TableColumn::new("releaseVersion", "Release"),
         TableColumn::new("label", "Label"),

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-16T23:32:54.403859848+00:00",
+  "generated": "2026-09-18T19:23:39.098256354+00:00",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
@@ -35,6 +35,11 @@
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
       "endpointCount": 23
+    },
+    "email": {
+      "file": "email.json",
+      "title": "GoDaddy Business Email Management API",
+      "endpointCount": 4
     },
     "fulfillments": {
       "file": "fulfillments.json",

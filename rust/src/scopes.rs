@@ -19,19 +19,26 @@
 //!
 //! `ALL` does NOT cover every scope requiring client registration, though:
 //! directive scopes like [`OFFLINE_ACCESS`] aren't `resource:action` grants, so
-//! they're declared outside [`declare_scopes!`]/`ALL` but still need the same
-//! server-side registration. When syncing the OAuth client's configuration,
-//! diff against `ALL` *plus* every such standalone constant, not `ALL` alone.
+//! they're declared outside [`declare_scopes!`]/`ALL` (and listed in
+//! [`DIRECTIVES`]) but still need the same server-side registration. When
+//! syncing the OAuth client's configuration, diff against `ALL` *plus*
+//! [`DIRECTIVES`], not `ALL` alone.
 //!
 //! # Adding a scope (READ THIS)
 //!
 //! 1. Add a constant to the [`declare_scopes!`] block below (or, for a directive
 //!    scope that isn't a `resource:action` permission, declare it standalone
-//!    like [`OFFLINE_ACCESS`]). Constants in `declare_scopes!` are automatically
+//!    like [`OFFLINE_ACCESS`], and add it to [`DIRECTIVES`]). Constants in `declare_scopes!` are automatically
 //!    included in [`ALL`] — you cannot add one there without registering it in
 //!    the list.
 //! 2. Reference the new constant from the command via `.with_scopes(&[scopes::…])`.
-//! 3. **Register the same scope on the CLI's OAuth client**, or it will be
+//! 3. Add its [`SCOPE_REGISTRY`] entry and set `default`. `true` means it is
+//!    requested at login; `false` means step-up only, requested when a command
+//!    that declares it runs. Use `false` only when the action spends money,
+//!    can take a site offline, deletes a whole billable resource, or is raw
+//!    data access. The login request ([`DEFAULT_OAUTH_SCOPES`]) is derived
+//!    from these flags, so there is nothing else to keep in sync.
+//! 4. **Register the same scope on the CLI's OAuth client**, or it will be
 //!    ungrantable at runtime.
 //!
 //! This registry covers the scopes the CLI requests for *itself* (login defaults
@@ -40,6 +47,8 @@
 //! assigned to a third-party app created via `gddy platform app init`, or the
 //! ad-hoc scopes `gddy api call --scope …` derives from the API catalog at
 //! runtime.
+
+use std::sync::LazyLock;
 
 /// Declares each scope constant and derives [`ALL`] from the same list, so a
 /// scope cannot exist without being part of the authoritative registry.
@@ -52,10 +61,10 @@ macro_rules! declare_scopes {
         /// registration in sync with this list.
         ///
         /// NOT the complete set of scopes requiring OAuth client registration:
-        /// [`OFFLINE_ACCESS`] is a directive scope (not a `resource:action` permission)
-        /// and is deliberately excluded, but still must be registered on the client
-        /// server-side. Diff the client's configuration against `ALL` *plus*
-        /// [`OFFLINE_ACCESS`], not `ALL` alone.
+        /// the directive scopes in [`DIRECTIVES`] (e.g. [`OFFLINE_ACCESS`]) aren't
+        /// `resource:action` permissions and are deliberately excluded, but still must
+        /// be registered on the client server-side. Diff the client's configuration
+        /// against `ALL` *plus* [`DIRECTIVES`], not `ALL` alone.
         ///
         /// Not referenced by production code (the individual constants are what
         /// commands use); it exists as the authoritative registry to diff against
@@ -67,7 +76,7 @@ macro_rules! declare_scopes {
 
 /// OIDC directive scope requesting a `refresh_token` alongside the access
 /// token. Requested at login by default (see
-/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+/// [`DEFAULT_OAUTH_SCOPES`]).
 ///
 /// Deliberately declared outside [`declare_scopes!`]/[`ALL`]: unlike the
 /// scopes below, it isn't a `resource:action` permission grant, so it fails
@@ -77,29 +86,43 @@ macro_rules! declare_scopes {
 /// unregistered scope.
 pub const OFFLINE_ACCESS: &str = "offline_access";
 
+/// OIDC directive scope marking the request as an identity (not just
+/// authorization) request — some IDPs only populate profile claims when this
+/// is present alongside [`PROFILE`], even though `profile` alone is meant to
+/// carry the claims.
+pub const OPENID: &str = "openid";
+
+/// OIDC directive scope requesting standard profile claims (`name`,
+/// `given_name`, `preferred_username`, etc.) on the token.
+pub const PROFILE: &str = "profile";
+
+/// Every standalone directive scope — the scopes that require OAuth client
+/// registration but, not being `resource:action` permissions, live outside
+/// [`ALL`]. Diff the client's configuration against `ALL` *plus* this list.
+pub const DIRECTIVES: &[&str] = &[OFFLINE_ACCESS, OPENID, PROFILE];
+
 // DON'T FORGET! If you add a scope here, you must also register it on the CLI's OAuth client.
+// Every scope below is requested at login by default unless its SCOPE_REGISTRY
+// entry has `default: false` (its doc says "Step-up only").
 declare_scopes! {
-    /// Read the caller's registered applications. Requested at login by default
-    /// (see [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+    /// Read the caller's registered applications.
     APP_REGISTRY_READ => "apps.app-registry:read",
-    /// Create/update/archive the caller's registered applications. NOT requested
-    /// at login by default (it's a rare operation for most customers); the
-    /// app-registry mutation commands (`platform app init/update/enable/disable/
-    /// archive/release/deploy`) declare it via `with_scopes` so cli-engine
-    /// requests it on demand (OAuth step-up). Read commands such as
+    /// Create/update/archive the caller's registered applications. Declared by
+    /// the app-registry mutation commands (`platform app init/update/enable/
+    /// disable/archive/release/deploy`); read commands such as
     /// `platform app enablement` use [`APP_REGISTRY_READ`] only.
     APP_REGISTRY_WRITE => "apps.app-registry:write",
 
     /// Read domains, availability, suggestions, quotes, and DNS records.
     /// (`domain list/get/available/suggest/agreements/quote`, `dns list`.)
-    /// Requested at login by default (see
-    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
     DOMAINS_READ => "domains.domain:read",
     /// Create/replace/delete DNS records (`dns add/set/delete`).
     DOMAINS_DNS_UPDATE => "domains.dns:update",
     /// Register a domain — the v3 registration-execute step (`domain purchase`).
+    /// Step-up only: spends money.
     DOMAINS_CREATE => "domains.domain:create",
-    /// Replace a domain's nameservers (`domain nameserver set`).
+    /// Replace a domain's nameservers (`domain nameserver set`). Step-up only:
+    /// can take a live site offline.
     DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
 
     /// Read hosting applications (`hosting app list/get/status`).
@@ -108,7 +131,8 @@ declare_scopes! {
     HOSTING_APPLICATION_CREATE => "hosting.application:create",
     /// Update a hosting application (`hosting app update`).
     HOSTING_APPLICATION_UPDATE => "hosting.application:update",
-    /// Delete a hosting application (`hosting app delete`).
+    /// Delete a hosting application (`hosting app delete`). Step-up only:
+    /// deletes a whole billable resource.
     HOSTING_APPLICATION_DELETE => "hosting.application:delete",
     /// Trigger deployments and restarts (`hosting app restart`, `hosting deployment publish`).
     HOSTING_DEPLOYMENT_EXECUTE => "hosting.deployment:execute",
@@ -133,7 +157,7 @@ declare_scopes! {
     /// Open a raw MySQL-over-WebSocket tunnel to a hosting app's database
     /// (`db tunnel`). A dedicated grant, separate from
     /// [`HOSTING_DEPLOYMENT_EXECUTE`]: authority to publish a deployment does
-    /// not by itself grant raw database read/write.
+    /// not by itself grant raw database read/write. Step-up only: raw data access.
     HOSTING_DATABASE_TUNNEL_EXECUTE => "hosting.database.tunnel:execute",
 
     /// Read mailboxes and check mailbox-creation eligibility (`email list`).
@@ -145,9 +169,11 @@ declare_scopes! {
     SECURITY_MALWARE_SCAN => "security.website-security-scan:execute",
     /// Browse and resolve Shopping catalog products.
     SHOPPING_CATALOG_READ => "shopping.catalog:read",
-    /// Create, update, read, and complete Shopping checkout sessions.
+    /// Create, update, read, and complete Shopping checkout sessions. Step-up
+    /// only: spends money.
     SHOPPING_CHECKOUT_EXECUTE => "shopping.checkout:execute",
-    /// Read completed Shopping orders.
+    /// Read completed Shopping orders. Step-up only, granted alongside
+    /// [`SHOPPING_CHECKOUT_EXECUTE`] so the order read after a purchase is covered.
     SHOPPING_ORDER_READ => "shopping.order:read",
 }
 
@@ -162,11 +188,23 @@ pub struct ScopeInfo {
     pub default: bool,
 }
 
-/// Every requestable scope, described for `gddy auth scope`. Keep in sync
-/// with the constants above (`scope_registry_covers_every_declared_scope`
-/// enforces the constant side of this; `scope_registry_default_flag_matches_default_oauth_scopes`
-/// enforces that the `default` flag exactly matches
-/// [`crate::environments::DEFAULT_OAUTH_SCOPES`]).
+/// Every requestable scope, described for `gddy auth scope`, and the single
+/// source of truth for which scopes the login request carries: entries with
+/// `default: true` make up [`DEFAULT_OAUTH_SCOPES`]; `default: false` entries
+/// are step-up only and are requested when a command that declares them runs.
+///
+/// A scope is step-up only when the action it exists for spends money
+/// ([`DOMAINS_CREATE`], [`SHOPPING_CHECKOUT_EXECUTE`] plus the
+/// [`SHOPPING_ORDER_READ`] that follows a purchase), can take a site offline
+/// ([`DOMAINS_NAMESERVER_UPDATE`]), deletes a whole billable resource
+/// ([`HOSTING_APPLICATION_DELETE`]), or is raw data access
+/// ([`HOSTING_DATABASE_TUNNEL_EXECUTE`]). Editing scopes that also permit
+/// deleting a sub-resource (`dns delete`, `hosting secret delete`) stay
+/// defaults: the authorization server offers no finer split, and prompting
+/// for `domains.dns:update` would put consent back into every site setup.
+///
+/// `scope_registry_covers_every_declared_scope` keeps this table in sync with
+/// the constants above.
 pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: APP_REGISTRY_READ,
@@ -176,7 +214,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: APP_REGISTRY_WRITE,
         description: "Create, update, or archive the caller's registered applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: DOMAINS_READ,
@@ -186,7 +224,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: DOMAINS_DNS_UPDATE,
         description: "Create, replace, or delete DNS records",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: DOMAINS_CREATE,
@@ -201,17 +239,17 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_APPLICATION_READ,
         description: "Read hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_CREATE,
         description: "Create a hosting application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_UPDATE,
         description: "Update a hosting application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_APPLICATION_DELETE,
@@ -221,52 +259,52 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: HOSTING_DEPLOYMENT_EXECUTE,
         description: "Trigger deployments and restarts",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SOURCE_READ,
         description: "Read source imports for hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SOURCE_WRITE,
         description: "Create source imports for hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SECRET_READ,
         description: "Read application secret names",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SECRET_WRITE,
         description: "Create, update, or delete application secrets",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_LOG_READ,
         description: "Read application logs",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DOMAIN_READ,
         description: "Read domains attached to hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DOMAIN_WRITE,
         description: "Attach or detach domains from hosting applications",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SUBSCRIPTION_READ,
         description: "Read hosting subscriptions",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_SUBSCRIPTION_WRITE,
         description: "Attach a hosting subscription to an application",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: HOSTING_DATABASE_TUNNEL_EXECUTE,
@@ -276,22 +314,22 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
     ScopeInfo {
         scope: EMAIL_READ,
         description: "Read mailboxes and check mailbox-creation eligibility",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: EMAIL_CREATE,
         description: "Create a mailbox",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SECURITY_MALWARE_SCAN,
         description: "Trigger an on-demand malware scan",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SHOPPING_CATALOG_READ,
         description: "Browse and resolve Shopping catalog products",
-        default: false,
+        default: true,
     },
     ScopeInfo {
         scope: SHOPPING_CHECKOUT_EXECUTE,
@@ -308,7 +346,30 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
         description: "Request a refresh token",
         default: true,
     },
+    ScopeInfo {
+        scope: OPENID,
+        description: "Mark the request as an OIDC identity request",
+        default: true,
+    },
+    ScopeInfo {
+        scope: PROFILE,
+        description: "Request standard OIDC profile claims on the token",
+        default: true,
+    },
 ];
+
+/// Scopes requested at login: every [`SCOPE_REGISTRY`] entry with
+/// `default: true`, in registry order. Each scope step-up is a browser round
+/// trip through the consent screen, so the login grant is wide on purpose: a
+/// first-time session that buys a domain, buys hosting and deploys a site sees
+/// a consent screen at login and at each purchase, and nowhere else.
+pub static DEFAULT_OAUTH_SCOPES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    SCOPE_REGISTRY
+        .iter()
+        .filter(|info| info.default)
+        .map(|info| info.scope)
+        .collect()
+});
 
 /// Every leaf command's space-separated invocation path (e.g. `"domain
 /// purchase"`) paired with the scopes it declares via `.with_scopes`.
@@ -316,7 +377,7 @@ pub const SCOPE_REGISTRY: &[ScopeInfo] = &[
 /// Derived by walking each module's real command tree via
 /// [`cli_engine::build_module_group`] — the same tree `main` mounts — so this
 /// can never drift from what the CLI actually registers. Backs both `gddy
-/// auth scope` and [`tests::scope_registry_non_default_entries_are_wired_to_a_command`].
+/// auth scope` and [`tests::every_permission_scope_is_wired_to_a_command`].
 pub(crate) fn command_scopes() -> Vec<(String, Vec<String>)> {
     let mut out = Vec::new();
     for module in crate::all_modules() {
@@ -439,14 +500,13 @@ mod tests {
     }
 
     /// [`SCOPE_REGISTRY`] must describe every scope requiring OAuth client
-    /// registration — `ALL` plus the standalone directive scopes
-    /// ([`OFFLINE_ACCESS`]) — or `gddy auth scope` would silently omit a
+    /// registration — `ALL` plus the standalone [`DIRECTIVES`] — or `gddy auth scope` would silently omit a
     /// scope an agent needs to plan an eager login around.
     #[test]
     fn scope_registry_covers_every_declared_scope() {
         let registered: std::collections::HashSet<&str> =
             SCOPE_REGISTRY.iter().map(|info| info.scope).collect();
-        for scope in ALL.iter().copied().chain([OFFLINE_ACCESS]) {
+        for scope in ALL.iter().chain(DIRECTIVES).copied() {
             assert!(
                 registered.contains(scope),
                 "scope {scope:?} is declared but missing from SCOPE_REGISTRY"
@@ -454,49 +514,86 @@ mod tests {
         }
     }
 
-    /// Every non-default scope in [`SCOPE_REGISTRY`] must be wired to at
-    /// least one live command via `.with_scopes`, or it's dead — declared and
-    /// registered on the OAuth client but unreachable by any command, which
-    /// is either a stale entry or a scope some command forgot to declare.
-    /// Default scopes are exempt: they're requested at login by default
-    /// regardless of which commands request them.
+    /// Every permission scope in [`ALL`] must be wired to at least one live
+    /// command via `.with_scopes`, or it's dead — declared, registered on the
+    /// OAuth client and (if a default) requested on every login, yet reachable
+    /// by no command. Defaults are not exempt: a default that no command uses
+    /// is still shown on every consent screen, so it is the worst kind of
+    /// stale entry.
     #[test]
-    fn scope_registry_non_default_entries_are_wired_to_a_command() {
+    fn every_permission_scope_is_wired_to_a_command() {
         let used: std::collections::HashSet<String> = command_scopes()
             .into_iter()
             .flat_map(|(_, scopes)| scopes)
             .collect();
+        for scope in ALL {
+            assert!(
+                used.contains(*scope),
+                "scope {scope:?} is declared but no command declares it via .with_scopes"
+            );
+        }
+    }
+
+    /// [`SCOPE_REGISTRY`] must not list a scope twice, or `gddy auth scope`
+    /// would show it twice and [`DEFAULT_OAUTH_SCOPES`] would request it twice.
+    #[test]
+    fn scope_registry_entries_are_unique() {
+        let mut seen = std::collections::HashSet::new();
         for info in SCOPE_REGISTRY {
             assert!(
-                info.default || used.contains(info.scope),
-                "scope {:?} is in SCOPE_REGISTRY with default: false but no \
-                 command declares it via .with_scopes",
+                seen.insert(info.scope),
+                "duplicate scope in SCOPE_REGISTRY: {:?}",
                 info.scope
             );
         }
     }
 
-    /// [`SCOPE_REGISTRY`]'s `default` flag must exactly match
-    /// [`crate::environments::DEFAULT_OAUTH_SCOPES`] — the module doc on
-    /// [`SCOPE_REGISTRY`] used to call this out as an unenforced invariant;
-    /// this is that check. If they drift, `gddy auth scope --defaults-only`
-    /// would misdescribe which scopes actually get requested at login.
+    /// The login request is derived from the registry's `default` flags, so it
+    /// must be exactly those entries and must always carry [`OFFLINE_ACCESS`]
+    /// (without it no refresh token is issued and every session re-prompts).
     #[test]
-    fn scope_registry_default_flag_matches_default_oauth_scopes() {
-        let default_in_registry: std::collections::HashSet<&str> = SCOPE_REGISTRY
+    fn default_oauth_scopes_are_the_registry_defaults() {
+        let by_scope: std::collections::HashMap<&str, bool> = SCOPE_REGISTRY
             .iter()
-            .filter(|info| info.default)
+            .map(|info| (info.scope, info.default))
+            .collect();
+        for scope in DEFAULT_OAUTH_SCOPES.iter() {
+            assert_eq!(
+                by_scope.get(scope),
+                Some(&true),
+                "{scope:?} is requested at login but is not a `default: true` registry entry"
+            );
+        }
+        let default_count = by_scope.values().filter(|default| **default).count();
+        assert_eq!(
+            DEFAULT_OAUTH_SCOPES.len(),
+            default_count,
+            "a default entry is missing or duplicated"
+        );
+        assert!(DEFAULT_OAUTH_SCOPES.contains(&OFFLINE_ACCESS));
+        assert!(!DEFAULT_OAUTH_SCOPES.contains(&DOMAINS_CREATE));
+        assert!(!DEFAULT_OAUTH_SCOPES.contains(&SHOPPING_CHECKOUT_EXECUTE));
+    }
+
+    /// The step-up-only set is a deliberate policy decision (spends money,
+    /// takes a site offline, deletes a billable resource, or raw data access),
+    /// so pin it: flipping a `default` flag either way must be an explicit
+    /// change here, not a side effect of editing the registry.
+    #[test]
+    fn step_up_only_scopes_are_exactly_the_sensitive_ones() {
+        let non_default: std::collections::BTreeSet<&str> = SCOPE_REGISTRY
+            .iter()
+            .filter(|info| !info.default)
             .map(|info| info.scope)
             .collect();
-        let default_oauth_scopes: std::collections::HashSet<&str> =
-            crate::environments::DEFAULT_OAUTH_SCOPES
-                .iter()
-                .copied()
-                .collect();
-        assert_eq!(
-            default_in_registry, default_oauth_scopes,
-            "SCOPE_REGISTRY's `default` flags must match \
-             crate::environments::DEFAULT_OAUTH_SCOPES exactly"
-        );
+        let expected = std::collections::BTreeSet::from([
+            DOMAINS_CREATE,
+            DOMAINS_NAMESERVER_UPDATE,
+            HOSTING_APPLICATION_DELETE,
+            HOSTING_DATABASE_TUNNEL_EXECUTE,
+            SHOPPING_CHECKOUT_EXECUTE,
+            SHOPPING_ORDER_READ,
+        ]);
+        assert_eq!(non_default, expected);
     }
 }

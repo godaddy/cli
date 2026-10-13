@@ -2,16 +2,6 @@
 //! codegen source for the typed `domains-client` crate — from the same v3
 //! spec clone `main.rs` already pulled for the catalog, merged with the one
 //! v1 operation v3 doesn't yet serve (`GET /v1/domains/agreements`).
-//!
-//! Ported from the former `domains-client/scripts/{trim,merge}-spec.py` so
-//! this and the embedded API catalog come from a single `cargo run -p
-//! generate-api-catalog` invocation instead of a separately-run pipeline.
-//! The v3-merge transformations below are deliberately faithful to
-//! `merge-spec.py` — see its historical git history for the reasoning behind
-//! each one. `trim_v1` diverges from `trim-spec.py`'s mechanics (no more
-//! Swagger 2.0 → OpenAPI 3.0 conversion — the upstream v1 source moved to a
-//! native OAS3 doc) while keeping the same intent: trim to the retained
-//! subset and relax it to a tolerant reader.
 
 use std::{
     collections::HashSet,
@@ -22,16 +12,10 @@ use std::{
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 
-/// A native OpenAPI 3.1 document — no Swagger 2.0 conversion needed. This
-/// superseded the old `developer.godaddy.com/swagger/swagger_domains.json`
-/// Swagger 2.0 doc, which 404s as of 2026-08; the live `/v1/domains/agreements`
-/// API itself was never affected, only its old public spec-doc URL.
 const V1_OPENAPI_URL: &str = "https://developer.godaddy.com/openapi/domains-v1.json";
 const HOST: &str = "https://api.godaddy.com";
 const USER_AGENT: &str = "godaddy-cli-api-catalog-generator";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-const EXTERNAL_FORMATS: &[&str] = &["date", "date-time", "uuid", "partial-date-time"];
 
 /// v3 schemas the CLI *constructs* (request bodies) or that are dual-use
 /// (request + response): keep them strict so required fields stay required at
@@ -145,37 +129,9 @@ fn load_v3(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
         schemas.insert(key, def);
     }
 
-    rewrite_defs_refs(&mut dereffed);
+    crate::spec_normalize::rewrite_defs_refs(&mut dereffed);
     Ok(dereffed)
 }
-
-fn rewrite_defs_refs(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(r)) = map.get("$ref")
-                && let Some(rest) = r.strip_prefix("#/$defs/")
-            {
-                map.insert(
-                    "$ref".to_owned(),
-                    Value::String(format!("#/components/schemas/{rest}")),
-                );
-            }
-            for v in map.values_mut() {
-                rewrite_defs_refs(v);
-            }
-        }
-        Value::Array(items) => {
-            for v in items {
-                rewrite_defs_refs(v);
-            }
-        }
-        _ => {}
-    }
-}
-
-// ---------------------------------------------------------------------------
-// v1: fetch + trim (native OpenAPI 3, no Swagger 2.0 conversion needed)
-// ---------------------------------------------------------------------------
 
 fn fetch_v1() -> Result<Value> {
     let client = reqwest::blocking::Client::builder()
@@ -262,7 +218,7 @@ fn trim_v1(spec: &Value) -> Result<Value> {
         "paths": paths_value,
         "components": { "schemas": schemas_out },
     });
-    strip_external_formats(&mut out, false);
+    crate::spec_normalize::strip_external_formats(&mut out, false);
     Ok(out)
 }
 
@@ -286,7 +242,7 @@ fn keep_only_json_content(op: &mut Value) {
 }
 
 // ---------------------------------------------------------------------------
-// v3 + v1(OAS3) merge
+// v3 + v1 merge
 // ---------------------------------------------------------------------------
 
 /// Merges `v1` into `v3` in place, producing the single OAS3 document
@@ -332,7 +288,7 @@ fn merge(v3: &mut Value, mut v1: Value) -> Result<()> {
     v3_obj.insert("openapi".to_owned(), Value::String("3.0.3".to_owned()));
 
     only_2xx_paths(v3_obj.get_mut("paths").context("missing paths")?);
-    strip_external_formats(v3, true);
+    crate::spec_normalize::strip_external_formats(v3, true);
     apply_deliberate_deviations(v3);
 
     if let Some(schemas) = v3
@@ -502,38 +458,6 @@ fn only_2xx_paths(paths: &mut Value) {
                 filter_2xx_responses(op);
             }
         }
-    }
-}
-
-/// Drops string `format`s that map to external crates (chrono/uuid) so the
-/// generated types stay plain `String`. When `drop_validators` is set, also
-/// drops `pattern`/`minLength`/`maxLength` so progenitor doesn't emit a
-/// validated newtype — used on the v3 side only, matching the former
-/// `merge-spec.py` behavior (the v1 side only ever dropped `format`).
-fn strip_external_formats(value: &mut Value, drop_validators: bool) {
-    match value {
-        Value::Object(map) => {
-            if map.get("type").and_then(Value::as_str) == Some("string") {
-                if matches!(map.get("format").and_then(Value::as_str), Some(f) if EXTERNAL_FORMATS.contains(&f))
-                {
-                    map.remove("format");
-                }
-                if drop_validators {
-                    map.remove("pattern");
-                    map.remove("minLength");
-                    map.remove("maxLength");
-                }
-            }
-            for v in map.values_mut() {
-                strip_external_formats(v, drop_validators);
-            }
-        }
-        Value::Array(items) => {
-            for v in items {
-                strip_external_formats(v, drop_validators);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -781,16 +705,6 @@ mod tests {
         assert!(dns_item.get("delete").is_some(), "{dns_item:?}");
     }
 
-    /// Regression test for the schema-drift bug a Copilot review caught on
-    /// this PR: a new v3 request schema not added to `STRICT_V3` silently
-    /// loses its `required` list in the merge, so the generated
-    /// `domains-client` builder can construct a request missing fields the
-    /// live API actually requires. Exercises `merge` end-to-end (not just the
-    /// `STRICT_V3` list) for `RegistrationProfile` and `Renewal`, both of
-    /// which also carry a `writeOnly` field (`tlds`, `quoteToken`) that must
-    /// drop out of `required` specifically so the same generated type stays
-    /// deserializable as a *response* — mirroring the pre-existing
-    /// `Registration.quoteToken` handling.
     #[test]
     fn strict_v3_schemas_keep_required_fields_except_their_writeonly_one() {
         let mut v3 = serde_json::json!({

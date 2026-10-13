@@ -1,10 +1,13 @@
 //! `gddy auth scope` — list every OAuth scope the CLI can request, and which
 //! commands need it.
 //!
-//! Lets an agent driving a multi-step workflow discover every scope it will
-//! need *before* starting, so it can do a single eager `auth login --scope
-//! ...` up front instead of hitting cli-engine's interactive step-up prompt
-//! mid-workflow (a hard blocker for a non-interactive agent).
+//! Lets an agent (or a curious user) see what the login grant covers and which
+//! commands will prompt for more. Nearly every scope is a login default; the
+//! non-default ones are the sensitive actions (spending money, taking a site
+//! offline, deleting a resource, raw data access), which deliberately prompt
+//! the first time the command that needs them runs. An agent that cannot
+//! handle a browser prompt mid-run should plan for those specific commands
+//! rather than pre-grant the whole set.
 
 use std::collections::BTreeMap;
 
@@ -80,7 +83,7 @@ struct ScopesArgs {
     #[arg(long = "defaults-only")]
     defaults_only: bool,
 
-    /// Only show scopes that require an explicit --scope at login.
+    /// Only show the sensitive scopes that prompt the first time a command needs them.
     #[arg(long = "non-default")]
     non_default: bool,
 }
@@ -93,10 +96,11 @@ pub(crate) fn auth_scopes_command() -> RuntimeCommandSpec {
                 "List every OAuth scope the CLI can request, its description, whether \
                  it's requested at login by default, and which commands need it.\n\
                  \n\
-                 Useful for planning an eager login before a multi-step workflow: run \
-                 `gddy auth scope --non-default` to see which scopes require an \
-                 explicit `--scope`, then pass each one to `gddy auth login --scope <s>` \
-                 up front to avoid an interactive step-up prompt mid-workflow.",
+                 Almost everything is granted at login. The non-default scopes are the \
+                 sensitive ones (purchases, nameserver changes, deleting an app, database \
+                 access); the first command that needs one opens a consent screen for it \
+                 on purpose. Run `gddy auth scope --non-default` to see which commands \
+                 those are and plan for the prompt, rather than pre-granting them at login.",
             )
             .with_system("auth")
             .with_tier(Tier::Read)

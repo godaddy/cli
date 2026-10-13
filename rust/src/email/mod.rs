@@ -23,9 +23,9 @@ pub fn module() -> Module {
              • create            — provision a mailbox\n\
              • list / get        — your existing mailboxes and their details\n\
              \n\
-             check-eligibility/list/get need the `email.mailbox:read` scope; create needs\n\
-             `email.mailbox:create`. Run `gddy auth scope --command \"email <subcommand>\"`\n\
-             for details, or `gddy auth login --scope <scope>` to step up.\n\
+             All email commands are covered by the default login. A PAT needs\n\
+             `email.mailbox:read` (check-eligibility/list/get) or `email.mailbox:create`\n\
+             (create).\n\
              \n\
              See `gddy guide email` for what an account ID is and how the\n\
              check-eligibility → create flow works.",

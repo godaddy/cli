@@ -133,7 +133,6 @@ pub(super) fn record_label(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::set::plan::plan_set;
 
     fn tlsa_record(record_id: &str, cert: &str) -> types::DnsRecord {
         types::DnsRecord {
@@ -205,10 +204,19 @@ mod tests {
 
     #[test]
     fn dry_run_set_preview_matches_the_plan_it_would_execute() {
-        let plan = plan_set(
-            &["r1".to_string(), "r2".to_string(), "r3".to_string()],
-            &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
-        );
+        let plan = [
+            SetAction::Replace {
+                record_id: "r1".into(),
+                data: "9.9.9.9".into(),
+            },
+            SetAction::Replace {
+                record_id: "r2".into(),
+                data: "8.8.8.8".into(),
+            },
+            SetAction::Delete {
+                record_id: "r3".into(),
+            },
+        ];
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
         assert_eq!(preview["replaced"], 2);
         assert_eq!(preview["created"], 0);
@@ -225,7 +233,10 @@ mod tests {
     /// catch, since it never goes through the projection).
     #[test]
     fn dry_run_set_preview_survives_default_field_projection() {
-        let plan = plan_set(&["r1".to_string()], &["9.9.9.9".to_string()]);
+        let plan = [SetAction::Replace {
+            record_id: "r1".into(),
+            data: "9.9.9.9".into(),
+        }];
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
         let default_fields = "domain,type,name,replaced,created,deleted,action,plan";
         let projected = cli_engine::output::filter_fields(&preview, default_fields);
@@ -244,14 +255,17 @@ mod tests {
     /// reconcile plan from human output.
     #[test]
     fn dry_run_set_preview_renders_plan_as_a_nested_table() {
-        let plan = plan_set(
-            &["r1".to_string()],
-            &["9.9.9.9".to_string(), "8.8.8.8".to_string()],
-        );
+        let plan = [
+            SetAction::Replace {
+                record_id: "r1".into(),
+                data: "9.9.9.9".into(),
+            },
+            SetAction::Create {
+                data: "8.8.8.8".into(),
+            },
+        ];
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        let envelope = cli_engine::Envelope::success(preview, "domain");
-        let rendered =
-            cli_engine::render_human_with_view(&envelope, Some(&super::super::view_columns()), "");
+        let rendered = cli_engine::preview_human_view(preview, &super::super::view_columns());
         assert!(rendered.contains("Plan:"), "{rendered}");
         assert!(rendered.contains("RECORD ID"), "{rendered}");
         assert!(rendered.contains("replace"), "{rendered}");
