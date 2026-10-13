@@ -35,6 +35,26 @@
       }
     },
     "responses": {
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error_response"
+            }
+          }
+        },
+        "description": "Response"
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error_response"
+            }
+          }
+        },
+        "description": "Response"
+      },
       "NotFound": {
         "content": {
           "application/json": {
@@ -64,11 +84,21 @@
           }
         },
         "description": "Response"
+      },
+      "UnprocessableEntity": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error_response"
+            }
+          }
+        },
+        "description": "Response"
       }
     },
     "schemas": {
       "adjustment": {
-        "$id": "https://ucp.dev/schemas/shopping/types/adjustment.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/adjustment.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "description": {
@@ -116,14 +146,14 @@
         "type": "object"
       },
       "amount": {
-        "$id": "https://ucp.dev/schemas/shopping/types/amount.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/amount.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "minimum": 0,
         "title": "Amount",
         "type": "integer"
       },
       "attribution": {
-        "$id": "https://ucp.dev/schemas/shopping/types/attribution.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/attribution.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": {
           "type": "string"
@@ -132,7 +162,7 @@
         "type": "object"
       },
       "available_payment_instrument": {
-        "$id": "https://ucp.dev/schemas/shopping/types/available_payment_instrument.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/available_payment_instrument.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "constraints": {
@@ -147,30 +177,8 @@
         "title": "Available Payment Instrument",
         "type": "object"
       },
-      "base_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-metadata/base.schema.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": true,
-        "properties": {
-          "category": {
-            "type": "string"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/product-plan_schema"
-          },
-          "product_family": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "product_type": {
-            "type": "string"
-          }
-        },
-        "title": "GoDaddy base product metadata",
-        "type": "object"
-      },
       "business_fulfillment_config": {
-        "$id": "https://ucp.dev/schemas/shopping/types/business_fulfillment_config.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/business_fulfillment_config.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "allows_method_combinations": {
@@ -203,7 +211,7 @@
         "type": "object"
       },
       "buyer": {
-        "$id": "https://ucp.dev/schemas/shopping/types/buyer.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/buyer.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -365,7 +373,7 @@
             "type": "object"
           }
         },
-        "$id": "https://godaddy.com/ucp/schemas/catalog-offer-included-product.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/included-product.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
@@ -604,7 +612,7 @@
         "type": "object"
       },
       "category": {
-        "$id": "https://ucp.dev/schemas/shopping/types/category.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/category.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "taxonomy": {
@@ -618,7 +626,7 @@
         "type": "object"
       },
       "checkout": {
-        "$id": "https://ucp.dev/schemas/shopping/checkout.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/checkout.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "name": "dev.ucp.shopping.checkout",
@@ -645,7 +653,7 @@
             "ucp_request": "omit"
           },
           "fulfillment": {
-            "$ref": "#/components/schemas/fulfillment"
+            "$ref": "#/components/schemas/shopping_fulfillment"
           },
           "id": {
             "type": "string",
@@ -682,12 +690,6 @@
           "payment": {
             "$ref": "#/components/schemas/payment"
           },
-          "required_agreements": {
-            "items": {
-              "$ref": "#/components/schemas/shopping_required_agreement"
-            },
-            "type": "array"
-          },
           "signals": {
             "$ref": "#/components/schemas/signals"
           },
@@ -714,7 +716,7 @@
         "type": "object"
       },
       "checkout-complete-request_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/requests/checkout-complete-request.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/checkout/requests/complete.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "name": "dev.ucp.shopping.checkout",
@@ -723,7 +725,7 @@
             "$ref": "#/components/schemas/ucp-refs_schema_attribution"
           },
           "consent": {
-            "$ref": "#/components/schemas/shopping_consent_acceptance"
+            "$ref": "#/components/schemas/com_godaddy_shopping_checkout_input_schema_consent_acceptance"
           },
           "payment": {
             "$ref": "#/components/schemas/ucp-refs_schema_payment"
@@ -736,7 +738,7 @@
         "type": "object"
       },
       "checkout-writable-request_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/requests/checkout-writable-request.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/checkout/requests/writable.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -771,6 +773,9 @@
       "checkout_complete_request": {
         "$ref": "#/components/schemas/checkout-complete-request_schema"
       },
+      "checkout_with_agreement_input": {
+        "$ref": "#/components/schemas/com_godaddy_shopping_checkout_input_schema_dev_ucp_shopping_checkout"
+      },
       "checkout_writable_request": {
         "$ref": "#/components/schemas/checkout-writable-request_schema"
       },
@@ -794,6 +799,59 @@
         },
         "type": "object"
       },
+      "com_godaddy_shopping_checkout_input_schema_consent_acceptance": {
+        "properties": {
+          "agreed_at": {
+            "type": "string"
+          },
+          "agreement_types": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "type": "object"
+      },
+      "com_godaddy_shopping_checkout_input_schema_dev_ucp_shopping_checkout": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ucp-refs_schema_checkout"
+          },
+          {
+            "properties": {
+              "consent": {
+                "properties": {
+                  "agreed_at": {
+                    "type": "string"
+                  },
+                  "agreement_types": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "type": "object"
+              },
+              "required_agreements": {
+                "items": {
+                  "$ref": "#/components/schemas/required-agreement_schema"
+                },
+                "type": "array",
+                "ucp_request": "omit"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
       "com_godaddy_shopping_input_schema_input_schema": {
         "$ref": "#/components/schemas/schema"
       },
@@ -811,7 +869,7 @@
         }
       },
       "context": {
-        "$id": "https://ucp.dev/schemas/shopping/types/context.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/context.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -845,7 +903,7 @@
         "type": "object"
       },
       "description": {
-        "$id": "https://ucp.dev/schemas/shopping/types/description.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/description.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "minProperties": 1,
         "properties": {
@@ -863,7 +921,7 @@
         "type": "object"
       },
       "detail_option_value": {
-        "$id": "https://ucp.dev/schemas/shopping/types/detail_option_value.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/detail_option_value.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
@@ -882,7 +940,7 @@
         "type": "object"
       },
       "domain-discovery-search-request_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/domain-discovery-search-request.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/domain-discovery-request.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "domains": {
@@ -908,11 +966,11 @@
         "type": "array"
       },
       "email_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-metadata/email.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata/email.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
-            "$ref": "#/components/schemas/base_schema"
+            "$ref": "#/components/schemas/product-metadata_base_schema"
           },
           {
             "additionalProperties": true,
@@ -928,7 +986,7 @@
         "title": "GoDaddy email product metadata"
       },
       "embedded_config": {
-        "$id": "https://ucp.dev/schemas/transports/embedded_config.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/transports/embedded_config.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "color_scheme": {
@@ -952,7 +1010,7 @@
         "type": "object"
       },
       "error_code": {
-        "$id": "https://ucp.dev/schemas/shopping/types/error_code.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/error_code.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "examples": [
           "not_found",
@@ -969,7 +1027,7 @@
       },
       "error_response": {},
       "expectation": {
-        "$id": "https://ucp.dev/schemas/shopping/types/expectation.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/expectation.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "description": {
@@ -1011,134 +1069,8 @@
         "title": "Expectation",
         "type": "object"
       },
-      "fulfillment": {
-        "$defs": {
-          "dev.ucp.shopping.checkout": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/checkout"
-              },
-              {
-                "properties": {
-                  "fulfillment": {
-                    "$ref": "#/components/schemas/fulfillment"
-                  }
-                },
-                "type": "object"
-              }
-            ],
-            "title": "Checkout with Fulfillment"
-          },
-          "dev.ucp.shopping.fulfillment": {
-            "business_schema": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/capability_business_schema"
-                },
-                {
-                  "properties": {
-                    "config": {
-                      "$ref": "#/components/schemas/business_fulfillment_config"
-                    }
-                  }
-                }
-              ],
-              "title": "Fulfillment Capability (Business)"
-            },
-            "platform_schema": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/capability_platform_schema"
-                },
-                {
-                  "properties": {
-                    "config": {
-                      "$ref": "#/components/schemas/platform_fulfillment_config"
-                    }
-                  }
-                }
-              ],
-              "title": "Fulfillment Capability (Platform)"
-            }
-          },
-          "fulfillment": {
-            "$ref": "#/components/schemas/fulfillment"
-          },
-          "fulfillment_available_method": {
-            "$ref": "#/components/schemas/fulfillment_available_method"
-          },
-          "fulfillment_group": {
-            "$ref": "#/components/schemas/fulfillment_group"
-          },
-          "fulfillment_method": {
-            "$ref": "#/components/schemas/fulfillment_method"
-          },
-          "fulfillment_option": {
-            "$ref": "#/components/schemas/fulfillment_option"
-          }
-        },
-        "$id": "https://ucp.dev/schemas/shopping/fulfillment.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "embedded": {
-          "delegations": [
-            "fulfillment.address_change"
-          ],
-          "methods": {
-            "ec.fulfillment.address_change_request": {
-              "name": "ec.fulfillment.address_change_request",
-              "params": [
-                {
-                  "name": "checkout",
-                  "schema": {
-                    "$ref": "#/components/schemas/checkout"
-                  }
-                }
-              ],
-              "result": {
-                "name": "addressChangeResult",
-                "schema": {
-                  "oneOf": [
-                    {
-                      "properties": {
-                        "checkout": {
-                          "properties": {
-                            "fulfillment": {
-                              "$ref": "#/components/schemas/fulfillment"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "ucp": {
-                          "$ref": "#/components/schemas/ucp_success"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    {
-                      "$ref": "#/components/schemas/error_response"
-                    }
-                  ]
-                }
-              }
-            },
-            "ec.fulfillment.change": {
-              "name": "ec.fulfillment.change",
-              "params": [
-                {
-                  "name": "checkout",
-                  "schema": {
-                    "$ref": "#/components/schemas/checkout"
-                  }
-                }
-              ]
-            }
-          }
-        },
-        "name": "dev.ucp.shopping.fulfillment",
-        "title": "Fulfillment Extension"
-      },
       "fulfillment_available_method": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_available_method.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_available_method.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -1171,7 +1103,7 @@
         "ucp_shared_request": true
       },
       "fulfillment_destination": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_destination.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_destination.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -1186,7 +1118,7 @@
         "ucp_shared_request": true
       },
       "fulfillment_event": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_event.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_event.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "carrier": {
@@ -1230,7 +1162,7 @@
         "type": "object"
       },
       "fulfillment_group": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_group.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_group.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -1263,7 +1195,7 @@
         "type": "object"
       },
       "fulfillment_method": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_method.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_method.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -1315,7 +1247,7 @@
         "type": "object"
       },
       "fulfillment_option": {
-        "$id": "https://ucp.dev/schemas/shopping/types/fulfillment_option.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment_option.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -1358,38 +1290,8 @@
       "get_product_request": {
         "$ref": "#/components/schemas/catalog_lookup_get_product_request"
       },
-      "hosting_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-metadata/hosting.schema.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/base_schema"
-          },
-          {
-            "additionalProperties": true,
-            "properties": {
-              "control_panel": {
-                "type": "string"
-              },
-              "performance_tier": {
-                "type": "string"
-              },
-              "storage_gb": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "websites": {
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          }
-        ],
-        "title": "GoDaddy hosting product metadata"
-      },
       "info_code": {
-        "$id": "https://ucp.dev/schemas/shopping/types/info_code.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/info_code.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "examples": [
           "identity_optional",
@@ -1401,7 +1303,7 @@
         "type": "string"
       },
       "input_correlation": {
-        "$id": "https://ucp.dev/schemas/shopping/types/input_correlation.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/input_correlation.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -1419,7 +1321,7 @@
         "type": "object"
       },
       "item": {
-        "$id": "https://ucp.dev/schemas/shopping/types/item.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/item.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "category": {
@@ -1444,7 +1346,7 @@
         "type": "object"
       },
       "line_item": {
-        "$id": "https://ucp.dev/schemas/shopping/types/line_item.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/line_item.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -1490,7 +1392,7 @@
         "type": "object"
       },
       "link": {
-        "$id": "https://ucp.dev/schemas/shopping/types/link.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/link.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "title": {
@@ -1513,7 +1415,7 @@
         "$ref": "#/components/schemas/catalog_lookup_lookup_response"
       },
       "media": {
-        "$id": "https://ucp.dev/schemas/shopping/types/media.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/media.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "alt_text": {
@@ -1538,7 +1440,7 @@
         "type": "object"
       },
       "message": {
-        "$id": "https://ucp.dev/schemas/shopping/types/message.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/message.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -1555,7 +1457,7 @@
         "type": "object"
       },
       "message_error": {
-        "$id": "https://ucp.dev/schemas/shopping/types/message_error.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/message_error.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "code": {
@@ -1593,7 +1495,7 @@
         "type": "object"
       },
       "message_info": {
-        "$id": "https://ucp.dev/schemas/shopping/types/message_info.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/message_info.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "code": {
@@ -1622,7 +1524,7 @@
         "type": "object"
       },
       "message_warning": {
-        "$id": "https://ucp.dev/schemas/shopping/types/message_warning.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/message_warning.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "code": {
@@ -1661,7 +1563,7 @@
         "type": "object"
       },
       "option_value": {
-        "$id": "https://ucp.dev/schemas/shopping/types/option_value.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/option_value.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -1686,7 +1588,7 @@
             "type": "object"
           }
         },
-        "$id": "https://ucp.dev/schemas/shopping/order.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/order.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "name": "dev.ucp.shopping.order",
         "properties": {
@@ -1755,7 +1657,7 @@
         "type": "object"
       },
       "order_confirmation": {
-        "$id": "https://ucp.dev/schemas/shopping/types/order_confirmation.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/order_confirmation.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -1772,7 +1674,7 @@
         "type": "object"
       },
       "order_line_item": {
-        "$id": "https://ucp.dev/schemas/shopping/types/order_line_item.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/order_line_item.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -1857,7 +1759,7 @@
         "type": "object"
       },
       "payment": {
-        "$id": "https://ucp.dev/schemas/shopping/payment.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/payment.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "instruments": {
@@ -1871,7 +1773,7 @@
         "type": "object"
       },
       "payment_credential": {
-        "$id": "https://ucp.dev/schemas/shopping/types/payment_credential.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/payment_credential.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -2014,7 +1916,7 @@
         "title": "Selected Payment Instrument"
       },
       "platform_fulfillment_config": {
-        "$id": "https://ucp.dev/schemas/shopping/types/platform_fulfillment_config.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/platform_fulfillment_config.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "supports_multi_group": {
@@ -2026,7 +1928,7 @@
         "type": "object"
       },
       "postal_address": {
-        "$id": "https://ucp.dev/schemas/shopping/types/postal_address.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/postal_address.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "address_country": {
@@ -2061,7 +1963,7 @@
         "type": "object"
       },
       "price": {
-        "$id": "https://ucp.dev/schemas/shopping/types/price.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/price.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "amount": {
@@ -2075,7 +1977,7 @@
         "type": "object"
       },
       "price_filter": {
-        "$id": "https://ucp.dev/schemas/shopping/types/price_filter.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/price_filter.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "max": {
@@ -2089,7 +1991,7 @@
         "type": "object"
       },
       "price_range": {
-        "$id": "https://ucp.dev/schemas/shopping/types/price_range.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/price_range.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "max": {
@@ -2103,7 +2005,7 @@
         "type": "object"
       },
       "product": {
-        "$id": "https://ucp.dev/schemas/shopping/types/product.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/product.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "action_required": {
@@ -2155,6 +2057,13 @@
           "rating": {
             "$ref": "#/components/schemas/rating"
           },
+          "required_agreements": {
+            "items": {
+              "$ref": "#/components/schemas/required-agreement_schema"
+            },
+            "type": "array",
+            "ucp_request": "omit"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -2178,8 +2087,60 @@
         "title": "Product",
         "type": "object"
       },
+      "product-metadata_base_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata/base.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/product-plan_schema"
+          },
+          "product_family": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "product_type": {
+            "type": "string"
+          }
+        },
+        "title": "GoDaddy base product metadata",
+        "type": "object"
+      },
+      "product-metadata_hosting_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata/hosting.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/product-metadata_base_schema"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "control_panel": {
+                "type": "string"
+              },
+              "performance_tier": {
+                "type": "string"
+              },
+              "storage_gb": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "websites": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "title": "GoDaddy hosting product metadata"
+      },
       "product-metadata_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-metadata.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "allOf": [
@@ -2187,7 +2148,7 @@
             "$ref": "#/components/schemas/email_schema"
           },
           {
-            "$ref": "#/components/schemas/hosting_schema"
+            "$ref": "#/components/schemas/product-metadata_hosting_schema"
           },
           {
             "$ref": "#/components/schemas/ssl_schema"
@@ -2197,14 +2158,14 @@
         "type": "object"
       },
       "product-plan_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-plan.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-plan.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "minLength": 1,
         "title": "GoDaddy product plan",
         "type": "string"
       },
       "product_option": {
-        "$id": "https://ucp.dev/schemas/shopping/types/product_option.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/product_option.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "name": {
@@ -2222,7 +2183,7 @@
         "type": "object"
       },
       "rating": {
-        "$id": "https://ucp.dev/schemas/shopping/types/rating.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/rating.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "count": {
@@ -2246,8 +2207,34 @@
         "title": "Rating",
         "type": "object"
       },
+      "required-agreement_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/checkout/required-agreement.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "key": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "title": "Required Agreement",
+        "type": "object"
+      },
       "retail_location": {
-        "$id": "https://ucp.dev/schemas/shopping/types/retail_location.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/retail_location.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -2267,14 +2254,14 @@
         "ucp_shared_request": true
       },
       "reverse_domain_name": {
-        "$id": "https://ucp.dev/schemas/shopping/types/reverse_domain_name.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/reverse_domain_name.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Reverse Domain Name",
         "type": "string"
       },
       "schema": {},
       "search_filters": {
-        "$id": "https://ucp.dev/schemas/shopping/types/search_filters.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/search_filters.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -2298,7 +2285,7 @@
         "$ref": "#/components/schemas/catalog_search_search_response"
       },
       "selected_option": {
-        "$id": "https://ucp.dev/schemas/shopping/types/selected_option.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/selected_option.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": {
@@ -2529,7 +2516,7 @@
         "title": "Service (Response Schema)"
       },
       "shipping_destination": {
-        "$id": "https://ucp.dev/schemas/shopping/types/shipping_destination.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/shipping_destination.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
@@ -2549,42 +2536,134 @@
         "type": "object",
         "ucp_shared_request": true
       },
-      "shopping_consent_acceptance": {
-        "properties": {
-          "agreed_at": {
-            "type": "string"
+      "shopping_fulfillment": {
+        "$defs": {
+          "dev.ucp.shopping.checkout": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/checkout"
+              },
+              {
+                "properties": {
+                  "fulfillment": {
+                    "$ref": "#/components/schemas/types_fulfillment"
+                  }
+                },
+                "type": "object"
+              }
+            ],
+            "title": "Checkout with Fulfillment"
           },
-          "agreement_types": {
-            "items": {
-              "type": "string"
+          "dev.ucp.shopping.fulfillment": {
+            "business_schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/capability_business_schema"
+                },
+                {
+                  "properties": {
+                    "config": {
+                      "$ref": "#/components/schemas/business_fulfillment_config"
+                    }
+                  }
+                }
+              ],
+              "title": "Fulfillment Capability (Business)"
             },
-            "type": "array"
+            "platform_schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/capability_platform_schema"
+                },
+                {
+                  "properties": {
+                    "config": {
+                      "$ref": "#/components/schemas/platform_fulfillment_config"
+                    }
+                  }
+                }
+              ],
+              "title": "Fulfillment Capability (Platform)"
+            }
+          },
+          "fulfillment": {
+            "$ref": "#/components/schemas/types_fulfillment"
+          },
+          "fulfillment_available_method": {
+            "$ref": "#/components/schemas/fulfillment_available_method"
+          },
+          "fulfillment_group": {
+            "$ref": "#/components/schemas/fulfillment_group"
+          },
+          "fulfillment_method": {
+            "$ref": "#/components/schemas/fulfillment_method"
+          },
+          "fulfillment_option": {
+            "$ref": "#/components/schemas/fulfillment_option"
           }
         },
-        "type": "object"
-      },
-      "shopping_required_agreement": {
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "required": {
-            "type": "boolean"
-          },
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/fulfillment.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "embedded": {
+          "delegations": [
+            "fulfillment.address_change"
+          ],
+          "methods": {
+            "ec.fulfillment.address_change_request": {
+              "name": "ec.fulfillment.address_change_request",
+              "params": [
+                {
+                  "name": "checkout",
+                  "schema": {
+                    "$ref": "#/components/schemas/checkout"
+                  }
+                }
+              ],
+              "result": {
+                "name": "addressChangeResult",
+                "schema": {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "checkout": {
+                          "properties": {
+                            "fulfillment": {
+                              "$ref": "#/components/schemas/types_fulfillment"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "ucp": {
+                          "$ref": "#/components/schemas/ucp_success"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/error_response"
+                    }
+                  ]
+                }
+              }
+            },
+            "ec.fulfillment.change": {
+              "name": "ec.fulfillment.change",
+              "params": [
+                {
+                  "name": "checkout",
+                  "schema": {
+                    "$ref": "#/components/schemas/checkout"
+                  }
+                }
+              ]
+            }
           }
         },
-        "type": "object"
+        "name": "dev.ucp.shopping.fulfillment",
+        "title": "Fulfillment Extension"
       },
       "signals": {
-        "$id": "https://ucp.dev/schemas/shopping/types/signals.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/signals.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": true,
         "properties": {
@@ -2600,17 +2679,17 @@
         "type": "object"
       },
       "signed_amount": {
-        "$id": "https://ucp.dev/schemas/shopping/types/signed_amount.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/signed_amount.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Signed Amount",
         "type": "integer"
       },
       "ssl_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/product-metadata/ssl.schema.json",
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata/ssl.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
-            "$ref": "#/components/schemas/base_schema"
+            "$ref": "#/components/schemas/product-metadata_base_schema"
           },
           {
             "additionalProperties": true,
@@ -2635,7 +2714,7 @@
         "title": "GoDaddy SSL product metadata"
       },
       "total": {
-        "$id": "https://ucp.dev/schemas/shopping/types/total.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/total.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
@@ -2696,7 +2775,7 @@
         "type": "object"
       },
       "totals": {
-        "$id": "https://ucp.dev/schemas/shopping/types/totals.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/totals.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
           {
@@ -2772,6 +2851,28 @@
         "title": "Totals",
         "type": "array"
       },
+      "types_fulfillment": {
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/fulfillment.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "available_methods": {
+            "items": {
+              "$ref": "#/components/schemas/fulfillment_available_method"
+            },
+            "type": "array",
+            "ucp_request": "omit"
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/fulfillment_method"
+            },
+            "type": "array"
+          }
+        },
+        "title": "Fulfillment",
+        "type": "object",
+        "ucp_shared_request": true
+      },
       "ucp-refs_schema_attribution": {
         "$ref": "#/components/schemas/attribution"
       },
@@ -2785,7 +2886,7 @@
         "$ref": "#/components/schemas/context"
       },
       "ucp-refs_schema_fulfillment": {
-        "$ref": "#/components/schemas/fulfillment"
+        "$ref": "#/components/schemas/shopping_fulfillment"
       },
       "ucp-refs_schema_get_product_request": {
         "$ref": "#/components/schemas/catalog_lookup_get_product_request"
@@ -3079,7 +3180,7 @@
         ]
       },
       "variant": {
-        "$id": "https://ucp.dev/schemas/shopping/types/variant.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/variant.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "availability": {
@@ -3239,17 +3340,63 @@
         "title": "Variant",
         "type": "object"
       },
-      "variant-metadata_schema": {
-        "$id": "https://godaddy.com/ucp/schemas/variant-metadata.schema.json",
+      "variant-metadata_base_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/variant-metadata/base.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "default": {
+            "type": "boolean"
+          }
+        },
+        "title": "GoDaddy base variant metadata",
+        "type": "object"
+      },
+      "variant-metadata_hosting_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/variant-metadata/hosting.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "allOf": [
-          {},
-          {}
+          {
+            "$ref": "#/components/schemas/variant-metadata_base_schema"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "control_panel": {
+                "type": "string"
+              },
+              "performance_tier": {
+                "type": "string"
+              },
+              "storage_gb": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "websites": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "title": "GoDaddy hosting variant metadata"
+      },
+      "variant-metadata_schema": {
+        "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/variant-metadata.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/variant-metadata_base_schema"
+          },
+          {
+            "$ref": "#/components/schemas/variant-metadata_hosting_schema"
+          }
         ],
         "title": "GoDaddy variant metadata"
       },
       "warning_code": {
-        "$id": "https://ucp.dev/schemas/shopping/types/warning_code.json",
+        "$id": "https://ucp.dev/2026-04-08/schemas/shopping/types/warning_code.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "examples": [
           "final_sale",
@@ -3477,7 +3624,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/checkout"
+                      "$ref": "#/components/schemas/checkout_with_agreement_input"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"
@@ -3521,7 +3668,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/checkout"
+                      "$ref": "#/components/schemas/checkout_with_agreement_input"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"
@@ -3581,7 +3728,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/checkout"
+                      "$ref": "#/components/schemas/checkout_with_agreement_input"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"
@@ -3643,7 +3790,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/checkout"
+                      "$ref": "#/components/schemas/checkout_with_agreement_input"
                     },
                     {
                       "$ref": "#/components/schemas/error_response"

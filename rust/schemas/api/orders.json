@@ -1313,6 +1313,7 @@
       "description": "The current payment status for an order",
       "enum": [
         "NONE",
+        "UNPAID",
         "PROCESSING",
         "PARTIALLY_PAID",
         "PAID",

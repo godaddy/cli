@@ -51,7 +51,7 @@ pub struct CachedQuote {
     /// if the API returned no expiry (then the entry never expires locally).
     #[serde(default)]
     pub expires_at: Option<String>,
-    /// The exact `InlineRegistrationProfile` the quote was taken with, serialized.
+    /// The exact `Profile` the quote was taken with, serialized.
     /// `register` must re-send it verbatim or the server rejects the mismatch
     /// (the token binds a hash of the domain/price/profile). `None` when the quote
     /// carried no profile.

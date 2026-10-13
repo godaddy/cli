@@ -1,15 +1,15 @@
 use cli_engine::{CliCoreError, CommandContext, Result};
 use shopping_client::types::{
-    Buyer, Checkout, CheckoutCompleteRequest, CheckoutCompleteRequestSchema,
-    CheckoutWritableRequest, CheckoutWritableRequestSchema, Context, Item, LineItem, Message,
-    Payment, PaymentInstrumentSelectedPaymentInstrument, UcpRefsSchemaAttribution,
-    UcpRefsSchemaBuyer, UcpRefsSchemaContext, UcpRefsSchemaFulfillment, UcpRefsSchemaLineItem,
-    UcpRefsSchemaPayment, UcpRefsSchemaSignals,
+    Buyer, CheckoutCompleteRequest, CheckoutCompleteRequestSchema, CheckoutWritableRequest,
+    CheckoutWritableRequestSchema, Context, Item, LineItem, Message, Payment,
+    PaymentInstrumentSelectedPaymentInstrument, UcpRefsSchemaAttribution, UcpRefsSchemaBuyer,
+    UcpRefsSchemaContext, UcpRefsSchemaFulfillment, UcpRefsSchemaLineItem, UcpRefsSchemaPayment,
+    UcpRefsSchemaSignals,
 };
 
 use crate::error::GddyError;
 use crate::next_action::next_action;
-use crate::shopping::client::{ClientError, build_client};
+use crate::shopping::client::{Checkout, ClientError, build_client};
 
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<shopping_client::Client> {
     crate::http::ensure_generated_client_transport_observer_registered();
