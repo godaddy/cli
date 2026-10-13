@@ -195,12 +195,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     ));
                 }
                 super::quote_cache::Lookup::NoConfigDir => {
-                    return Err(CliCoreError::message(
-                        "could not locate a config directory to read the quote cache from. \
-                             `domain purchase` needs the local quote written by `domain quote`; \
-                             ensure a home/config directory is available (e.g. set HOME or \
-                             XDG_CONFIG_HOME) and re-run `gddy domain quote <domain>`.",
-                    ));
+                    return Err(CliCoreError::message(format!(
+                        "could not find the folder where `domain quote` saves quotes. \
+                             `domain purchase` needs that saved quote; {} and re-run \
+                             `gddy domain quote <domain>`.",
+                        super::quote_cache::no_config_dir_fix()
+                    )));
                 }
             };
             let domain = cached.domain.clone();
