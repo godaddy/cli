@@ -13,6 +13,7 @@ use super::common::{
     validate_nameserver_hosts,
 };
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
+use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -392,11 +393,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
                     fees: fees_json,
                 };
-                if let Err(e) = super::quote_cache::save(&token, cached) {
-                    // Non-fatal: the quote is still shown, but purchase won't
-                    // find it. Warn so the user knows to re-quote on this host.
-                    tracing::warn!(error = %e, "could not cache the quote for purchase");
-                }
+                // `purchase` can only rebuild the quote from this local copy, so a
+                // quote that can't be saved can't be bought: fail instead of
+                // advertising a next step that would hit "quote not found".
+                super::quote_cache::save(&token, cached).map_err(GddyError::into_cli_error)?;
                 next_actions.push(purchase_next_action(
                     token,
                     ctx.middleware.output_format != "human",

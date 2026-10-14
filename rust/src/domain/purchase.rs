@@ -9,6 +9,7 @@ use domains_client::types;
 
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
+use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -195,12 +196,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     ));
                 }
                 super::quote_cache::Lookup::NoConfigDir => {
-                    return Err(CliCoreError::message(
-                        "could not locate a config directory to read the quote cache from. \
-                             `domain purchase` needs the local quote written by `domain quote`; \
-                             ensure a home/config directory is available (e.g. set HOME or \
-                             XDG_CONFIG_HOME) and re-run `gddy domain quote <domain>`.",
-                    ));
+                    return Err(GddyError::config(
+                        "could not find the folder where `domain quote` saves quotes. \
+                         `domain purchase` needs that saved quote to register the domain.",
+                    )
+                    .with_fix(format!(
+                        "Please {}, then run `gddy domain quote <domain>` again.",
+                        super::quote_cache::no_config_dir_fix()
+                    ))
+                    .into_cli_error());
                 }
             };
             let domain = cached.domain.clone();
