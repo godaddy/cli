@@ -1,7 +1,10 @@
 //! Native-extension input for `gddy platform app release`, gated by the
 //! `native-apps` feature flag.
 
-use serde_json::{Value, json};
+use platform_app_client::create_release::{
+    ApplicationNativeExtensionCreateInput, ApplicationUiExtensionCreateInput,
+    MutationCreateReleaseInput, NativeExtensionPlatform,
+};
 
 use crate::platform::app::commands::NATIVE_APPS_FLAG_KEY;
 
@@ -50,13 +53,15 @@ pub(super) fn native_extension_draft_if_visible(
 /// `platform` is required (`ANDROID` is the only `NativeExtensionPlatform`
 /// variant). Categories are portal-owned and are not part of this input.
 /// Unlike core `createGpaRelease`, this includes `packageName` from toml.
-fn native_extensions_input(draft: &NativeExtensionDraft) -> Value {
-    json!([{
-        "platform": "ANDROID",
-        "name": draft.name,
-        "contact": draft.support_contact,
-        "packageName": draft.android_package_name,
-    }])
+fn native_extensions_input(
+    draft: &NativeExtensionDraft,
+) -> Vec<ApplicationNativeExtensionCreateInput> {
+    vec![ApplicationNativeExtensionCreateInput {
+        platform: NativeExtensionPlatform::ANDROID,
+        name: Some(draft.name.clone()),
+        contact: Some(draft.support_contact.clone()),
+        package_name: Some(draft.android_package_name.clone()),
+    }]
 }
 
 /// Attach toml native-extension fields to the GraphQL `createRelease` input.
@@ -64,8 +69,8 @@ fn native_extensions_input(draft: &NativeExtensionDraft) -> Value {
 /// Registry rejects mixing non-empty `uiExtensions` with `nativeExtensions`
 /// (`HYBRID_EXTENSIONS_NOT_ALLOWED`). Empty `uiExtensions: []` is allowed.
 pub(super) fn apply_native_extensions(
-    input: &mut Value,
-    ui_extensions: &[Value],
+    input: &mut MutationCreateReleaseInput,
+    ui_extensions: &[ApplicationUiExtensionCreateInput],
     draft: Option<&NativeExtensionDraft>,
 ) -> cli_engine::Result<()> {
     if draft.is_some() && !ui_extensions.is_empty() {
@@ -75,7 +80,7 @@ pub(super) fn apply_native_extensions(
         .into_cli_error());
     }
     if let Some(draft) = draft {
-        input["nativeExtensions"] = native_extensions_input(draft);
+        input.native_extensions = Some(native_extensions_input(draft));
     }
     Ok(())
 }
@@ -83,6 +88,35 @@ pub(super) fn apply_native_extensions(
 #[cfg(test)]
 mod tests {
     use cli_engine::{FlagPolicy, Stage};
+    use platform_app_client::create_release::{
+        ApplicationUiExtensionCreateInput, MutationCreateReleaseInput, NativeExtensionPlatform,
+    };
+
+    fn base_input() -> MutationCreateReleaseInput {
+        MutationCreateReleaseInput {
+            application_id: "app-123".to_owned(),
+            version: "1.0.11".to_owned(),
+            description: None,
+            actions: None,
+            application_dependencies: None,
+            feature_dependencies: None,
+            mcp_servers: None,
+            native_extensions: None,
+            settings: None,
+            subscriptions: None,
+            ui_extensions: None,
+        }
+    }
+
+    fn widget_ui_extension() -> ApplicationUiExtensionCreateInput {
+        ApplicationUiExtensionCreateInput {
+            name: Some("Widget".to_owned()),
+            handle: Some("widget".to_owned()),
+            source: None,
+            type_: "embed".to_owned(),
+            target: None,
+        }
+    }
 
     fn valid_release_config() -> crate::config::Config {
         crate::config::Config {
@@ -125,10 +159,10 @@ mod tests {
         let draft = super::native_extension_draft_if_visible(&config, &policy);
         assert!(draft.is_none());
 
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let mut input = base_input();
         super::apply_native_extensions(&mut input, &[], draft.as_ref())
             .expect("non-native release");
-        assert!(input.get("nativeExtensions").is_none());
+        assert!(input.native_extensions.is_none());
     }
 
     #[test]
@@ -140,11 +174,13 @@ mod tests {
         assert_eq!(draft.support_contact, "support@example.com");
         assert_eq!(draft.android_package_name, "com.example.app");
 
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let mut input = base_input();
         super::apply_native_extensions(&mut input, &[], Some(&draft)).expect("native release");
         assert_eq!(
-            input["nativeExtensions"][0]["packageName"],
-            "com.example.app"
+            input.native_extensions.expect("native extensions")[0]
+                .package_name
+                .as_deref(),
+            Some("com.example.app")
         );
     }
 
@@ -174,10 +210,10 @@ mod tests {
         let draft = super::native_extension_draft_if_visible(&config, &policy);
         assert!(draft.is_none());
 
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
-        let ui = vec![serde_json::json!({ "name": "Widget", "handle": "widget" })];
+        let mut input = base_input();
+        let ui = vec![widget_ui_extension()];
         super::apply_native_extensions(&mut input, &ui, draft.as_ref()).expect("ui release");
-        assert!(input.get("nativeExtensions").is_none());
+        assert!(input.native_extensions.is_none());
         assert_eq!(ui.len(), 1);
     }
 
@@ -187,15 +223,15 @@ mod tests {
         let policy = FlagPolicy::new().with_min_stage(Stage::Experimental);
         let draft = super::native_extension_draft_if_visible(&config, &policy).expect("draft");
 
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
-        let ui = vec![serde_json::json!({ "name": "Widget", "handle": "widget" })];
+        let mut input = base_input();
+        let ui = vec![widget_ui_extension()];
         let err = super::apply_native_extensions(&mut input, &ui, Some(&draft))
             .expect_err("hybrid must fail locally");
         assert!(
             err.to_string().contains("cannot mix uiExtensions"),
             "got: {err}"
         );
-        assert!(input.get("nativeExtensions").is_none());
+        assert!(input.native_extensions.is_none());
     }
 
     #[test]
@@ -265,15 +301,20 @@ mod tests {
 
         let actual = super::native_extensions_input(&draft);
 
-        let entries = actual.as_array().expect("one-element array");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0]["platform"], "ANDROID");
-        assert_eq!(entries[0]["name"], "My Display Name");
-        assert_eq!(entries[0]["contact"], "support@example.com");
-        assert_eq!(entries[0]["packageName"], "com.example.app");
-        // Categories are portal-owned and never travel on createRelease.
-        assert!(entries[0].get("appCategory").is_none());
-        assert!(entries[0].get("merchantCategory").is_none());
+        assert_eq!(actual.len(), 1);
+        assert!(matches!(
+            actual[0].platform,
+            NativeExtensionPlatform::ANDROID
+        ));
+        assert_eq!(actual[0].name.as_deref(), Some("My Display Name"));
+        assert_eq!(actual[0].contact.as_deref(), Some("support@example.com"));
+        assert_eq!(actual[0].package_name.as_deref(), Some("com.example.app"));
+        // Categories are portal-owned and never travel on createRelease; the
+        // wire shape is exactly these four keys.
+        let wire = serde_json::to_value(&actual[0]).expect("serialize");
+        let mut keys: Vec<_> = wire.as_object().expect("object").keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["contact", "name", "packageName", "platform"]);
     }
 
     fn sample_draft() -> super::NativeExtensionDraft {
@@ -286,33 +327,33 @@ mod tests {
 
     #[test]
     fn apply_native_extensions_sets_create_release_input_when_draft_present() {
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let mut input = base_input();
         super::apply_native_extensions(&mut input, &[], Some(&sample_draft()))
             .expect("native-only release");
-        let row = &input["nativeExtensions"][0];
-        assert_eq!(row["platform"], "ANDROID");
-        assert_eq!(row["name"], "My Display Name");
-        assert_eq!(row["contact"], "support@example.com");
-        assert_eq!(row["packageName"], "com.example.app");
+        let rows = input.native_extensions.expect("native extensions");
+        assert!(matches!(rows[0].platform, NativeExtensionPlatform::ANDROID));
+        assert_eq!(rows[0].name.as_deref(), Some("My Display Name"));
+        assert_eq!(rows[0].contact.as_deref(), Some("support@example.com"));
+        assert_eq!(rows[0].package_name.as_deref(), Some("com.example.app"));
     }
 
     #[test]
     fn apply_native_extensions_omits_key_when_draft_absent() {
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
+        let mut input = base_input();
         super::apply_native_extensions(&mut input, &[], None).expect("non-native release");
-        assert!(input.get("nativeExtensions").is_none());
+        assert!(input.native_extensions.is_none());
     }
 
     #[test]
     fn apply_native_extensions_rejects_nonempty_ui_extensions() {
-        let mut input = serde_json::json!({ "applicationId": "app-123", "version": "1.0.11" });
-        let ui = vec![serde_json::json!({ "name": "Widget", "handle": "widget" })];
+        let mut input = base_input();
+        let ui = vec![widget_ui_extension()];
         let err = super::apply_native_extensions(&mut input, &ui, Some(&sample_draft()))
             .expect_err("hybrid must fail locally");
         assert!(
             err.to_string().contains("cannot mix uiExtensions"),
             "got: {err}"
         );
-        assert!(input.get("nativeExtensions").is_none());
+        assert!(input.native_extensions.is_none());
     }
 }
