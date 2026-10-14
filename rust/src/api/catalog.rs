@@ -128,6 +128,10 @@ static CATALOG: OnceLock<Vec<Domain>> = OnceLock::new();
 
 const DOMAIN_FILES: &[(&str, &str)] = &[
     (
+        "app-registry",
+        include_str!("../../schemas/api/app-registry.json"),
+    ),
+    (
         "bulk-operations",
         include_str!("../../schemas/api/bulk-operations.json"),
     ),
@@ -595,6 +599,36 @@ pub(super) fn graphql_valid_arg_names(g: &GraphqlOpRef<'_>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{Domain, catalog, find_endpoint, locate_by_path};
+
+    /// Every committed catalog file must be embedded, or that domain is
+    /// silently absent from `gddy api` (this is how `app-registry` was missed).
+    #[test]
+    fn every_committed_catalog_file_is_embedded() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schemas/api");
+        let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
+            .expect("read schemas/api")
+            .filter_map(|entry| {
+                let name = entry.ok()?.file_name().to_string_lossy().into_owned();
+                let stem = name.strip_suffix(".json")?.to_owned();
+                (stem != "manifest").then_some(stem)
+            })
+            .collect();
+        on_disk.sort();
+
+        let embedded: Vec<&str> = catalog().iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(on_disk, embedded, "schemas/api vs embedded DOMAIN_FILES");
+    }
+
+    #[test]
+    fn app_registry_is_served_from_its_subgraph_endpoint() {
+        let domain = catalog()
+            .iter()
+            .find(|d| d.name == "app-registry")
+            .expect("app-registry is in the catalog");
+        assert_eq!(domain.base_url, "https://api.godaddy.com");
+        assert_eq!(domain.endpoints.len(), 1);
+        assert_eq!(domain.endpoints[0].path, "/v1/apps/app-registry-subgraph");
+    }
 
     /// `catalog()` sorts once so every listing (`api domain list`, `api
     /// search`, `api operation get`) sees the same stable, alphabetical order.
