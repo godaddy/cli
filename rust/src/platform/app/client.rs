@@ -1,10 +1,16 @@
 use bytes::Bytes;
+use platform_app_client::{
+    ActivateRelease, Application, ApplicationWithLatestRelease, ApplicationsList,
+    ArchiveApplication, CreateApplication, CreateRelease, DisableApplication, EnableApplication,
+    EnabledStoreApplications, GenerateReleaseUploadUrl, UpdateApplication, activate_release,
+    application, application_with_latest_release, applications_list, archive_application,
+    create_application, create_release, disable_application, enable_application,
+    enabled_store_applications, generate_release_upload_url, update_application,
+};
 use reqwest::Client;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::http::{make_http_client, make_storage_upload_http_client};
-
-const GRAPHQL_PATH: &str = "/v1/apps/app-registry-subgraph";
+use crate::http::{api_client_builder, make_storage_upload_http_client};
 
 /// App Registry `ApplicationStatus` enum values (see app-registry-api GraphQL schema).
 ///
@@ -25,10 +31,26 @@ pub enum ClientError {
     Network(#[from] reqwest::Error),
     #[error("GraphQL errors: {0}")]
     GraphQL(String),
+    #[error("failed to construct App Registry client: {0}")]
+    Build(#[from] platform_app_client::BuildError),
     #[error("file size {size} bytes exceeds maximum allowed ({max} bytes)")]
     TooLarge { size: u64, max: u64 },
     #[error("invalid upload header {0}")]
     InvalidHeader(String),
+}
+
+/// Reuses the existing `Http`/`Network`/`GraphQL` variants rather than
+/// wrapping `platform_app_client::ClientError` in a new one — every caller
+/// (and `impl From<ClientError> for GddyError` below) already matches on
+/// those three shapes, and this keeps that mapping unchanged.
+impl From<platform_app_client::ClientError> for ClientError {
+    fn from(value: platform_app_client::ClientError) -> Self {
+        match value {
+            platform_app_client::ClientError::Http { status, body } => Self::Http { status, body },
+            platform_app_client::ClientError::Network(e) => Self::Network(e),
+            platform_app_client::ClientError::GraphQL(msg) => Self::GraphQL(msg),
+        }
+    }
 }
 
 impl From<ClientError> for crate::error::GddyError {
@@ -40,6 +62,10 @@ impl From<ClientError> for crate::error::GddyError {
             }
             ClientError::GraphQL(msg) => {
                 Self::from_graphql(format!("GraphQL errors: {msg}"), "applications")
+            }
+            ClientError::Build(error) => {
+                Self::config(format!("failed to construct App Registry client: {error}"))
+                    .with_system("applications")
             }
             ClientError::TooLarge { size, max } => Self::validation(format!(
                 "file size {size} bytes exceeds maximum allowed ({max} bytes)"
@@ -79,7 +105,6 @@ impl Default for UploadOptions {
 }
 
 pub struct ApplicationClient {
-    client: Client,
     /// Built on first upload so commands that never upload don't pay for it.
     /// See [`crate::http::upload_timeouts`] for why uploads need their own.
     upload_client: std::sync::OnceLock<Client>,
@@ -91,24 +116,21 @@ pub struct ApplicationClient {
 impl ApplicationClient {
     pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Self {
         Self {
-            client: make_http_client(),
             upload_client: std::sync::OnceLock::new(),
             base_url: base_url.into(),
             token: token.into(),
         }
     }
 
-    /// Builds a client with explicit HTTP clients, so a test can give the API
-    /// client a tight timeout and prove uploads don't use it.
+    /// Builds a client with an explicit upload client, so a test can prove
+    /// uploads don't inherit the API client's timeouts.
     #[cfg(test)]
-    fn with_clients(
+    fn with_upload_client(
         base_url: impl Into<String>,
         token: impl Into<String>,
-        client: Client,
         upload_client: Client,
     ) -> Self {
         Self {
-            client,
             upload_client: upload_client.into(),
             base_url: base_url.into(),
             token: token.into(),
@@ -120,42 +142,13 @@ impl ApplicationClient {
             .get_or_init(make_storage_upload_http_client)
     }
 
-    async fn query(&self, body: Value) -> Result<Value, ClientError> {
-        let url = format!("{}{}", self.base_url, GRAPHQL_PATH);
-        let request = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.token)
-            .header("x-request-id", new_request_id())
-            .json(&body)
-            .build()?;
-        cli_engine::transport::debug_log_reqwest_request(&request);
-        let resp = self.client.execute(request).await?;
-
-        let status = resp.status();
-        let headers = resp.headers().clone();
-        let bytes = resp.bytes().await?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
-
-        if !status.is_success() {
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            return Err(ClientError::Http {
-                status: status.as_u16(),
-                body: text,
-            });
-        }
-
-        let payload: Value = serde_json::from_slice(&bytes).map_err(|e| ClientError::Http {
-            status: status.as_u16(),
-            body: format!(
-                "invalid JSON response: {e} (body: {})",
-                String::from_utf8_lossy(&bytes)
-            ),
-        })?;
-        if let Some(errors) = payload.get("errors") {
-            return Err(ClientError::GraphQL(errors.to_string()));
-        }
-        Ok(payload["data"].clone())
+    fn gql(&self) -> Result<platform_app_client::Client, ClientError> {
+        Ok(platform_app_client::client_with_builder(
+            api_client_builder(),
+            &self.base_url,
+            &format!("Bearer {}", self.token),
+            &new_request_id(),
+        )?)
     }
 
     /// Lists applications across every App Registry status.
@@ -163,135 +156,189 @@ impl ApplicationClient {
     /// Always sends an explicit `status.in` of [`APPLICATION_STATUSES`]. Omitting
     /// the GraphQL `status` argument is *not* equivalent: the API defaults to
     /// ACTIVE-only.
-    pub async fn list_applications(&self) -> Result<Value, ClientError> {
-        let data = self
-            .query(json!({
-                "query": "query ApplicationsList($status: ApplicationStatusFilter) { applications(status: $status) { edges { node { id label name description status url proxyUrl } } } }",
-                "variables": { "status": { "in": APPLICATION_STATUSES } }
-            }))
-            .await?;
-        let nodes: Vec<Value> = data["applications"]["edges"]
-            .as_array()
-            .map(|edges| {
-                edges
-                    .iter()
-                    .filter_map(|e| {
-                        let node = &e["node"];
-                        if node.is_null() {
-                            None
-                        } else {
-                            Some(node.clone())
-                        }
-                    })
-                    .collect()
+    pub async fn list_applications(
+        &self,
+    ) -> Result<Vec<applications_list::ApplicationsListApplicationsEdgesNode>, ClientError> {
+        use applications_list::ApplicationStatus;
+        let statuses: Vec<ApplicationStatus> = APPLICATION_STATUSES
+            .iter()
+            .map(|s| match *s {
+                "ACTIVE" => ApplicationStatus::ACTIVE,
+                "ARCHIVED" => ApplicationStatus::ARCHIVED,
+                "BLOCKED" => ApplicationStatus::BLOCKED,
+                "INACTIVE" => ApplicationStatus::INACTIVE,
+                "VERIFYING" => ApplicationStatus::VERIFYING,
+                other => ApplicationStatus::Other(other.to_owned()),
             })
-            .unwrap_or_default();
-        Ok(json!(nodes))
+            .collect();
+        let response = self
+            .gql()?
+            .send::<ApplicationsList>(applications_list::Variables {
+                status: Some(applications_list::ApplicationStatusFilter {
+                    eq: None,
+                    in_: Some(statuses),
+                    ne: None,
+                }),
+            })
+            .await?;
+        Ok(response
+            .applications
+            .and_then(|connection| connection.edges)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|edge| edge.node)
+            .collect())
     }
 
-    pub async fn get_application(&self, name: &str) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "query Application($name: String!) { application(name: $name) { id label name description status url proxyUrl } }",
-            "variables": { "name": name }
-        }))
-        .await
+    pub async fn get_application(
+        &self,
+        name: &str,
+    ) -> Result<Option<application::ApplicationApplication>, ClientError> {
+        let response = self
+            .gql()?
+            .send::<Application>(application::Variables {
+                name: name.to_owned(),
+            })
+            .await?;
+        Ok(response.application)
     }
 
-    pub async fn update_application(&self, id: &str, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!) { updateApplication(id: $id, input: $input) { id clientId label name description status url proxyUrl authorizationScopes redirectUris } }",
-            "variables": { "id": id, "input": input }
-        }))
-        .await
+    pub async fn update_application(
+        &self,
+        id: &str,
+        input: update_application::MutationUpdateApplicationInput,
+    ) -> Result<Option<update_application::UpdateApplicationUpdateApplication>, ClientError> {
+        let response = self
+            .gql()?
+            .send::<UpdateApplication>(update_application::Variables {
+                id: id.to_owned(),
+                input,
+            })
+            .await?;
+        Ok(response.update_application)
     }
 
-    pub async fn create_release(&self, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation CreateRelease($input: MutationCreateReleaseInput!) { createRelease(input: $input) { id version description createdAt uiExtensions { id name handle type source target } nativeExtensions { id name packageName contact platform } settings { id groupSlug appSettingSlug entryPath capabilities order title } } }",
-            "variables": { "input": input }
-        }))
-        .await
+    pub async fn create_release(
+        &self,
+        input: create_release::MutationCreateReleaseInput,
+    ) -> Result<Option<create_release::CreateReleaseCreateRelease>, ClientError> {
+        let response = self
+            .gql()?
+            .send::<CreateRelease>(create_release::Variables { input })
+            .await?;
+        Ok(response.create_release)
     }
 
     pub async fn activate_release(
         &self,
         application_id: &str,
         release_id: &str,
-    ) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation ActivateRelease($applicationId: ID!, $releaseId: ID!) { activateRelease(applicationId: $applicationId, releaseId: $releaseId) { id version description status activatedAt createdAt updatedAt } }",
-            "variables": { "applicationId": application_id, "releaseId": release_id }
-        }))
-        .await
+    ) -> Result<Option<activate_release::ActivateReleaseActivateRelease>, ClientError> {
+        let response = self
+            .gql()?
+            .send::<ActivateRelease>(activate_release::Variables {
+                application_id: application_id.to_owned(),
+                release_id: release_id.to_owned(),
+            })
+            .await?;
+        Ok(response.activate_release)
     }
 
-    pub async fn enable_application(&self, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation EnableApplication($input: MutationEnableStoreApplicationInput!) { enableStoreApplication(input: $input) { id } }",
-            "variables": { "input": input }
-        }))
-        .await
+    pub async fn enable_application(
+        &self,
+        input: enable_application::MutationEnableStoreApplicationInput,
+    ) -> Result<Option<enable_application::EnableApplicationEnableStoreApplication>, ClientError>
+    {
+        let response = self
+            .gql()?
+            .send::<EnableApplication>(enable_application::Variables { input })
+            .await?;
+        Ok(response.enable_store_application)
     }
 
-    pub async fn disable_application(&self, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation DisableApplication($input: MutationDisableStoreApplicationInput!) { disableStoreApplication(input: $input) { id } }",
-            "variables": { "input": input }
-        }))
-        .await
+    pub async fn disable_application(
+        &self,
+        input: disable_application::MutationDisableStoreApplicationInput,
+    ) -> Result<Option<disable_application::DisableApplicationDisableStoreApplication>, ClientError>
+    {
+        let response = self
+            .gql()?
+            .send::<DisableApplication>(disable_application::Variables { input })
+            .await?;
+        Ok(response.disable_store_application)
     }
 
     /// Lists applications enabled on a commerce store.
     ///
-    /// Returns an empty JSON array when nothing is enabled (not an error).
-    /// `storeId` is sent as a GraphQL variable only — same pattern as
-    /// [`Self::enable_application`] / [`Self::disable_application`].
+    /// Returns an empty list when nothing is enabled (not an error).
     pub async fn list_enabled_store_applications(
         &self,
         store_id: &str,
-    ) -> Result<Value, ClientError> {
-        let data = self
-            .query(json!({
-                "query": "query EnabledStoreApplications($storeId: String!) { enabledStoreApplications(storeId: $storeId) { id name label status release { id version } } }",
-                "variables": { "storeId": store_id }
-            }))
+    ) -> Result<
+        Vec<enabled_store_applications::EnabledStoreApplicationsEnabledStoreApplications>,
+        ClientError,
+    > {
+        let response = self
+            .gql()?
+            .send::<EnabledStoreApplications>(enabled_store_applications::Variables {
+                store_id: store_id.to_owned(),
+            })
             .await?;
-        Ok(data
-            .get("enabledStoreApplications")
-            .cloned()
-            .unwrap_or_else(|| json!([])))
+        Ok(response.enabled_store_applications.unwrap_or_default())
     }
 
-    pub async fn archive_application(&self, id: &str) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation ArchiveApplication($id: String!) { archiveApplication(id: $id) { id label name status createdAt archivedAt } }",
-            "variables": { "id": id }
-        }))
-        .await
+    pub async fn archive_application(
+        &self,
+        id: &str,
+    ) -> Result<Option<archive_application::ArchiveApplicationArchiveApplication>, ClientError>
+    {
+        let response = self
+            .gql()?
+            .send::<ArchiveApplication>(archive_application::Variables { id: id.to_owned() })
+            .await?;
+        Ok(response.archive_application)
     }
 
-    pub async fn create_application(&self, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation CreateApplication($input: MutationCreateApplicationInput!) { createApplication(input: $input) { id clientId clientSecret label name description status url proxyUrl authorizationScopes redirectUris secret publicKey } }",
-            "variables": { "input": input }
-        }))
-        .await
+    pub async fn create_application(
+        &self,
+        input: create_application::MutationCreateApplicationInput,
+    ) -> Result<Option<create_application::CreateApplicationCreateApplication>, ClientError> {
+        let response = self
+            .gql()?
+            .send::<CreateApplication>(create_application::Variables { input })
+            .await?;
+        Ok(response.create_application)
     }
 
-    pub async fn get_application_with_releases(&self, name: &str) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "query ApplicationWithLatestRelease($name: String!) { application(name: $name) { id label name description status url proxyUrl authorizationScopes redirectUris clientId releases(first: 1, orderBy: { createdAt: DESC }) { edges { node { id version description createdAt subscriptions { name url events } } } } } }",
-            "variables": { "name": name }
-        }))
-        .await
+    pub async fn get_application_with_releases(
+        &self,
+        name: &str,
+    ) -> Result<
+        Option<application_with_latest_release::ApplicationWithLatestReleaseApplication>,
+        ClientError,
+    > {
+        let response = self
+            .gql()?
+            .send::<ApplicationWithLatestRelease>(application_with_latest_release::Variables {
+                name: name.to_owned(),
+            })
+            .await?;
+        Ok(response.application)
     }
 
-    pub async fn generate_upload_url(&self, input: Value) -> Result<Value, ClientError> {
-        self.query(json!({
-            "query": "mutation GenerateReleaseUploadUrl($input: MutationGenerateReleaseUploadUrlInput!) { generateReleaseUploadUrl(input: $input) { uploadId url key expiresAt maxSizeBytes requiredHeaders } }",
-            "variables": { "input": input }
-        }))
-        .await
+    pub async fn generate_upload_url(
+        &self,
+        input: generate_release_upload_url::MutationGenerateReleaseUploadUrlInput,
+    ) -> Result<
+        Option<generate_release_upload_url::GenerateReleaseUploadUrlGenerateReleaseUploadUrl>,
+        ClientError,
+    > {
+        let response = self
+            .gql()?
+            .send::<GenerateReleaseUploadUrl>(generate_release_upload_url::Variables { input })
+            .await?;
+        Ok(response.generate_release_upload_url)
     }
 
     /// Upload an artifact to a presigned S3 URL.
@@ -300,6 +347,9 @@ impl ApplicationClient {
     /// header (it is not part of the S3 SigV4 signing string, so sending it can
     /// break the PUT), and retries transient failures — network errors and 5xx —
     /// with exponential backoff. 4xx responses are returned immediately.
+    ///
+    /// Not a GraphQL operation (a raw REST PUT to a presigned URL), so it stays
+    /// hand-written here rather than moving into `platform-app-client`.
     pub async fn upload_artifact(
         &self,
         url: &str,
@@ -336,6 +386,7 @@ impl ApplicationClient {
         }
 
         let mut last_error: Option<ClientError> = None;
+
         // One client builds and executes every attempt: the executing client's
         // timeouts are the ones that apply.
         let client = self.upload_client();
@@ -427,3 +478,7 @@ impl ApplicationClient {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_upload_tests.rs"]
+mod upload_tests;
