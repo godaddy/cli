@@ -973,7 +973,7 @@
             "$ref": "#/components/schemas/product-metadata_base_schema"
           },
           {
-            "additionalProperties": true,
+            "additionalProperties": {},
             "properties": {
               "mailbox_size_mb": {
                 "minimum": 0,
@@ -2090,7 +2090,7 @@
       "product-metadata_base_schema": {
         "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/product-metadata/base.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": true,
+        "additionalProperties": {},
         "properties": {
           "category": {
             "type": "string"
@@ -2117,7 +2117,7 @@
             "$ref": "#/components/schemas/product-metadata_base_schema"
           },
           {
-            "additionalProperties": true,
+            "additionalProperties": {},
             "properties": {
               "control_panel": {
                 "type": "string"
@@ -2692,7 +2692,7 @@
             "$ref": "#/components/schemas/product-metadata_base_schema"
           },
           {
-            "additionalProperties": true,
+            "additionalProperties": {},
             "properties": {
               "assurance": {
                 "type": "string"
@@ -3343,7 +3343,7 @@
       "variant-metadata_base_schema": {
         "$id": "https://godaddy.com/schemas/ucp/2026-04-08/shopping/catalog/variant-metadata/base.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": true,
+        "additionalProperties": {},
         "properties": {
           "default": {
             "type": "boolean"
@@ -3360,7 +3360,7 @@
             "$ref": "#/components/schemas/variant-metadata_base_schema"
           },
           {
-            "additionalProperties": true,
+            "additionalProperties": {},
             "properties": {
               "control_panel": {
                 "type": "string"

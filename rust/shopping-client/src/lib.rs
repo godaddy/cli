@@ -68,6 +68,44 @@ mod tests {
         .expect("build client")
     }
 
+    // Product and variant `metadata` are open objects in the contract: the
+    // API returns merchant-defined keys (`subscription_type`, `term_type`, ...)
+    // that the schema does not name. The shopping commands print the typed
+    // response as JSON, so those keys must survive a decode/encode round trip.
+    #[test]
+    fn catalog_metadata_keeps_keys_the_contract_does_not_name() {
+        let payload = json!({
+            "products": [{
+                "id": "T1",
+                "metadata": {
+                    "product_family": "email",
+                    "mailbox_size_mb": 10240,
+                    "subscription_type": "PAID"
+                },
+                "variants": [{
+                    "id": "T1:1mo",
+                    "metadata": {
+                        "default": true,
+                        "number_of_terms": 1,
+                        "term_type": "MONTH"
+                    }
+                }]
+            }]
+        });
+
+        let response: types::CatalogSearchSearchResponse =
+            serde_json::from_value(payload).expect("decode response");
+        let output = serde_json::to_value(&response).expect("encode response");
+
+        let product = &output["products"][0]["metadata"];
+        assert_eq!(product["subscription_type"], "PAID");
+        assert_eq!(product["mailbox_size_mb"], 10240, "named fields still map");
+        let variant = &output["products"][0]["variants"][0]["metadata"];
+        assert_eq!(variant["number_of_terms"], 1);
+        assert_eq!(variant["term_type"], "MONTH");
+        assert_eq!(variant["default"], true, "named fields still map");
+    }
+
     #[derive(Debug, Default)]
     struct RecordingObserver {
         requests: std::sync::Mutex<Vec<String>>,
