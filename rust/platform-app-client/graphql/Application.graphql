@@ -1,0 +1,11 @@
+query Application($name: String!) {
+  application(name: $name) {
+    id
+    label
+    name
+    description
+    status
+    url
+    proxyUrl
+  }
+}

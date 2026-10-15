@@ -1,0 +1,12 @@
+query EnabledStoreApplications($storeId: String!) {
+  enabledStoreApplications(storeId: $storeId) {
+    id
+    name
+    label
+    status
+    release {
+      id
+      version
+    }
+  }
+}
