@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.30](https://github.com/godaddy/cli/compare/v0.2.29...v0.2.30) (2026-10-15)
+
+
+### Code Refactoring
+
+* **auth:** declare each OAuth scope in a single list ([#329](https://github.com/godaddy/cli/issues/329)) ([8b1404d](https://github.com/godaddy/cli/commit/8b1404d416b192c121cc727ec4c2eaa79bdca58a))
+
 ## [0.2.29](https://github.com/godaddy/cli/compare/v0.2.28...v0.2.29) (2026-10-14)
 
 
