@@ -6,7 +6,6 @@
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec, Stage};
 
 mod tunnel;
-
 /// The `Database` module: the `db` command group.
 pub fn module() -> Module {
     Module::new("Database", |_ctx| {

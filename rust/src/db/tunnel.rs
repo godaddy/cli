@@ -8,15 +8,22 @@
 //! never injects or inspects credentials. Progress is streamed as JSON events,
 //! matching `platform app deploy`.
 //!
-//! Auth: the CLI mints a short-lived agent token from the hosting API
-//! (`POST /v1/hosting/apps/NODEJS-:id/agent-token`) using your GoDaddy OAuth
-//! credential, stepped up to the dedicated `hosting.database.tunnel:execute`
-//! scope alongside deploy-execute — the tunnel scope is a separate grant, so
-//! authority to publish a deployment does not by itself grant raw database
-//! read/write. It then connects to the agent URL
-//! that call returns, sending the minted token as `Authorization: Bearer`. The
-//! agent URL and token both come from the service — neither is a user-supplied
-//! flag.
+//! Auth: the CLI mints a short-lived token using your GoDaddy OAuth credential,
+//! stepped up to the dedicated `hosting.database.tunnel:execute` scope alongside
+//! deploy-execute — the tunnel scope is a separate grant, so authority to
+//! publish a deployment does not by itself grant raw database read/write.
+//!
+//! - `--product nodejs`: `POST /v1/hosting/apps/NODEJS-:id/agent-token` returns
+//!   the app's agent URL and an agent token.
+//! - `--product mhwp`: Managed WordPress has no per-app agent, so
+//!   `POST /v1/hosting/apps/MHWP-:id/database-tunnel` starts an on-demand relay
+//!   speaking the same WebSocket protocol — closing any tunnel already open for
+//!   the app — and returns its URL, a readiness `pollUrl` and a relay token.
+//!   The CLI waits for `pollUrl` to answer before listening. As with Node.js,
+//!   no database login is returned: the customer's client brings its own.
+//!
+//! The token goes out as `Authorization: Bearer`. The URL and token both come
+//! from the service — neither is a user-supplied flag.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -60,6 +67,15 @@ const MAX_AGENT_FRAME_BYTES: usize = 32 * 1024 * 1024;
 /// if a pong misses the next tick). Comfortably inside that window.
 const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long to wait for a freshly scheduled WordPress relay to answer its
+/// readiness probe: long enough for Nomad to pull the image, place the job and
+/// route its hostname.
+const RELAY_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+const RELAY_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+const RELAY_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[derive(Debug, Clone, clap::Args)]
 struct TunnelArgs {
     /// Application/site id — the app whose database to tunnel to. The CLI mints
@@ -67,8 +83,8 @@ struct TunnelArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// Hosting product of the app (e.g. `nodejs`). Selects which product's
-    /// agent mints the tunnel token.
+    /// Hosting product of the app: `nodejs` for Node.js Hosting, `mhwp` for a
+    /// Managed WordPress site. Selects which service mints the tunnel token.
     #[arg(long = "product", value_name = "PRODUCT", ignore_case = true)]
     product: HostingAppType,
 
@@ -109,7 +125,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
              `--ssl-mode=REQUIRED`) so the session is encrypted across the local \
              hop as well; the database may require it. The CLI authorizes with \
              your GoDaddy credentials and connects to the app's assigned agent \
-             automatically. Runs until interrupted (Ctrl-C).",
+             automatically. Pass `--product nodejs` for a Node.js Hosting app, \
+             or `--product mhwp` for a Managed WordPress site, which starts a \
+             short-lived relay and can take up to a few minutes before the port \
+             opens. A WordPress site has one tunnel at a time: opening a new one \
+             closes the previous one. Log in with your own database user and \
+             password, as for a Node.js app. Runs until interrupted (Ctrl-C).",
         )
         .with_system("database")
         .with_tier(Tier::Mutate)
@@ -183,18 +204,39 @@ async fn run_tunnel(
     sender
         .send(json!({ "type": "step", "name": "authorize", "status": "started" }))
         .await;
-    let (agent_url, token) = match mint_agent_token(ctx, &args.app_id, args.product).await {
-        Ok(pair) => pair,
+    let target = match mint_tunnel_target(ctx, &args.app_id, args.product).await {
+        Ok(target) => target,
         Err(e) => return Err(fail(sender, e).await),
     };
     sender
         .send(json!({ "type": "step", "name": "authorize", "status": "completed" }))
         .await;
+    if target.replaced {
+        sender
+            .send(json!({
+                "type": "warning",
+                "message": "A database tunnel was already open for this app and has been closed; a site has one tunnel at a time.",
+            }))
+            .await;
+    }
 
-    let ws_url = match build_tunnel_ws_url(&agent_url, &args.app_id) {
+    let ws_url = match build_tunnel_ws_url(&target.endpoint, &args.app_id) {
         Ok(url) => url,
         Err(e) => return Err(fail(sender, e.into_cli_error()).await),
     };
+
+    if let Some(poll_url) = &target.ready_url {
+        sender
+            .send(json!({ "type": "step", "name": "provision", "status": "started" }))
+            .await;
+        if let Err(e) = wait_for_relay(poll_url, &target.endpoint).await {
+            return Err(fail(sender, e.into_cli_error()).await);
+        }
+        sender
+            .send(json!({ "type": "step", "name": "provision", "status": "completed" }))
+            .await;
+    }
+    let token = target.token;
 
     let bind_addr = format!("{}:{}", args.listen_host, args.port);
     let listener = match TcpListener::bind(&bind_addr).await {
@@ -210,7 +252,6 @@ async fn run_tunnel(
         .local_addr()
         .map(|a| a.to_string())
         .unwrap_or_else(|_| bind_addr.clone());
-
     sender
         .send(json!({
             "type": "listening",
@@ -303,40 +344,126 @@ async fn run_tunnel(
     Ok(())
 }
 
-/// Mint a short-lived agent token for `app_id` via the hosting API and return
-/// `(agent_url, token)`. Steps the CLI's OAuth credential up to *both*
-/// deploy-execute and the dedicated `hosting.database.tunnel:execute` scope:
-/// authority to publish a deployment does not by itself grant database access,
-/// so opening a tunnel requires the separate database-tunnel grant as well.
-async fn mint_agent_token(
+/// Where the tunnel connects: the base URL of the WebSocket endpoint, the bearer
+/// token it accepts, and — for an on-demand relay — the probe to wait on first
+/// and whether an earlier tunnel was closed to make room.
+#[derive(Debug, PartialEq, Eq)]
+struct TunnelTarget {
+    endpoint: String,
+    token: String,
+    ready_url: Option<String>,
+    replaced: bool,
+}
+
+/// Mint a short-lived tunnel token for `app_id`. Steps the CLI's OAuth
+/// credential up to *both* deploy-execute and the dedicated
+/// `hosting.database.tunnel:execute` scope: authority to publish a deployment
+/// does not by itself grant database access, so opening a tunnel requires the
+/// separate database-tunnel grant as well.
+async fn mint_tunnel_target(
     ctx: &CommandContext,
     app_id: &str,
     product: HostingAppType,
-) -> cli_engine::Result<(String, String)> {
+) -> cli_engine::Result<TunnelTarget> {
     let required = vec![DEPLOY_EXECUTE.to_owned(), DATABASE_TUNNEL.to_owned()];
     let token = ctx.credential_with_scopes(&required).await?.token;
     let base_url = api_url_for_env(&ctx.middleware.env)?;
     let client = HostingClient::new(base_url, token);
-    let resp = client
-        .get_agent_token(app_id, product.as_str())
-        .await
-        .map_err(|e| GddyError::from(e).into_cli_error())?;
-    let agent_url = field_str(&resp, "agentUrl")?;
-    let token = field_str(&resp, "token")?;
-    Ok((agent_url, token))
+    let minted = match product {
+        HostingAppType::Nodejs => client.get_agent_token(app_id, product.as_str()).await,
+        HostingAppType::Mhwp => {
+            client
+                .ensure_database_tunnel_session(app_id, product.as_str())
+                .await
+        }
+    };
+    let resp = minted.map_err(|e| GddyError::from(e).into_cli_error())?;
+    parse_tunnel_target(&resp, product)
 }
 
-/// Pull a required string field out of the agent-token response, mapping a
-/// missing or non-string value to a coded error (the service contract is broken).
+fn parse_tunnel_target(resp: &Value, product: HostingAppType) -> cli_engine::Result<TunnelTarget> {
+    Ok(match product {
+        HostingAppType::Nodejs => TunnelTarget {
+            endpoint: field_str(resp, "agentUrl")?,
+            token: field_str(resp, "token")?,
+            ready_url: None,
+            replaced: false,
+        },
+        HostingAppType::Mhwp => TunnelTarget {
+            endpoint: field_str(resp, "url")?,
+            token: field_str(resp, "token")?,
+            ready_url: Some(field_str(resp, "pollUrl")?),
+            replaced: resp
+                .get("replaced")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
+    })
+}
+
+/// Pull a required string field out of the mint response, mapping a missing or
+/// non-string value to a coded error (the service contract is broken).
 fn field_str(resp: &Value, key: &str) -> cli_engine::Result<String> {
     resp.get(key)
         .and_then(Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| {
-            GddyError::network(format!("hosting agent-token response missing '{key}'"))
+            GddyError::network(format!("database tunnel mint response missing '{key}'"))
                 .with_fix("Retry; if it persists, the app may not support database tunneling yet.")
                 .into_cli_error()
         })
+}
+
+/// Poll the relay's readiness probe until it answers 2xx; a new relay needs its
+/// job scheduled and its hostname routed first.
+async fn wait_for_relay(poll_url: &str, endpoint: &str) -> Result<(), GddyError> {
+    let probe = validate_poll_url(poll_url, endpoint)?;
+    let http = crate::http::make_http_client();
+    let deadline = tokio::time::Instant::now() + RELAY_READY_TIMEOUT;
+    loop {
+        let ready = http
+            .get(probe.clone())
+            .timeout(RELAY_PROBE_TIMEOUT)
+            .send()
+            .await
+            .is_ok_and(|resp| resp.status().is_success());
+        if ready {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() + RELAY_POLL_INTERVAL >= deadline {
+            return Err(GddyError::network(format!(
+                "the database tunnel relay did not become ready within {}s",
+                RELAY_READY_TIMEOUT.as_secs()
+            ))
+            .with_fix("Retry the command; each retry starts a fresh relay. If it keeps failing, contact support."));
+        }
+        tokio::time::sleep(RELAY_POLL_INTERVAL).await;
+    }
+}
+
+/// The probe URL is service-supplied, so hold it to the same bar as the
+/// endpoint: HTTPS only, and on the relay's own host.
+fn validate_poll_url(poll_url: &str, endpoint: &str) -> Result<url::Url, GddyError> {
+    let probe = url::Url::parse(poll_url).map_err(|e| {
+        GddyError::network(format!(
+            "hosting service returned an invalid poll URL '{poll_url}': {e}"
+        ))
+    })?;
+    if probe.scheme() != "https" {
+        return Err(GddyError::network(format!(
+            "poll URL has an insecure or unsupported scheme '{}': expected https",
+            probe.scheme()
+        )));
+    }
+    let endpoint_host = url::Url::parse(endpoint)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+    if probe.host_str().map(str::to_ascii_lowercase) != endpoint_host {
+        return Err(GddyError::network(format!(
+            "poll URL '{poll_url}' is not on the relay host"
+        )));
+    }
+    Ok(probe)
 }
 
 /// Handle one accepted MySQL client: open its own agent WebSocket and relay
@@ -717,6 +844,26 @@ mod tests {
     }
 
     #[test]
+    fn product_is_required_and_accepts_mhwp() {
+        use crate::hosting::common::HostingAppType;
+        use clap::Parser;
+
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: super::TunnelArgs,
+        }
+
+        assert!(Cli::try_parse_from(["t", "--app-id", "abc123"]).is_err());
+
+        let wp = Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "mhwp"])
+            .expect("parse mhwp");
+        assert_eq!(wp.args.product, HostingAppType::Mhwp);
+
+        assert!(Cli::try_parse_from(["t", "--app-id", "abc123", "--product", "php"]).is_err());
+    }
+
+    #[test]
     fn tunnel_error_event_carries_code_and_fix() {
         let err = crate::error::GddyError::network("boom")
             .with_fix("do the thing")
@@ -727,5 +874,86 @@ mod tests {
         assert_eq!(event["error"]["code"], crate::error::codes::NETWORK_ERROR);
         assert_eq!(event["error"]["message"], "boom");
         assert_eq!(event["fix"], "do the thing");
+    }
+
+    #[test]
+    fn nodejs_target_uses_agent_url_without_readiness_probe() {
+        let resp = serde_json::json!({ "agentUrl": "https://agent.example", "token": "t" });
+        let target =
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Nodejs)
+                .expect("nodejs target");
+        assert_eq!(
+            target,
+            super::TunnelTarget {
+                endpoint: "https://agent.example".to_owned(),
+                token: "t".to_owned(),
+                ready_url: None,
+                replaced: false,
+            }
+        );
+    }
+
+    #[test]
+    fn wordpress_target_uses_relay_url_and_poll_url() {
+        let resp = serde_json::json!({
+            "sessionId": "s1",
+            "url": "https://dbt-s1.c1.pma.example",
+            "pollUrl": "https://dbt-s1.c1.pma.example/healthz",
+            "token": "relay-token",
+            "replaced": true,
+        });
+        let target =
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .expect("wordpress target");
+        assert_eq!(target.endpoint, "https://dbt-s1.c1.pma.example");
+        assert_eq!(target.token, "relay-token");
+        assert_eq!(
+            target.ready_url.as_deref(),
+            Some("https://dbt-s1.c1.pma.example/healthz")
+        );
+        assert!(target.replaced);
+    }
+
+    #[test]
+    fn wordpress_target_without_replaced_still_parses() {
+        let resp = serde_json::json!({
+            "url": "https://dbt-s1.example",
+            "pollUrl": "https://dbt-s1.example/healthz",
+            "token": "t",
+        });
+        let target =
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .expect("wordpress target");
+        assert!(!target.replaced);
+    }
+
+    #[test]
+    fn wordpress_target_requires_poll_url() {
+        let resp = serde_json::json!({ "url": "https://dbt-s1.example", "token": "t" });
+        assert!(
+            super::parse_tunnel_target(&resp, crate::hosting::common::HostingAppType::Mhwp)
+                .is_err()
+        );
+        let legacy = serde_json::json!({ "agentUrl": "https://agent.example", "token": "t" });
+        assert!(
+            super::parse_tunnel_target(&legacy, crate::hosting::common::HostingAppType::Mhwp)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn poll_url_must_be_https_on_the_relay_host() {
+        let relay = "https://dbt-s1.c1.pma.example";
+        assert!(super::validate_poll_url("https://DBT-S1.c1.pma.example/healthz", relay).is_ok());
+        for bad in [
+            "http://dbt-s1.c1.pma.example/healthz",
+            "https://evil.example/healthz",
+            "not a url",
+        ] {
+            assert!(
+                super::validate_poll_url(bad, relay).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
     }
 }

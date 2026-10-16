@@ -84,7 +84,7 @@ declare_scopes! {
             // Raw data access. A dedicated grant, separate from
             // HOSTING_DEPLOYMENT_EXECUTE: authority to publish a deployment does
             // not by itself grant raw database read/write.
-            /// Open a MySQL tunnel to a Node.js Hosting app's database
+            /// Open a MySQL tunnel to a Node.js or Managed WordPress app's database
             HOSTING_DATABASE_TUNNEL_EXECUTE => "hosting.database.tunnel:execute",
 
             // Spends money.
