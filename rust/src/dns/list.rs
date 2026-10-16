@@ -7,16 +7,17 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
+use crate::idn::DomainFormArgs;
 use crate::scopes::DOMAINS_READ;
 
 use domains_client::types;
 
-use super::records::{fetch_records, merged_tlsa_data, parse_list_type_arg};
+use super::records::{fetch_records, merged_tlsa_data, parse_dns_name_arg, parse_list_type_arg};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ListArgs {
     /// Domain whose records to list (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
     domain: String,
 
     /// Only records of this type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, NS,
@@ -25,8 +26,11 @@ struct ListArgs {
     record_type: Option<String>,
 
     /// Only records with this name (requires --type).
-    #[arg(long, value_name = "NAME", requires = "record_type")]
+    #[arg(long, value_name = "NAME", requires = "record_type", value_parser = parse_dns_name_arg)]
     name: Option<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// A record is unreadable without its type/name/data, so those three are
@@ -85,9 +89,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await?;
 
-            let out = build_list_output(&records).map_err(|e| {
+            let mut out = build_list_output(&records).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize DNS records: {e}"))
             })?;
+            for record in &mut out {
+                args.domain_format.form().convert_dns_fields(record);
+            }
             Ok(CommandResult::new(json!(out)))
         },
     )

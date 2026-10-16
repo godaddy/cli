@@ -4,12 +4,15 @@ use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, Tabl
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client};
+use crate::idn::DomainFormArgs;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use domains_client::types;
 
-use super::records::{fetch_records, parse_write_type_arg, record_value, verify_with_list_action};
+use super::records::{
+    fetch_records, parse_dns_name_arg, parse_write_type_arg, record_value, verified_result,
+};
 
 output_schema!(DnsDeleteResult {
     "domain": "string";
@@ -114,7 +117,7 @@ fn dry_run_delete_preview(
 #[derive(Debug, Clone, clap::Args)]
 struct DeleteArgs {
     /// Domain whose records to delete (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
     domain: String,
 
     /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
@@ -122,8 +125,11 @@ struct DeleteArgs {
     record_type: String,
 
     /// Record name relative to the domain (e.g. www).
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", value_parser = parse_dns_name_arg)]
     name: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// `records` only appears on the `--dry-run` preview (the real delete's
@@ -170,6 +176,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
+            let domain_format = args.domain_format.form();
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
@@ -185,13 +192,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .await?;
 
             if ctx.dry_run() {
-                return Ok(CommandResult::new(dry_run_delete_preview(
-                    &domain,
-                    &record_type,
-                    &name,
-                    &existing,
-                ))
-                .with_dry_run());
+                let mut preview = dry_run_delete_preview(&domain, &record_type, &name, &existing);
+                domain_format.convert_dns_fields(&mut preview);
+                return Ok(CommandResult::new(preview).with_dry_run());
             }
 
             let mut outcomes = Vec::with_capacity(existing.len());
@@ -221,13 +224,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
-                .map(|v| {
-                    CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
-                        &domain,
-                        &record_type,
-                        &name,
-                    )])
-                })
+                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
                 .map_err(super::mutate_failed)
         },
     )

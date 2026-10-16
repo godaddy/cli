@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
 use crate::hosting::common::{HostingDomain, client_err, make_client};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_DOMAIN_WRITE as DOMAIN_WRITE;
 
@@ -11,8 +12,16 @@ struct DomainAttachArgs {
     app_id: String,
 
     /// Fully-qualified domain name to attach (e.g. www.example.com).
-    #[arg(long, value_name = "HOSTNAME")]
+    #[arg(long, value_name = "HOSTNAME", value_parser = parse_hostname_arg)]
     hostname: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
+}
+
+/// Clap value-parser: a Unicode hostname is sent in its ASCII (punycode) form.
+fn parse_hostname_arg(raw: &str) -> Result<String, String> {
+    crate::idn::to_ascii(raw).map_err(|e| e.to_string())
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -33,10 +42,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: DomainAttachArgs| async move {
             let app_id = args.app_id.clone();
             let client = make_client(&ctx, &[DOMAIN_WRITE]).await?;
-            let data = client
+            let mut data = client
                 .attach_domain(&app_id, &args.hostname)
                 .await
                 .map_err(client_err)?;
+            args.domain_format.form().convert_domain_fields(&mut data);
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "hosting domain list --app-id <app-id>",
