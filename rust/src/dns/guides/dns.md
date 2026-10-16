@@ -65,6 +65,10 @@ gddy dns delete example.com --type A --name www
 
 Deleting something that doesn't match is a no-op success (`deleted: 0`), not an error. Preview with `--dry-run` first for anything you're not fully sure about.
 
+## International domain names
+
+Domain names and record names can be typed either as Unicode (`münchen.de`) or in their encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any DNS command to show the encoded form instead. Record values (the `--data` of a CNAME, MX or TXT record) are never converted; enter them exactly as they should be stored.
+
 ## Type-specific flags
 
 Most of these only apply to certain record types — set them only when the type calls for it:

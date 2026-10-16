@@ -149,9 +149,9 @@ pub(super) fn period_label(period: u64) -> String {
 /// forbidden-host-code-point + IDNA checks, then layers RFC 1035/1123 shape
 /// rules a real domain always satisfies: not a bare IP literal, >=2
 /// dot-separated LDH labels, each 1-63 bytes, total <=253 bytes, and a TLD
-/// that isn't all-numeric (ICANN disallows those). Returns the original
-/// trimmed input — not `Host::parse`'s ASCII/punycode form — so an
-/// already-working Unicode domain's wire format is unchanged.
+/// that isn't all-numeric (ICANN disallows those). Returns the ASCII
+/// (punycode, lowercase) form `Host::parse` computed, so a name typed as
+/// Unicode or pre-encoded reaches the API identically.
 pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -180,7 +180,7 @@ pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
             "{trimmed:?} doesn't look like a valid domain name (expected something like example.com)"
         )));
     }
-    Ok(trimmed.to_owned())
+    Ok(ascii)
 }
 
 /// Validate every value of a repeatable `--nameserver`-style flag as a
@@ -709,15 +709,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_domain_name_accepts_unicode_and_returns_original_not_punycode() {
-        // A real Unicode domain must pass (IDNA-processed for the shape check)
-        // but the returned string is the user's original input, not
-        // `Host::parse`'s ASCII/punycode form — no wire-format change for
-        // domains that already work today.
-        let input = "café.com";
+    fn validate_domain_name_returns_punycode_for_unicode_input() {
         assert_eq!(
-            validate_domain_name(input).expect("valid unicode domain"),
-            input
+            validate_domain_name("münchen.de").expect("valid unicode domain"),
+            "xn--mnchen-3ya.de"
+        );
+    }
+
+    #[test]
+    fn validate_domain_name_accepts_pre_encoded_and_unicode_forms_alike() {
+        assert_eq!(
+            validate_domain_name("xn--mnchen-3ya.de").expect("valid punycode domain"),
+            validate_domain_name("münchen.de").expect("valid unicode domain"),
         );
     }
 

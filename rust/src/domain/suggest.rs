@@ -10,6 +10,7 @@ use domains_client::types;
 use super::common::{
     api_error, comma_joined, fees_to_json, format_money, make_client, term_for_period,
 };
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -162,6 +163,9 @@ struct SuggestArgs {
     /// Only suggest names at most this many characters.
     #[arg(long = "length-max", value_name = "N", value_parser = clap::value_parser!(i64).range(1..))]
     length_max: Option<i64>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -205,8 +209,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Ok(r) => r.into_inner(),
                 Err(e) => return Err(api_error("domain suggestion", debug, e).await),
             };
-            let suggestions: Vec<serde_json::Value> =
-                resp.items.iter().filter_map(suggestion_to_json).collect();
+            let domain_format = args.domain_format.form();
+            let suggestions: Vec<serde_json::Value> = resp
+                .items
+                .iter()
+                .filter_map(suggestion_to_json)
+                .map(|mut s| {
+                    domain_format.convert_domain_fields(&mut s);
+                    s
+                })
+                .collect();
             Ok(
                 CommandResult::new(json!(suggestions)).with_next_actions(vec![
                     next_action("domain available <domain>", "Check a suggested domain")
