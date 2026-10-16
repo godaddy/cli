@@ -13,6 +13,7 @@ use super::common::{
     validate_nameserver_hosts,
 };
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
+use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -50,7 +51,7 @@ fn build_profile(
     privacy: bool,
     renew_auto: bool,
     name_servers: &[String],
-) -> Result<types::InlineRegistrationProfile> {
+) -> Result<types::Profile> {
     let file = super::contacts_file::load().map_err(|e| CliCoreError::message(e.to_string()))?;
     let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
     let registrant = to_api(super::contacts_file::Role::Registrant)?;
@@ -85,7 +86,7 @@ fn build_profile(
         )
     });
 
-    Ok(types::InlineRegistrationProfile {
+    Ok(types::Profile {
         auto_renew: Some(renew_auto),
         contacts: contacts_obj,
         name_servers,
@@ -129,10 +130,8 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     if let Some(renewal) = quote.renewal_price.as_ref().and_then(format_money) {
         out["renewalPrice"] = json!(renewal);
     }
-    if let Some(period) = quote.period {
-        out["period"] = json!(period.get());
-        out["periodLabel"] = json!(period_label(period.get()));
-    }
+    out["period"] = json!(quote.period.get());
+    out["periodLabel"] = json!(period_label(quote.period.get()));
     if let Some(token) = quote.quote_token.as_ref() {
         out["quoteToken"] = json!(token.to_string());
     }
@@ -375,7 +374,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 };
                 let cached = super::quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
-                    period: quote.period.map_or(period, |p| p.get()),
+                    period: quote.period.get(),
                     agreement_types,
                     agreement_titles,
                     price: view
@@ -394,11 +393,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
                     fees: fees_json,
                 };
-                if let Err(e) = super::quote_cache::save(&token, cached) {
-                    // Non-fatal: the quote is still shown, but purchase won't
-                    // find it. Warn so the user knows to re-quote on this host.
-                    tracing::warn!(error = %e, "could not cache the quote for purchase");
-                }
+                // `purchase` can only rebuild the quote from this local copy, so a
+                // quote that can't be saved can't be bought: fail instead of
+                // advertising a next step that would hit "quote not found".
+                super::quote_cache::save(&token, cached).map_err(GddyError::into_cli_error)?;
                 next_actions.push(purchase_next_action(
                     token,
                     ctx.middleware.output_format != "human",

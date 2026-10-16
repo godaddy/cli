@@ -158,7 +158,7 @@ fn build_group_node(path: &str, group: &RuntimeGroupSpec) -> SpecNode {
 /// has to be rebuilt by hand to match `main.rs`'s auth config ("godaddy").
 fn build_spec_tree() -> Vec<SpecNode> {
     let auth_group = cli_engine::auth_command_group("godaddy", &["godaddy".to_owned()])
-        .with_command(crate::scopes_cmd::auth_scopes_command());
+        .with_command(crate::scopes::auth_scopes_command());
     let mut nodes = vec![build_group_node("auth", &auth_group)];
     nodes.extend(crate::all_modules().iter().map(|module| {
         let group = cli_engine::build_module_group(module);

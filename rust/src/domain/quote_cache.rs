@@ -29,6 +29,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::GddyError;
+
 /// One cached quote: everything `domain purchase` needs to build the register
 /// request that the `quoteToken` was minted for.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,7 +53,7 @@ pub struct CachedQuote {
     /// if the API returned no expiry (then the entry never expires locally).
     #[serde(default)]
     pub expires_at: Option<String>,
-    /// The exact `InlineRegistrationProfile` the quote was taken with, serialized.
+    /// The exact `Profile` the quote was taken with, serialized.
     /// `register` must re-send it verbatim or the server rejects the mismatch
     /// (the token binds a hash of the domain/price/profile). `None` when the quote
     /// carried no profile.
@@ -132,13 +134,76 @@ fn write(path: &Path, file: &QuoteFile) -> cli_engine::Result<()> {
 }
 
 /// Persist a quote under its token, first pruning any expired entries so the file
-/// stays small. Best-effort: callers surface a warning on failure (the quote is
-/// still usable interactively; only `purchase --quote-token` depends on it).
-pub fn save(token: &str, quote: CachedQuote) -> cli_engine::Result<()> {
-    let path = quotes_path().ok_or_else(|| {
-        cli_engine::CliCoreError::message("no config directory for the quote cache")
-    })?;
-    save_at(&path, chrono::Utc::now(), token, quote)
+/// stays small. Fails with an actionable error when the file can't be written:
+/// `purchase --quote-token` can only reconstruct the quote from this cache, so a
+/// quote that wasn't saved can't be bought from this machine.
+pub(crate) fn save(token: &str, quote: CachedQuote) -> Result<(), GddyError> {
+    let Some(path) = quotes_path() else {
+        return Err(no_config_dir_error(&quote.domain));
+    };
+    save_to(&path, chrono::Utc::now(), token, quote)
+}
+
+fn save_to(
+    path: &Path,
+    now: chrono::DateTime<chrono::Utc>,
+    token: &str,
+    quote: CachedQuote,
+) -> Result<(), GddyError> {
+    let domain = quote.domain.clone();
+    save_at(path, now, token, quote).map_err(|e| save_failed_error(path, &domain, &e))
+}
+
+/// Where the user can point the cache instead, if their platform allows it.
+/// Only Linux honors an environment variable: macOS and Windows resolve the
+/// config folder from the account's home or known-folder settings, which a
+/// process-level variable doesn't change.
+fn relocation_hint() -> Option<&'static str> {
+    if cfg!(any(windows, target_os = "macos")) {
+        None
+    } else {
+        Some("To save it somewhere else, set XDG_CONFIG_HOME to a writable folder")
+    }
+}
+
+/// How to make a missing config directory resolvable, phrased to follow
+/// "please" in a sentence. Platform-specific because each OS derives it
+/// differently.
+pub(super) fn no_config_dir_fix() -> &'static str {
+    if cfg!(windows) {
+        "make sure your Windows user profile folders are available"
+    } else if cfg!(target_os = "macos") {
+        "make sure HOME points to your home folder"
+    } else {
+        "make sure HOME (or XDG_CONFIG_HOME) points to a writable folder"
+    }
+}
+
+fn save_failed_error(path: &Path, domain: &str, cause: &cli_engine::CliCoreError) -> GddyError {
+    let dir = path.parent().unwrap_or(path).display();
+    let relocate = relocation_hint()
+        .map(|hint| format!(" {hint}; use the same setting when you run `gddy domain purchase`."))
+        .unwrap_or_default();
+    GddyError::config(format!(
+        "could not save the quote for {domain} to {}: {cause}. `gddy domain purchase` \
+         needs the saved quote to register the domain, so this quote can't be used.",
+        path.display()
+    ))
+    .with_fix(format!(
+        "Resolve the problem above (for example, make {dir} writable or free up disk space), \
+         then run `gddy domain quote {domain}` again. Quotes are free.{relocate}"
+    ))
+}
+
+fn no_config_dir_error(domain: &str) -> GddyError {
+    GddyError::config(format!(
+        "could not find a folder to save the quote for {domain} in. `gddy domain purchase` \
+         needs the saved quote to register the domain, so this quote can't be used."
+    ))
+    .with_fix(format!(
+        "Please {}, then run `gddy domain quote {domain}` again. Quotes are free.",
+        no_config_dir_fix()
+    ))
 }
 
 fn save_at(
@@ -338,6 +403,60 @@ mod tests {
 
         assert!(matches!(get_at(&path, later, "old"), Lookup::Missing));
         assert!(matches!(get_at(&path, later, "new"), Lookup::Found(_)));
+    }
+
+    #[test]
+    fn unwritable_cache_location_fails_with_actionable_error() {
+        use cli_engine::DetailedError as _;
+
+        // A regular file where the `gddy/` directory should be makes the save
+        // fail for any user (including root), unlike a permissions-based setup.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let blocker = dir.path().join("gddy");
+        std::fs::write(&blocker, "not a directory").expect("write blocker");
+        let path = blocker.join("quotes.json");
+
+        let err = save_to(
+            &path,
+            at(2026, 7, 1, 12),
+            "tok-1",
+            quote("example.com", Some("2026-07-01T12:09:00Z")),
+        )
+        .expect_err("save must fail when the directory can't be created");
+
+        assert_eq!(err.error_code(), "CONFIG_ERROR");
+        let message = err.to_string();
+        assert!(message.contains("example.com"), "{message}");
+        assert!(
+            message.contains(&path.display().to_string()),
+            "message must name the file: {message}"
+        );
+        let fix = err.error_fix().expect("fix");
+        assert!(
+            fix.contains(&blocker.display().to_string()),
+            "fix must name the folder: {fix}"
+        );
+        assert!(fix.contains("gddy domain quote example.com"), "{fix}");
+        assert_eq!(
+            fix.contains("gddy domain purchase"),
+            relocation_hint().is_some(),
+            "relocation advice (and the reminder to reuse it at purchase) is platform-specific: {fix}"
+        );
+        assert!(matches!(
+            get_at(&path, at(2026, 7, 1, 12), "tok-1"),
+            Lookup::Missing
+        ));
+    }
+
+    #[test]
+    fn missing_config_dir_error_says_how_to_fix_it() {
+        use cli_engine::DetailedError as _;
+
+        let err = no_config_dir_error("example.com");
+        assert_eq!(err.error_code(), "CONFIG_ERROR");
+        let fix = err.error_fix().expect("fix");
+        assert!(fix.contains(no_config_dir_fix()), "{fix}");
+        assert!(fix.contains("gddy domain quote example.com"), "{fix}");
     }
 
     #[test]

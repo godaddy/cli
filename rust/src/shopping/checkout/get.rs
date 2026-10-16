@@ -1,8 +1,8 @@
 use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::Value;
-use shopping_client::types::Checkout;
 
 use crate::shopping::SHOPPING_PURCHASE_SCOPES;
+use crate::shopping::client::Checkout;
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response};
 

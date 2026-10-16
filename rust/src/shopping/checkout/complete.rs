@@ -3,14 +3,16 @@ use std::collections::BTreeMap;
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::{Map, Value};
 use shopping_client::types::{
-    CatalogLookupLookupRequest, Checkout, CheckoutCompleteRequest, CheckoutCompleteRequestSchema,
-    LookupCatalogResponse, LookupRequest, ShoppingConsentAcceptance, UcpRefsSchemaPayment,
+    CatalogLookupLookupRequest, CheckoutCompleteRequest, CheckoutCompleteRequestSchema,
+    ComGodaddyShoppingCheckoutInputSchemaConsentAcceptance as ConsentAcceptance,
+    ComGodaddyShoppingCheckoutInputSchemaConsentAcceptanceAgreementTypesItem as AgreementType,
+    LookupCatalogResponse, LookupRequest, UcpRefsSchemaPayment,
 };
 
 use crate::next_action::next_action;
 use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_PURCHASE_SCOPES;
-use crate::shopping::client::ClientError;
+use crate::shopping::client::{Checkout, ClientError};
 use crate::shopping::common::{
     CheckoutInput, client_err, make_client, payment_selection_body, reject_response_errors,
     require_selected_payment_instrument, selected_payment_id, update_response,
@@ -143,13 +145,14 @@ fn required_agreements(checkout: &Checkout) -> Vec<(&str, &str, Option<&str>)> {
         .iter()
         .filter(|agreement| agreement.required == Some(true))
         .filter_map(|agreement| {
-            let key = agreement.key.as_deref()?;
+            let key = agreement.key.as_ref()?.as_str();
             if key.trim().is_empty() {
                 return None;
             }
             let title = agreement
                 .title
-                .as_deref()
+                .as_ref()
+                .map(|title| title.as_str())
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or(key);
             Some((key, title, agreement.url.as_deref()))
@@ -202,16 +205,18 @@ fn agreement_gate(
         .into_cli_error())
 }
 
-fn completion_consent(checkout: &Checkout) -> Option<ShoppingConsentAcceptance> {
+fn completion_consent(checkout: &Checkout) -> Option<ConsentAcceptance> {
     let agreement_types = required_agreements(checkout)
         .into_iter()
-        .map(|(key, _, _)| key.to_owned())
+        .map(|(key, _, _)| {
+            AgreementType::try_from(key).expect("agreement keys were read from validated keys")
+        })
         .collect::<Vec<_>>();
     if agreement_types.is_empty() {
         return None;
     }
-    Some(ShoppingConsentAcceptance {
-        agreement_types,
+    Some(ConsentAcceptance {
+        agreement_types: Some(agreement_types),
         agreed_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
     })
 }
@@ -349,7 +354,8 @@ mod tests {
     use serde_json::json;
     use shopping_client::types::{
         CatalogLookupLookupResponse, ErrorResponse, LookupResponse, Message, MessageError, Payment,
-        PaymentInstrumentSelectedPaymentInstrument, ShoppingRequiredAgreement,
+        PaymentInstrumentSelectedPaymentInstrument, RequiredAgreementSchema,
+        RequiredAgreementSchemaKey, RequiredAgreementSchemaTitle,
     };
 
     use super::*;
@@ -400,14 +406,46 @@ mod tests {
         title: Option<&str>,
         url: Option<&str>,
         required: bool,
-    ) -> ShoppingRequiredAgreement {
-        ShoppingRequiredAgreement {
-            key: Some(key.to_owned()),
-            title: title.map(str::to_owned),
+    ) -> RequiredAgreementSchema {
+        RequiredAgreementSchema {
+            key: Some(RequiredAgreementSchemaKey::try_from(key).expect("non-empty key")),
+            title: title.map(|title| {
+                RequiredAgreementSchemaTitle::try_from(title).expect("non-empty title")
+            }),
             url: url.map(str::to_owned),
             required: Some(required),
             content: None,
         }
+    }
+
+    #[test]
+    fn checkout_response_agreements_keep_their_required_flag() {
+        let checkout: Checkout = serde_json::from_value(json!({
+            "id": "checkout-1",
+            "required_agreements": [
+                {"key": "terms", "title": "Terms", "required": true, "url": "https://example.com/terms"},
+                {"key": "promo", "title": "Promotions", "required": false, "content": "Optional."}
+            ]
+        }))
+        .expect("checkout response decodes");
+
+        assert_eq!(
+            required_agreements(&checkout),
+            vec![("terms", "Terms", Some("https://example.com/terms"))]
+        );
+    }
+
+    #[test]
+    fn completion_consent_serializes_as_agreement_keys_and_a_timestamp() {
+        let checkout = Checkout {
+            required_agreements: vec![required_agreement("terms", None, None, true)],
+            ..Default::default()
+        };
+        let consent = serde_json::to_value(completion_consent(&checkout).expect("consent"))
+            .expect("serialize consent");
+
+        assert_eq!(consent["agreement_types"], json!(["terms"]));
+        assert!(consent["agreed_at"].is_string(), "{consent}");
     }
 
     #[test]
@@ -490,8 +528,13 @@ mod tests {
         let consent = completion_consent(&checkout).expect("required consent");
 
         assert_eq!(
-            consent.agreement_types,
-            vec!["ssl".to_owned(), "terms".to_owned()]
+            consent
+                .agreement_types
+                .expect("agreement types")
+                .iter()
+                .map(|agreement_type| agreement_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ssl", "terms"]
         );
         assert!(
             chrono::DateTime::parse_from_rfc3339(consent.agreed_at.as_deref().expect("timestamp"))

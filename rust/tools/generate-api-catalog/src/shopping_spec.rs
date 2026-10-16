@@ -21,13 +21,14 @@ pub(crate) fn refresh(
     common_types: Option<&Path>,
     out_path: &Path,
 ) -> Result<()> {
-    let (mut spec, defs) = crate::dereference::load_and_dereference(spec_path, common_types)
-        .with_context(|| {
-            format!(
-                "failed to dereference Shopping spec {}",
-                spec_path.display()
-            )
-        })?;
+    let (mut spec, defs) =
+        crate::dereference::load_and_dereference_distinguishing_namesakes(spec_path, common_types)
+            .with_context(|| {
+                format!(
+                    "failed to dereference Shopping spec {}",
+                    spec_path.display()
+                )
+            })?;
     let object = spec
         .as_object_mut()
         .context("Shopping spec is not a JSON object")?;
@@ -44,9 +45,13 @@ pub(crate) fn refresh(
         schemas.insert(name, definition);
     }
     crate::spec_normalize::rewrite_defs_refs(&mut spec);
-    crate::spec_normalize::remove_remaining_relative_refs(&mut spec);
+    ensure_refs_resolved(&spec)?;
     crate::spec_normalize::remove_self_referencing_schemas(&mut spec);
-    dealias_name_colliding_schemas(
+
+    // `get_product_response` is a bare `$ref` alias whose derived Rust name
+    // (`GetProductResponse`) collides with the name progenitor gives the
+    // `get_product` operation's `oneOf` response enum.
+    repoint_schema_refs(
         &mut spec,
         &[(
             "get_product_response",
@@ -66,9 +71,9 @@ pub(crate) fn refresh(
     remove_protocol_header_parameters(&mut spec);
     crate::spec_normalize::retain_2xx_responses(&mut spec);
     relax_response_schemas(&mut spec);
+    capture_open_response_properties(&mut spec)?;
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
     preserve_payment_instrument_fields(&mut spec)?;
-    add_completion_consent(&mut spec)?;
     add_idempotency_headers(&mut spec)?;
     prune_documentation_fields(&mut spec);
     crate::spec_normalize::add_required_response_descriptions(&mut spec);
@@ -82,18 +87,20 @@ pub(crate) fn refresh(
     Ok(())
 }
 
-/// Progenitor names an operation's `oneOf` response enum from its
-/// `operationId` (`get_product` -> `GetProductResponse`), independently of
-/// how it names the schema-alias newtype it generates for a bare `$ref`
-/// schema (`get_product_response` -> `GetProductResponse`). When those two
-/// derived names collide, progenitor silently reuses the schema newtype as
-/// the operation's response type instead of generating the `oneOf` enum,
-/// so the `error_response` branch has no Rust variant to match against at
-/// all — unlike every other operation in this contract, whose schema and
-/// operationId names differ enough not to collide. Point every reference
-/// to `alias` directly at what it aliases and drop the now-unreferenced
-/// alias schema, freeing its derived name for the operation's own enum.
-fn dealias_name_colliding_schemas(spec: &mut Value, aliases: &[(&str, &str)]) {
+/// Fails if any `$ref` still points outside the document, so a missing or moved
+/// schema file stops the refresh instead of leaving a weakened type behind.
+fn ensure_refs_resolved(spec: &Value) -> Result<()> {
+    let unresolved = crate::dereference::collect_unresolved_refs(spec);
+    anyhow::ensure!(
+        unresolved.is_empty(),
+        "Shopping spec has unresolved external $refs: {unresolved:?}"
+    );
+    Ok(())
+}
+
+/// Rewrites every `$ref` to each `alias` schema so it points at its `target`, then
+/// removes the `alias` from `components.schemas`.
+fn repoint_schema_refs(spec: &mut Value, aliases: &[(&str, &str)]) {
     for (alias, target) in aliases {
         let from = format!("#/components/schemas/{alias}");
         let to = format!("#/components/schemas/{target}");
@@ -146,6 +153,61 @@ fn remove_protocol_header_parameters(spec: &mut Value) {
                 )
             });
         }
+    }
+}
+
+/// Response schemas declared as open objects (`additionalProperties: true`)
+/// whose undeclared keys the typed client must keep, so `--output json` shows
+/// what the API returned (e.g. catalog `subscription_type`, `term_type`).
+///
+/// Request-only schemas (`buyer`, `context`, `signals`, the checkout request
+/// bodies, ...) are deliberately absent: a catch-all field would also be
+/// required when the CLI builds them by hand.
+const OPEN_RESPONSE_SCHEMAS: &[&str] = &[
+    "product-metadata_base_schema",
+    "product-metadata_hosting_schema",
+    "email_schema",
+    "ssl_schema",
+    "variant-metadata_base_schema",
+    "variant-metadata_hosting_schema",
+];
+
+/// Progenitor's type generator ignores `additionalProperties: true` but turns
+/// the equally permissive `{}` into a flattened `extra` map holding every key
+/// the schema does not name. Rewrites each open object in
+/// [`OPEN_RESPONSE_SCHEMAS`] (including its `allOf` branches) accordingly.
+fn capture_open_response_properties(spec: &mut Value) -> Result<()> {
+    let schemas = spec
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+        .context("Shopping component schemas are missing")?;
+    for name in OPEN_RESPONSE_SCHEMAS {
+        let schema = schemas
+            .get_mut(*name)
+            .with_context(|| format!("Shopping {name} schema is missing"))?;
+        open_additional_properties(schema);
+    }
+    Ok(())
+}
+
+fn open_additional_properties(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if map.contains_key("properties")
+                && map.get("additionalProperties") == Some(&Value::Bool(true))
+            {
+                map.insert("additionalProperties".to_owned(), serde_json::json!({}));
+            }
+            for child in map.values_mut() {
+                open_additional_properties(child);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                open_additional_properties(value);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -204,65 +266,6 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
         serde_json::json!({"type": "string"}),
     );
     properties.insert("type".to_owned(), serde_json::json!({"type": "string"}));
-    Ok(())
-}
-
-fn add_completion_consent(spec: &mut Value) -> Result<()> {
-    let schemas = spec
-        .get_mut("components")
-        .and_then(|components| components.get_mut("schemas"))
-        .and_then(Value::as_object_mut)
-        .context("Shopping component schemas are missing")?;
-
-    schemas.insert(
-        "shopping_consent_acceptance".to_owned(),
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "agreement_types": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                },
-                "agreed_at": {"type": "string"}
-            }
-        }),
-    );
-    schemas.insert(
-        "shopping_required_agreement".to_owned(),
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "key": {"type": "string"},
-                "title": {"type": "string"},
-                "url": {"type": "string"},
-                "content": {"type": "string"},
-                "required": {"type": "boolean"}
-            }
-        }),
-    );
-
-    let completion_properties = schemas
-        .get_mut("checkout-complete-request_schema")
-        .and_then(|schema| schema.get_mut("properties"))
-        .and_then(Value::as_object_mut)
-        .context("Shopping completion request properties are missing")?;
-    completion_properties.insert(
-        "consent".to_owned(),
-        serde_json::json!({"$ref": "#/components/schemas/shopping_consent_acceptance"}),
-    );
-
-    let checkout_properties = schemas
-        .get_mut("checkout")
-        .and_then(|schema| schema.get_mut("properties"))
-        .and_then(Value::as_object_mut)
-        .context("Shopping checkout response properties are missing")?;
-    checkout_properties.insert(
-        "required_agreements".to_owned(),
-        serde_json::json!({
-            "type": "array",
-            "items": {"$ref": "#/components/schemas/shopping_required_agreement"}
-        }),
-    );
     Ok(())
 }
 
@@ -367,6 +370,17 @@ fn relax_response_schemas(spec: &mut Value) {
     }
 }
 
+/// Relaxes each property's schema without touching the `properties` map itself: its
+/// keys are field names, so a field that happens to be called `required`, `format` or
+/// `pattern` must survive.
+fn relax_property_schemas(properties: &mut Value) {
+    if let Value::Object(map) = properties {
+        for schema in map.values_mut() {
+            relax(schema);
+        }
+    }
+}
+
 fn relax(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -385,8 +399,30 @@ fn relax(value: &mut Value) {
                     map.remove("type");
                 }
             }
-            for child in map.values_mut() {
-                relax(child);
+            for (key, child) in map.iter_mut() {
+                if key == "properties" {
+                    relax_property_schemas(child);
+                } else {
+                    relax(child);
+                }
+            }
+            // "One of these fields is required" is written as an `anyOf`/`oneOf` of
+            // `required`-only branches. With `required` stripped every branch is an
+            // empty schema, and progenitor turns that into a pair of redundant
+            // flattened sub-structs, so drop the combinator.
+            for combinator in ["anyOf", "oneOf"] {
+                let all_empty =
+                    map.get(combinator)
+                        .and_then(Value::as_array)
+                        .is_some_and(|branches| {
+                            !branches.is_empty()
+                                && branches
+                                    .iter()
+                                    .all(|branch| branch.as_object().is_some_and(|b| b.is_empty()))
+                        });
+                if all_empty {
+                    map.remove(combinator);
+                }
             }
         }
         Value::Array(values) => {
@@ -403,9 +439,76 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        dealias_name_colliding_schemas, preserve_payment_instrument_fields,
-        prune_documentation_fields,
+        OPEN_RESPONSE_SCHEMAS, capture_open_response_properties, ensure_refs_resolved,
+        preserve_payment_instrument_fields, prune_documentation_fields, relax, repoint_schema_refs,
     };
+
+    #[test]
+    fn relaxing_drops_the_required_keyword_but_keeps_properties_named_like_keywords() {
+        let mut schema = json!({
+            "type": "object",
+            "required": ["key", "required"],
+            "properties": {
+                "key": {"type": "string", "format": "uri", "pattern": "^a"},
+                "required": {"type": "boolean"},
+                "format": {"type": "string"},
+                "pattern": {"type": "string"}
+            }
+        });
+
+        relax(&mut schema);
+
+        assert!(schema.get("required").is_none(), "{schema}");
+        assert_eq!(
+            schema["properties"]["key"],
+            json!({"type": "string"}),
+            "keyword-level format/pattern are still dropped"
+        );
+        for name in ["required", "format", "pattern"] {
+            assert!(
+                schema["properties"].get(name).is_some(),
+                "property {name:?} was removed: {schema}"
+            );
+        }
+    }
+
+    #[test]
+    fn relaxing_drops_combinators_that_only_expressed_which_field_is_required() {
+        let mut schema = json!({
+            "type": "object",
+            "properties": {"url": {"type": "string"}, "content": {"type": "string"}},
+            "anyOf": [{"required": ["url"]}, {"required": ["content"]}]
+        });
+
+        relax(&mut schema);
+
+        assert!(schema.get("anyOf").is_none(), "{schema}");
+        assert!(schema["properties"].get("url").is_some(), "{schema}");
+
+        // A combinator whose branches carry real schemas is left alone.
+        let mut response = json!({
+            "oneOf": [
+                {"$ref": "#/components/schemas/checkout"},
+                {"$ref": "#/components/schemas/error_response"}
+            ]
+        });
+        let expected = response.clone();
+        relax(&mut response);
+        assert_eq!(response, expected);
+    }
+
+    #[test]
+    fn unresolved_refs_fail_the_refresh_instead_of_being_dropped() {
+        let relative = json!({"components": {"schemas": {"a": {"$ref": "./models/Missing.yaml"}}}});
+        let error = ensure_refs_resolved(&relative).expect_err("relative ref is unresolved");
+        assert!(error.to_string().contains("Missing.yaml"), "{error}");
+
+        let absolute = json!({"a": {"$ref": "https://example.com/missing.json"}});
+        assert!(ensure_refs_resolved(&absolute).is_err());
+
+        let local = json!({"a": {"$ref": "#/components/schemas/b"}, "b": {"type": "string"}});
+        assert!(ensure_refs_resolved(&local).is_ok());
+    }
 
     #[test]
     fn pruning_removes_documentation_and_examples_recursively() {
@@ -501,6 +604,58 @@ mod tests {
         );
     }
 
+    fn spec_with_open_response_schemas() -> serde_json::Value {
+        let mut schemas = serde_json::Map::new();
+        for name in OPEN_RESPONSE_SCHEMAS {
+            schemas.insert(
+                (*name).to_owned(),
+                json!({
+                    "allOf": [
+                        {"additionalProperties": true, "properties": {"a": {"type": "string"}}, "type": "object"}
+                    ]
+                }),
+            );
+        }
+        schemas.insert(
+            "buyer".to_owned(),
+            json!({"additionalProperties": true, "properties": {"email": {"type": "string"}}, "type": "object"}),
+        );
+        json!({"components": {"schemas": schemas}})
+    }
+
+    #[test]
+    fn capturing_open_response_properties_keeps_unknown_keys_for_response_schemas_only() {
+        let mut spec = spec_with_open_response_schemas();
+
+        capture_open_response_properties(&mut spec).expect("schemas are present");
+
+        for name in OPEN_RESPONSE_SCHEMAS {
+            let branch = spec
+                .pointer(&format!("/components/schemas/{name}/allOf/0"))
+                .expect("branch");
+            assert_eq!(branch["additionalProperties"], json!({}), "{name}");
+            assert!(branch["properties"].get("a").is_some(), "{name}");
+        }
+        assert_eq!(
+            spec.pointer("/components/schemas/buyer/additionalProperties"),
+            Some(&json!(true)),
+            "request-side schemas stay untouched"
+        );
+    }
+
+    #[test]
+    fn capturing_open_response_properties_fails_when_a_named_schema_disappears() {
+        let mut spec = spec_with_open_response_schemas();
+        spec.pointer_mut("/components/schemas")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("schemas")
+            .remove("ssl_schema");
+
+        let error = capture_open_response_properties(&mut spec).expect_err("schema is missing");
+
+        assert!(error.to_string().contains("ssl_schema"), "{error}");
+    }
+
     #[test]
     fn preserving_payment_instrument_fields_adds_handler_routing_metadata() {
         let mut spec = json!({
@@ -541,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn dealiasing_points_references_at_the_target_and_drops_the_alias_schema() {
+    fn repointing_points_references_at_the_target_and_drops_the_alias_schema() {
         let mut spec = json!({
             "components": {
                 "schemas": {
@@ -571,7 +726,7 @@ mod tests {
             }
         });
 
-        dealias_name_colliding_schemas(
+        repoint_schema_refs(
             &mut spec,
             &[(
                 "get_product_response",

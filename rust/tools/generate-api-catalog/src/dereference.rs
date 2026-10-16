@@ -1,13 +1,14 @@
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashSet, path::Path};
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use serde_json::Value;
 
 use crate::github::parse_yaml_or_json;
+use crate::ref_paths::{
+    has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
+    resolve_common_types_path, specification_root,
+};
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -94,6 +95,23 @@ fn derive_defs_key_for_path(ref_str: &str) -> String {
     }
 }
 
+/// Prefix `key` with the file's parent directory when another schema file in
+/// the specification has the same name but a different `$id` (e.g.
+/// `product-metadata/base.schema.json` and
+/// `variant-metadata/base.schema.json`); otherwise they would share one `$defs`
+/// entry and whichever was seen first would silently win.
+fn qualify_ambiguous_key(key: String, ref_str: &str, spec_dir: &Path) -> String {
+    let file = normalize_path(&spec_dir.join(ref_str.split('#').next().unwrap_or(ref_str)));
+    let file = file.as_path();
+    let qualifier = file.parent().and_then(Path::file_name);
+    match (qualifier, specification_root(spec_dir)) {
+        (Some(qualifier), Some(root)) if has_conflicting_namesake(&root.join("schemas"), file) => {
+            sanitize_defs_key(&format!("{}_{key}", qualifier.to_string_lossy()))
+        }
+        _ => key,
+    }
+}
+
 fn sanitize_defs_key(s: &str) -> String {
     let sanitized: String = s
         .chars()
@@ -113,16 +131,28 @@ fn dereference(
     current: Value,
     spec_dir: &Path,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Value {
-    if depth > 64 {
+    // Backstop only: circular refs are caught by the `defs` placeholder below. Depth
+    // counts structural nesting plus every external file hop, and real spec chains
+    // (e.g. UCP schemas routed through a shared refs document) run past 90.
+    if depth > 256 {
         return current;
     }
     match current {
         Value::Object(mut map) => {
             if let Some(Value::String(ref_str)) = map.get("$ref").cloned() {
+                // Key and resolve `$id` URLs by the file that declares them, so lifted
+                // `$defs` keys follow file names rather than generic URL tails.
+                let ref_str = id_ref_to_file_ref(&ref_str, spec_dir).unwrap_or(ref_str);
                 if let Some(key) = should_lift_to_defs(&ref_str) {
+                    let key = if qualify_namesakes && !ref_str.starts_with('#') {
+                        qualify_ambiguous_key(key, &ref_str, spec_dir)
+                    } else {
+                        key
+                    };
                     // Already registered — return the local pointer immediately (dedup)
                     if defs.contains_key(&key) {
                         return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
@@ -132,11 +162,27 @@ fn dereference(
                     let resolved_opt = if ref_str.starts_with('#') {
                         // Local component ref: resolve from this spec's root
                         resolve_local_ref(root, &ref_str).cloned().map(|v| {
-                            dereference(root, v, spec_dir, common_types_dir, defs, depth + 1)
+                            dereference(
+                                root,
+                                v,
+                                spec_dir,
+                                common_types_dir,
+                                qualify_namesakes,
+                                defs,
+                                depth + 1,
+                            )
                         })
                     } else {
                         // External file/URL ref
-                        resolve_ref(root, &ref_str, spec_dir, common_types_dir, defs, depth + 1)
+                        resolve_ref(
+                            root,
+                            &ref_str,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth + 1,
+                        )
                     };
                     if let Some(content) = resolved_opt {
                         defs.insert(key.clone(), content);
@@ -148,21 +194,54 @@ fn dereference(
                     return Value::Object(map);
                 }
                 // Non-liftable local ref (e.g. #/paths/...) — inline as before
-                let resolved =
-                    resolve_ref(root, &ref_str, spec_dir, common_types_dir, defs, depth + 1);
+                let resolved = resolve_ref(
+                    root,
+                    &ref_str,
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
                 return resolved
-                    .map(|v| dereference(root, v, spec_dir, common_types_dir, defs, depth + 1))
+                    .map(|v| {
+                        dereference(
+                            root,
+                            v,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth + 1,
+                        )
+                    })
                     .unwrap_or(Value::Object(map));
             }
             // Recurse into all values
             for v in map.values_mut() {
-                *v = dereference(root, v.take(), spec_dir, common_types_dir, defs, depth + 1);
+                *v = dereference(
+                    root,
+                    v.take(),
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
             }
             Value::Object(map)
         }
         Value::Array(mut arr) => {
             for v in &mut arr {
-                *v = dereference(root, v.take(), spec_dir, common_types_dir, defs, depth + 1);
+                *v = dereference(
+                    root,
+                    v.take(),
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
             }
             Value::Array(arr)
         }
@@ -175,6 +254,7 @@ fn resolve_ref(
     ref_str: &str,
     spec_dir: &Path,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
@@ -198,7 +278,13 @@ fn resolve_ref(
                     .unwrap_or(""),
             );
         let local_path = ct_dir.join(url_path.trim_start_matches('/'));
-        return load_external_ref(&local_path, common_types_dir, defs, depth);
+        return load_external_ref(
+            &local_path,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
     }
 
     if let Some(url_path) = ref_str.strip_prefix("https://godaddy.com/ucp/schemas/") {
@@ -206,7 +292,14 @@ fn resolve_ref(
         let local_path = specification_root(spec_dir)?
             .join("schemas")
             .join(file_part);
-        return resolve_external_fragment(&local_path, fragment, common_types_dir, defs, depth);
+        return resolve_external_fragment(
+            &local_path,
+            fragment,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
     }
 
     if let Some(url_path) = ref_str.strip_prefix("https://ucp.dev/schemas/shopping/") {
@@ -214,7 +307,14 @@ fn resolve_ref(
         let local_path = specification_root(spec_dir)?
             .join("schemas/ucp/shopping")
             .join(file_part);
-        return resolve_external_fragment(&local_path, fragment, common_types_dir, defs, depth);
+        return resolve_external_fragment(
+            &local_path,
+            fragment,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
     }
 
     // Relative file reference — strip fragment
@@ -233,11 +333,19 @@ fn resolve_ref(
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
     let external_root =
-        load_external_ref(&file_path, common_types_dir, defs, depth).or_else(|| {
-            spec_dir.parent().and_then(|parent| {
-                load_external_ref(&parent.join(file_part), common_types_dir, defs, depth)
-            })
-        })?;
+        load_external_ref(&file_path, common_types_dir, qualify_namesakes, defs, depth).or_else(
+            || {
+                spec_dir.parent().and_then(|parent| {
+                    load_external_ref(
+                        &parent.join(file_part),
+                        common_types_dir,
+                        qualify_namesakes,
+                        defs,
+                        depth,
+                    )
+                })
+            },
+        )?;
 
     if let Some(frag) = fragment
         && !frag.is_empty()
@@ -258,29 +366,20 @@ fn resolve_external_fragment(
     path: &Path,
     fragment: Option<&str>,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
-    let root = load_external_ref(path, common_types_dir, defs, depth)?;
+    let root = load_external_ref(path, common_types_dir, qualify_namesakes, defs, depth)?;
     fragment.map_or(Some(root.clone()), |fragment| {
         resolve_local_ref(&root, fragment).cloned()
     })
 }
 
-fn specification_root(spec_dir: &Path) -> Option<&Path> {
-    let mut current = Some(spec_dir);
-    while let Some(path) = current {
-        if path.join("schemas").is_dir() {
-            return Some(path);
-        }
-        current = path.parent();
-    }
-    None
-}
-
 fn load_external_ref(
     path: &Path,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
@@ -321,91 +420,10 @@ fn load_external_ref(
         parsed,
         dir,
         common_types_dir,
+        qualify_namesakes,
         defs,
         depth + 1,
     ))
-}
-
-/// Try to find `path` in its parent directory with a case-insensitive filename match.
-/// Returns the first candidate whose lowercased name equals the lowercased target,
-/// or `None` if no unique match is found.
-fn resolve_case_insensitive(path: &Path) -> Option<PathBuf> {
-    let dir = path.parent()?;
-    let target = path.file_name()?.to_string_lossy().to_lowercase();
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().to_lowercase() == target)
-        .map(|e| e.path())
-        .collect();
-    if matches.len() == 1 {
-        matches.pop()
-    } else {
-        None
-    }
-}
-
-/// Normalize a path by resolving `.` and `..` components without hitting the filesystem.
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-/// When a path contains a `common-types` segment and does not exist, try to locate the
-/// file in the standalone common-types-specification clone. Mirrors the TypeScript
-/// `resolveCommonTypesFile` helper.
-fn resolve_common_types_path(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
-    let ct_dir = common_types_dir?;
-    let path_str = path.to_string_lossy();
-    let ct_marker = "common-types/";
-    let idx = path_str.find(ct_marker)?;
-
-    let rel = &path_str[idx + ct_marker.len()..];
-    // 1. Try path as-is relative to the clone root
-    let direct = ct_dir.join(rel);
-    if direct.exists() {
-        return Some(direct);
-    }
-
-    // 2. Try v1/schemas/{yaml,json}/<basename> (covering both extension variants)
-    let basename = path.file_name()?;
-    let basename_str = basename.to_string_lossy();
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let (primary_sub, alt_sub, alt_ext) = if ext == "json" {
-        ("json", "yaml", "yaml")
-    } else {
-        ("yaml", "json", "json")
-    };
-
-    let nested = ct_dir
-        .join("v1")
-        .join("schemas")
-        .join(primary_sub)
-        .join(basename_str.as_ref());
-    if nested.exists() {
-        return Some(nested);
-    }
-    let stem = path.file_stem()?.to_string_lossy();
-    let alt_name = format!("{stem}.{alt_ext}");
-    let alt = ct_dir
-        .join("v1")
-        .join("schemas")
-        .join(alt_sub)
-        .join(&alt_name);
-    if alt.exists() {
-        return Some(alt);
-    }
-
-    None
 }
 
 /// Walk a dereferenced value and collect any remaining external `$ref` strings.
@@ -498,6 +516,24 @@ pub(crate) fn load_and_dereference(
     spec_file: &Path,
     common_types_dir: Option<&Path>,
 ) -> Result<(Value, IndexMap<String, Value>)> {
+    load_and_dereference_with(spec_file, common_types_dir, false)
+}
+
+/// Like [`load_and_dereference`], but lifts schema files that share a file name yet
+/// declare different `$id`s under distinct `$defs` keys instead of letting one
+/// silently replace the other. Opt-in so specs already generated keep their keys.
+pub(crate) fn load_and_dereference_distinguishing_namesakes(
+    spec_file: &Path,
+    common_types_dir: Option<&Path>,
+) -> Result<(Value, IndexMap<String, Value>)> {
+    load_and_dereference_with(spec_file, common_types_dir, true)
+}
+
+fn load_and_dereference_with(
+    spec_file: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+) -> Result<(Value, IndexMap<String, Value>)> {
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
     let parsed = parse_yaml_or_json(&src, spec_file)?;
@@ -508,6 +544,7 @@ pub(crate) fn load_and_dereference(
         parsed,
         spec_dir,
         common_types_dir,
+        qualify_namesakes,
         &mut defs,
         0,
     );

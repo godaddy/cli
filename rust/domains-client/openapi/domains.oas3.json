@@ -140,6 +140,15 @@
           "type": "string"
         }
       },
+      "registrationBatchId": {
+        "description": "Server-assigned registration batch identifier.",
+        "in": "path",
+        "name": "registrationBatchId",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/uuid"
+        }
+      },
       "registrationId": {
         "description": "Server-assigned registration identifier.",
         "in": "path",
@@ -363,6 +372,30 @@
       }
     },
     "schemas": {
+      "AcknowledgedFee": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/acknowledged-fee.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A fee that the customer explicitly acknowledged before executing a purchase. Used to confirm the customer saw and accepted specific charges (e.g., PREMIUM domain fees) before the irreversible purchase is executed.\n",
+        "properties": {
+          "fee": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              },
+              {
+                "description": "The monetary amount of this fee."
+              }
+            ]
+          },
+          "type": {
+            "description": "Fee type identifying the charge category. Common values include ONE_TIME_PREMIUM_DOMAIN_PURCHASE for premium domain acquisition fees.\n",
+            "example": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+            "type": "string"
+          }
+        },
+        "title": "AcknowledgedFee",
+        "type": "object"
+      },
       "Agreement": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/agreement.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -648,6 +681,11 @@
             "description": "The contact's last (family) name.",
             "example": "Smith",
             "type": "string",
+            "x-sensitivity": "confidential"
+          },
+          "metadata": {
+            "description": "The contact eligibility data fields as specified by GET /profile-schemas/{tld} (operationId: getProfileSchema)\n",
+            "type": "object",
             "x-sensitivity": "confidential"
           },
           "organization": {
@@ -1227,6 +1265,88 @@
         "title": "Domain Operation Type",
         "type": "string"
       },
+      "DomainQuoteDetails": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-quote-details.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Shared quote details for a single domain. Contains the domain name, registration period, locked price, fees, availability status, resolved settings, and required agreements. Used as a base for both single-domain quotes (RegistrationQuote) and per-domain details in batch quotes (RegistrationBatchDomain).\n",
+        "properties": {
+          "available": {
+            "description": "Whether the domain is available for registration. When false, no quoteToken is returned (for single quotes) or the domain is excluded from the bulk quote.\n",
+            "type": "boolean"
+          },
+          "domain": {
+            "description": "The domain name in punycode A-label form for IDNs.\n",
+            "example": "example.com",
+            "type": "string"
+          },
+          "fees": {
+            "description": "Fees charged at the time of purchase, in addition to the registration price. For PREMIUM domains, includes ONE_TIME_PREMIUM_DOMAIN_PURCHASE.\n",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "inventory": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InventoryType"
+              },
+              {
+                "description": "The inventory source for this domain. REGISTRY for standard domains, PREMIUM for aftermarket/premium domains, UNAVAILABLE when not available for registration.\n"
+              }
+            ]
+          },
+          "period": {
+            "default": 1,
+            "description": "Registration period in years for which the price is quoted.",
+            "example": 1,
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "price": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              },
+              {
+                "description": "The locked registration price for the quoted period. Total amount charged on execute is this price plus any fees.\n"
+              }
+            ]
+          },
+          "renewalPrice": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              },
+              {
+                "description": "The standard renewal price at the end of the registration period. This is the price that will be charged for subsequent renewals at non-promotional rates.\n"
+              }
+            ]
+          },
+          "requiredAgreements": {
+            "description": "Legal agreements that must be accepted before executing this quote. The agreementType values from this list must be included in the execute request's consent object.\n",
+            "items": {
+              "$ref": "#/components/schemas/Agreement"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "resolved": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedSettings"
+              },
+              {
+                "description": "The effective contact and preference settings that will be applied on execute. Review before execute to verify registrant, contacts, and preferences match intent.\n"
+              }
+            ]
+          }
+        },
+        "title": "DomainQuoteDetails",
+        "type": "object"
+      },
       "DomainStatus": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/domain-status.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1287,47 +1407,6 @@
         "title": "Fee Type",
         "type": "string"
       },
-      "InlineRegistrationProfile": {
-        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/inline-registration-profile.v3",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "A one-time, non-persisted set of contacts and purchase preference defaults supplied inline on a quote or execute request. Use to provide registration data for this transaction without creating or updating a saved registration profile.\nShared by the registration quote and execute request bodies. Every field is optional. Omitted fields account identity or other default values. Provided fields override only what is supplied — contact roles replace as a whole block; preference fields replace individually.\nThis is not a saved registration profile and is not JSON Patch. Data here applies only to the current quote or registration request.\n",
-        "properties": {
-          "autoRenew": {
-            "description": "Auto-renew preference for this registration. Omit to inherit from the resolved saved profile or account defaults.\n",
-            "type": "boolean"
-          },
-          "contacts": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Contacts"
-              },
-              {
-                "description": "Contact records for this request. Each role provided replaces that role from the resolved saved profile or account identity. Omitted roles continue to resolve from the saved profile or cascade from registrant.\n"
-              }
-            ]
-          },
-          "nameServers": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NameServers"
-              },
-              {
-                "description": "Authoritative nameservers for this registration. Omit to inherit from the resolved saved profile or platform defaults.\n",
-                "example": [
-                  "ns1.example.com",
-                  "ns2.example.com"
-                ]
-              }
-            ]
-          },
-          "privacy": {
-            "description": "WHOIS privacy preference for this registration. Omit to inherit from the resolved saved profile or account defaults.\n",
-            "type": "boolean"
-          }
-        },
-        "title": "Inline Registration Profile",
-        "type": "object"
-      },
       "InventoryType": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/inventory-type.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1369,6 +1448,54 @@
         ],
         "title": "Optimization Target",
         "type": "string"
+      },
+      "Profile": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/profile.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A set of contacts and purchase preference defaults supplied on a quote or registration request. Use to provide registration data for a transaction, either inline or via a saved registration profile.\nEvery field is optional at the base level. Each usage site layers its own required constraints. Omitted fields account identity or other default values. Provided fields override only what is supplied — contact roles replace as a  whole block; preference fields replace individually.\n",
+        "properties": {
+          "autoRenew": {
+            "description": "Auto-renew preference for this registration. Omit to inherit from the resolved saved profile or account defaults.\n",
+            "type": "boolean"
+          },
+          "contacts": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Contacts"
+              },
+              {
+                "description": "Contact records for this request. Each role provided replaces that role from the resolved saved profile or account identity. Omitted roles continue to resolve from the saved profile or cascade from registrant.\n"
+              }
+            ]
+          },
+          "nameServers": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NameServers"
+              },
+              {
+                "description": "Authoritative nameservers for this registration. Omit to inherit from the resolved saved profile or platform defaults.\n",
+                "example": [
+                  "ns1.example.com",
+                  "ns2.example.com"
+                ]
+              }
+            ]
+          },
+          "privacy": {
+            "description": "WHOIS privacy preference for this registration. Omit to inherit from the resolved saved profile or account defaults.\n",
+            "type": "boolean"
+          }
+        },
+        "title": "Profile",
+        "type": "object"
+      },
+      "ProfileSchema": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/profile-schema.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "TLD-specific JSON Schema describing the fields required to build a profile for a domain under this TLD. The structure varies per TLD and is not further constrained at the API layer. Use the contents to guide construction of POST /registration-quotes and POST /registrations request bodies.\n",
+        "title": "Profile Schema",
+        "type": "object"
       },
       "Registration": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration.v3",
@@ -1467,10 +1594,10 @@
           "profile": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/InlineRegistrationProfile"
+                "$ref": "#/components/schemas/Profile"
               },
               {
-                "description": "One-time inline contacts and purchase preference defaults for this registration. Not persisted. Must match the profile supplied on the quote when a profile was included at quote time.\n"
+                "description": "One-time contacts and purchase preference defaults for this registration. Not persisted. Must match the profile supplied on the quote when a profile was included at quote time.\n"
               }
             ]
           },
@@ -1537,6 +1664,273 @@
         "title": "Registration",
         "type": "object"
       },
+      "RegistrationBatch": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-batch.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A batch domain registration entity created when a POST /registration-batch request is accepted. Registration batches are a top-level resource with their own stable registrationBatchId; the domain relationships are captured in the domains array.\nOn POST /registration-batch, supply the writable fields (domains array, registrationQuoteBatchToken, consent). The server returns the full RegistrationBatch with readOnly fields populated. Poll links[rel=self] until status reaches COMPLETED or FAILED.\nAll domains are registered atomically (all succeed or all fail). On COMPLETED, each domain in the array includes expiresAt and orderId. On FAILED, no domains were registered and the error field contains the failure reason.\n",
+        "properties": {
+          "consent": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Consent"
+              },
+              {
+                "description": "The customer's consent for the legal agreements returned in the quote. On execute, supply agreementTypes and agreedAt; agreedBy is server-derived and returned on the persisted record.\nNOTE: For batch registrations, do NOT include acknowledgedFees in this top-level consent object. Premium domain fees must be acknowledged per-domain in the domains array using the acknowledgedFees field on each RegistrationBatchDomainItem that has fees.\n"
+              }
+            ]
+          },
+          "createdAt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/date-time"
+              },
+              {
+                "description": "Timestamp when this registration batch was initiated.",
+                "readOnly": true
+              }
+            ]
+          },
+          "defaultProfile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Profile"
+              },
+              {
+                "description": "The default inline profile supplied on the registration request, if any. Applied to all domains unless overridden at the per-domain level. Echoed from the request.\n"
+              }
+            ]
+          },
+          "defaultProfileId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/uuid"
+              },
+              {
+                "description": "The default profileId supplied on the registration request, if any. Applied to all domains unless overridden at the per-domain level. Echoed from the request.\n"
+              }
+            ]
+          },
+          "domains": {
+            "description": "List of domains to register. On execute (POST), supply domain and period for each. On poll (GET), includes per-domain outcomes (expiresAt, status) when COMPLETED.\n",
+            "items": {
+              "$ref": "#/components/schemas/RegistrationBatchDomainItem"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/error"
+              },
+              {
+                "description": "Failure reason when status is FAILED. Absent otherwise.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "links": {
+            "description": "HATEOAS link relations for this registration batch. rel=self — the canonical URL for this registration batch record. rel=domains — links to each registered domain-name resource once the batch registration is complete.\n",
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "operationId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/uuid"
+              },
+              {
+                "description": "Identifier of the DomainOperation tracking this registration batch. Same value returned by GET /operations/{operationId} for abstract operation tracking.\n",
+                "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
+                "readOnly": true
+              }
+            ]
+          },
+          "orderId": {
+            "description": "The orderId for the batch registration order. All domains in this registration batch are part of a single order. Present only when status is COMPLETED.\n",
+            "readOnly": true,
+            "type": "string"
+          },
+          "registrationBatchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/uuid"
+              },
+              {
+                "description": "Server-assigned stable identifier for this registration batch record.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "registrationQuoteBatchToken": {
+            "description": "The single-use opaque token from the preceding quoteRegistrationBatch call. Required. Consumed on first successful execution; idempotent retries with the same Idempotency-Key replay the original operation without re-consuming.\nThe token has a bqt_ prefix followed by a UUID to distinguish it from single-domain quote tokens. Treat as a capability; do not parse.\n",
+            "example": "bqt_7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
+            "type": "string",
+            "writeOnly": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DomainOperationStatus"
+              },
+              {
+                "description": "Current execution status of this registration batch.",
+                "readOnly": true
+              }
+            ]
+          }
+        },
+        "title": "RegistrationBatch",
+        "type": "object"
+      },
+      "RegistrationBatchDomain": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-batch-domain.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DomainQuoteDetails"
+          },
+          {
+            "properties": {
+              "error": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/error"
+                  },
+                  {
+                    "description": "Error details for this domain if it could not be quoted or registered. Present only when a per-domain failure occurred.\n",
+                    "readOnly": true
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "A single domain within a batch registration quote response. Extends DomainQuoteDetails with additional fields for per-domain profile overrides and error details. This model is used only for quote responses (RegistrationQuoteBatch); the execute/poll path uses RegistrationBatchDomainItem instead.\n",
+        "title": "RegistrationBatchDomain"
+      },
+      "RegistrationBatchDomainItem": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-batch-domain-item.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A single domain within a batch registration execution request or poll response. Contains core registration fields (domain, period, price, fees) plus fields for execute requests (acknowledgedFees, profile overrides) and poll responses (status, expiresAt, updatedAt).\n",
+        "properties": {
+          "acknowledgedFees": {
+            "description": "Fees acknowledged by the customer for this domain. Required on execute when the quote's fees array is non-empty (PREMIUM domains). Must match the quote's fees verbatim. Present only on execute requests.\n",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgedFee"
+            },
+            "nullable": true,
+            "type": "array",
+            "writeOnly": true
+          },
+          "domain": {
+            "description": "The domain name in punycode A-label form for IDNs.\n",
+            "example": "example.com",
+            "type": "string"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/error"
+              },
+              {
+                "description": "Per-domain failure detail when this domain's status is FAILED. Absent otherwise.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "expiresAt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/date-time"
+              },
+              {
+                "description": "The domain's expiry date once the registration completes. Present only on poll responses when this domain's status is COMPLETED.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "fees": {
+            "description": "Fees charged at the time of purchase, in addition to the registration price. For PREMIUM domains, includes ONE_TIME_PREMIUM_DOMAIN_PURCHASE.\n",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "period": {
+            "default": 1,
+            "description": "Registration period in years.",
+            "example": 1,
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "price": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/simple-money"
+              },
+              {
+                "description": "The locked registration price for the quoted period. Total amount charged on execute is this price plus any fees.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "profile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Profile"
+              },
+              {
+                "description": "Optional inline profile override for this specific domain. When present, this inline profile is used instead of the batch operation's defaultProfile. Echoed from the request.\n"
+              }
+            ]
+          },
+          "profileId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/uuid"
+              },
+              {
+                "description": "Optional profileId override for this specific domain. When present, this profile is used instead of the batch operation's defaultProfileId. Echoed from the request.\n"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DomainOperationStatus"
+              },
+              {
+                "description": "Current status of this individual domain within the batch registration. Possible values: PENDING, EXECUTING, COMPLETED, FAILED. Each domain progresses independently.\n",
+                "readOnly": true
+              }
+            ]
+          },
+          "updatedAt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/date-time"
+              },
+              {
+                "description": "Timestamp of the most recent status update for this domain.\n",
+                "readOnly": true
+              }
+            ]
+          }
+        },
+        "title": "RegistrationBatchDomainItem",
+        "type": "object"
+      },
       "RegistrationPreference": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-preference.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1552,7 +1946,7 @@
       "RegistrationProfile": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-profile.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "A saved, reusable set of contacts and purchase preference defaults, referenced by profileId on a registration quote or a registration.\nA profile is a registration-time template. Its values are copied into the registration when a quote is executed, and nothing links the profile to the resulting domain afterwards. A profile cannot be edited, and no change to a profile can affect a domain already registered from it. To change saved details, create the replacement first, then delete the profile it supersedes.\nA profile is scoped to the TLDs named on create, because contact requirements are set by the TLD rather than by the contacts supplied. TLDs sharing one set of requirements share a profile; a TLD demanding additional registrant detail needs its own. See GET /registration-schemas/{tld} for what contacts a TLD requires.\nSee profileId on the registration quote for how a saved profile, an inline profile and account identity combine.\n",
+        "description": "A saved, reusable set of contacts and purchase preference defaults, referenced by profileId on a registration quote or a registration.\nA profile is a registration-time template. Its values are copied into the registration when a quote is executed, and nothing links the profile to the resulting domain afterwards. A profile cannot be edited, and no change to a profile can affect a domain already registered from it. To change saved details, create the replacement first, then delete the profile it supersedes.\nA profile is scoped to the TLDs named on create, because contact requirements are set by the TLD rather than by the contacts supplied. TLDs sharing one set of requirements share a profile; a TLD demanding additional registrant detail needs its own. See GET /profile-schemas/{tld} for what contacts a TLD requires.\nSee profileId on the registration quote for how a saved profile, an inline profile and account identity combine.\n",
         "properties": {
           "contacts": {
             "allOf": [
@@ -1648,16 +2042,82 @@
       "RegistrationQuote": {
         "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote.v3",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "A price quote for registering a single domain. Contains a locked price, resolved contact and preference settings, required legal agreements, and a short-lived single-use quoteToken that must be presented on the subsequent registration execute call. Execution without a valid quoteToken is structurally impossible.\nWhen available is false, no quoteToken is returned — this is not an error; it means the domain cannot be registered as requested.\n",
-        "properties": {
-          "available": {
-            "description": "Whether the domain is available for registration. When false, no quoteToken is returned. The availability check at quote time is authoritative; a name sniped between suggest/availability and quote fails cleanly here.\n",
-            "type": "boolean"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DomainQuoteDetails"
           },
-          "domain": {
-            "description": "The domain name being quoted, in punycode A-label form for IDNs.\n",
-            "example": "example.com",
-            "type": "string"
+          {
+            "properties": {
+              "expiresAt": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/date-time"
+                  },
+                  {
+                    "description": "The expiry timestamp of the quoteToken. After this time, presenting the token on execute returns quote_expired and a new quote must be obtained.\n",
+                    "readOnly": true
+                  }
+                ]
+              },
+              "inventory": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/InventoryType"
+                  },
+                  {
+                    "description": "The inventory type of the quoted domain. Present when available is true.\n",
+                    "readOnly": true
+                  }
+                ]
+              },
+              "irreversible": {
+                "description": "Whether executing this quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
+                "example": false,
+                "type": "boolean"
+              },
+              "quoteToken": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/uuid"
+                  },
+                  {
+                    "description": "Opaque, single-use token with a 10-minute TTL. References the locked price, a hash of this request body, and a hash of the resolved profile values. Absent when available is false. Treat as a capability; do not parse.\n",
+                    "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
+                    "readOnly": true
+                  }
+                ]
+              },
+              "renewalPrice": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/simple-money"
+                  },
+                  {
+                    "description": "Indicative renewal cost at current rates. Not a price guarantee; renewal pricing is locked at time of renewal quote.\n"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "A price quote for registering a single domain. Contains a locked price, resolved contact and preference settings, required legal agreements, and a short-lived single-use quoteToken that must be presented on the subsequent registration execute call. Execution without a valid quoteToken is structurally impossible.\nWhen available is false, no quoteToken is returned — this is not an error; it means the domain cannot be registered as requested.\n",
+        "title": "Registration Quote"
+      },
+      "RegistrationQuoteBatch": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote-batch.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A batch registration quote returned by POST /registration-quote-batch. Contains locked prices and settings for 1-50 domains, along with a single-use registrationQuoteBatchToken valid for 10 minutes. Free and read-only; safe to call speculatively.\n",
+        "properties": {
+          "domains": {
+            "description": "Per-domain quote results. Each domain includes locked price, resolved settings, and required agreements. Premium domains include fees that must be acknowledged on execute.\n",
+            "items": {
+              "$ref": "#/components/schemas/RegistrationBatchDomain"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
           },
           "expiresAt": {
             "allOf": [
@@ -1665,99 +2125,103 @@
                 "$ref": "#/components/schemas/date-time"
               },
               {
-                "description": "The expiry timestamp of the quoteToken. After this time, presenting the token on execute returns quote_expired and a new quote must be obtained.\n"
-              }
-            ]
-          },
-          "fees": {
-            "description": "Fees charged at the time of purchase, in addition to the registration price. Present when the domain incurs purchase fees beyond the base registration cost.\nThese are the same fees as TermPrice.fees for the selected term (this quote's period) — not a separate term-independent fee list and not additional to term-level fees. Execute cost is price plus this array. Mirrored on Registration.fees after execute.\n",
-            "items": {
-              "$ref": "#/components/schemas/Fee"
-            },
-            "nullable": true,
-            "type": "array"
-          },
-          "inventory": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/InventoryType"
-              },
-              {
-                "description": "The inventory type of the quoted domain. Present when available is true.\n",
-                "readOnly": true
+                "description": "Timestamp when the registrationQuoteBatchToken expires. After this time, the token cannot be used to execute the registration. Obtain a fresh quote if needed.\n"
               }
             ]
           },
           "irreversible": {
-            "description": "Whether executing this quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
+            "description": "Whether executing this batch quote is irreversible once accepted. Use to calibrate the explicitness of any confirmation step presented before execute.\n",
             "example": false,
             "type": "boolean"
           },
-          "period": {
-            "description": "Registration period in years for which the price is quoted.",
-            "example": 1,
-            "maximum": 10,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "price": {
+          "registrationQuoteBatchToken": {
+            "description": "Single-use opaque token that locks prices and settings for all domains. Valid for 10 minutes. Required when executing the batch registration via POST /registration-batch. Present only when all domains are quotable.\nThe token has a bqt_ prefix followed by a UUID to distinguish it from single-domain quote tokens. Treat as a capability; do not parse.\n",
+            "example": "bqt_7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "title": "RegistrationQuoteBatch",
+        "type": "object"
+      },
+      "RegistrationQuoteBatchInput": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote-batch-input.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Request body for quoting a batch registration of multiple domains. Contains the list of domains to quote (1-50) and optional default/per-domain profile settings for contact resolution.\n",
+        "properties": {
+          "defaultProfile": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/simple-money"
+                "$ref": "#/components/schemas/Profile"
               },
               {
-                "description": "The locked registration price for the quoted period. Held for the duration of the quoteToken's TTL. Total amount charged on execute is this price plus any fees on this quote.\n"
+                "description": "One-time inline contacts and purchase preference defaults for all domains unless overridden at the per-domain level. Not persisted.\n"
               }
             ]
           },
-          "quoteToken": {
+          "defaultProfileId": {
             "allOf": [
               {
                 "$ref": "#/components/schemas/uuid"
               },
               {
-                "description": "Opaque, single-use token with a 10-minute TTL. References the locked price, a hash of this request body, and a hash of the resolved profile values. Absent when available is false. Treat as a capability; do not parse.\n",
-                "example": "7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6"
+                "description": "ID of a saved registration profile. Applied to all domains unless overridden at the per-domain level.\n"
               }
             ]
           },
-          "renewalPrice": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/simple-money"
-              },
-              {
-                "description": "Indicative renewal cost at current rates. Not a price guarantee; renewal pricing is locked at time of renewal quote.\n"
-              }
-            ]
-          },
-          "requiredAgreements": {
-            "description": "Legal agreements that must be accepted before executing this quote. The agreementType values from this list must be included in the execute request's consent object.\n",
+          "domains": {
+            "description": "List of domains to quote for registration. Minimum 1, maximum 50 domains.\n",
             "items": {
-              "$ref": "#/components/schemas/Agreement"
+              "$ref": "#/components/schemas/RegistrationQuoteDomainInput"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "nullable": true,
             "type": "array"
+          }
+        },
+        "title": "RegistrationQuoteBatchInput",
+        "type": "object"
+      },
+      "RegistrationQuoteDomainInput": {
+        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-quote-domain-input.v3",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A single domain within a batch registration quote request. Contains the domain name, optional registration period, and optional profile overrides for contact resolution.\n",
+        "properties": {
+          "domain": {
+            "description": "The domain name to quote, in punycode A-label form.\n",
+            "example": "example.com",
+            "type": "string"
           },
-          "resolved": {
+          "period": {
+            "default": 1,
+            "description": "Registration period in years.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "profile": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/ResolvedSettings"
+                "$ref": "#/components/schemas/Profile"
               },
               {
-                "description": "The effective contact and preference settings that will be applied on execute. Review before execute to verify registrant, contacts, and preferences match intent.\n"
+                "description": "Optional inline profile override for this specific domain. Uses defaultProfile if not provided.\n"
+              }
+            ]
+          },
+          "profileId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/uuid"
+              },
+              {
+                "description": "Optional profileId override for this specific domain. Uses defaultProfileId if not provided.\n"
               }
             ]
           }
         },
-        "title": "Registration Quote",
-        "type": "object"
-      },
-      "RegistrationSchema": {
-        "$id": "https://godaddy.com/schemas/domains/domain-lifecycle/registration-schema.v3",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "TLD-specific JSON Schema describing the fields required to register a domain under this TLD. The structure varies per TLD and is not further constrained at the API layer. Use the contents to guide construction of the POST /registration-quotes and POST /registrations request bodies.\n",
-        "title": "Registration Schema",
+        "title": "RegistrationQuoteDomainInput",
         "type": "object"
       },
       "Renewal": {
@@ -2528,7 +2992,7 @@
     },
     "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–25 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
     "title": "Domain Lifecycle Management API",
-    "version": "3.3.0",
+    "version": "3.4.0",
     "x-visibility": {
       "extent": "public"
     }
@@ -2599,7 +3063,7 @@
             "description": "Request was successful"
           }
         },
-        "summary": "Retrieve the legal agreement(s) required to purchase the specified TLD and add-ons",
+        "summary": "Get required legal agreements for a TLD",
         "tags": [
           "Register and Renew Domains"
         ]
@@ -3306,10 +3770,7 @@
         "summary": "Set auto-renew setting for a domain",
         "tags": [
           "Domain Management"
-        ],
-        "x-visibility": {
-          "extent": "private"
-        }
+        ]
       }
     },
     "/v3/domains/domain-names/{domain-name}/nameservers": {
@@ -3532,10 +3993,7 @@
         "summary": "Set transfer-lock setting for a domain",
         "tags": [
           "Domain Management"
-        ],
-        "x-visibility": {
-          "extent": "private"
-        }
+        ]
       }
     },
     "/v3/domains/operations/{operationId}": {
@@ -3655,6 +4113,314 @@
         "tags": [
           "Operations"
         ]
+      }
+    },
+    "/v3/domains/profile-schemas/{tld}": {
+      "get": {
+        "description": "Returns the TLD-specific JSON Schema describing the fields required\nwhen calling POST /registration-quotes or POST /registrations for\nthe given TLD. The schema shape varies by TLD; clients should call\nthis endpoint before quoting or registering to discover required\ncontact and eligibility fields.\n",
+        "operationId": "getProfileSchema",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Top-Level Domain (e.g. com, net, io) whose registration schema should be retrieved.\n",
+            "example": "com",
+            "in": "path",
+            "name": "tld",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSchema"
+                }
+              }
+            },
+            "description": "TLD-specific profile schema.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "summary": "Retrieve the profile schema for a TLD",
+        "tags": [
+          "Discovery"
+        ],
+        "x-visibility": {
+          "extent": "private"
+        }
+      }
+    },
+    "/v3/domains/registration-batches": {
+      "post": {
+        "description": "Executes a previously quoted batch domain registration. **Irreversible once\naccepted; creates charges for all domains.** Requires a valid unexpired\nregistrationQuoteBatchToken from `quoteRegistrationBatch`, an `Idempotency-Key` header,\nand a consent record.\n\nAll domains are registered atomically (all succeed or all fail). If any\ndomain fails during execution (registry error, payment failure), the entire\nbatch registration is rolled back and no domains are registered.\n\nIdempotency takes precedence over the single-use check: retrying with the\nsame `Idempotency-Key` replays the original operation even after the token\nis consumed.\n\nReturns a `RegistrationBatch` entity. Poll `links[rel=self]`\n(`GET /registration-batches/{registrationBatchId}`) until status is `COMPLETED`\nor `FAILED`. The `operationId` field is also provided for clients that\nprefer `GET /operations/{operationId}`; both resolve the same resource.\n\n**PREMIUM domains:** when the quote's per-domain `fees` array is non-empty\n(inventory `PREMIUM`), the execute request must include that domain's\n`acknowledgedFees` containing the same fees verbatim — same types, amounts,\nand currencies. This confirms the customer explicitly saw and accepted the\nspecific charge before the irreversible purchase is executed.\n\n- `acknowledgedFees` absent when fees exist → `422` with error name\n  `consent_fees_required`.\n- `acknowledgedFees` present but type or amount does not match the locked\n  quote → `422` with error name `quote_mismatch`.\n",
+        "operationId": "registerDomainBatches",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Client-generated unique key (UUID recommended). Retrying a mutating request with the same Idempotency-Key returns the original response without creating a duplicate side effect. Required on all mutation endpoints to ensure safe retries.\n",
+            "example": "9f1c2e7a-4b3d-4e8f-a1c2-3d4e5f6a7b8c",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates for this ISC.\n",
+            "example": "ISC_PARTNER_001",
+            "in": "query",
+            "name": "iscCode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "withPremiumToken": {
+                  "summary": "PREMIUM domain in batch with fee acknowledgment",
+                  "value": {
+                    "consent": {
+                      "agreedAt": "2026-06-12T10:02:00Z",
+                      "agreementTypes": [
+                        "API_DPA"
+                      ]
+                    },
+                    "domains": [
+                      {
+                        "domain": "example.com",
+                        "period": 1
+                      },
+                      {
+                        "acknowledgedFees": [
+                          {
+                            "fee": {
+                              "currencyCode": "USD",
+                              "value": 390000
+                            },
+                            "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE"
+                          }
+                        ],
+                        "domain": "examplepremium.net",
+                        "period": 1
+                      }
+                    ],
+                    "registrationQuoteBatchToken": "bqt_9a1b2c3d-4e5f-6789-abcd-ef0123456789"
+                  }
+                },
+                "withToken": {
+                  "summary": "Batch REGISTRY registration with registrationQuoteBatchToken",
+                  "value": {
+                    "consent": {
+                      "agreedAt": "2026-06-12T10:02:00Z",
+                      "agreementTypes": [
+                        "API_DPA"
+                      ]
+                    },
+                    "domains": [
+                      {
+                        "domain": "example.com",
+                        "period": 1
+                      },
+                      {
+                        "domain": "example.net",
+                        "period": 2
+                      }
+                    ],
+                    "registrationQuoteBatchToken": "bqt_7f3a2b1c-9d8e-4012-a5b6-c1d2e3f4a5b6"
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationBatch"
+                }
+              }
+            },
+            "description": "Registration batch accepted. Poll the self link for status. All domains will be registered atomically.\n",
+            "headers": {
+              "Location": {
+                "description": "URL of the created or async resource.",
+                "schema": {
+                  "format": "uri",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Suggested number of seconds before the client should poll again. Present on 202 responses and non-terminal operation poll responses.\n",
+                "schema": {
+                  "example": 5,
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:create"
+            ]
+          }
+        ],
+        "summary": "Register multiple domains atomically (requires registrationQuoteBatchToken)",
+        "tags": [
+          "Registrations"
+        ],
+        "x-visibility": {
+          "extent": "private"
+        }
+      }
+    },
+    "/v3/domains/registration-batches/{registrationBatchId}": {
+      "get": {
+        "description": "Returns a single registration batch record by its server-assigned registrationBatchId, including the current execution status and per-domain outcomes once the batch registration completes. This is the concrete poll endpoint for batch registration operations; the abstract equivalent is GET /operations/{operationId}.\nPoll until status is COMPLETED or FAILED. When COMPLETED, the batch-level orderId is populated and each domain in the `domains` array includes expiresAt. When FAILED, the `error` field contains the failure reason and no domains were registered.\n",
+        "operationId": "getRegistrationBatch",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Server-assigned registration batch identifier.",
+            "in": "path",
+            "name": "registrationBatchId",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationBatch"
+                }
+              }
+            },
+            "description": "Registration batch record returned.",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested number of seconds before the client should poll again. Present on 202 responses and non-terminal operation poll responses.\n",
+                "schema": {
+                  "example": 5,
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "summary": "Get a registration batch record",
+        "tags": [
+          "Registrations"
+        ],
+        "x-visibility": {
+          "extent": "private"
+        }
       }
     },
     "/v3/domains/registration-profiles": {
@@ -3922,6 +4688,122 @@
         }
       }
     },
+    "/v3/domains/registration-quote-batches": {
+      "post": {
+        "description": "Prices the registration of 1-50 domains, resolves contact and preference\nsettings for each, returns required legal agreements, and mints a single-use\nregistrationQuoteBatchToken with a 10-minute TTL. Free and read-only; safe to call\nspeculatively.\n\nAll domains are quoted atomically. If any domain cannot be quoted (unavailable,\ninvalid, unsupported TLD), the entire quote fails with per-domain error details.\n\nWhen all domains are quotable, returns a registrationQuoteBatchToken that locks prices and\nsettings for all domains. Executing the quote consumes all domains atomically\n(all succeed or all fail).\n\n**PREMIUM domains:** when any quoted domain has inventory `PREMIUM`, that\ndomain's result includes a `fees` array containing a\n`ONE_TIME_PREMIUM_DOMAIN_PURCHASE` entry. The execute request must echo all\nfees verbatim in the per-domain `acknowledgedFees` to confirm the customer\naccepted the specific charges before the irreversible purchase proceeds.\n\n**Contact resolution:** Contacts can be supplied via `defaultProfileId` (saved\nprofile) or inline `defaultProfile` (one-time contacts), or derived from account\nidentity. Individual domains can override with their own `profileId` or `profile`.\nDomains without overrides use the default contact source.\n",
+        "operationId": "quoteRegistrationBatches",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISC (International Shopper Code) for pricing context. When provided, prices reflect the applicable rates for this ISC.\n",
+            "example": "ISC_PARTNER_001",
+            "in": "query",
+            "name": "iscCode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "minimal": {
+                  "summary": "Minimal — derive registrant from account identity",
+                  "value": {
+                    "domains": [
+                      {
+                        "domain": "example.com"
+                      },
+                      {
+                        "domain": "example.net",
+                        "period": 2
+                      }
+                    ]
+                  }
+                },
+                "withProfile": {
+                  "summary": "With default profile and per-domain override",
+                  "value": {
+                    "defaultProfileId": "14514a29-5fce-4624-8d8a-d8abd56015e2",
+                    "domains": [
+                      {
+                        "domain": "example.com"
+                      },
+                      {
+                        "domain": "test.com",
+                        "profileId": "99999999-aaaa-bbbb-cccc-dddddddddddd"
+                      },
+                      {
+                        "domain": "mysite.io",
+                        "period": 3
+                      }
+                    ]
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationQuoteBatchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationQuoteBatch"
+                }
+              }
+            },
+            "description": "Registration batch quote. When all domains are quotable, includes a registrationQuoteBatchToken.\n",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.domain:read"
+            ]
+          }
+        ],
+        "summary": "Quote a batch registration of multiple domains (no commitment)",
+        "tags": [
+          "Registration Quotes"
+        ],
+        "x-visibility": {
+          "extent": "private"
+        }
+      }
+    },
     "/v3/domains/registration-quotes": {
       "post": {
         "description": "Prices the registration, resolves contact and preference settings,\nreturns required legal agreements, and mints a single-use quoteToken\nwith a 10-minute TTL. Free and read-only; safe to call speculatively.\n\nWhen the domain is unavailable, `available: false` is returned with\nno quoteToken — this is a valid non-error response.\n\nWhen required contact fields are missing, a `422` is returned with\nfield-level details so the agent can collect the missing data and re-quote.\n\nMay pass `iscCode` to lock pricing at applicable rates;\nthe same value must be supplied on /registrations if provided here.\n\n**PREMIUM domains:** when the quoted domain has inventory `PREMIUM`,\nthe response includes a `fees` array containing a\n`ONE_TIME_PREMIUM_DOMAIN_PURCHASE` entry. The execute request must\necho this array verbatim in `consent.acknowledgedFees` to confirm\nthe customer accepted the specific charge before the irreversible\npurchase proceeds.\n",
@@ -3993,7 +4875,7 @@
                   "profile": {
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/InlineRegistrationProfile"
+                        "$ref": "#/components/schemas/Profile"
                       },
                       {
                         "description": "One-time inline contacts and purchase preference defaults for this quote. Not persisted.\n"
@@ -4050,74 +4932,6 @@
         "summary": "Quote a single-domain registration (no commitment)",
         "tags": [
           "Registration Quotes"
-        ]
-      }
-    },
-    "/v3/domains/registration-schemas/{tld}": {
-      "get": {
-        "description": "Returns the TLD-specific JSON Schema describing the fields required\nwhen calling POST /registration-quotes or POST /registrations for\nthe given TLD. The schema shape varies by TLD; clients should call\nthis endpoint before quoting or registering to discover required\ncontact and eligibility fields.\n",
-        "operationId": "getRegistrationSchema",
-        "parameters": [
-          {
-            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
-            "in": "header",
-            "name": "X-Request-Id",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/uuid"
-            }
-          },
-          {
-            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
-            "example": "shopper_123",
-            "in": "header",
-            "name": "X-Shopper-Id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The Top-Level Domain (e.g. com, net, io) whose registration schema should be retrieved.\n",
-            "example": "com",
-            "in": "path",
-            "name": "tld",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegistrationSchema"
-                }
-              }
-            },
-            "description": "TLD-specific registration schema.",
-            "headers": {
-              "X-Request-Id": {
-                "description": "Request correlation identifier echoed from the request or server-generated.",
-                "schema": {
-                  "$ref": "#/components/schemas/uuid"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "oauth2": [
-              "domains.domain:read"
-            ]
-          }
-        ],
-        "summary": "Retrieve the registration schema for a TLD",
-        "tags": [
-          "Registrations"
         ]
       }
     },

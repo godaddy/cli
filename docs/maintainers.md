@@ -37,7 +37,7 @@ To integrate an API with the CLI you should do the following:
 1. Define OAuth scopes for your API; do not be overly granular since that may require users to go through excessive numbers of consent flows.
 1. Authorize these OAuth scopes in your API.
 1. Contact the `#cli-dev` channel to enable your scopes with the CLI OAuth clients for each environment.
-1. Register these OAuth scopes in the CLI within [`scopes.rs`](../rust/src/scopes.rs).
+1. Declare these OAuth scopes in the CLI in [`scopes/declarations.rs`](../rust/src/scopes/declarations.rs), which also explains how. Put each scope in the `default` section (requested at login) unless the action spends money, can take a site offline, deletes a billable resource, or is raw data access; those go in `step_up` and prompt for consent when the command that needs them runs.
 1. Annotate commands with required scopes to automatically enable consent step-ups.
 1. Ensure the `api.godaddy.com` gateway is configured for coarse-grained authorization with the required scopes.
 

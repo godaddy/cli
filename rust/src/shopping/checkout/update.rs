@@ -1,8 +1,8 @@
 use cli_engine::{CommandResult, CommandSpec, NextAction, RuntimeCommandSpec, Tier};
-use shopping_client::types::Checkout;
 
 use super::create::agreement_review_action;
 use crate::shopping::SHOPPING_PURCHASE_SCOPES;
+use crate::shopping::client::Checkout;
 use crate::shopping::common::{
     CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments, reject_response_errors, update_response,
@@ -219,7 +219,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use shopping_client::types::{Checkout, Payment, PaymentInstrumentSelectedPaymentInstrument};
+    use shopping_client::types::{Payment, PaymentInstrumentSelectedPaymentInstrument};
+
+    use crate::shopping::client::Checkout;
 
     use super::{update_review_action, validate_requested_payment, validate_selected_payment};
 

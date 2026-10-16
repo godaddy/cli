@@ -6,6 +6,7 @@ mod graphql;
 mod hosting_spec;
 mod manifest;
 mod openapi;
+mod ref_paths;
 mod shopping_spec;
 mod spec_normalize;
 

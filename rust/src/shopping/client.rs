@@ -1,9 +1,13 @@
 use std::time::Duration;
 
 use shopping_client::types::{
-    Checkout, CheckoutCompleteRequest, CheckoutWritableRequest, CompleteCheckoutResponse,
+    CheckoutCompleteRequest, CheckoutWritableRequest, CompleteCheckoutResponse,
     CreateCheckoutResponse, GetCheckoutResponse, GetOrderResponse, Order, UpdateCheckoutResponse,
 };
+
+/// A checkout session as the API returns it, including its required agreements.
+pub(crate) type Checkout =
+    shopping_client::types::ComGodaddyShoppingCheckoutInputSchemaDevUcpShoppingCheckout;
 
 const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 #[derive(Debug, thiserror::Error)]
@@ -174,7 +178,7 @@ macro_rules! impl_into_checkout {
         $(impl IntoCheckout for $response {
             fn into_checkout(self) -> Result<Checkout, ClientError> {
                 match self {
-                    Self::Checkout(checkout) => Ok(checkout),
+                    Self::CheckoutWithAgreementInput(checkout) => Ok(checkout.0),
                     Self::ErrorResponse(payload) => {
                         Err(ClientError::UnexpectedErrorPayload(payload.into()))
                     }
@@ -617,7 +621,10 @@ mod tests {
         let error_payload = json!({"error": "something went wrong", "code": "invalid_checkout"});
         let decoded: GetCheckoutResponse =
             serde_json::from_value(error_payload).expect("should decode as *something*");
-        assert!(matches!(decoded, GetCheckoutResponse::Checkout(_)));
+        assert!(matches!(
+            decoded,
+            GetCheckoutResponse::CheckoutWithAgreementInput(_)
+        ));
     }
 
     #[tokio::test]

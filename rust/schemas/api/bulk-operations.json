@@ -625,6 +625,70 @@
       "title": "Bulk Operation Error",
       "type": "object"
     },
+    "BulkOperationErrorList": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-error-list.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A list of bulk operation errors",
+      "properties": {
+        "errors": {
+          "description": "The bulk operation errors",
+          "items": {
+            "$ref": "#/$defs/BulkOperationError"
+          },
+          "type": "array"
+        },
+        "links": {
+          "description": "The links",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "type": "array"
+        },
+        "pageToken": {
+          "deprecated": true,
+          "description": "Deprecated. Use links[rel=next].href to advance pages instead. Will be\nremoved in a future release.\n",
+          "type": "string"
+        }
+      },
+      "required": [
+        "errors",
+        "links"
+      ],
+      "title": "Bulk Operation Errors",
+      "type": "object"
+    },
+    "BulkOperationList": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-list.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A list of bulk operations",
+      "properties": {
+        "bulkOperations": {
+          "description": "The bulk operations",
+          "items": {
+            "$ref": "#/$defs/BulkOperation"
+          },
+          "type": "array"
+        },
+        "links": {
+          "description": "The links",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "type": "array"
+        },
+        "pageToken": {
+          "deprecated": true,
+          "description": "Deprecated. Use links[rel=next].href to advance pages instead. Will be\nremoved in a future release.\n",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bulkOperations",
+        "links"
+      ],
+      "title": "Bulk Operations",
+      "type": "object"
+    },
     "BulkOperationOperation": {
       "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-operation.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -763,6 +827,21 @@
         "mutationVariables"
       ],
       "title": "Bulk Operation GraphQL Operation",
+      "type": "object"
+    },
+    "BulkOperationResponse": {
+      "$id": "https://godaddy.com/schemas/commerce/bulk-operations/bulk-operation-response.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A response containing a single bulk operation",
+      "properties": {
+        "bulkOperation": {
+          "$ref": "#/$defs/BulkOperation"
+        }
+      },
+      "required": [
+        "bulkOperation"
+      ],
+      "title": "Bulk Operation Response",
       "type": "object"
     },
     "BulkOperationRoundingMode": {
@@ -2482,29 +2561,7 @@
         "200": {
           "description": "Successfully retrieved bulk operations",
           "schema": {
-            "description": "A list of bulk operations",
-            "properties": {
-              "bulkOperations": {
-                "description": "The bulk operations",
-                "items": {
-                  "$ref": "#/$defs/BulkOperation"
-                },
-                "type": "array"
-              },
-              "links": {
-                "description": "The links",
-                "items": {
-                  "$ref": "#/$defs/link-description"
-                },
-                "type": "array"
-              },
-              "pageToken": {
-                "description": "The page token",
-                "type": "string"
-              }
-            },
-            "title": "Bulk Operations",
-            "type": "object"
+            "$ref": "#/$defs/BulkOperationList"
           }
         },
         "400": {
@@ -2552,12 +2609,7 @@
         "201": {
           "description": "Bulk operation created",
           "schema": {
-            "properties": {
-              "bulkOperation": {
-                "$ref": "#/$defs/BulkOperation"
-              }
-            },
-            "type": "object"
+            "$ref": "#/$defs/BulkOperationResponse"
           }
         },
         "400": {
@@ -2613,12 +2665,7 @@
         "200": {
           "description": "Successfully retrieved bulk operation",
           "schema": {
-            "properties": {
-              "bulkOperation": {
-                "$ref": "#/$defs/BulkOperation"
-              }
-            },
-            "type": "object"
+            "$ref": "#/$defs/BulkOperationResponse"
           }
         },
         "400": {
@@ -2640,9 +2687,9 @@
       "summary": "Get a bulk operation"
     },
     {
-      "description": "Cancel an ongoing bulk operation. This is a state transition; the\noperation remains retrievable via GET with status CANCELED.\nA dedicated POST .../cancellations controller resource is a follow-up\nalignment with bulk-ingestions/bulk-exports.\n",
+      "description": "Deprecated. Cancel an ongoing bulk operation. This is a state\ntransition; the operation remains retrievable via GET with status\nCANCELED. `DELETE` is semantically incorrect for a state transition\nand is deprecated in favor of\n`POST .../bulk-operations/{bulkOperationId}/cancelations`, aligning\nwith bulk-ingestions/bulk-exports. This operation will be removed in\na future release.\n",
       "method": "DELETE",
-      "operationId": "cancelBulkOperation",
+      "operationId": "cancelBulkOperationLegacy",
       "parameters": [
         {
           "description": "The Store ID",
@@ -2668,15 +2715,60 @@
         "200": {
           "description": "Bulk operation cancelled",
           "schema": {
-            "properties": {
-              "bulkOperation": {
-                "$ref": "#/$defs/BulkOperation"
-              }
-            },
-            "type": "object"
+            "$ref": "#/$defs/BulkOperationResponse"
           }
         },
         "400": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      },
+      "scopes": [
+        "commerce.bulk-operation:write"
+      ],
+      "summary": "Cancel a bulk operation (deprecated)"
+    },
+    {
+      "description": "Cancel an ongoing bulk operation. This is a state transition; the\noperation remains retrievable via GET with status CANCELED. Replaces\nthe deprecated `DELETE .../bulk-operations/{bulkOperationId}` route,\naligning with bulk-ingestions/bulk-exports.\n",
+      "method": "POST",
+      "operationId": "cancelBulkOperation",
+      "parameters": [
+        {
+          "description": "The Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        {
+          "description": "The Bulk Operation ID",
+          "in": "path",
+          "name": "bulkOperationId",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
+      ],
+      "path": "/stores/{storeId}/bulk-operations/{bulkOperationId}/cancelations",
+      "responses": {
+        "200": {
+          "description": "Bulk operation cancelled",
+          "schema": {
+            "$ref": "#/$defs/BulkOperationResponse"
+          }
+        },
+        "400": {
+          "description": "Error",
+          "schema": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "404": {
           "description": "Error",
           "schema": {
             "$ref": "#/$defs/error"
@@ -2735,26 +2827,7 @@
         "200": {
           "description": "Successfully retrieved bulk operation errors",
           "schema": {
-            "properties": {
-              "errors": {
-                "items": {
-                  "$ref": "#/$defs/BulkOperationError"
-                },
-                "type": "array"
-              },
-              "links": {
-                "description": "The links",
-                "items": {
-                  "$ref": "#/$defs/link-description"
-                },
-                "type": "array"
-              },
-              "pageToken": {
-                "description": "The page token",
-                "type": "string"
-              }
-            },
-            "type": "object"
+            "$ref": "#/$defs/BulkOperationErrorList"
           }
         },
         "400": {
@@ -2772,5 +2845,5 @@
   ],
   "name": "bulk-operations",
   "title": "Bulk Operations API",
-  "version": "1.1.0"
+  "version": "1.2.0"
 }

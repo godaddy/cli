@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.29](https://github.com/godaddy/cli/compare/v0.2.28...v0.2.29) (2026-10-14)
+
+
+### Bug Fixes
+
+* **api-catalog:** resync spec drift with the latest Domains, Customers and Bulk Operations APIs ([#321](https://github.com/godaddy/cli/issues/321)) ([d890a78](https://github.com/godaddy/cli/commit/d890a78364b0d7a4d6bab459cbad012460d3d1f4))
+* **deps:** update rustls to 0.23.46 to address four TLS security advisories ([#328](https://github.com/godaddy/cli/issues/328)) ([cbe9a0a](https://github.com/godaddy/cli/commit/cbe9a0a34d4ce1eef388eb578568505723738a38))
+* **domain:** fail quote when it can't be saved for purchase ([#324](https://github.com/godaddy/cli/issues/324)) ([89d8090](https://github.com/godaddy/cli/commit/89d8090acdc4bca00ce1b9af1fc850e1de1ea215))
+* **shopping:** include extra catalog metadata fields in JSON output ([#323](https://github.com/godaddy/cli/issues/323)) ([c85ec66](https://github.com/godaddy/cli/commit/c85ec66aa8f919cef8052a50fb152f2c44af4cd6))
+
 ## [0.2.28](https://github.com/godaddy/cli/compare/v0.2.27...v0.2.28) (2026-10-12)
 
 
