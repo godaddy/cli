@@ -1502,6 +1502,7 @@ dependencies = [
  "globset",
  "hosting-client",
  "httpmock",
+ "idna",
  "iso_currency",
  "jsonschema",
  "open",

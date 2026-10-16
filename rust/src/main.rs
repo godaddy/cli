@@ -10,6 +10,7 @@ mod environments;
 mod error;
 mod hosting;
 mod http;
+mod idn;
 mod malware;
 mod next_action;
 mod output_schema;

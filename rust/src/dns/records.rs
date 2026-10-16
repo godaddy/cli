@@ -2,9 +2,11 @@
 //! subcommand: type/name validation, the `RecordOptions` bundle, converting
 //! CLI input into v3 `DnsRecord`s, and the paginated `list_dns_records` fetch.
 
-use cli_engine::{CliCoreError, NextAction, NextActionParam};
+use cli_engine::{CliCoreError, CommandResult, NextAction, NextActionParam};
+use serde_json::Value;
 
 use crate::domain::api_error;
+use crate::idn::DomainForm;
 use crate::next_action::next_action;
 
 use domains_client::types;
@@ -32,6 +34,12 @@ const LIST_PAGE_SIZE: std::num::NonZeroU64 =
 /// against [`WRITABLE_TYPES`] and return the canonical upper-case wire string.
 /// The read-only NS/SOA get a clear "managed by GoDaddy" reason. Validating in
 /// clap rejects invalid input at parse time — before `--dry-run`/auth short-circuits.
+/// Clap value-parser for a zone or record name: Unicode names are sent to the
+/// API in their ASCII (punycode) form; ASCII names pass through unchanged.
+pub(super) fn parse_dns_name_arg(raw: &str) -> Result<String, String> {
+    crate::idn::to_ascii(raw).map_err(|e| e.to_string())
+}
+
 pub(super) fn parse_write_type_arg(raw: &str) -> Result<String, String> {
     let upper = raw.to_ascii_uppercase();
     if WRITABLE_TYPES.contains(&upper.as_str()) {
@@ -118,7 +126,7 @@ pub(crate) const CONDITIONALLY_REQUIRED_FLAGS: &[(&str, &str)] = &[
 #[derive(Debug, Clone, clap::Args)]
 pub(super) struct RecordWriteArgs {
     /// Domain whose records to modify (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
     pub(super) domain: String,
 
     // `ignore_case` is load-bearing, not cosmetic. The `required_if_eq` predicates
@@ -131,8 +139,11 @@ pub(super) struct RecordWriteArgs {
     pub(super) record_type: String,
 
     /// Record name relative to the domain (e.g. www, @ for the apex).
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", value_parser = parse_dns_name_arg)]
     pub(super) name: String,
+
+    #[command(flatten)]
+    pub(super) domain_format: crate::idn::DomainFormArgs,
 
     /// Record value (repeatable for multiple records on the same name). For
     /// TLSA, this is the hex-encoded certificate association data; use
@@ -422,6 +433,23 @@ pub(super) async fn fetch_records(
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
 /// the domain/type/name the write just touched.
+/// A mutation's success payload plus the "verify with `dns list`" next action,
+/// with the zone and record name shown in `domain_format`.
+pub(super) fn verified_result(
+    domain_format: DomainForm,
+    mut payload: Value,
+    domain: &str,
+    record_type: &str,
+    name: &str,
+) -> CommandResult {
+    domain_format.convert_dns_fields(&mut payload);
+    CommandResult::new(payload).with_next_actions(vec![verify_with_list_action(
+        &domain_format.render(domain),
+        record_type,
+        &domain_format.render(name),
+    )])
+}
+
 pub(super) fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
     next_action(
         "dns list <domain> --type <type> --name <name>",
@@ -435,6 +463,58 @@ pub(super) fn verify_with_list_action(domain: &str, record_type: &str, name: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_dns_name_arg_encodes_unicode_and_keeps_special_names() {
+        assert_eq!(
+            parse_dns_name_arg("münchen.de").expect("valid name"),
+            "xn--mnchen-3ya.de"
+        );
+        assert_eq!(
+            parse_dns_name_arg("*.münchen").expect("valid name"),
+            "*.xn--mnchen-3ya"
+        );
+        for plain in ["example.com", "xn--mnchen-3ya.de", "@", "www", "_dmarc"] {
+            assert_eq!(parse_dns_name_arg(plain).expect("valid name"), plain);
+        }
+        assert!(parse_dns_name_arg("\u{301}abc.com").is_err());
+    }
+
+    #[test]
+    fn verified_result_shows_the_requested_form_of_zone_and_name() {
+        let payload = || {
+            serde_json::json!({
+                "domain": "xn--mnchen-3ya.de",
+                "name": "xn--bcher-kva",
+                "type": "A",
+            })
+        };
+        let unicode = verified_result(
+            DomainForm::Unicode,
+            payload(),
+            "xn--mnchen-3ya.de",
+            "A",
+            "xn--bcher-kva",
+        );
+        assert_eq!(unicode.data["domain"], "münchen.de");
+        assert_eq!(unicode.data["name"], "bücher");
+        let params =
+            serde_json::to_string(&unicode.metadata.next_actions).expect("next actions serialize");
+        assert!(
+            params.contains("münchen.de") && params.contains("bücher"),
+            "{params}"
+        );
+
+        let ascii = verified_result(
+            DomainForm::Punycode,
+            payload(),
+            "xn--mnchen-3ya.de",
+            "A",
+            "xn--bcher-kva",
+        );
+        assert_eq!(ascii.data["domain"], "xn--mnchen-3ya.de");
+        assert_eq!(ascii.data["name"], "xn--bcher-kva");
+    }
 
     fn opts() -> RecordOptions {
         RecordOptions {

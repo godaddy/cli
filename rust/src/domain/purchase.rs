@@ -10,6 +10,7 @@ use domains_client::types;
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::error::GddyError;
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
@@ -132,6 +133,9 @@ struct PurchaseArgs {
     /// Confirm the purchase; required because it charges your account.
     #[arg(long)]
     confirm: bool,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -402,6 +406,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     );
                 }
             }
+            args.domain_format.form().convert_domain_fields(&mut result);
             Ok(CommandResult::new(result).with_next_actions(actions))
         },
     )
