@@ -81,7 +81,7 @@ pub(super) async fn run_eligibility_with_mca(
                         .find_map(terms_acceptance::extract_mca_requirement)
                 });
             if let Some(req) = mca_req {
-                terms_acceptance::wait_for_acceptance(&req, sender).await?;
+                terms_acceptance::wait_for_acceptance(&req, client, sender).await?;
                 // Don't re-check eligibility — the backend may not immediately
                 // reflect the acceptance. Pass MICROSOFT_MCA as a consent on
                 // the create request instead.

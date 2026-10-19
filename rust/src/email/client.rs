@@ -138,6 +138,17 @@ impl EmailClient {
         )
         .await
     }
+
+    pub async fn get_attestation_status(&self, attestation_id: &str) -> Result<Value, ClientError> {
+        self.send_json(
+            Method::GET,
+            &format!("/m365-attestation-status/{attestation_id}"),
+            &[],
+            &[],
+            None,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]

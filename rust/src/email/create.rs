@@ -137,14 +137,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 match client.create_mailbox(body).await {
                     Ok(d) => break d,
 
-                    Err(ClientError::Http { status: 422, body: err_body })
-                        if body_has_issue(&err_body, "CONSENT_NOT_PROVIDED")
-                            && !extra_consents.iter().any(|c| c == "MICROSOFT_MCA") =>
+                    Err(ClientError::Http {
+                        status: 422,
+                        body: err_body,
+                    }) if body_has_issue(&err_body, "CONSENT_NOT_PROVIDED")
+                        && !extra_consents.iter().any(|c| c == "MICROSOFT_MCA") =>
                     {
                         match mca_requirement_from_consent_error(&err_body) {
                             Some(req) => {
                                 if let Err(e) =
-                                    terms_acceptance::wait_for_acceptance(&req, &sender).await
+                                    terms_acceptance::wait_for_acceptance(&req, &client, &sender)
+                                        .await
                                 {
                                     return Err(fail_create(&sender, e).await);
                                 }
@@ -202,9 +205,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         .await);
                     }
 
-                    Err(ClientError::Http { status, body })
-                        if status == 400 || status == 422 =>
-                    {
+                    Err(ClientError::Http { status, body }) if status == 400 || status == 422 => {
                         return Err(fail_create(
                             &sender,
                             client_err_with_fix(
@@ -246,9 +247,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 /// {"details": [{"issue": "CONSENT_NOT_PROVIDED",
 ///               "description": "...at https://cdn.partner.microsoft.com/mca/?attestationid=..."}]}
 /// ```
-fn mca_requirement_from_consent_error(
-    body: &str,
-) -> Option<terms_acceptance::TermsRequirement> {
+fn mca_requirement_from_consent_error(body: &str) -> Option<terms_acceptance::TermsRequirement> {
     #[derive(serde::Deserialize)]
     struct Detail {
         issue: Option<String>,
