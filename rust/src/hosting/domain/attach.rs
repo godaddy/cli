@@ -36,14 +36,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<HostingDomain>(),
         |ctx, args: DomainAttachArgs| async move {
             let app_id = args.app_id.clone();
+            // Resolve the display form before attaching, so a bad preference
+            // can't hide the details of an attachment that already succeeded.
+            let domain_format = args.domain_format.form(&ctx)?;
             let client = make_client(&ctx, &[DOMAIN_WRITE]).await?;
             let mut data = client
                 .attach_domain(&app_id, &args.hostname)
                 .await
                 .map_err(client_err)?;
-            args.domain_format
-                .form(&ctx)?
-                .convert_fields(&mut data, &["hostname"]);
+            domain_format.convert_fields(&mut data, &["hostname"]);
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "hosting domain list --app-id <app-id>",
