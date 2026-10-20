@@ -565,7 +565,7 @@ async fn upload_artifact_is_not_cut_off_by_the_api_read_timeout() {
         server.base_url(),
         "test-token",
         crate::http::make_api_client_with_read_timeout(std::time::Duration::from_millis(100)),
-        make_upload_http_client(),
+        make_storage_upload_http_client(),
     );
 
     // Control: the API client really is that tight against this server.

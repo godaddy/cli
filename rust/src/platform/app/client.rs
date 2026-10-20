@@ -2,7 +2,7 @@ use bytes::Bytes;
 use reqwest::Client;
 use serde_json::{Value, json};
 
-use crate::http::{make_http_client, make_upload_http_client};
+use crate::http::{make_http_client, make_storage_upload_http_client};
 
 const GRAPHQL_PATH: &str = "/v1/apps/app-registry-subgraph";
 
@@ -116,7 +116,8 @@ impl ApplicationClient {
     }
 
     fn upload_client(&self) -> &Client {
-        self.upload_client.get_or_init(make_upload_http_client)
+        self.upload_client
+            .get_or_init(make_storage_upload_http_client)
     }
 
     async fn query(&self, body: Value) -> Result<Value, ClientError> {

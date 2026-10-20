@@ -5,7 +5,7 @@ use hosting_client::types::{
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
-use crate::http::{make_http_client, make_upload_http_client};
+use crate::http::{make_api_upload_http_client, make_http_client};
 
 const BASE_PATH: &str = "/v1/hosting";
 
@@ -87,7 +87,7 @@ impl HostingClient {
     }
 
     fn upload_http(&self) -> &Client {
-        self.upload_http.get_or_init(make_upload_http_client)
+        self.upload_http.get_or_init(make_api_upload_http_client)
     }
 
     fn url(&self, path: &str) -> String {

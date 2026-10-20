@@ -42,13 +42,21 @@ pub fn api_client_builder() -> ClientBuilder {
     reqwest_client_builder_with(api_timeouts())
 }
 
-/// A `reqwest` builder for uploads; see [`upload_timeouts`].
+/// A `reqwest` builder for uploads to a GoDaddy API (a multipart import); see
+/// [`upload_timeouts`]. Carries the same identity and attribution headers as
+/// [`api_client_builder`].
+pub fn api_upload_client_builder() -> ClientBuilder {
+    reqwest_client_builder_with(upload_timeouts())
+}
+
+/// A `reqwest` builder for uploads to presigned storage URLs; see
+/// [`upload_timeouts`].
 ///
-/// Uploads go to presigned storage URLs, not a GoDaddy API, so this carries the
-/// engine's user-agent but not the attribution headers that
+/// A presigned URL names a storage host the CLI does not own, so this carries
+/// the engine's user-agent but not the attribution headers that
 /// [`api_client_builder`] sends: the session correlation header should not reach
-/// a host the CLI does not own.
-pub fn upload_client_builder() -> ClientBuilder {
+/// it. Use [`api_upload_client_builder`] for an upload to a GoDaddy API.
+pub fn storage_upload_client_builder() -> ClientBuilder {
     upload_timeouts()
         .apply(Client::builder())
         .user_agent(default_user_agent())
@@ -70,12 +78,21 @@ pub(crate) fn make_api_client_with_read_timeout(read: std::time::Duration) -> Cl
         .expect("failed to build test HTTP client")
 }
 
-/// A `reqwest` client for uploads. Build it where it is used (it is cheap to
-/// skip for commands that never upload), not alongside the API client.
-pub fn make_upload_http_client() -> Client {
-    upload_client_builder()
+/// A `reqwest` client for uploads to a GoDaddy API; see
+/// [`api_upload_client_builder`]. Build it where it is used (it is cheap to skip
+/// for commands that never upload), not alongside the API client.
+pub fn make_api_upload_http_client() -> Client {
+    api_upload_client_builder()
         .build()
-        .expect("failed to build upload HTTP client")
+        .expect("failed to build API upload HTTP client")
+}
+
+/// A `reqwest` client for uploads to presigned storage URLs; see
+/// [`storage_upload_client_builder`]. Build it where it is used.
+pub fn make_storage_upload_http_client() -> Client {
+    storage_upload_client_builder()
+        .build()
+        .expect("failed to build storage upload HTTP client")
 }
 
 /// Bridges `generated-client-support::TransportObserver` (shared by every

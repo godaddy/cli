@@ -30,7 +30,9 @@ impl progenitor_client::ClientHooks<()> for Client {
         request: reqwest::Request,
         _info: &progenitor_client::OperationInfo,
     ) -> reqwest::Result<reqwest::Response> {
-        generated_client_support::execute_and_observe(self.client(), request).await
+        // Hosting responses carry free-form log lines and minted credentials, so
+        // traces get status and headers only, never the body.
+        generated_client_support::execute_and_observe_metadata_only(self.client(), request).await
     }
 }
 
@@ -108,11 +110,11 @@ mod tests {
         }
     }
 
-    /// Generated hosting calls are logged through the shared observer with the
-    /// real response body. That is why no response schema may carry a secret —
-    /// see `no_response_schema_property_looks_like_a_secret`.
+    /// Generated hosting calls reach the shared observer with their status but
+    /// never the response body: log lines and minted credentials must not land in
+    /// a `--debug transport` trace.
     #[tokio::test]
-    async fn generated_calls_feed_request_and_response_body_to_the_observer() {
+    async fn generated_calls_feed_the_observer_without_the_response_body() {
         let _lock = OBSERVER_TEST_LOCK.lock().await;
         let _clear = ClearObserver;
         let observer = std::sync::Arc::new(RecordingObserver::default());
@@ -123,7 +125,7 @@ mod tests {
                 when.method(httpmock::Method::GET)
                     .path("/v1/hosting/apps/app-1");
                 then.status(200)
-                    .json_body(serde_json::json!({ "id": "app-1", "marker": "body-marker-123" }));
+                    .json_body(serde_json::json!({ "id": "app-1", "marker": "secret-log-line" }));
             })
             .await;
         let client = client_with_builder(
@@ -148,55 +150,10 @@ mod tests {
             .responses
             .lock()
             .expect("lock is never held across a panic");
-        assert!(
-            responses.iter().any(|(status, body)| *status == 200
-                && String::from_utf8_lossy(body).contains("body-marker-123")),
-            "expected the response body to reach the observer, got: {responses:?}"
-        );
-    }
-
-    /// Property names that look secret-ish but carry no secret value: `secrets`
-    /// is a list of `Secret` metadata (name and timestamps only).
-    const SECRET_LOOKING_BUT_SAFE: &[&str] = &["secrets"];
-
-    /// `--debug transport` prints generated-call response bodies verbatim, and
-    /// cli-engine has no body-redaction hook. If a regenerated spec adds a
-    /// secret-bearing response field, fail here so it is handled (hand-rolled
-    /// call with a redacted trace, like the agent-token mint) before shipping.
-    #[test]
-    fn no_response_schema_property_looks_like_a_secret() {
-        fn collect(node: &serde_json::Value, found: &mut Vec<String>) {
-            match node {
-                serde_json::Value::Object(map) => {
-                    if let Some(serde_json::Value::Object(props)) = map.get("properties") {
-                        for name in props.keys() {
-                            let lower = name.to_ascii_lowercase();
-                            let suspicious = ["token", "secret", "password", "credential", "key"]
-                                .iter()
-                                .any(|needle| lower.contains(needle));
-                            if suspicious && !SECRET_LOOKING_BUT_SAFE.contains(&name.as_str()) {
-                                found.push(name.clone());
-                            }
-                        }
-                    }
-                    map.values().for_each(|child| collect(child, found));
-                }
-                serde_json::Value::Array(items) => items.iter().for_each(|i| collect(i, found)),
-                _ => {}
-            }
-        }
-
-        let spec: serde_json::Value =
-            serde_json::from_str(include_str!("../openapi/hosting.oas3.json"))
-                .expect("vendored spec is valid JSON");
-        let mut found = Vec::new();
-        collect(&spec["components"]["schemas"], &mut found);
-
-        assert!(
-            found.is_empty(),
-            "response schema field(s) that look like secrets: {found:?}. Generated calls log \
-             response bodies under --debug transport; route these through a hand-rolled call \
-             with a redacted trace, or add to SECRET_LOOKING_BUT_SAFE if they carry no secret."
+        assert_eq!(
+            *responses,
+            vec![(200, generated_client_support::WITHHELD_BODY.to_vec())],
+            "the observer should see the status and a placeholder, never the body"
         );
     }
 

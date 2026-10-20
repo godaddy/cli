@@ -109,17 +109,20 @@ pub fn set_transport_observer(observer: Option<Arc<dyn TransportObserver>>) {
         .expect("lock is never held across a panic") = observer;
 }
 
+fn current_observer() -> Option<Arc<dyn TransportObserver>> {
+    TRANSPORT_OBSERVER
+        .read()
+        .expect("lock is never held across a panic")
+        .clone()
+}
+
 /// Forwards a generated request to the registered [`TransportObserver`], if
 /// any. Called from each generated client crate's
 /// `progenitor_client::ClientHooks::pre` — that impl has to live in the
 /// crate that defines `Client` (orphan rule), so this is the one-line body
 /// it delegates to.
 pub fn notify_request(request: &reqwest::Request) {
-    let observer = TRANSPORT_OBSERVER
-        .read()
-        .expect("lock is never held across a panic")
-        .clone();
-    if let Some(observer) = observer {
+    if let Some(observer) = current_observer() {
         observer.on_request(request);
     }
 }
@@ -150,11 +153,7 @@ pub async fn execute_and_observe(
 ) -> reqwest::Result<reqwest::Response> {
     let response = client.execute(request).await?;
 
-    let observer = TRANSPORT_OBSERVER
-        .read()
-        .expect("lock is never held across a panic")
-        .clone();
-    let Some(observer) = observer else {
+    let Some(observer) = current_observer() else {
         return Ok(response);
     };
 
@@ -172,6 +171,27 @@ pub async fn execute_and_observe(
         .body(bytes)
         .expect("status/headers copied from a real response are always valid");
     Ok(rebuilt.into())
+}
+
+/// Reported to the [`TransportObserver`] in place of a response body that
+/// [`execute_and_observe_metadata_only`] withholds.
+pub const WITHHELD_BODY: &[u8] = b"<redacted: response body withheld>";
+
+/// Like [`execute_and_observe`], but the observer sees only the status and
+/// headers, with [`WITHHELD_BODY`] in place of the body. The body is never read
+/// here and the response is returned untouched.
+///
+/// For APIs whose responses can carry free-form or secret content (log lines,
+/// minted credentials) that must not reach a `--debug transport` trace.
+pub async fn execute_and_observe_metadata_only(
+    client: &reqwest::Client,
+    request: reqwest::Request,
+) -> reqwest::Result<reqwest::Response> {
+    let response = client.execute(request).await?;
+    if let Some(observer) = current_observer() {
+        observer.on_response(response.status(), response.headers(), WITHHELD_BODY);
+    }
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -339,6 +359,43 @@ mod tests {
             .await
             .expect("rebuilt response is still readable");
         assert_eq!(text, "real body");
+    }
+
+    #[tokio::test]
+    async fn execute_and_observe_metadata_only_withholds_the_body_but_leaves_it_readable() {
+        let _guard = TEST_LOCK.lock().await;
+        let _clear = ClearObserver;
+
+        let observer = Arc::new(RecordingObserver::default());
+        set_transport_observer(Some(observer.clone()));
+
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/probe");
+                then.status(200).body("secret log line");
+            })
+            .await;
+
+        let client = reqwest::Client::new();
+        let request = client
+            .get(format!("{}/probe", server.base_url()))
+            .build()
+            .expect("valid request");
+
+        let response = execute_and_observe_metadata_only(&client, request)
+            .await
+            .expect("request succeeds");
+
+        assert_eq!(
+            *observer
+                .responses
+                .lock()
+                .expect("lock is never held across a panic"),
+            vec![(200, WITHHELD_BODY.to_vec())]
+        );
+        let text = response.text().await.expect("response is still readable");
+        assert_eq!(text, "secret log line");
     }
 
     #[tokio::test]
