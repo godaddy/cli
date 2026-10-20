@@ -9,7 +9,6 @@ use shopping_client::types::{
 pub(crate) type Checkout =
     shopping_client::types::ComGodaddyShoppingCheckoutInputSchemaDevUcpShoppingCheckout;
 
-const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
@@ -92,10 +91,10 @@ pub(crate) fn build_client(
     base_url: impl AsRef<str>,
     token: impl AsRef<str>,
 ) -> Result<shopping_client::Client, ClientError> {
-    shopping_client::client_with_auth(
+    shopping_client::client_with_builder(
+        crate::http::api_client_builder(),
         base_url.as_ref(),
         &format!("Bearer {}", token.as_ref()),
-        USER_AGENT,
         &uuid::Uuid::new_v4().to_string(),
     )
     .map_err(ClientError::Build)

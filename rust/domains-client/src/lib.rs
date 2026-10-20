@@ -18,7 +18,7 @@
 //! refresh and re-merge the spec.
 //!
 //! The lint allowances are scoped to the generated module so the hand-written
-//! code below (`client_with_auth`, the `ClientHooks` bridge) is still linted
+//! code below (`client_with_builder`, the `ClientHooks` bridge) is still linted
 //! normally. `BuildError`/`TransportObserver`/`set_transport_observer` are
 //! shared with every other generated client crate — see
 //! `generated-client-support`.
@@ -58,22 +58,30 @@ impl progenitor_client::ClientHooks<()> for Client {
     }
 }
 
-/// Build a [`Client`] whose every request carries a pre-set `Authorization`
+/// Builds a [`Client`] whose every request carries a pre-set `Authorization`
 /// header and `x-request-id`.
 ///
-/// `authorization` is the full header value the domain endpoints expect — e.g.
-/// `"Bearer <token>"`. Keeping the `reqwest::Client` construction here means
-/// callers never name reqwest's types, so the main crate is unaffected by this
-/// crate's reqwest version.
-pub fn client_with_auth(
+/// `builder` carries the host application's shared transport policy
+/// (user-agent, timeouts, default headers); `authorization` is the full header
+/// value the API expects, e.g. `"Bearer <token>"`. The builder is a `reqwest`
+/// type, so the caller's `reqwest` must resolve to the same version as this
+/// crate's.
+///
+/// # Errors
+///
+/// [`BuildError`] if `base_url` is not HTTPS (plain HTTP is allowed only on a
+/// loopback host), if a header value is invalid, or if the client cannot be
+/// built.
+pub fn client_with_builder(
+    builder: reqwest::ClientBuilder,
     base_url: &str,
     authorization: &str,
-    user_agent: &str,
     request_id: &str,
 ) -> Result<Client, BuildError> {
+    generated_client_support::validate_base_url(base_url)?;
     let http = generated_client_support::build_authenticated_http_client(
+        builder,
         authorization,
-        user_agent,
         request_id,
     )?;
     Ok(Client::new_with_client(base_url, http))
@@ -92,10 +100,10 @@ mod tests {
     // headers, and response deserialization. They run entirely offline.
 
     fn client_for(server: &MockServer) -> Client {
-        client_with_auth(
+        client_with_builder(
+            reqwest::Client::builder(),
             &server.base_url(),
             "Bearer tok",
-            "godaddy-cli/test",
             "req-1",
         )
         .expect("build client")

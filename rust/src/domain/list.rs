@@ -340,9 +340,13 @@ mod tests {
                     .json_body(serde_json::json!({ "items": [] }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let statuses =
             super::super::common::comma_joined(vec!["ACTIVE".to_string(), "EXPIRED".to_string()]);
@@ -370,9 +374,13 @@ mod tests {
                     .json_body(serde_json::json!({ "items": [] }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let groups = super::super::common::comma_joined(
             super::DEFAULT_VISIBLE_GROUPS
@@ -490,9 +498,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let items = fetch_domains(&client, &[], false, None, false)
             .await
@@ -528,9 +540,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let items = fetch_domains(&client, &[], false, Some(2), false)
             .await
@@ -562,9 +578,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let err = fetch_domains(&client, &[], false, None, false)
             .await
@@ -591,9 +611,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let err = fetch_domains(&client, &[], false, None, false)
             .await

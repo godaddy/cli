@@ -394,10 +394,7 @@ mod tests {
                 when.method(Method::GET)
                     .path("/api/v1/native-apps/app-1")
                     .header("authorization", "Bearer test-token")
-                    .header(
-                        "user-agent",
-                        concat!("godaddy-cli/", env!("CARGO_PKG_VERSION")),
-                    );
+                    .header("user-agent", cli_engine::transport::default_user_agent());
                 then.status(200).json_body(json!({
                     "success": true,
                     "data": native_app_json()

@@ -9,8 +9,6 @@ use crate::environments;
 
 use domains_client::types;
 
-const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
-
 /// The ISO-4217 minor-unit exponent for a currency — how many implied decimal
 /// places a [`types::SimpleMoney`] `value` carries (the v3 spec defers money
 /// formatting to ISO 4217). Sourced from the `iso_currency` crate's maintained
@@ -253,10 +251,10 @@ pub(crate) fn make_client_with_cred(
     let config = environments::resolve(env)?;
     let authorization = format!("Bearer {}", cred.token);
     let request_id = uuid::Uuid::new_v4().to_string();
-    domains_client::client_with_auth(
+    domains_client::client_with_builder(
+        crate::http::api_client_builder(),
         &config.domains_api_url,
         &authorization,
-        USER_AGENT,
         &request_id,
     )
     .map_err(|e| CliCoreError::message(format!("failed to build domains client: {e}")))
