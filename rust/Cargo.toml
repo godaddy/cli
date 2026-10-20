@@ -28,8 +28,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 async-trait = "0.1"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
-clap = { version = "4.5", features = ["std", "string", "derive"] }
-cli-engine = { version = "0.10.2", features = ["pkce-auth"] }
+clap = { version = "4.5", features = ["std", "string", "derive", "env"] }
+cli-engine = { version = "0.10.3", features = ["pkce-auth"] }
 dirs = "6"
 domains-client = { path = "domains-client" }
 email-client = { path = "email-client" }
@@ -53,7 +53,7 @@ phonenumber = "0.3"
 progenitor-client = "0.14"
 regex = { version = "1", features = ["std"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "form", "rustls"] }
-schemars = { version = "1.2", features = ["derive"], optional = true }
+schemars = { version = "1.2", features = ["derive"] }
 self-replace = "1.5.0"
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 sha2 = "0.10"
@@ -79,7 +79,7 @@ tempfile = "3"
 [features]
 # Excludes `gddy spec` from default/release builds: it's only used to extract
 # the CLI's command spec for the dev-portal, never by end users.
-dev-portal-spec = ["dep:schemars"]
+dev-portal-spec = []
 
 [lints.rust]
 unsafe_code = "deny"

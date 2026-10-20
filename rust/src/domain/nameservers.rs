@@ -93,7 +93,7 @@ pub(super) fn group() -> RuntimeGroupSpec {
             if let Some(status) = op.status.as_ref() {
                 result["status"] = json!(status.to_string());
             }
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             domain_format.convert_fields(&mut result, &["domain", "nameservers"]);
             Ok(CommandResult::new(result).with_next_actions(vec![
                 next_action("domain get <domain>", "Confirm the updated nameservers").with_param(

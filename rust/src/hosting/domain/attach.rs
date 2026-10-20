@@ -42,7 +42,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .await
                 .map_err(client_err)?;
             args.domain_format
-                .form()
+                .form(&ctx)?
                 .convert_fields(&mut data, &["hostname"]);
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(

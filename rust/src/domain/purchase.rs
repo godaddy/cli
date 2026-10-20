@@ -458,7 +458,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
             args.domain_format
-                .form()
+                .form(&ctx)?
                 .convert_fields(&mut result, &["domain"]);
             Ok(CommandResult::new(result).with_next_actions(actions))
         },
