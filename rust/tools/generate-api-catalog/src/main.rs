@@ -9,6 +9,7 @@ mod openapi;
 mod ref_paths;
 mod shopping_spec;
 mod spec_normalize;
+mod visibility;
 
 use std::{
     collections::{BTreeMap, HashSet},

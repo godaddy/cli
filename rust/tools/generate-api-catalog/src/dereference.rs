@@ -9,6 +9,7 @@ use crate::ref_paths::{
     has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
     resolve_common_types_path, specification_root,
 };
+use crate::visibility::{drop_operationless_paths, prune_private};
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -411,9 +412,10 @@ fn load_external_ref(
     let src = std::fs::read_to_string(&resolved)
         .map_err(|e| eprintln!("WARNING: cannot read ref file {}: {e}", resolved.display()))
         .ok()?;
-    let parsed = parse_yaml_or_json(&src, &resolved)
+    let mut parsed = parse_yaml_or_json(&src, &resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
+    prune_private(&mut parsed);
     let dir = resolved.parent().unwrap_or(&resolved);
     Some(dereference(
         &parsed.clone(),
@@ -536,7 +538,8 @@ fn load_and_dereference_with(
 ) -> Result<(Value, IndexMap<String, Value>)> {
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
-    let parsed = parse_yaml_or_json(&src, spec_file)?;
+    let mut parsed = parse_yaml_or_json(&src, spec_file)?;
+    prune_private(&mut parsed);
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
     let mut dereffed = dereference(
@@ -556,6 +559,7 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
+    drop_operationless_paths(&mut dereffed);
     Ok((dereffed, defs))
 }
 
