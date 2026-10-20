@@ -394,10 +394,49 @@ mod tests {
             }
         }
 
+        /// Set only in the child process spawned by `invalid_env_value_is_rejected`.
+        const CHILD: &str = "GDDY_TEST_INVALID_PUNYCODE_ENV";
+
+        /// An invalid `GDDY_PUNYCODE` makes every command that reads it fail to
+        /// parse, so it must never be set in this process, where other tests
+        /// parse such commands without holding `ENV_LOCK`. Run it in a child
+        /// test process instead.
+        #[test]
+        fn invalid_env_value_is_rejected() {
+            let (_, module) = module_path!()
+                .split_once("::")
+                .expect("crate-qualified path");
+            let status = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    &format!("{module}::invalid_env_value_is_rejected_in_child"),
+                ])
+                .env(CHILD, "1")
+                .env("GDDY_PUNYCODE", "banana")
+                .output()
+                .expect("spawn test binary");
+            assert!(
+                status.status.success(),
+                "child failed:\n{}\n{}",
+                String::from_utf8_lossy(&status.stdout),
+                String::from_utf8_lossy(&status.stderr)
+            );
+            // A filter that matched nothing would also exit 0.
+            assert!(
+                String::from_utf8_lossy(&status.stdout).contains("1 passed"),
+                "child test did not run"
+            );
+        }
+
+        /// Runs only when spawned by `invalid_env_value_is_rejected`, which has
+        /// set the invalid value in this process's environment.
         #[tokio::test]
-        async fn invalid_env_value_is_rejected() {
-            let (code, rendered) = run(None, Some("banana"), None).await;
-            assert_ne!(code, 0, "{rendered}");
+        async fn invalid_env_value_is_rejected_in_child() {
+            if std::env::var_os(CHILD).is_none() {
+                return;
+            }
+            let out = cli().run(["gddy", "t", "show"]).await;
+            assert_ne!(out.exit_code, 0, "{}", out.rendered);
         }
     }
 }
