@@ -510,7 +510,12 @@ fn extract_zip(archive_bytes: &[u8], bin_name: &str) -> Result<Vec<u8>, CliCoreE
         let mut file = archive
             .by_index(i)
             .map_err(|e| CliCoreError::message(format!("failed to read zip entry: {e}")))?;
-        let matches = Path::new(file.name()).file_name().and_then(|n| n.to_str()) == Some(bin_name);
+        let matches = file.name().is_ok_and(|name| {
+            Path::new(name.as_ref())
+                .file_name()
+                .and_then(|n| n.to_str())
+                == Some(bin_name)
+        });
         if matches {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).map_err(|e| {
@@ -752,7 +757,7 @@ def456  gddy-aarch64-unknown-linux-gnu.tar.gz
         let mut zip_bytes = Vec::new();
         {
             let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
-            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+            let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
             writer.start_file("gddy.exe", options).expect("start file");
             std::io::Write::write_all(&mut writer, b"binary-contents").expect("write");
             writer.finish().expect("finish");
