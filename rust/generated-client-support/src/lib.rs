@@ -6,8 +6,8 @@
 //! `progenitor_client::ClientHooks<()> for Client` impl Rust's orphan rule
 //! requires to live alongside `Client` — can't move here. Everything else
 //! that every generated client crate re-derives identically lives here
-//! instead: the authenticated-`reqwest::Client` builder, and the
-//! [`TransportObserver`] extension point + its process-wide registry.
+//! instead: the base-URL policy, the authenticated-`reqwest::Client` builder,
+//! and the [`TransportObserver`] extension point + its process-wide registry.
 
 use std::sync::{Arc, RwLock};
 
@@ -21,15 +21,55 @@ pub enum BuildError {
     Header(#[from] reqwest::header::InvalidHeaderValue),
     #[error("failed to build HTTP client: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("invalid base URL: {0}")]
+    InvalidBaseUrl(#[from] url::ParseError),
+    #[error("insecure base URL scheme '{scheme}': HTTPS is required")]
+    InsecureBaseUrlScheme { scheme: String },
+}
+
+/// Rejects a base URL that would send the caller's bearer token in cleartext:
+/// anything but `https`, with `http` allowed only for a loopback host (local
+/// mock servers). Every generated client's `client_with_builder` calls this
+/// before building, so the policy is defined once.
+///
+/// # Errors
+///
+/// [`BuildError::InvalidBaseUrl`] if `base_url` does not parse, and
+/// [`BuildError::InsecureBaseUrlScheme`] for a non-HTTPS scheme on a
+/// non-loopback host.
+pub fn validate_base_url(base_url: &str) -> Result<(), BuildError> {
+    let parsed = url::Url::parse(base_url)?;
+    match parsed.scheme() {
+        "https" => Ok(()),
+        "http" if is_loopback_host(parsed.host()) => Ok(()),
+        scheme => Err(BuildError::InsecureBaseUrlScheme {
+            scheme: scheme.to_owned(),
+        }),
+    }
+}
+
+fn is_loopback_host(host: Option<url::Host<&str>>) -> bool {
+    match host {
+        Some(url::Host::Domain(domain)) => domain == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
 }
 
 /// Builds the pre-authenticated `reqwest::Client` a generated client's
-/// `client_with_auth` wraps in `Client::new_with_client(base_url, ..)`.
+/// `client_with_builder` wraps in `Client::new_with_client(base_url, ..)`.
 /// `authorization` is the full header value the API expects, e.g.
 /// `"Bearer <token>"`.
+///
+/// `builder` carries the host application's shared transport policy
+/// (user-agent, default headers, timeouts); this adds only the per-client
+/// `Authorization` and `x-request-id` headers on top. `builder` is a
+/// `reqwest` type, so the caller's `reqwest` must resolve to the same version
+/// as this crate's.
 pub fn build_authenticated_http_client(
+    builder: reqwest::ClientBuilder,
     authorization: &str,
-    user_agent: &str,
     request_id: &str,
 ) -> Result<reqwest::Client, BuildError> {
     let mut headers = HeaderMap::new();
@@ -38,10 +78,7 @@ pub fn build_authenticated_http_client(
         HeaderName::from_static("x-request-id"),
         HeaderValue::from_str(request_id)?,
     );
-    Ok(reqwest::Client::builder()
-        .user_agent(user_agent)
-        .default_headers(headers)
-        .build()?)
+    Ok(builder.default_headers(headers).build()?)
 }
 
 /// Observes every request/response a generated client makes, independent of
@@ -143,15 +180,60 @@ mod tests {
 
     #[test]
     fn build_authenticated_http_client_rejects_an_invalid_header_value() {
-        let err = build_authenticated_http_client("Bearer tok\n", "test-agent", "req-1")
-            .expect_err("a header value containing a newline is invalid");
+        let err =
+            build_authenticated_http_client(reqwest::Client::builder(), "Bearer tok\n", "req-1")
+                .expect_err("a header value containing a newline is invalid");
         assert!(matches!(err, BuildError::Header(_)));
     }
 
     #[test]
     fn build_authenticated_http_client_succeeds_with_valid_inputs() {
-        build_authenticated_http_client("Bearer tok", "test-agent", "req-1")
+        build_authenticated_http_client(reqwest::Client::builder(), "Bearer tok", "req-1")
             .expect("valid inputs build a client");
+    }
+
+    #[test]
+    fn validate_base_url_accepts_https() {
+        validate_base_url("https://api.example.test").expect("https is allowed");
+    }
+
+    #[test]
+    fn validate_base_url_accepts_http_only_on_loopback() {
+        for url in [
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://[::1]:8080",
+        ] {
+            validate_base_url(url).unwrap_or_else(|e| panic!("{url} should be allowed: {e}"));
+        }
+    }
+
+    #[test]
+    fn validate_base_url_rejects_remote_http_and_lookalike_hosts() {
+        for url in [
+            "http://api.example.test",
+            "http://localhost.example.test",
+            "http://127.0.0.1.example.test",
+            "http://10.0.0.1",
+        ] {
+            let err = validate_base_url(url).expect_err("remote http must be rejected");
+            assert!(
+                matches!(&err, BuildError::InsecureBaseUrlScheme { scheme } if scheme == "http"),
+                "{url}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_base_url_rejects_other_schemes_and_garbage() {
+        assert!(matches!(
+            validate_base_url("ftp://localhost").expect_err("ftp"),
+            BuildError::InsecureBaseUrlScheme { .. }
+        ));
+        assert!(matches!(
+            validate_base_url("not a url").expect_err("garbage"),
+            BuildError::InvalidBaseUrl(_)
+        ));
     }
 
     #[derive(Debug, Default)]

@@ -1,7 +1,5 @@
 use email_client::types;
 
-const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
-
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
@@ -41,10 +39,10 @@ pub struct EmailClient {
 
 impl EmailClient {
     pub fn new(base_url: impl AsRef<str>, token: impl AsRef<str>) -> Result<Self, ClientError> {
-        let client = email_client::client_with_auth(
+        let client = email_client::client_with_builder(
+            crate::http::api_client_builder(),
             base_url.as_ref(),
             &format!("Bearer {}", token.as_ref()),
-            USER_AGENT,
             &uuid::Uuid::new_v4().to_string(),
         )
         .map_err(ClientError::Build)?;

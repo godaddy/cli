@@ -262,10 +262,10 @@ mod tests {
     use httpmock::prelude::*;
 
     fn client_for(server: &MockServer) -> domains_client::Client {
-        domains_client::client_with_auth(
+        domains_client::client_with_builder(
+            reqwest::Client::builder(),
             &server.base_url(),
             "Bearer tok",
-            "godaddy-cli/test",
             "req-1",
         )
         .expect("build client")

@@ -3,16 +3,79 @@
 //! because callers span multiple top-level modules (`email`, `hosting`,
 //! `platform`, `api`).
 
-use reqwest::Client;
+use std::sync::{Arc, Once};
 
-const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
+use cli_engine::transport::{TimeoutPolicy, default_user_agent, reqwest_client_builder_with};
+use generated_client_support::TransportObserver;
+use reqwest::header::HeaderMap;
+use reqwest::{Client, ClientBuilder, Request, StatusCode};
 
-/// Builds a reqwest Client with the standard GoDaddy CLI User-Agent.
+// Every client built here shares the engine's process-wide identity
+// (User-Agent and attribution headers); what differs per situation is the
+// timeout policy, defined once below. `reqwest` cannot unset a timeout, so a
+// situation that needs different timeouts gets its own builder instead of
+// adjusting another one afterwards.
+
+/// Timeouts for ordinary API calls: the engine default (5s connect, 30s read).
+///
+/// The read timeout also bounds the wait for response headers, so an API that
+/// legitimately takes longer than this to start responding needs its own
+/// situation rather than a raised default.
+pub fn api_timeouts() -> TimeoutPolicy {
+    TimeoutPolicy::default()
+}
+
+/// Timeouts for uploads: the engine's connect timeout and no read timeout.
+///
+/// An upload's response (S3 acknowledging a presigned PUT, a multipart import)
+/// arrives only after the whole body has been sent, and a read timeout runs
+/// from the start of the request without being reset by upload progress. A
+/// large bundle on a slow link would otherwise be cut off at the read timeout
+/// even while bytes are flowing.
+pub fn upload_timeouts() -> TimeoutPolicy {
+    TimeoutPolicy::uploads()
+}
+
+/// A `reqwest` builder for ordinary API calls; see [`api_timeouts`]. Pass it to
+/// a generated client's `client_with_builder`.
+pub fn api_client_builder() -> ClientBuilder {
+    reqwest_client_builder_with(api_timeouts())
+}
+
+/// A `reqwest` builder for uploads; see [`upload_timeouts`].
+///
+/// Uploads go to presigned storage URLs, not a GoDaddy API, so this carries the
+/// engine's user-agent but not the attribution headers that
+/// [`api_client_builder`] sends: the session correlation header should not reach
+/// a host the CLI does not own.
+pub fn upload_client_builder() -> ClientBuilder {
+    upload_timeouts()
+        .apply(Client::builder())
+        .user_agent(default_user_agent())
+}
+
+/// A `reqwest` client for ordinary API calls.
 pub fn make_http_client() -> Client {
-    Client::builder()
-        .user_agent(USER_AGENT)
+    api_client_builder()
         .build()
         .expect("failed to build HTTP client")
+}
+
+/// An API client with a tight read timeout, for tests that prove another code
+/// path (an upload) is *not* subject to the API timeouts.
+#[cfg(test)]
+pub(crate) fn make_api_client_with_read_timeout(read: std::time::Duration) -> Client {
+    reqwest_client_builder_with(api_timeouts().with_read(Some(read)))
+        .build()
+        .expect("failed to build test HTTP client")
+}
+
+/// A `reqwest` client for uploads. Build it where it is used (it is cheap to
+/// skip for commands that never upload), not alongside the API client.
+pub fn make_upload_http_client() -> Client {
+    upload_client_builder()
+        .build()
+        .expect("failed to build upload HTTP client")
 }
 
 /// Bridges `generated-client-support::TransportObserver` (shared by every
@@ -23,29 +86,24 @@ pub fn make_http_client() -> Client {
 /// `cli_engine::transport::debug_log_reqwest_*` calls anyway.
 struct CliEngineTransportObserver;
 
-impl generated_client_support::TransportObserver for CliEngineTransportObserver {
-    fn on_request(&self, request: &reqwest::Request) {
+impl TransportObserver for CliEngineTransportObserver {
+    fn on_request(&self, request: &Request) {
         cli_engine::transport::debug_log_reqwest_request(request);
     }
 
-    fn on_response(
-        &self,
-        status: reqwest::StatusCode,
-        headers: &reqwest::header::HeaderMap,
-        body: &[u8],
-    ) {
+    fn on_response(&self, status: StatusCode, headers: &HeaderMap, body: &[u8]) {
         cli_engine::transport::debug_log_reqwest_response(status, headers, body);
     }
 }
 
-static GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT: std::sync::Once = std::sync::Once::new();
+static GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT: Once = Once::new();
 
 /// Registers the shared transport observer the first time any generated
 /// client is constructed. Idempotent and cheap to call from every
 /// `make_client`-style helper (`domain`, `email`, `shopping`, ...).
 pub(crate) fn ensure_generated_client_transport_observer_registered() {
     GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT.call_once(|| {
-        generated_client_support::set_transport_observer(Some(std::sync::Arc::new(
+        generated_client_support::set_transport_observer(Some(Arc::new(
             CliEngineTransportObserver,
         )));
     });

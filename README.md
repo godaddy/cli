@@ -82,3 +82,11 @@ The CLI also provides access to the GoDaddy Developer Platform for building apps
 - `gddy platform app` — create, configure, release, and deploy GoDaddy Platform apps
 - `gddy platform action` — discover the action contracts an app can declare
 - `gddy platform webhook` — inspect webhook event types for app subscriptions
+
+## What `gddy` tells the services it calls
+
+Requests to GoDaddy services carry a `User-Agent` header containing the version of the CLI and information about how the CLI is being used (interactively, in CI, or through an AI assistant). This helps GoDaddy understand which segments of customers to focus on. No PII is included in this header.
+
+When an AI assistant exposes a session id, requests also carry an `x-client-session-id` header with a one-way hash of that id, so calls from one session can be correlated. The raw id never leaves your machine, and nothing is sent when no session id exists. To stop sending the header, set `GDDY_NO_SESSION_ID=1`.
+
+Run any command with `--debug=transport` to see the full details of what is sent in requests to GoDaddy APIs.

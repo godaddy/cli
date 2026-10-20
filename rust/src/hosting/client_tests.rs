@@ -305,6 +305,50 @@ async fn get_import_hits_correct_path() {
     mock.assert_async().await;
 }
 
+/// A zip import's response arrives only after the whole upload, and a read
+/// timeout runs from the start of the request, so the API client's read
+/// timeout would cut off a large archive on a slow link.
+#[tokio::test]
+async fn create_import_zip_is_not_cut_off_by_the_api_read_timeout() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/v1/hosting/apps/app-1/imports");
+            then.status(202)
+                .json_body(json!({ "id": "imp-zip-1" }))
+                .delay(std::time::Duration::from_millis(500));
+        })
+        .await;
+    let hosting = HostingClient::with_clients(
+        server.base_url(),
+        "test-token",
+        crate::http::make_api_client_with_read_timeout(std::time::Duration::from_millis(100)),
+        make_upload_http_client(),
+    );
+    let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+
+    // Control: the API client really is that tight against this server.
+    assert!(
+        hosting
+            .http
+            .post(format!(
+                "{}/v1/hosting/apps/app-1/imports",
+                server.base_url()
+            ))
+            .body("x")
+            .send()
+            .await
+            .is_err(),
+        "the API client should time out against the slow server"
+    );
+    let result = hosting
+        .create_import_zip("app-1", tmp.path())
+        .await
+        .expect("the upload client has no read timeout");
+
+    assert_eq!(result["id"], "imp-zip-1");
+}
+
 #[tokio::test]
 async fn create_import_zip_sends_multipart_to_imports_path() {
     let server = MockServer::start_async().await;

@@ -284,9 +284,13 @@ mod tests {
                     .json_body(serde_json::json!({ "items": [] }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let tlds = comma_joined(vec!["com".to_string(), "net".to_string(), "io".to_string()]);
         client

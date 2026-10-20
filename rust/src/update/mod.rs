@@ -310,6 +310,8 @@ fn is_stale(cache: &Option<UpdateCache>) -> bool {
     age.to_std().map(|age| age > CACHE_TTL).unwrap_or(true)
 }
 
+// Deliberately not `cli_engine::transport::reqwest_client_builder`: this talks
+// to github.com, and the engine's attribution headers should not reach it.
 fn http_client() -> Result<reqwest::Client, CliCoreError> {
     reqwest::Client::builder()
         .user_agent(concat!("gddy/", env!("CARGO_PKG_VERSION")))

@@ -36,17 +36,30 @@ impl progenitor_client::ClientHooks<()> for Client {
     }
 }
 
-/// Builds a generated client whose requests carry the caller's authorization
-/// and correlation headers.
-pub fn client_with_auth(
+/// Builds a [`Client`] whose every request carries a pre-set `Authorization`
+/// header and `x-request-id`.
+///
+/// `builder` carries the host application's shared transport policy
+/// (user-agent, timeouts, default headers); `authorization` is the full header
+/// value the API expects, e.g. `"Bearer <token>"`. The builder is a `reqwest`
+/// type, so the caller's `reqwest` must resolve to the same version as this
+/// crate's.
+///
+/// # Errors
+///
+/// [`BuildError`] if `base_url` is not HTTPS (plain HTTP is allowed only on a
+/// loopback host), if a header value is invalid, or if the client cannot be
+/// built.
+pub fn client_with_builder(
+    builder: reqwest::ClientBuilder,
     base_url: &str,
     authorization: &str,
-    user_agent: &str,
     request_id: &str,
 ) -> Result<Client, BuildError> {
+    generated_client_support::validate_base_url(base_url)?;
     let http = generated_client_support::build_authenticated_http_client(
+        builder,
         authorization,
-        user_agent,
         request_id,
     )?;
     Ok(Client::new_with_client(base_url, http))
@@ -59,10 +72,10 @@ mod tests {
     use serde_json::json;
 
     fn client_for(server: &MockServer) -> Client {
-        client_with_auth(
+        client_with_builder(
+            reqwest::Client::builder(),
             &server.base_url(),
             "Bearer tok",
-            "godaddy-cli/test",
             "req-1",
         )
         .expect("build client")

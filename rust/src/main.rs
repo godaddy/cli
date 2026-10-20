@@ -81,6 +81,7 @@ async fn main() -> ExitCode {
                     .with_commit(env!("GDDY_BUILD_COMMIT"))
                     .with_date(env!("GDDY_BUILD_DATE")),
             )
+            .with_client_attribution(cli_engine::transport::AttributionConfig::new())
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_auth_extra_commands([scopes::auth_scopes_command()])

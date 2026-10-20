@@ -5,9 +5,8 @@ use hosting_client::types::{
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
-use crate::http::make_http_client;
+use crate::http::{make_http_client, make_upload_http_client};
 
-const USER_AGENT: &str = concat!("godaddy-cli/", env!("CARGO_PKG_VERSION"));
 const BASE_PATH: &str = "/v1/hosting";
 
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +52,9 @@ impl From<ClientError> for crate::error::GddyError {
 
 pub struct HostingClient {
     http: Client,
+    /// Built on first upload so commands that never upload don't pay for it.
+    /// See [`crate::http::upload_timeouts`] for why uploads need their own.
+    upload_http: std::sync::OnceLock<Client>,
     base_url: String,
     token: String,
 }
@@ -61,9 +63,31 @@ impl HostingClient {
     pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Self {
         Self {
             http: make_http_client(),
+            upload_http: std::sync::OnceLock::new(),
             base_url: base_url.into(),
             token: token.into(),
         }
+    }
+
+    /// Builds a client with explicit HTTP clients, so a test can give the API
+    /// client a tight timeout and prove uploads don't use it.
+    #[cfg(test)]
+    fn with_clients(
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        http: Client,
+        upload_http: Client,
+    ) -> Self {
+        Self {
+            http,
+            upload_http: upload_http.into(),
+            base_url: base_url.into(),
+            token: token.into(),
+        }
+    }
+
+    fn upload_http(&self) -> &Client {
+        self.upload_http.get_or_init(make_upload_http_client)
     }
 
     fn url(&self, path: &str) -> String {
@@ -81,10 +105,10 @@ impl HostingClient {
         b"<redacted: response body withheld (contains a credential)>";
 
     fn api(&self) -> Result<hosting_client::Client, ClientError> {
-        hosting_client::client_with_auth(
+        hosting_client::client_with_builder(
+            crate::http::api_client_builder(),
             &self.base_url,
             &format!("Bearer {}", self.token),
-            USER_AGENT,
             &Self::new_request_id(),
         )
         .map_err(ClientError::Build)
@@ -409,8 +433,10 @@ impl HostingClient {
                 source: e,
             })?;
 
-        let request = self
-            .http
+        // One client builds and executes the request: the executing client's
+        // timeouts are the ones that apply.
+        let http = self.upload_http();
+        let request = http
             .post(self.url(&format!("/apps/{app_id}/imports")))
             .bearer_auth(&self.token)
             .header("x-request-id", Self::new_request_id())
@@ -418,8 +444,7 @@ impl HostingClient {
             .build()
             .map_err(|e| ClientError::Network(e.to_string()))?;
         cli_engine::transport::debug_log_reqwest_request(&request);
-        let resp = self
-            .http
+        let resp = http
             .execute(request)
             .await
             .map_err(|e| ClientError::Network(e.to_string()))?;
