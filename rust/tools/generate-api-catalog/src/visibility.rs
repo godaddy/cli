@@ -10,6 +10,9 @@
 //! whose own root is private can't be pruned from inside, so the loader rejects
 //! it outright.)
 
+use std::collections::HashSet;
+
+use indexmap::IndexMap;
 use serde_json::Value;
 
 use crate::openapi::HTTP_METHODS;
@@ -89,6 +92,51 @@ pub(crate) fn drop_operationless_paths(spec: &mut Value) {
                 .as_object()
                 .is_none_or(|item| HTTP_METHODS.iter().any(|method| item.contains_key(*method)))
     });
+}
+
+/// Drops the lifted `$defs` that nothing in `catalog` reaches, directly or
+/// through other defs. Pruning private operations strands the schemas only
+/// they used; without this they stay in the catalog and `gddy api schema get`
+/// would still return them. Any `#/$defs/<name>` string counts as a reference,
+/// so discriminator mappings (plain strings, not `$ref`s) keep their targets.
+/// Returns the number of defs dropped.
+pub(crate) fn retain_reachable_defs(catalog: &Value, defs: &mut IndexMap<String, Value>) -> usize {
+    let mut reachable: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = Vec::new();
+    collect_defs_refs(catalog, &mut stack);
+    while let Some(name) = stack.pop() {
+        if !reachable.insert(name.clone()) {
+            continue;
+        }
+        if let Some(def) = defs.get(&name) {
+            collect_defs_refs(def, &mut stack);
+        }
+    }
+    let before = defs.len();
+    defs.retain(|name, _| reachable.contains(name));
+    before - defs.len()
+}
+
+fn collect_defs_refs(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(text) => {
+            if let Some(rest) = text.strip_prefix("#/$defs/") {
+                let key = rest.split('/').next().unwrap_or(rest);
+                out.push(key.replace("~1", "/").replace("~0", "~"));
+            }
+        }
+        Value::Object(map) => {
+            for child in map.values() {
+                collect_defs_refs(child, out);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                collect_defs_refs(child, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -235,6 +283,35 @@ mod tests {
         assert_eq!(
             crate::dereference::collect_unresolved_refs(&spec),
             ["./Hidden.yaml"]
+        );
+    }
+
+    #[test]
+    fn retain_reachable_defs_keeps_transitive_and_mapped_targets() {
+        let catalog = json!({
+            "endpoints": [{ "schema": { "$ref": "#/$defs/Order" } }]
+        });
+        let mut defs: IndexMap<String, Value> = [
+            ("Order", json!({ "items": { "$ref": "#/$defs/Line" } })),
+            (
+                "Line",
+                json!({ "discriminator": { "mapping": { "gift": "#/$defs/Gift" } } }),
+            ),
+            ("Gift", json!({})),
+            ("a/b", json!({})),
+            ("Stranded", json!({ "$ref": "#/$defs/Gift" })),
+        ]
+        .into_iter()
+        .map(|(name, def)| (name.to_owned(), def))
+        .collect();
+        // A key with a slash is referenced through its escaped pointer form.
+        let catalog =
+            json!({ "endpoints": [catalog["endpoints"][0].clone(), { "$ref": "#/$defs/a~1b" }] });
+
+        assert_eq!(retain_reachable_defs(&catalog, &mut defs), 1);
+        assert_eq!(
+            defs.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["Order", "Line", "Gift", "a/b"]
         );
     }
 }

@@ -3165,37 +3165,6 @@
       "type": "object",
       "x-generic-type": "Transaction"
     },
-    "Signature": {
-      "$id": "https://godaddy.com/schemas/commerce/transaction/transaction/signature.v2",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Representation of Customer signature received during transaction",
-      "properties": {
-        "createdAt": {
-          "description": "Created time in RFC 3339 format",
-          "example": "2022-07-21T17:32:28Z",
-          "format": "date-time",
-          "readOnly": true,
-          "type": "string"
-        },
-        "id": {
-          "$ref": "#/$defs/Uuid"
-        },
-        "signature": {
-          "description": "Signature data in Binary format",
-          "format": "binary",
-          "type": "string",
-          "writeOnly": true
-        },
-        "signatureUrl": {
-          "description": "URL of the image uploaded",
-          "format": "uri",
-          "readOnly": true,
-          "type": "string"
-        }
-      },
-      "title": "Customer Signature",
-      "type": "object"
-    },
     "SimpleAmount": {
       "$id": "https://godaddy.com/schemas/commerce/transaction/simple-amount.v2",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
