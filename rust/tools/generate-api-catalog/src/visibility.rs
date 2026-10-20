@@ -13,6 +13,9 @@
 use std::collections::HashSet;
 
 use indexmap::IndexMap;
+use std::path::Path;
+
+use anyhow::{Result, bail};
 use serde_json::Value;
 
 use crate::openapi::HTTP_METHODS;
@@ -78,6 +81,106 @@ pub(crate) fn prune_private(value: &mut Value) {
     }
 }
 
+/// Fails if the primary spec document is itself marked private: pruning only
+/// removes marked children, so a private root would otherwise export all of its
+/// unmarked operations. Drop such a spec from the source manifest instead.
+pub(crate) fn ensure_public_root(spec_file: &Path, spec: &Value) -> Result<()> {
+    if is_private(spec) {
+        bail!(
+            "{} is marked private (x-visibility) and can't be synced",
+            spec_file.display()
+        );
+    }
+    Ok(())
+}
+
+/// JSON pointers (`#/a/b`) of every node [`prune_private`] would remove from
+/// `root`. Collected before pruning so [`ensure_no_refs_to_private`] can tell a
+/// reference broken by the filter from one that was already dangling upstream.
+pub(crate) fn private_pointers(root: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_private_pointers(root, "#", &mut out);
+    out
+}
+
+fn collect_private_pointers(value: &Value, pointer: &str, out: &mut Vec<String>) {
+    let children: Vec<(String, &Value)> = match value {
+        Value::Object(map) => map
+            .iter()
+            .map(|(key, child)| (key.replace('~', "~0").replace('/', "~1"), child))
+            .collect(),
+        Value::Array(values) => values
+            .iter()
+            .enumerate()
+            .map(|(index, child)| (index.to_string(), child))
+            .collect(),
+        _ => return,
+    };
+    for (segment, child) in children {
+        let child_pointer = format!("{pointer}/{segment}");
+        if is_private(child) {
+            out.push(child_pointer);
+        } else {
+            collect_private_pointers(child, &child_pointer, out);
+        }
+    }
+}
+
+/// Fails if a dereferenced spec still holds a local `$ref` into a node the
+/// filter removed (see [`private_pointers`]). Dereferencing leaves a `$ref` it
+/// can't resolve in place, and `collect_unresolved_refs` ignores local
+/// pointers, so without this a public node pointing at a private component
+/// would sync "successfully" with a reference the API explorer can't follow.
+pub(crate) fn ensure_no_refs_to_private(
+    spec_file: &Path,
+    private: &[String],
+    spec: &Value,
+    defs: &IndexMap<String, Value>,
+) -> Result<()> {
+    let mut found = Vec::new();
+    collect_refs_to_private(spec, private, &mut found);
+    for def in defs.values() {
+        collect_refs_to_private(def, private, &mut found);
+    }
+    found.sort();
+    found.dedup();
+    if !found.is_empty() {
+        bail!(
+            "{} $ref(s) in {} point at nodes marked private:\n  {}",
+            found.len(),
+            spec_file.display(),
+            found.join("\n  ")
+        );
+    }
+    Ok(())
+}
+
+fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get("$ref")
+                && private.iter().any(|pointer| {
+                    reference == pointer
+                        || reference
+                            .strip_prefix(pointer.as_str())
+                            .is_some_and(|rest| rest.starts_with('/'))
+                })
+            {
+                out.push(reference.clone());
+            }
+            for child in map.values() {
+                collect_refs_to_private(child, private, out);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                collect_refs_to_private(child, private, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Drops path items left with no operations. Run on a dereferenced spec after
 /// [`prune_private`], so a path whose every operation was private doesn't
 /// linger as an empty (or parameters-only) entry. Non-path `paths` keys
@@ -88,9 +191,12 @@ pub(crate) fn drop_operationless_paths(spec: &mut Value) {
     };
     paths.retain(|path, item| {
         !path.starts_with('/')
-            || item
-                .as_object()
-                .is_none_or(|item| HTTP_METHODS.iter().any(|method| item.contains_key(*method)))
+            || item.as_object().is_none_or(|item| {
+                // An unresolved `$ref` item is left for the caller's reference
+                // validation to report, not silently dropped.
+                item.contains_key("$ref")
+                    || HTTP_METHODS.iter().any(|method| item.contains_key(*method))
+            })
     });
 }
 
@@ -313,5 +419,59 @@ mod tests {
             defs.keys().map(String::as_str).collect::<Vec<_>>(),
             ["Order", "Line", "Gift", "a/b"]
         );
+    }
+
+    #[test]
+    fn private_primary_spec_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\nx-visibility:\n  extent: private\npaths:\n  /a:\n    get: {}\n",
+        )
+        .expect("write spec");
+
+        let err = crate::dereference::load_and_dereference(&spec_path, None)
+            .expect_err("private root must fail");
+        assert!(err.to_string().contains("marked private"), "{err}");
+    }
+
+    #[test]
+    fn public_reference_to_a_pruned_local_component_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\npaths:\n  /a:\n    get:\n      responses:\n        '200':\n          content:\n            application/json:\n              schema:\n                $ref: '#/components/schemas/Hidden'\ncomponents:\n  schemas:\n    Hidden:\n      type: object\n      x-visibility:\n        extent: private\n",
+        )
+        .expect("write spec");
+
+        let err = crate::dereference::load_and_dereference(&spec_path, None)
+            .expect_err("dangling local ref must fail");
+        assert!(
+            err.to_string().contains("#/components/schemas/Hidden"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn path_item_with_an_unresolved_ref_is_kept_for_validation() {
+        let mut spec = json!({ "paths": { "/hidden": { "$ref": "./Hidden.yaml" } } });
+        drop_operationless_paths(&mut spec);
+        assert!(spec["paths"].get("/hidden").is_some());
+    }
+
+    #[test]
+    fn reference_that_was_already_dangling_is_not_blamed_on_the_filter() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\npaths:\n  /a:\n    get:\n      parameters:\n        - $ref: '#/components/parameters/missing'\n",
+        )
+        .expect("write spec");
+
+        crate::dereference::load_and_dereference(&spec_path, None)
+            .expect("an upstream-dangling ref is not a private-node error");
     }
 }

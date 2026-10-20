@@ -9,7 +9,10 @@ use crate::ref_paths::{
     has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
     resolve_common_types_path, specification_root,
 };
-use crate::visibility::{drop_operationless_paths, is_private, prune_private};
+use crate::visibility::{
+    drop_operationless_paths, ensure_no_refs_to_private, ensure_public_root, is_private,
+    private_pointers, prune_private,
+};
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -545,6 +548,8 @@ fn load_and_dereference_with(
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
     let mut parsed = parse_yaml_or_json(&src, spec_file)?;
+    ensure_public_root(spec_file, &parsed)?;
+    let private = private_pointers(&parsed);
     prune_private(&mut parsed);
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
@@ -565,6 +570,7 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
+    ensure_no_refs_to_private(spec_file, &private, &dereffed, &defs)?;
     drop_operationless_paths(&mut dereffed);
     Ok((dereffed, defs))
 }
