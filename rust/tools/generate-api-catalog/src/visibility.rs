@@ -6,13 +6,15 @@
 //! catalog and the progenitor-codegen documents — must leave those nodes out,
 //! so [`prune_private`] strips them from each document as it is loaded, before
 //! any `$ref` is resolved. A private node is therefore never lifted into
-//! `$defs`, and a `$ref` that points at one is left unresolved.
+//! `$defs`, and a `$ref` that points at one is left unresolved. (A `$ref`'d file
+//! whose own root is private can't be pruned from inside, so the loader rejects
+//! it outright.)
 
 use serde_json::Value;
 
 use crate::openapi::HTTP_METHODS;
 
-fn is_private(value: &Value) -> bool {
+pub(crate) fn is_private(value: &Value) -> bool {
     value
         .get("x-visibility")
         .and_then(|visibility| visibility.get("extent"))
@@ -209,5 +211,30 @@ mod tests {
             "private property must be dropped from the lifted schema's required list"
         );
         assert!(defs["Widget"]["properties"].get("debug").is_none());
+    }
+
+    #[test]
+    fn external_ref_to_a_private_root_stays_unresolved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Hidden.yaml"),
+            "type: object\nx-visibility:\n  extent: private\n",
+        )
+        .expect("write model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: './Hidden.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert!(defs.is_empty(), "private file must not be lifted: {defs:?}");
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./Hidden.yaml"]
+        );
     }
 }

@@ -9,7 +9,7 @@ use crate::ref_paths::{
     has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
     resolve_common_types_path, specification_root,
 };
-use crate::visibility::{drop_operationless_paths, prune_private};
+use crate::visibility::{drop_operationless_paths, is_private, prune_private};
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -415,6 +415,12 @@ fn load_external_ref(
     let mut parsed = parse_yaml_or_json(&src, &resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
+    // A private root can't be pruned from inside; reject the whole file so the
+    // `$ref` stays unresolved (and fails the sync) instead of exposing it.
+    if is_private(&parsed) {
+        eprintln!("WARNING: ignoring private ref file {}", resolved.display());
+        return None;
+    }
     prune_private(&mut parsed);
     let dir = resolved.parent().unwrap_or(&resolved);
     Some(dereference(
