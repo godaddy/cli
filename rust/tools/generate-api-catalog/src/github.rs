@@ -382,8 +382,8 @@ pub(crate) fn local_spec_sources(manifest: &CatalogSourceManifest) -> Result<Vec
 // ---------------------------------------------------------------------------
 
 pub(crate) fn parse_yaml_or_json(src: &str, path: &Path) -> Result<Value> {
-    // serde_yaml handles both YAML and JSON
-    let first_err = match serde_yaml::from_str::<Value>(src) {
+    // YAML is a superset of JSON, so this parses both
+    let first_err = match from_yaml_str(src) {
         Ok(v) => return Ok(v),
         Err(e) => e,
     };
@@ -392,12 +392,19 @@ pub(crate) fn parse_yaml_or_json(src: &str, path: &Path) -> Result<Value> {
     // escape sequence.  Retry after normalising `\.` → `\\.` inside
     // double-quoted scalars so the parser accepts it.
     let fixed = fix_yaml_invalid_dot_escapes(src);
-    serde_yaml::from_str::<Value>(&fixed).with_context(|| {
+    from_yaml_str(&fixed).with_context(|| {
         format!(
             "failed to parse {} (original error: {first_err})",
             path.display()
         )
     })
+}
+
+fn from_yaml_str(src: &str) -> Result<Value, serde_saphyr::Error> {
+    // Only `true`/`false` are booleans: enum values such as `yes`, `no`, `on`
+    // and `off` must stay strings rather than being read as YAML 1.1 booleans.
+    let options = serde_saphyr::options! { strict_booleans: true };
+    serde_saphyr::from_str_with_options(src, options)
 }
 
 /// Replace `\.` with `\\.` inside YAML double-quoted scalars.
@@ -456,5 +463,51 @@ mod tests {
             .expect("authorization header");
         assert!(header.starts_with("AUTHORIZATION: basic "));
         assert!(!header.contains("test-token"));
+    }
+
+    fn parse(src: &str) -> Result<Value> {
+        parse_yaml_or_json(src, Path::new("spec.yaml"))
+    }
+
+    #[test]
+    fn parses_json_and_yaml_to_the_same_value() {
+        let from_json = parse(r#"{"openapi": "3.0.0", "paths": {"/a": {"get": {"tags": ["x"]}}}}"#)
+            .expect("json");
+        let from_yaml =
+            parse("openapi: 3.0.0\npaths:\n  /a:\n    get:\n      tags: [x]\n").expect("yaml");
+
+        assert_eq!(from_json, from_yaml);
+    }
+
+    #[test]
+    fn yaml_1_1_booleans_stay_strings() {
+        // Enum values such as `yes`/`no`/`on`/`off` must not become booleans.
+        let value = parse("enum: [yes, no, on, off, true]\n").expect("yaml");
+
+        assert_eq!(
+            value["enum"],
+            serde_json::json!(["yes", "no", "on", "off", true])
+        );
+    }
+
+    #[test]
+    fn merge_keys_are_expanded() {
+        let value = parse("base: &b {a: 1}\nuses:\n  <<: *b\n  c: 2\n").expect("yaml");
+
+        assert_eq!(value["uses"], serde_json::json!({"a": 1, "c": 2}));
+    }
+
+    #[test]
+    fn regex_dot_escape_in_double_quoted_scalar_is_tolerated() {
+        let value = parse("pattern: \"^a\\.b$\"\n").expect("yaml with \\. escape");
+
+        assert_eq!(value["pattern"], serde_json::json!("^a\\.b$"));
+    }
+
+    #[test]
+    fn invalid_yaml_reports_the_path() {
+        let err = parse("a: [unterminated\n").expect_err("invalid yaml");
+
+        assert!(err.to_string().contains("spec.yaml"));
     }
 }
