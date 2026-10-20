@@ -412,7 +412,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // quoted is a valid query to copy/paste directly.
                 let resolved_domain = args
                     .domain_format
-                    .form()
+                    .form(&ctx)?
                     .render(&quote.domain.clone().unwrap_or_else(|| domain.clone()));
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
@@ -420,7 +420,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            args.domain_format.form().convert_fields(&mut view, &["domain", "resolved.nameServers"]);
+            args.domain_format.form(&ctx)?.convert_fields(&mut view, &["domain", "resolved.nameServers"]);
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )

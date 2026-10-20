@@ -26,13 +26,25 @@ pub(crate) static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 /// value back if it was — even if a test panics. Restoring rather than
 /// unconditionally removing keeps a var a developer happens to already
 /// have set in their shell from leaking into the rest of the test run.
-pub(super) struct EnvGuard {
+pub(crate) struct EnvGuard {
     key: &'static str,
     prior: Option<String>,
 }
 
 impl EnvGuard {
-    pub(super) fn set(key: &'static str, value: &str) -> Self {
+    /// Removes `key` for the guard's lifetime, so a developer's own shell
+    /// value can't leak into the test.
+    pub(crate) fn unset(key: &'static str) -> Self {
+        let prior = std::env::var(key).ok();
+        // SAFETY: caller holds ENV_LOCK.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var(key);
+        }
+        Self { key, prior }
+    }
+
+    pub(crate) fn set(key: &'static str, value: &str) -> Self {
         let prior = std::env::var(key).ok();
         // SAFETY: caller holds ENV_LOCK.
         #[allow(unsafe_code)]

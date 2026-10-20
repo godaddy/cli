@@ -7,9 +7,10 @@ use crate::output_schema::output_schema;
 use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_PURCHASE_SCOPES;
 use crate::shopping::common::{
-    CheckoutInput, client_err, currency_code, make_client, no_saved_payment_method_action,
+    CheckoutInput, client_err, make_client, no_saved_payment_method_action,
     reject_multiple_payment_instruments, update_response,
 };
+use crate::shopping::currency::CurrencyArgs;
 use crate::shopping::human::{CHECKOUT_VIEW_ID, checkout_response, empty_acknowledgement_response};
 
 output_schema!(CheckoutOutput {
@@ -30,9 +31,8 @@ struct Args {
     #[arg(long, value_name = "PURCHASE_OPTION_ID[=QUANTITY]")]
     item: Vec<String>,
 
-    /// Preferred ISO 4217 currency for checkout prices (for example, USD or GBP).
-    #[arg(long, value_name = "CODE", value_parser = currency_code)]
-    currency: Option<String>,
+    #[command(flatten)]
+    currency: CurrencyArgs,
 
     /// Buyer's first name.
     #[arg(long, value_name = "NAME")]
@@ -101,7 +101,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: Args| async move {
             let input = CheckoutInput {
                 items: args.item,
-                currency: args.currency,
+                currency: args.currency.resolve(&ctx)?,
                 buyer_first_name: args.buyer_first_name,
                 buyer_last_name: args.buyer_last_name,
                 buyer_email: args.buyer_email,

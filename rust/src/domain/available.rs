@@ -182,7 +182,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             domain_format.convert_fields(&mut result, &["domain"]);
             let resolved_domain = domain_format.render(&resolved_domain);
 

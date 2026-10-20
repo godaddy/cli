@@ -209,7 +209,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Ok(r) => r.into_inner(),
                 Err(e) => return Err(api_error("domain suggestion", debug, e).await),
             };
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             let suggestions: Vec<serde_json::Value> = resp
                 .items
                 .iter()

@@ -67,6 +67,10 @@ token has expired or isn't found, just re-run `gddy domain quote`.
 
 AI assistants: Before using `--agree` or `--confirm`, show the end user the exact price from `domain quote` (including any premium/registration fees) and each required legal agreement's title AND link (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. Do not summarize an agreement by name only — the user must be able to click through and read it. Do not infer confirmation from a general request to buy or register a domain.
 
+## International domain names
+
+You can type a name either as Unicode (`münchen.de`) or in its encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any `domain` command that shows names to see the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command.
+
 ## Contacts
 
 A registration has four contact roles: **registrant**, **admin**, **billing**,
