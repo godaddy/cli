@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.30](https://github.com/godaddy/cli/compare/v0.2.29...v0.2.30) (2026-10-20)
+
+
+### Features
+
+* **db:** add --product wordpress to db tunnel for Managed WordPress ([#312](https://github.com/godaddy/cli/issues/312)) ([8f3841b](https://github.com/godaddy/cli/commit/8f3841bc46d2c4c2bf714757f0740e300a3d0dec))
+* **http:** report the kind of caller to GoDaddy services and unify HTTP client setup [DEVEX-1150] ([#334](https://github.com/godaddy/cli/issues/334)) ([4d31249](https://github.com/godaddy/cli/commit/4d31249d9f554e1e2d0fea8fd98b17ffe561bb2f))
+
+
+### Bug Fixes
+
+* **deps:** distrust revoked emSign intermediates in TLS dependencies ([#337](https://github.com/godaddy/cli/issues/337)) ([8f42d51](https://github.com/godaddy/cli/commit/8f42d51fc0889e43c6b176390a080d41e03fee50))
+* **deps:** remove unmaintained serde_yaml and unsafe-libyaml ([#335](https://github.com/godaddy/cli/issues/335)) ([bdf895f](https://github.com/godaddy/cli/commit/bdf895f6a5141084e1518be25c32483474c91ebb))
+* **deps:** update zip to 9.0 to address three security advisories ([#333](https://github.com/godaddy/cli/issues/333)) ([3c05cab](https://github.com/godaddy/cli/commit/3c05cab359f2510e5aad5fd32d259aa0d6b3994d))
+
+
+### Code Refactoring
+
+* **auth:** declare each OAuth scope in a single list ([#329](https://github.com/godaddy/cli/issues/329)) ([8b1404d](https://github.com/godaddy/cli/commit/8b1404d416b192c121cc727ec4c2eaa79bdca58a))
+
 ## [0.2.29](https://github.com/godaddy/cli/compare/v0.2.28...v0.2.29) (2026-10-14)
 
 
