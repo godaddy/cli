@@ -134,7 +134,7 @@ mod tests {
         assert!(names.contains(&"data"));
     }
 
-    /// An inline request body's id is a dotted path too — `patchBusiness`'s
+    /// An inline request body's id is a dotted path too — `updatePlan`'s
     /// top-level schema is `{type: array, items: {$ref: ...}}`, inline at
     /// the top level even though its items aren't.
     #[tokio::test]
@@ -145,7 +145,7 @@ mod tests {
                 "api",
                 "schema",
                 "get",
-                "patchBusiness.requestBody.schema",
+                "updatePlan.requestBody.schema",
                 "--output",
                 "json",
             ])

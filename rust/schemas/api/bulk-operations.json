@@ -1961,61 +1961,6 @@
       "summary": "Execute bulk ingestion"
     },
     {
-      "description": "Returns a time-limited download link for the bulk ingestion errors CSV file. The CSV contains the original row data with `error_field` and `error_message` columns appended for each error.",
-      "method": "GET",
-      "operationId": "downloadBulkIngestionErrorsCsv",
-      "parameters": [
-        {
-          "description": "The Store ID",
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        },
-        {
-          "description": "The Bulk Ingestion ID",
-          "in": "path",
-          "name": "bulkIngestionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/uuid"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/bulk-ingestions/{bulkIngestionId}/ingestion-errors",
-      "responses": {
-        "200": {
-          "description": "Bulk ingestion errors CSV download link",
-          "schema": {
-            "description": "A time-limited link to download the bulk ingestion errors CSV file.",
-            "properties": {
-              "links": {
-                "description": "Hypermedia links. Includes the `download` relation pointing to the bulk ingestion errors CSV file.",
-                "items": {
-                  "$ref": "#/$defs/link-description"
-                },
-                "type": "array"
-              }
-            },
-            "title": "Bulk Ingestion Errors Download",
-            "type": "object"
-          }
-        },
-        "404": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [
-        "commerce.bulk-ingestion:read"
-      ],
-      "summary": "Get bulk ingestion errors download link"
-    },
-    {
       "method": "GET",
       "operationId": "listBulkIngestionItems",
       "parameters": [

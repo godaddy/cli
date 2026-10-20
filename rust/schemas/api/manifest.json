@@ -1,15 +1,15 @@
 {
-  "generated": "2026-10-13T01:50:52.688600744+00:00",
+  "generated": "2026-10-20T23:14:50.464341388+00:00",
   "domains": {
     "bulk-operations": {
       "file": "bulk-operations.json",
       "title": "Bulk Operations API",
-      "endpointCount": 28
+      "endpointCount": 27
     },
     "businesses": {
       "file": "businesses.json",
       "title": "Commerce Business API",
-      "endpointCount": 8
+      "endpointCount": 4
     },
     "catalog-products": {
       "file": "catalog-products.json",
@@ -34,7 +34,7 @@
     "domains": {
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
-      "endpointCount": 26
+      "endpointCount": 15
     },
     "email": {
       "file": "email.json",
@@ -49,7 +49,7 @@
     "hosting": {
       "file": "hosting.json",
       "title": "Hosted Application Lifecycle Management API",
-      "endpointCount": 25
+      "endpointCount": 24
     },
     "location-addresses": {
       "file": "location-addresses.json",
@@ -114,7 +114,7 @@
     "transactions": {
       "file": "transactions.json",
       "title": "Transactions API",
-      "endpointCount": 17
+      "endpointCount": 12
     }
   }
 }
