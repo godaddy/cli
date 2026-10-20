@@ -79,15 +79,7 @@ gddy dns delete example.com --type A --name www
 
 ## Hosting
 
-Run `gddy guide hosting` for the full flow to deploy a Node.js app: create the app, upload a zip, test on the preview URL, attach the app to a hosting plan, then publish.
-
-A Node.js app is published to a live URL by attaching it to a Web Hosting plan the customer owns. If the user wants to buy Node.js Hosting, or publishing fails because the app has no plan:
-
-1. Run `gddy hosting subscription list --hosting-product=WEB_HOSTING`.
-2. If a plan has a free slot, tell the user. They can attach the app to it with `gddy hosting subscription attach`, or buy a new plan.
-3. To buy, find a plan with `gddy shopping catalog search --category webHosting` and follow `gddy guide shopping`. When the new plan appears in `subscription list`, attach the app to it, then publish.
-
-A plan is a purchase, so get the user's explicit consent first (see User Consent).
+Run `gddy guide hosting` for a walkthrough of deploying a Node.js app. Publishing needs the app attached to a Web Hosting plan the customer owns. If the user wants to buy Node.js Hosting, or has no plan with a free slot, see "Buy a plan" in that guide. It starts with `gddy shopping catalog search --category webHosting`.
 
 Use the `hosting app restart` command after creating, updating or deleting an application's secrets.
 
