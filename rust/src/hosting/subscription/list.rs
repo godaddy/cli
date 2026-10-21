@@ -1,5 +1,6 @@
 use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+    Alignment, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec,
+    TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
@@ -20,6 +21,21 @@ struct SubscriptionListArgs {
     limit: Option<u32>,
 }
 
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("totalAvailableSlots", "Available Slots").align(Alignment::Right),
+        TableColumn::new("items", "Plans").nested(vec![
+            TableColumn::new("subscriptionId", "Subscription ID").essential(true),
+            TableColumn::new("label", "Plan"),
+            TableColumn::new("tier", "Tier"),
+            TableColumn::new("status", "Status"),
+            TableColumn::new("availableSlots", "Free").align(Alignment::Right),
+            TableColumn::new("slotLimit", "Slots").align(Alignment::Right),
+            TableColumn::new("paidThroughDate", "Paid Through"),
+        ]),
+    ]
+}
+
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SubscriptionListArgs, _, _, _>(
         CommandSpec::from_args::<SubscriptionListArgs>(
@@ -34,7 +50,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_tier(Tier::Read)
         .with_scopes(&[SUB_READ])
         .with_default_fields("totalAvailableSlots,items")
-        .with_output_schema::<HostingSubscriptionList>(),
+        .with_output_schema::<HostingSubscriptionList>()
+        .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
             let limit = args.limit;
             let hosting_product = args.hosting_product.as_str();
@@ -125,6 +142,32 @@ fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plans_render_as_a_nested_table() {
+        let rendered = cli_engine::preview_human_view(
+            json!({
+                "totalAvailableSlots": 2,
+                "items": [{
+                    "subscriptionId": "sub-1",
+                    "hostingProduct": "WEB_HOSTING",
+                    "label": "Web Hosting Deluxe",
+                    "tier": "DELUXE",
+                    "status": "ACTIVE",
+                    "attachedCount": 1,
+                    "slotLimit": 3,
+                    "availableSlots": 2,
+                    "paidThroughDate": "2027-08-06T00:00:00Z",
+                    "links": []
+                }]
+            }),
+            &view_columns(),
+        );
+        assert!(rendered.contains("Plans:"), "{rendered}");
+        assert!(rendered.contains("SUBSCRIPTION ID"), "{rendered}");
+        assert!(rendered.contains("sub-1"), "{rendered}");
+        assert!(!rendered.contains('{'), "{rendered}");
+    }
 
     #[test]
     fn list_next_actions_attach_when_a_slot_is_free() {
