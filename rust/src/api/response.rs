@@ -181,7 +181,7 @@ mod tests {
                 "response",
                 "list",
                 "--operation",
-                "patchBusiness",
+                "updatePlan",
                 "--output",
                 "json",
             ])

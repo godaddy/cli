@@ -1,4 +1,5 @@
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -6,9 +7,10 @@ use serde_json::Value;
 
 use crate::github::parse_yaml_or_json;
 use crate::ref_paths::{
-    has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
-    resolve_common_types_path, specification_root,
+    has_conflicting_namesake, id_ref_to_file_ref, locate_ref_file, normalize_path,
+    specification_root,
 };
+use crate::visibility;
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -153,8 +155,11 @@ fn dereference(
                     } else {
                         key
                     };
-                    // Already registered — return the local pointer immediately (dedup)
+                    // Already registered — dedup, unless the target is a private file
                     if defs.contains_key(&key) {
+                        if visibility::ref_targets_private_file(&ref_str, spec_dir) {
+                            return Value::Object(map);
+                        }
                         return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
                     }
                     // Insert null placeholder before resolving (circular ref guard)
@@ -332,20 +337,19 @@ fn resolve_ref(
     // Some repos store model files alongside the `schemas/` directory rather than
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
-    let external_root =
-        load_external_ref(&file_path, common_types_dir, qualify_namesakes, defs, depth).or_else(
-            || {
-                spec_dir.parent().and_then(|parent| {
-                    load_external_ref(
-                        &parent.join(file_part),
-                        common_types_dir,
-                        qualify_namesakes,
-                        defs,
-                        depth,
-                    )
-                })
-            },
-        )?;
+    // Only a file that can't be located falls back, never one found and rejected.
+    let external_root = match locate_ref_file(&file_path, common_types_dir) {
+        Some(found) => load_ref_file(&found, common_types_dir, qualify_namesakes, defs, depth),
+        None => spec_dir.parent().and_then(|parent| {
+            load_external_ref(
+                &parent.join(file_part),
+                common_types_dir,
+                qualify_namesakes,
+                defs,
+                depth,
+            )
+        }),
+    }?;
 
     if let Some(frag) = fragment
         && !frag.is_empty()
@@ -383,38 +387,25 @@ fn load_external_ref(
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
-    // Normalize path (resolve .. segments) so the common-types check below works on
-    // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
-    let normalized = normalize_path(path);
-    let resolved = if normalized.exists() {
-        normalized.clone()
-    } else if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
-        fallback
-    } else if let Some(ci) = resolve_case_insensitive(&normalized) {
-        // Spec files authored on case-insensitive filesystems (macOS) sometimes
-        // have mismatched filename casing.  Accept the match but warn so the
-        // spec repo can be fixed.
-        eprintln!(
-            "WARNING: case-insensitive match for {}: using {}",
-            path.display(),
-            ci.display()
-        );
-        ci
-    } else {
-        eprintln!(
-            "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
-            path.display()
-        );
-        return None;
-    };
+    let resolved = locate_ref_file(path, common_types_dir)?;
+    load_ref_file(&resolved, common_types_dir, qualify_namesakes, defs, depth)
+}
 
-    let src = std::fs::read_to_string(&resolved)
+fn load_ref_file(
+    resolved: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Option<Value> {
+    let src = std::fs::read_to_string(resolved)
         .map_err(|e| eprintln!("WARNING: cannot read ref file {}: {e}", resolved.display()))
         .ok()?;
-    let parsed = parse_yaml_or_json(&src, &resolved)
+    let mut parsed = parse_yaml_or_json(&src, resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    let dir = resolved.parent().unwrap_or(&resolved);
+    visibility::prune_ref_file(resolved, &mut parsed)?;
+    let dir = resolved.parent().unwrap_or(resolved);
     Some(dereference(
         &parsed.clone(),
         parsed,
@@ -536,7 +527,8 @@ fn load_and_dereference_with(
 ) -> Result<(Value, IndexMap<String, Value>)> {
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
-    let parsed = parse_yaml_or_json(&src, spec_file)?;
+    let mut parsed = parse_yaml_or_json(&src, spec_file)?;
+    visibility::prune_spec(spec_file, &mut parsed)?;
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
     let mut dereffed = dereference(
@@ -556,6 +548,7 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
+    visibility::drop_emptied_paths_and_tags(&mut dereffed);
     Ok((dereffed, defs))
 }
 

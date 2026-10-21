@@ -10,6 +10,7 @@ mod openapi;
 mod ref_paths;
 mod shopping_spec;
 mod spec_normalize;
+mod visibility;
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -149,7 +150,7 @@ fn main() -> Result<()> {
             source.domain, source.repo_name, source.spec_version
         );
 
-        let (catalog, defs) = if source.graphql_only {
+        let (catalog, mut defs) = if source.graphql_only {
             (
                 synthesize_graphql_domain(source, common_types),
                 IndexMap::new(),
@@ -181,6 +182,10 @@ fn main() -> Result<()> {
         let out_path = output_dir.join(&filename);
         let mut catalog_value =
             serde_json::to_value(&catalog).context("failed to convert catalog to value")?;
+        let stranded = visibility::retain_reachable_defs(&catalog_value, &mut defs);
+        if stranded > 0 {
+            eprintln!("  dropped {stranded} definitions no endpoint references");
+        }
         if !defs.is_empty() {
             let defs_map: serde_json::Map<String, Value> = defs.into_iter().collect();
             catalog_value["$defs"] = Value::Object(defs_map);

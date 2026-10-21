@@ -417,41 +417,6 @@
       "title": "Deployment",
       "type": "object"
     },
-    "DeploymentLogs": {
-      "$id": "https://godaddy.com/schemas/hosting/models/deployment-logs.v1",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The full build and publish log stream captured for a single deployment. Returned by `GET /apps/{appId}/deployments/{deploymentId}/logs`.\n\nThis is build output, not application runtime output: logs emitted by the running application are read from `GET /apps/{appId}/logs` as structured `LogEntry` objects. Here the lines are opaque strings, as the builder wrote them.\n",
-      "properties": {
-        "deploymentId": {
-          "description": "Identifier of the deployment these lines belong to. Matches `Deployment.deploymentId`.\n",
-          "readOnly": true,
-          "type": "string"
-        },
-        "lines": {
-          "description": "Log lines in the order the builder emitted them, oldest first. Empty while the deployment is still `PENDING`, or when no output was captured.\n",
-          "items": {
-            "type": "string"
-          },
-          "readOnly": true,
-          "type": "array"
-        },
-        "links": {
-          "description": "HATEOAS navigation links for this resource. `rel=self` is the canonical URL of the log stream.\n",
-          "items": {
-            "$ref": "#/$defs/link-description"
-          },
-          "readOnly": true,
-          "type": "array"
-        }
-      },
-      "required": [
-        "deploymentId",
-        "lines",
-        "links"
-      ],
-      "title": "DeploymentLogs",
-      "type": "object"
-    },
     "Domain": {
       "$id": "https://godaddy.com/schemas/hosting/models/domain.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2227,91 +2192,6 @@
         "hosting.application:read"
       ],
       "summary": "Get a deployment"
-    },
-    {
-      "description": "Returns the full build and publish log stream captured for a deployment, as an ordered array of opaque lines. `Deployment.logs` carries the same lines when they are available on the deployment itself; this operation is the canonical source and is safe to call while the deployment is still in progress.\n\nThese are builder logs. Logs emitted by the running application are read from `GET /apps/{appId}/logs`, which returns structured `LogEntry` objects instead.\n",
-      "method": "GET",
-      "operationId": "getDeploymentLogs",
-      "parameters": [
-        {
-          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
-          "in": "header",
-          "name": "traceparent",
-          "required": false,
-          "schema": {
-            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
-            "type": "string"
-          }
-        },
-        {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
-          "in": "path",
-          "name": "appId",
-          "required": true,
-          "schema": {
-            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
-            "type": "string"
-          }
-        },
-        {
-          "description": "Deployment identifier returned in the `deploymentId` field of `POST /apps/{appId}/deployments`.",
-          "in": "path",
-          "name": "deploymentId",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/apps/{appId}/deployments/{deploymentId}/logs",
-      "responses": {
-        "200": {
-          "description": "Full log stream for the deployment.",
-          "schema": {
-            "$ref": "#/$defs/DeploymentLogs"
-          }
-        },
-        "401": {
-          "description": "Authentication credentials are missing or invalid.",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        },
-        "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        },
-        "404": {
-          "description": "The requested resource does not exist.",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        },
-        "429": {
-          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        },
-        "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        },
-        "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
-          "schema": {
-            "$ref": "#/$defs/Error"
-          }
-        }
-      },
-      "scopes": [
-        "hosting.application:read"
-      ],
-      "summary": "Get deployment build logs"
     },
     {
       "description": "Returns the domains currently attached to this application, including their DNS verification state.\n",

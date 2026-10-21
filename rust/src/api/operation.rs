@@ -545,7 +545,7 @@ mod tests {
     }
 
     /// Many catalog paths are shared by several endpoints that only differ
-    /// by method (here: `GET /businesses` and `POST /businesses`) — without
+    /// by method (here: `GET /channels` and `POST /channels`) — without
     /// `--method`, exact-match resolution must treat that the same as an
     /// ambiguous fuzzy match, not silently pick whichever one it saw first.
     #[tokio::test]
@@ -556,7 +556,7 @@ mod tests {
                 "api",
                 "operation",
                 "get",
-                "/businesses",
+                "/channels",
                 "--output",
                 "json",
             ])
@@ -581,7 +581,7 @@ mod tests {
                 "api",
                 "operation",
                 "get",
-                "/businesses",
+                "/channels",
                 "--method",
                 "POST",
                 "--output",
@@ -591,7 +591,7 @@ mod tests {
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
-        assert_eq!(rendered["data"]["operationId"], json!("createBusiness"));
+        assert_eq!(rendered["data"]["operationId"], json!("createChannel"));
     }
 
     /// A concrete path with a real ID substituted for a `{param}` segment
@@ -667,8 +667,8 @@ mod tests {
     }
 
     /// Most catalog request bodies are a bare `$ref` with no inline
-    /// `properties` (63/82 in the embedded catalog) — `createBusiness`'s is
-    /// `{"$ref": "#/$defs/Business"}`. Without $ref resolution this
+    /// `properties` (60/79 in the embedded catalog) — `createPaymentRequest`'s is
+    /// `{"$ref": "#/$defs/PaymentRequest"}`. Without $ref resolution this
     /// summarizes to `null`; with it, the real fields show up. The request
     /// body is folded into `parameters` as the synthetic `body` row.
     #[tokio::test]
@@ -679,7 +679,7 @@ mod tests {
                 "api",
                 "operation",
                 "get",
-                "createBusiness",
+                "createPaymentRequest",
                 "--output",
                 "json",
             ])
@@ -697,12 +697,12 @@ mod tests {
         let schema = body["schema"]["items"]
             .as_array()
             .expect("body.schema resolves to a property list, not null");
-        let active_since = schema
+        let created_at = schema
             .iter()
-            .find(|p| p["name"] == "activeSince")
-            .expect("activeSince property");
-        assert_eq!(active_since["type"], json!("string(date-time)"));
-        assert_eq!(body["schemaId"], json!("Business"));
+            .find(|p| p["name"] == "createdAt")
+            .expect("createdAt property");
+        assert_eq!(created_at["type"], json!("string(date-time)"));
+        assert_eq!(body["schemaId"], json!("PaymentRequest"));
     }
 
     /// `getChannels` has 6 parameters — under the preview cap, so its

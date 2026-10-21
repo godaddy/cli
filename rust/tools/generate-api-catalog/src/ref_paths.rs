@@ -195,6 +195,35 @@ pub(crate) fn has_conflicting_namesake(dir: &Path, file: &Path) -> bool {
     schema_id(file).is_some_and(|id| any_conflict(dir, file, &id))
 }
 
+/// Finds the file a `$ref` path names (as written, common types, or case-insensitive).
+pub(crate) fn locate_ref_file(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
+    // Normalize path (resolve .. segments) so the common-types check below works on
+    // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
+    let normalized = normalize_path(path);
+    if normalized.exists() {
+        return Some(normalized);
+    }
+    if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
+        return Some(fallback);
+    }
+    if let Some(ci) = resolve_case_insensitive(&normalized) {
+        // Spec files authored on case-insensitive filesystems (macOS) sometimes
+        // have mismatched filename casing.  Accept the match but warn so the
+        // spec repo can be fixed.
+        eprintln!(
+            "WARNING: case-insensitive match for {}: using {}",
+            path.display(),
+            ci.display()
+        );
+        return Some(ci);
+    }
+    eprintln!(
+        "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
+        path.display()
+    );
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;

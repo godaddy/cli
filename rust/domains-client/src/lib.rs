@@ -175,40 +175,6 @@ mod tests {
         assert_eq!(prices[0].price.as_ref().and_then(|m| m.value), Some(1199));
     }
 
-    #[tokio::test]
-    async fn check_availability_batch_posts_domains_array() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path("/v3/domains/check-availability")
-                    .json_body(json!({ "domains": ["a.com", "b.com"], "optimizeFor": "SPEED" }));
-                then.status(200).json_body(json!({
-                    "items": [
-                        { "domain": "a.com", "available": true },
-                        { "domain": "b.com", "available": false }
-                    ]
-                }));
-            })
-            .await;
-
-        let body = client_for(&server)
-            .check_availability()
-            .body(types::AvailabilityCheckCriteria {
-                domains: vec!["a.com".to_string(), "b.com".to_string()],
-                optimize_for: Some(types::OptimizationTarget::Speed),
-                isc_code: None,
-            })
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(body.items.len(), 2);
-        assert_eq!(body.items[1].available, Some(false));
-    }
-
     // --- v3: registration (quote → register → poll) -------------------------
 
     #[tokio::test]

@@ -572,24 +572,6 @@
       "title": "Error Details",
       "type": "object"
     },
-    "full-request": {
-      "summary": "Create Additional Channel: FULL REQUEST (with all available fields)",
-      "value": {
-        "channel": {
-          "externalChannelId": "e2bfe9e1-1ac5-486f-80eb-b3d736f7fc0d",
-          "externalChannelType": "gopay.client.int.dev-godaddy.com",
-          "name": "My best channel ever"
-        },
-        "intent": "ADD_CHANNEL",
-        "metadata": {
-          "businessId": "3d9da701-5ec5-46fa-85c7-f37ed3785eac",
-          "context": "Some context here",
-          "medium": "Some reseller info here",
-          "source": "Some source info here",
-          "storeId": "1a5ca283-6206-4ef8-ac81-0d0480e30d20"
-        }
-      }
-    },
     "geo-coordinates": {
       "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -655,107 +637,6 @@
       ],
       "title": "Link Description",
       "type": "object"
-    },
-    "minimal-request": {
-      "summary": "Create Additional Channel: MINIMUM REQUEST",
-      "value": {
-        "channel": {
-          "name": "My best channel ever"
-        },
-        "intent": "ADD_CHANNEL",
-        "metadata": {
-          "businessId": "3d9da701-5ec5-46fa-85c7-f37ed3785eac",
-          "storeId": "1a5ca283-6206-4ef8-ac81-0d0480e30d20"
-        }
-      }
-    },
-    "minimal-request-with-customer-id": {
-      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with customerId",
-      "value": {
-        "company": {
-          "address": {
-            "countryCode": "US"
-          },
-          "dba": "GoDaddy"
-        },
-        "individuals": [
-          {
-            "customerId": "9af92d50-9541-4ad8-8c67-37404fb6c104",
-            "type": "APPLICANT"
-          }
-        ],
-        "intent": "CREATE_BUSINESS",
-        "products": [
-          {
-            "name": "PAYMENTS"
-          }
-        ]
-      }
-    },
-    "minimal-request-with-first-last-name": {
-      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with first/last name",
-      "value": {
-        "company": {
-          "address": {
-            "countryCode": "US"
-          },
-          "dba": "GoDaddy"
-        },
-        "individuals": [
-          {
-            "firstName": "John",
-            "lastName": "Doe",
-            "type": "APPLICANT"
-          }
-        ],
-        "intent": "CREATE_BUSINESS",
-        "products": [
-          {
-            "name": "PAYMENTS"
-          }
-        ]
-      }
-    },
-    "minimal-request-with-ip": {
-      "summary": "Create Commerce Account: MINIMUM REQUEST (PBD) with IP address",
-      "value": {
-        "company": {
-          "dba": "GoDaddy"
-        },
-        "individuals": [
-          {
-            "customerId": "9af92d50-9541-4ad8-8c67-37404fb6c104",
-            "ip": "10.10.10.10",
-            "type": "APPLICANT"
-          }
-        ],
-        "intent": "CREATE_BUSINESS",
-        "products": [
-          {
-            "name": "PAYMENTS"
-          }
-        ]
-      }
-    },
-    "minimal-request-without-payments": {
-      "summary": "Create Commerce Account: MINIMUM REQUEST without products",
-      "value": {
-        "company": {
-          "address": {
-            "countryCode": "US"
-          },
-          "dba": "GoDaddy"
-        },
-        "individuals": [
-          {
-            "firstName": "John",
-            "lastName": "Doe",
-            "type": "APPLICANT"
-          }
-        ],
-        "intent": "CREATE_BUSINESS",
-        "products": []
-      }
     },
     "patch": {
       "$id": "https://godaddy.com/schemas/common/patch.v1",

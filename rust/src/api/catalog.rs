@@ -646,7 +646,7 @@ mod tests {
             .iter()
             .find(|d| d.name == "hosting")
             .expect("hosting is embedded in DOMAIN_FILES");
-        assert_eq!(hosting.endpoints.len(), 25);
+        assert_eq!(hosting.endpoints.len(), 24);
         assert!(
             hosting.base_url.ends_with("/v1/hosting"),
             "unexpected hosting base URL: {}",
