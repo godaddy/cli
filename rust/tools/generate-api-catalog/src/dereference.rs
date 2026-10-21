@@ -9,10 +9,7 @@ use crate::ref_paths::{
     has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
     resolve_common_types_path, specification_root,
 };
-use crate::visibility::{
-    drop_operationless_paths, ensure_no_refs_to_private, ensure_public_root, private_pointers,
-    prune_private, prune_ref_file,
-};
+use crate::visibility::{drop_operationless_paths, prune_ref_file, prune_spec};
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -336,9 +333,14 @@ fn resolve_ref(
     // Some repos store model files alongside the `schemas/` directory rather than
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
+    // Only a missing file falls back: one that exists but was rejected (e.g. a
+    // private file) must not be replaced by a same-named file elsewhere.
     let external_root =
         load_external_ref(&file_path, common_types_dir, qualify_namesakes, defs, depth).or_else(
             || {
+                if file_path.exists() {
+                    return None;
+                }
                 spec_dir.parent().and_then(|parent| {
                     load_external_ref(
                         &parent.join(file_part),
@@ -418,10 +420,9 @@ fn load_external_ref(
     let mut parsed = parse_yaml_or_json(&src, &resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    let private = prune_ref_file(&resolved, &mut parsed)?;
+    prune_ref_file(&resolved, &mut parsed)?;
     let dir = resolved.parent().unwrap_or(&resolved);
-    let lifted_before = defs.len();
-    let result = dereference(
+    Some(dereference(
         &parsed.clone(),
         parsed,
         dir,
@@ -429,14 +430,7 @@ fn load_external_ref(
         qualify_namesakes,
         defs,
         depth + 1,
-    );
-    // Reject a file that still points at a private node of its own, along with
-    // anything it lifted; the `$ref` to it then stays unresolved.
-    let roots = std::iter::once(&result).chain(defs.values().skip(lifted_before));
-    ensure_no_refs_to_private(&resolved, &private, roots)
-        .map_err(|e| eprintln!("WARNING: ignoring ref file: {e}"))
-        .ok()?;
-    Some(result)
+    ))
 }
 
 /// Walk a dereferenced value and collect any remaining external `$ref` strings.
@@ -550,9 +544,7 @@ fn load_and_dereference_with(
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
     let mut parsed = parse_yaml_or_json(&src, spec_file)?;
-    ensure_public_root(spec_file, &parsed)?;
-    let private = private_pointers(&parsed);
-    prune_private(&mut parsed);
+    prune_spec(spec_file, &mut parsed)?;
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
     let mut dereffed = dereference(
@@ -572,11 +564,6 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
-    ensure_no_refs_to_private(
-        spec_file,
-        &private,
-        std::iter::once(&dereffed).chain(defs.values()),
-    )?;
     drop_operationless_paths(&mut dereffed);
     Ok((dereffed, defs))
 }
