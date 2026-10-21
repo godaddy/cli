@@ -46,7 +46,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             asked to press Enter to accept. Run this once before using other \
             `gddy platform app` commands. When not running in a terminal (for \
             example in a script), pass `--accept-agreements` to accept without \
-            a prompt.\n\n\
+            a prompt. Use `--dry-run` to check whether your account is set up \
+            without accepting anything; checking may start your account's setup \
+            record, but no agreement is accepted.\n\n\
             AI assistants: accepting the agreements is the user's decision. Ask \
             the user to review and accept them; do not pass \
             `--accept-agreements` on their behalf.",
@@ -136,5 +138,12 @@ mod tests {
         let long = command().spec.long.expect("long help");
         assert!(long.contains("When not running in a terminal"));
         assert!(!long.contains("In scripts, pass"));
+    }
+
+    #[test]
+    fn help_explains_what_a_dry_run_does_and_does_not_do() {
+        let long = command().spec.long.expect("long help");
+        assert!(long.contains("`--dry-run`"));
+        assert!(long.contains("no agreement is accepted"));
     }
 }
