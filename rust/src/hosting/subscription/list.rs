@@ -4,9 +4,8 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::hosting::common::{
-    HostingProduct, HostingSubscriptionList, client_err, make_client, next_page_token,
-};
+use crate::hosting::client::{ClientError, HostingClient};
+use crate::hosting::common::{HostingProduct, HostingSubscriptionList, client_err, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
@@ -44,7 +43,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "List hosting plan subscriptions available to attach to applications. \
-             --hosting-product is required. Results are autopaginated.",
+             --hosting-product is required.",
         )
         .with_system("hosting")
         .with_tier(Tier::Read)
@@ -53,49 +52,43 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<HostingSubscriptionList>()
         .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
-            let limit = args.limit;
-            let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
+            let items = fetch_subscriptions(&client, args.hosting_product.as_str(), args.limit)
+                .await
+                .map_err(client_err)?;
 
-            let mut all_items: Vec<Value> = Vec::new();
-            let mut page_token: Option<String> = None;
-
-            loop {
-                let page_limit =
-                    limit.map(|cap| cap.saturating_sub(all_items.len() as u32).min(100));
-
-                let response = client
-                    .list_subscriptions(page_token.as_deref(), page_limit, hosting_product)
-                    .await
-                    .map_err(client_err)?;
-
-                if let Some(items) = response.get("items").and_then(|v| v.as_array()) {
-                    all_items.extend(items.iter().cloned());
-                }
-
-                if limit.is_some_and(|cap| all_items.len() >= cap as usize) {
-                    all_items.truncate(limit.expect("checked") as usize);
-                    break;
-                }
-
-                match next_page_token(&response) {
-                    Some(token) => page_token = Some(token),
-                    None => break,
-                }
-            }
-
-            let total_available_slots: u64 = all_items
+            let total_available_slots: u64 = items
                 .iter()
                 .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
                 .sum();
 
+            let next_actions = list_next_actions(&items);
             Ok(CommandResult::new(json!({
-                "items": all_items,
+                "items": items,
                 "totalAvailableSlots": total_available_slots,
             }))
-            .with_next_actions(list_next_actions(&all_items)))
+            .with_next_actions(next_actions))
         },
     )
+}
+
+/// The endpoint takes no paging parameters yet, so this is a single request
+/// even if the response carries a `rel=next` link.
+async fn fetch_subscriptions(
+    client: &HostingClient,
+    hosting_product: &str,
+    limit: Option<u32>,
+) -> Result<Vec<Value>, ClientError> {
+    let response = client.list_subscriptions(hosting_product).await?;
+    let mut items = response
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(cap) = limit {
+        items.truncate(cap as usize);
+    }
+    Ok(items)
 }
 
 fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
@@ -142,6 +135,39 @@ fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn fetch_makes_one_request_even_with_a_next_link() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v1/hosting/subscriptions")
+                    .query_param("hostingProduct", "WEB_HOSTING");
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "subscriptionId": "sub-1", "availableSlots": 1 },
+                        { "subscriptionId": "sub-2", "availableSlots": 0 }
+                    ],
+                    "links": [{
+                        "rel": "next",
+                        "href": "https://api.godaddy.com/v1/hosting/subscriptions?hostingProduct=WEB_HOSTING&pageToken=tok-2"
+                    }]
+                }));
+            })
+            .await;
+
+        let client = HostingClient::new(server.base_url(), "test-token");
+        let items = fetch_subscriptions(&client, "WEB_HOSTING", Some(1))
+            .await
+            .expect("fetch subscriptions");
+
+        mock.assert_calls_async(1).await;
+        assert_eq!(
+            items,
+            vec![json!({ "subscriptionId": "sub-1", "availableSlots": 1 })]
+        );
+    }
 
     #[test]
     fn plans_render_as_a_nested_table() {
