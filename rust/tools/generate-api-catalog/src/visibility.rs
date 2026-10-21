@@ -136,16 +136,16 @@ fn ensure_no_refs_to_private(spec_file: &Path, private: &[String], spec: &Value)
     Ok(())
 }
 
-/// Whether `reference` is, or points inside, one of the `private` pointers. A
-/// bare schema name (a `discriminator.mapping` shorthand) means
-/// `#/components/schemas/<name>`.
-fn targets_private(reference: &str, private: &[String]) -> bool {
-    let bare;
-    let reference = if reference.contains(['/', '#']) {
-        reference
+/// Whether `reference` is, or points inside, one of the `private` pointers.
+/// `bare_name` is for `discriminator.mapping` values, where a bare schema name
+/// means `#/components/schemas/<name>`; a `$ref` without a `#` names a file.
+fn targets_private(reference: &str, private: &[String], bare_name: bool) -> bool {
+    let expanded;
+    let reference = if bare_name && !reference.contains(['/', '#']) {
+        expanded = format!("#/components/schemas/{reference}");
+        &expanded
     } else {
-        bare = format!("#/components/schemas/{reference}");
-        &bare
+        reference
     };
     private.iter().any(|pointer| {
         reference == pointer
@@ -159,7 +159,7 @@ fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<Stri
     match value {
         Value::Object(map) => {
             if let Some(Value::String(reference)) = map.get("$ref")
-                && targets_private(reference, private)
+                && targets_private(reference, private, false)
             {
                 out.push(reference.clone());
             }
@@ -172,7 +172,7 @@ fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<Stri
                     mapping
                         .values()
                         .filter_map(Value::as_str)
-                        .filter(|target| targets_private(target, private))
+                        .filter(|target| targets_private(target, private, true))
                         .map(str::to_owned),
                 );
             }
@@ -685,5 +685,20 @@ mod tests {
             crate::dereference::collect_unresolved_refs(&spec),
             ["models/Hidden.yaml"]
         );
+    }
+
+    #[test]
+    fn ref_to_a_file_is_not_mistaken_for_a_private_schema_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("Widget.yaml"), "type: string\n").expect("write model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Uses:\n      $ref: 'Widget.yaml'\n    Widget.yaml:\n      type: object\n      x-visibility:\n        extent: private\n",
+        )
+        .expect("write spec");
+
+        crate::dereference::load_and_dereference(&spec_path, None)
+            .expect("a file ref is not a bare schema name");
     }
 }
