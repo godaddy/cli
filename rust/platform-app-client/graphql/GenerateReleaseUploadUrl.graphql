@@ -1,0 +1,10 @@
+mutation GenerateReleaseUploadUrl($input: MutationGenerateReleaseUploadUrlInput!) {
+  generateReleaseUploadUrl(input: $input) {
+    uploadId
+    url
+    key
+    expiresAt
+    maxSizeBytes
+    requiredHeaders
+  }
+}
