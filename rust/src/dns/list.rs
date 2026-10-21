@@ -1,18 +1,19 @@
 //! `dns list` — list DNS records for a domain, with optional type/name filters.
 
 use cli_engine::{
-    Alignment, CliCoreError, CommandResult, CommandSpec, PaginationConfig, RuntimeCommandSpec,
-    TableColumn, Tier,
+    Alignment, CliCoreError, CommandResult, CommandSpec, CursorConfig, CursorContinuation,
+    RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
 use crate::idn::DomainFormArgs;
+use crate::pagination_token;
 use crate::scopes::DOMAINS_READ;
 
 use domains_client::types;
 
-use super::records::{fetch_records, merged_tlsa_data, parse_list_type_arg};
+use super::records::{MAX_PAGE_SIZE, fetch_records_page, merged_tlsa_data, parse_list_type_arg};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ListArgs {
@@ -28,6 +29,10 @@ struct ListArgs {
     /// Only records with this name (requires --type).
     #[arg(long, value_name = "NAME", requires = "record_type", value_parser = crate::idn::parse_name_arg)]
     name: Option<String>,
+
+    /// Jump directly to a page of results (1-based).
+    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    page: Option<u64>,
 
     #[command(flatten)]
     domain_format: DomainFormArgs,
@@ -72,7 +77,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_json_schema::<types::DnsRecord>()
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ])
-            .with_pagination(PaginationConfig::new(0, 500)),
+            .with_cursor(CursorConfig::new(50, MAX_PAGE_SIZE.get() as i64)),
         |ctx, args: ListArgs| async move {
             let domain = args.domain;
             let type_opt = args.record_type;
@@ -80,11 +85,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
-            let records = fetch_records(
+            let (page, page_size) = pagination_token::resolve_page_request(
+                args.page,
+                ctx.middleware.continue_token.as_deref(),
+                1u64,
+                ctx.middleware.cursor_limit,
+            );
+            let (records, has_more) = fetch_records_page(
                 &client,
                 domain.as_str(),
                 type_opt.as_deref(),
                 name_opt.as_deref(),
+                page,
+                page_size,
                 debug,
             )
             .await?;
@@ -96,7 +109,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
             for record in &mut out {
                 domain_format.convert_fields(record, &["name"]);
             }
-            Ok(CommandResult::new(json!(out)))
+            let continuation = if has_more {
+                CursorContinuation::more(pagination_token::build(&[
+                    ("limit", &page_size.to_string()),
+                    ("page", &(page + 1).to_string()),
+                ]))
+            } else {
+                CursorContinuation::done()
+            };
+            let continuation = continuation.with_limit(page_size);
+            Ok(CommandResult::new(json!(out)).with_cursor(continuation))
         },
     )
 }
@@ -125,13 +147,13 @@ fn build_list_output(records: &[types::DnsRecord]) -> Result<Vec<Value>, serde_j
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cli_engine::PaginationConfig;
+    use cli_engine::CursorConfig;
 
     #[test]
-    fn opts_into_pagination_with_no_default_and_a_max_limit() {
+    fn opts_into_cursor_pagination_with_a_default_and_a_max_limit() {
         assert_eq!(
-            command().spec.pagination,
-            Some(PaginationConfig::new(0, 500))
+            command().spec.cursor,
+            Some(CursorConfig::new(50, MAX_PAGE_SIZE.get() as i64))
         );
     }
 

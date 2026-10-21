@@ -1,5 +1,5 @@
-query ApplicationsList($status: ApplicationStatusFilter) {
-  applications(status: $status) {
+query ApplicationsList($status: ApplicationStatusFilter, $first: Int, $after: String) {
+  applications(status: $status, first: $first, after: $after) {
     edges {
       node {
         id
@@ -10,6 +10,10 @@ query ApplicationsList($status: ApplicationStatusFilter) {
         url
         proxyUrl
       }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
     }
   }
 }

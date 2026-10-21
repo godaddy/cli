@@ -1,12 +1,17 @@
 //! `gddy platform app list` — list all applications visible to the account.
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, Tier,
+    CommandResult, CommandSpec, CursorConfig, CursorContinuation, NextActionParam,
+    RuntimeCommandSpec, Tier,
 };
 
 use super::schemas::ApplicationSummary;
 use crate::next_action::next_action;
 
+/// Pages through `applications(first:, after:)` with the Relay `endCursor` as
+/// the `--continue` token. No supplemental `--offset` (unlike the client-side
+/// "known collection" commands): a forward-only cursor has no arbitrary-jump
+/// concept, since the server never hands back more than one page at a time.
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_with_context(
         CommandSpec::new("list", "List all applications")
@@ -20,18 +25,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Read)
             .with_default_fields("name,label,status")
             .with_output_schema::<ApplicationSummary>()
-            .with_pagination(PaginationConfig::new(0, 200)),
+            .with_cursor(CursorConfig::new(50, 200)),
         |ctx| async move {
             let client = super::make_client(&ctx).await?;
-            let apps = client
-                .list_applications()
+            let page = client
+                .list_applications(
+                    ctx.middleware.cursor_limit,
+                    ctx.middleware.continue_token.as_deref(),
+                )
                 .await
                 .map_err(super::client_err)?;
-            let data = serde_json::to_value(apps).map_err(|e| {
+            let continuation = match (page.has_next_page, page.end_cursor) {
+                (true, Some(cursor)) => CursorContinuation::more(cursor),
+                // `hasNextPage: true` with no `endCursor` would be a
+                // malformed response — treat it the same as "done" rather
+                // than fabricating a token that can't actually resume.
+                _ => CursorContinuation::done(),
+            };
+            let data = serde_json::to_value(page.items).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode applications: {e}"))
                     .into_cli_error()
             })?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
+            Ok(CommandResult::new(data)
+                .with_cursor(continuation)
+                .with_next_actions(vec![
                 next_action(
                     "platform app info --name <name>",
                     "Get details for a specific application",
@@ -48,17 +65,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig, PaginationConfig, Stage};
+    use cli_engine::{Cli, CliConfig, CursorConfig, Stage};
 
     use super::command;
     use crate::platform::app::client::APPLICATION_STATUSES;
 
     #[test]
-    fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
-        assert_eq!(
-            command().spec.pagination,
-            Some(PaginationConfig::new(0, 200))
-        );
+    fn command_opts_into_cursor_pagination_with_a_default_and_a_max_limit() {
+        assert_eq!(command().spec.cursor, Some(CursorConfig::new(50, 200)));
     }
 
     #[test]

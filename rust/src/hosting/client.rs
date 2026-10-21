@@ -549,16 +549,14 @@ impl HostingClient {
         response(client.get_runtime().app_id(app_id).send().await).await
     }
 
-    pub async fn list_domains(
-        &self,
-        app_id: &str,
-        page_token: Option<&str>,
-        limit: Option<u32>,
-    ) -> Result<Value, ClientError> {
+    /// One request, no paging parameters: the spec types this response as
+    /// paged (`items`/`links`) but declares no `pageToken`/`pageSize`, and the
+    /// service rejects them on the sibling `GET /subscriptions` with a 400
+    /// ("Unrecognized key"). Callers use [`super::common::more_pages_warning`]
+    /// to tell the user when the service reports more than this page.
+    pub async fn list_domains(&self, app_id: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
-        let request = client.list_domains().app_id(app_id);
-        let _ = (page_token, limit);
-        response(request.send().await).await
+        response(client.list_domains().app_id(app_id).send().await).await
     }
 
     pub async fn get_domain(&self, app_id: &str, domain_id: &str) -> Result<Value, ClientError> {
@@ -603,17 +601,12 @@ impl HostingClient {
         .await
     }
 
-    pub async fn list_subscriptions(
-        &self,
-        page_token: Option<&str>,
-        limit: Option<u32>,
-        hosting_product: &str,
-    ) -> Result<Value, ClientError> {
+    /// One request, no paging parameters — see [`Self::list_domains`].
+    pub async fn list_subscriptions(&self, hosting_product: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
         let request = client
             .list_subscriptions()
             .hosting_product(HostingProduct::from(hosting_product.to_owned()));
-        let _ = (page_token, limit);
         response(request.send().await).await
     }
 

@@ -1,11 +1,12 @@
 use cli_engine::{
-    CommandResult, CommandSpec, GroupSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec,
+    CommandResult, CommandSpec, CursorConfig, GroupSpec, NextActionParam, RuntimeCommandSpec,
     RuntimeGroupSpec, Tier,
 };
 use serde_json::{Value, json};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::pagination_token;
 use crate::truncation::protect_payload;
 
 output_schema!(ActionSummary {
@@ -87,12 +88,12 @@ pub fn group() -> RuntimeGroupSpec {
                      `gddy platform action describe` to inspect a specific action's schema.",
             ),
     )
-        .with_command(RuntimeCommandSpec::new(
+        .with_command(RuntimeCommandSpec::new_with_context(
             CommandSpec::new("list", "List all available action contracts")
                 .with_long(
                     "Prints the name and short description of every action your \
                      application can declare. Shows up to 50 actions by default; \
-                     use --limit/--offset to page through the rest once the \
+                     use --limit/--continue to page through the rest once the \
                      catalog grows past that.\n\
                      Run `gddy platform action describe <ACTION>` to see the full \
                      input/output schema for a specific action.",
@@ -102,13 +103,35 @@ pub fn group() -> RuntimeGroupSpec {
                 .no_auth(true)
                 .with_default_fields("name,description")
                 .with_output_schema::<ActionSummary>()
-                .with_pagination(PaginationConfig::new(50, 200)),
-            |_cred, _args| async move {
+                .with_cursor(CursorConfig::new(50, 200))
+                .with_arg(
+                    clap::Arg::new("offset")
+                        .long("offset")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(i64).range(0..))
+                        .conflicts_with("continue")
+                        .help(
+                            "Jump directly to an offset in the results",
+                        ),
+                ),
+            |ctx| async move {
                 let actions: Vec<_> = ACTIONS
                     .iter()
                     .map(|(name, description)| json!({ "name": name, "description": description }))
                     .collect();
-                Ok(CommandResult::new(json!(actions)).with_next_actions(vec![
+                let explicit_offset = ctx.args.get("offset").and_then(Value::as_i64);
+                let continue_token = pagination_token::resolve_continue_token(
+                    explicit_offset,
+                    ctx.middleware.continue_token.as_deref(),
+                );
+                let (page, continuation) = pagination_token::paginate_known_collection(
+                    actions,
+                    ctx.middleware.cursor_limit,
+                    continue_token.as_deref(),
+                );
+                Ok(CommandResult::new(json!(page))
+                    .with_cursor(continuation)
+                    .with_next_actions(vec![
                     next_action(
                         "platform action describe <action>",
                         "See an action's full schema",
@@ -175,7 +198,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_reports_pagination_metadata_via_cli_engine() {
+    async fn list_reports_cursor_metadata_via_cli_engine() {
         let cli = test_cli();
         let output = cli
             .run(["gddy", "platform", "actions", "list", "--output", "json"])
@@ -183,9 +206,59 @@ mod tests {
         assert_eq!(output.exit_code, 0, "{}", output.rendered);
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("stdout should contain json");
-        let pagination = &rendered["pagination"];
-        assert_eq!(pagination["total"], pagination["count"]);
-        assert_eq!(pagination["has_more"], serde_json::json!(false));
+        let cursor = &rendered["cursor"];
+        assert_eq!(cursor["total"], cursor["count"]);
+        assert_eq!(cursor["has_more"], serde_json::json!(false));
+    }
+
+    #[tokio::test]
+    async fn list_limit_and_continue_page_through_the_catalog() {
+        let cli = test_cli();
+        let first = cli
+            .run([
+                "gddy", "platform", "actions", "list", "--limit", "3", "--output", "json",
+            ])
+            .await;
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first_json: serde_json::Value =
+            serde_json::from_str(&first.rendered).expect("stdout should contain json");
+        assert_eq!(first_json["data"].as_array().expect("array").len(), 3);
+        assert_eq!(first_json["cursor"]["has_more"], serde_json::json!(true));
+        let token = first_json["cursor"]["continue_from"]
+            .as_str()
+            .expect("has_more implies a token");
+
+        let second = cli
+            .run([
+                "gddy",
+                "platform",
+                "actions",
+                "list",
+                "--limit",
+                "3",
+                "--continue",
+                token,
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(second.exit_code, 0, "{}", second.rendered);
+        let second_json: serde_json::Value =
+            serde_json::from_str(&second.rendered).expect("stdout should contain json");
+        assert_eq!(second_json["data"].as_array().expect("array").len(), 3);
+
+        // An explicit --offset should land on the same page --continue's
+        // token did, without needing the token at all.
+        let via_offset = cli
+            .run([
+                "gddy", "platform", "actions", "list", "--limit", "3", "--offset", "3", "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(via_offset.exit_code, 0, "{}", via_offset.rendered);
+        let via_offset_json: serde_json::Value =
+            serde_json::from_str(&via_offset.rendered).expect("stdout should contain json");
+        assert_eq!(via_offset_json["data"], second_json["data"]);
     }
 
     #[tokio::test]

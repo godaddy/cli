@@ -1,12 +1,13 @@
 //! `api response list` and `api response get`.
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, TableColumn,
+    CommandResult, CommandSpec, CursorConfig, NextActionParam, RuntimeCommandSpec, TableColumn,
     Tier,
 };
 use serde_json::json;
 
 use crate::next_action::{next_action, required_value};
+use crate::pagination_token;
 
 use super::catalog::{catalog, resolve_operation};
 use super::summary::{
@@ -18,10 +19,14 @@ struct ResponseListArgs {
     /// Operation ID to list responses for (see `api operation list`).
     #[arg(long, value_name = "OPERATION")]
     operation: String,
+
+    /// Jump directly to an offset in the collection.
+    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    offset: Option<i64>,
 }
 
 pub(super) fn list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed::<ResponseListArgs, _, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<ResponseListArgs, _, _, _>(
         CommandSpec::from_args::<ResponseListArgs>("list", "List an operation's responses")
             .with_long(
                 "Lists every response on one operation by status code. Use \
@@ -37,15 +42,25 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
-            .with_pagination(PaginationConfig::new(
+            .with_cursor(CursorConfig::new(
                 OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
                 OPERATION_CHILD_LIST_MAX_LIMIT,
             )),
-        |_cred, args: ResponseListArgs| async move {
+        |ctx, args: ResponseListArgs| async move {
             let operation = args.operation.as_str();
             let catalog = catalog();
             let (domain, ep) = resolve_operation(catalog, operation, None)?;
             let all = response_rows(ep, &domain.defs);
+            let items = to_json(all)?.as_array().cloned().unwrap_or_default();
+            let continue_token = pagination_token::resolve_continue_token(
+                args.offset,
+                ctx.middleware.continue_token.as_deref(),
+            );
+            let (page, continuation) = pagination_token::paginate_known_collection(
+                items,
+                ctx.middleware.cursor_limit,
+                continue_token.as_deref(),
+            );
             let next_actions = vec![
                 next_action(
                     "api response get <status> --operation <operation>",
@@ -54,7 +69,9 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 .with_param("status", NextActionParam::required())
                 .with_param("operation", required_value(ep.operation_id.clone())),
             ];
-            Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
+            Ok(CommandResult::new(json!(page))
+                .with_cursor(continuation)
+                .with_next_actions(next_actions))
         },
     )
 }

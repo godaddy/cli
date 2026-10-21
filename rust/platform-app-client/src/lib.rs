@@ -237,7 +237,8 @@ mod tests {
                             "edges": [
                                 { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } },
                                 { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "url": null, "proxyUrl": null } }
-                            ]
+                            ],
+                            "pageInfo": { "hasNextPage": false, "endCursor": null }
                         }
                     }
                 }));
@@ -254,6 +255,8 @@ mod tests {
                 in_: Some(statuses),
                 ne: None,
             }),
+            first: None,
+            after: None,
         };
 
         let data = client_for(&server)

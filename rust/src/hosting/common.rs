@@ -1,5 +1,7 @@
 use clap::builder::{PossibleValuesParser, TypedValueParser};
-use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
+use cli_engine::{
+    CliCoreError, CommandContext, CommandSpec, CursorContinuation, FlagPolicy, Stage,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -269,6 +271,69 @@ pub fn next_page_token(response: &Value) -> Option<String> {
     None
 }
 
+/// The `href` of a paged response's `links[rel=next]`, if it has one.
+pub fn next_link_href(response: &Value) -> Option<String> {
+    response
+        .get("links")?
+        .as_array()?
+        .iter()
+        .find(|link| link.get("rel").and_then(Value::as_str) == Some("next"))?
+        .get("href")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// The warning to show when a listing that this CLI can only read one page of
+/// reports another page via `links[rel=next]` — for the endpoints whose spec
+/// types the response as paged but declares no paging request parameters
+/// (`hosting domain list`, `hosting subscription list`). `None` when the
+/// service reports nothing further.
+pub fn more_pages_warning(response: &Value, what: &str) -> Option<String> {
+    next_link_href(response).map(|_| {
+        format!(
+            "The API reports more {what} than can be displayed."
+        )
+    })
+}
+
+/// Writes `message` as a one-line warning to `out`.
+fn write_warning(out: &mut impl std::io::Write, message: &str) {
+    let _ = writeln!(out, "warning: {message}");
+}
+
+/// Shows a non-fatal warning to the user on stderr, keeping stdout's JSON/TOON
+/// payload clean.
+///
+/// Interim: the engine has no result-level warning channel yet. Replace calls
+/// with `CommandResult::with_warning` once cli-engine#131 is released and
+/// adopted.
+pub fn warn_user(message: &str) {
+    write_warning(&mut std::io::stderr(), message);
+}
+
+/// The `items` array of a paged hosting response (empty when absent).
+pub fn page_items(response: &Value) -> Vec<Value> {
+    response
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Maps a paged hosting response's `links[rel=next]` onto the engine's cursor
+/// continuation, using the server's own `pageToken` as the `--continue` token.
+pub fn page_continuation(response: &Value) -> CursorContinuation {
+    match next_page_token(response) {
+        Some(token) => CursorContinuation::more(token),
+        None => CursorContinuation::done(),
+    }
+}
+
+/// The engine's resolved `--limit` as the `pageSize` the hosting client takes.
+pub fn page_limit(cursor_limit: i64) -> Option<u32> {
+    u32::try_from(cursor_limit).ok().filter(|n| *n > 0)
+}
+
 fn extract_query_param(url: &str, param: &str) -> Option<String> {
     let query = url.split_once('?')?.1;
     for pair in query.split('&') {
@@ -375,6 +440,82 @@ mod tests {
     fn next_page_token_returns_none_when_no_links() {
         let response = json!({ "items": [] });
         assert!(next_page_token(&response).is_none());
+    }
+
+    #[test]
+    fn more_pages_warning_appears_only_when_the_api_reports_a_next_page() {
+        let more = json!({
+            "items": [],
+            "links": [{ "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=t2" }]
+        });
+        let warning = more_pages_warning(&more, "domains").expect("next link warns");
+        assert!(warning.contains("more domains"), "{warning}");
+        assert!(warning.contains("incomplete"), "{warning}");
+
+        let complete = json!({
+            "items": [],
+            "links": [{ "rel": "self", "href": "/v1/hosting/apps/a/domains" }]
+        });
+        assert_eq!(more_pages_warning(&complete, "domains"), None);
+        assert_eq!(more_pages_warning(&json!({ "items": [] }), "domains"), None);
+    }
+
+    #[test]
+    fn write_warning_emits_one_prefixed_line() {
+        let mut out = Vec::new();
+        write_warning(&mut out, "list may be incomplete");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "warning: list may be incomplete\n"
+        );
+    }
+
+    #[test]
+    fn page_items_returns_the_items_array_or_empty() {
+        assert_eq!(
+            page_items(&json!({ "items": [{ "id": "a" }, { "id": "b" }] })).len(),
+            2
+        );
+        assert!(page_items(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn page_continuation_carries_the_servers_page_token_and_is_done_without_one() {
+        let more = page_continuation(&json!({
+            "links": [{ "rel": "next", "href": "https://api.godaddy.com/v1/hosting/apps?pageToken=tok-2" }]
+        }));
+        assert_eq!(more.continue_from.as_deref(), Some("tok-2"));
+        assert_eq!(
+            page_continuation(&json!({ "items": [] })).continue_from,
+            None
+        );
+    }
+
+    #[test]
+    fn next_link_href_picks_the_next_relation_only() {
+        let response = json!({
+            "links": [
+                { "rel": "self", "href": "/v1/hosting/apps/a/domains" },
+                { "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=tok-2" }
+            ]
+        });
+        assert_eq!(
+            next_link_href(&response).as_deref(),
+            Some("/v1/hosting/apps/a/domains?pageToken=tok-2")
+        );
+        assert_eq!(
+            next_link_href(&json!({ "links": [{ "rel": "self", "href": "/x" }] })),
+            None
+        );
+        assert_eq!(next_link_href(&json!({ "items": [] })), None);
+    }
+
+    #[test]
+    fn page_limit_rejects_non_positive_and_oversized_values() {
+        assert_eq!(page_limit(50), Some(50));
+        assert_eq!(page_limit(0), None);
+        assert_eq!(page_limit(-1), None);
+        assert_eq!(page_limit(i64::MAX), None);
     }
 
     #[test]

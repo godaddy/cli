@@ -1,12 +1,13 @@
 //! `api search`.
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, Tier,
+    CommandResult, CommandSpec, CursorConfig, NextActionParam, RuntimeCommandSpec, Tier,
 };
 use serde_json::{Value, json};
 
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::pagination_token;
 
 use super::catalog::{catalog, graphql_sub_endpoint_rows, search_endpoints};
 
@@ -28,10 +29,15 @@ struct SearchArgs {
     /// Search term (matches path, operationId, summary, description).
     #[arg(value_name = "QUERY")]
     query: String,
+
+    /// Jump directly to this offset instead of walking there one --continue
+    /// token at a time.
+    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    offset: Option<i64>,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed::<SearchArgs, _, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<SearchArgs, _, _, _>(
         CommandSpec::from_args::<SearchArgs>("search", "Search API endpoints by keyword")
             .with_long(
                 "Full-text searches across all API domains, matching against \
@@ -44,11 +50,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("operationId,domain,method,path,summary")
             .with_output_schema::<ApiEndpoint>()
-            .with_pagination(PaginationConfig::new(0, 100)),
-        |_cred, args: SearchArgs| async move {
+            .with_cursor(CursorConfig::new(50, 100)),
+        |ctx, args: SearchArgs| async move {
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
-                return Ok(CommandResult::new(json!([])));
+                let (page, continuation) = pagination_token::paginate_known_collection(
+                    Vec::new(),
+                    ctx.middleware.cursor_limit,
+                    None,
+                );
+                return Ok(CommandResult::new(json!(page)).with_cursor(continuation));
             }
             let mut results: Vec<Value> = hits
                 .iter()
@@ -112,22 +123,88 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            Ok(CommandResult::new(json!(results)).with_next_actions(next_actions))
+            let continue_token = pagination_token::resolve_continue_token(
+                args.offset,
+                ctx.middleware.continue_token.as_deref(),
+            );
+            let (page, continuation) = pagination_token::paginate_known_collection(
+                results,
+                ctx.middleware.cursor_limit,
+                continue_token.as_deref(),
+            );
+            Ok(CommandResult::new(json!(page))
+                .with_cursor(continuation)
+                .with_next_actions(next_actions))
         },
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::PaginationConfig;
+    use cli_engine::{Cli, CliConfig, CursorConfig, Stage};
 
     use super::command;
 
     #[test]
-    fn command_opts_into_pagination_with_no_default_and_a_max_limit() {
-        assert_eq!(
-            command().spec.pagination,
-            Some(PaginationConfig::new(0, 100))
-        );
+    fn command_opts_into_cursor_pagination_with_a_default_and_a_max_limit() {
+        assert_eq!(command().spec.cursor, Some(CursorConfig::new(50, 100)));
+    }
+
+    fn test_cli() -> Cli {
+        Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_modules(crate::all_modules()),
+        )
+    }
+
+    #[tokio::test]
+    async fn limit_and_continue_page_through_search_results() {
+        let cli = test_cli();
+        // "list" matches many operation IDs/paths/summaries across the
+        // embedded catalog — plenty of hits to page through.
+        let first = cli
+            .run([
+                "gddy", "api", "search", "list", "--limit", "1", "--output", "json",
+            ])
+            .await;
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first_json: serde_json::Value =
+            serde_json::from_str(&first.rendered).expect("stdout should contain json");
+        assert_eq!(first_json["data"].as_array().expect("array").len(), 1);
+        assert_eq!(first_json["cursor"]["has_more"], serde_json::json!(true));
+        let token = first_json["cursor"]["continue_from"]
+            .as_str()
+            .expect("has_more implies a token")
+            .to_owned();
+
+        let second = cli
+            .run([
+                "gddy",
+                "api",
+                "search",
+                "list",
+                "--limit",
+                "1",
+                "--continue",
+                &token,
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(second.exit_code, 0, "{}", second.rendered);
+        let second_json: serde_json::Value =
+            serde_json::from_str(&second.rendered).expect("stdout should contain json");
+
+        let via_offset = cli
+            .run([
+                "gddy", "api", "search", "list", "--limit", "1", "--offset", "1", "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(via_offset.exit_code, 0, "{}", via_offset.rendered);
+        let via_offset_json: serde_json::Value =
+            serde_json::from_str(&via_offset.rendered).expect("stdout should contain json");
+        assert_eq!(via_offset_json["data"], second_json["data"]);
     }
 }
