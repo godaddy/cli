@@ -26,19 +26,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: InfoArgs| async move {
             let name = args.name;
             let client = super::make_client(&ctx).await?;
-            let data = client
+            let app = client
                 .get_application(&name)
                 .await
-                .map_err(super::client_err)?;
-            let app = &data["application"];
-            if app.is_null() {
-                return Err(crate::error::GddyError::not_found(format!(
-                    "application '{name}' not found"
-                ))
-                .into_cli_error());
-            }
-            let app_id = app["id"].as_str().unwrap_or("").to_owned();
-            Ok(CommandResult::new(app.clone()).with_next_actions(vec![
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::not_found(format!("application '{name}' not found"))
+                        .into_cli_error()
+                })?;
+            let app_id = app.id.clone();
+            let data = serde_json::to_value(&app).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "platform app validate <name>",
                     "Validate application configuration",

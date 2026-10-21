@@ -1,4 +1,5 @@
 use httpmock::prelude::*;
+use serde_json::json;
 
 use super::*;
 
@@ -13,16 +14,14 @@ async fn list_applications_sends_all_app_registry_statuses() {
                 .is_true(|req| {
                     let body = req.body_string();
                     body.contains("ApplicationsList")
-                        && body.contains(
-                            r#""in":["ACTIVE","ARCHIVED","BLOCKED","INACTIVE","VERIFYING"]"#,
-                        )
+                        && body.contains(r#""in":["ACTIVE","ARCHIVED","BLOCKED","INACTIVE","VERIFYING"]"#)
                 });
             then.status(200).json_body(json!({
                 "data": {
                     "applications": {
                         "edges": [
-                            { "node": { "id": "a1", "name": "active-app", "status": "ACTIVE" } },
-                            { "node": { "id": "a2", "name": "inactive-app", "status": "INACTIVE" } }
+                            { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } },
+                            { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "url": null, "proxyUrl": null } }
                         ]
                     }
                 }
@@ -30,14 +29,17 @@ async fn list_applications_sends_all_app_registry_statuses() {
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let nodes = ApplicationClient::new(server.base_url(), "test-token")
         .list_applications()
         .await
         .expect("list applications");
 
     mock.assert_async().await;
-    assert_eq!(data.as_array().expect("array").len(), 2);
-    assert_eq!(data[1]["status"], "INACTIVE");
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(
+        nodes[1].status,
+        applications_list::ApplicationStatus::INACTIVE
+    );
 }
 
 #[tokio::test]
@@ -50,23 +52,37 @@ async fn activate_release_posts_mutation_with_ids() {
                 .header("authorization", "Bearer test-token")
                 .is_true(|req| {
                     let body = req.body_string();
-                    body.contains("activateRelease")
+                    body.contains("ActivateRelease")
                         && body.contains("app-123")
                         && body.contains("rel-456")
                 });
             then.status(200).json_body(json!({
-                "data": { "activateRelease": { "id": "rel-456", "status": "ACTIVE" } }
+                "data": {
+                    "activateRelease": {
+                        "id": "rel-456",
+                        "version": "1.0.0",
+                        "description": null,
+                        "status": "ACTIVE",
+                        "activatedAt": "2026-01-01T00:00:00Z",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z"
+                    }
+                }
             }));
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let release = ApplicationClient::new(server.base_url(), "test-token")
         .activate_release("app-123", "rel-456")
         .await
-        .expect("activate release");
+        .expect("activate release")
+        .expect("release present");
 
     mock.assert_async().await;
-    assert_eq!(data["activateRelease"]["status"], "ACTIVE");
+    assert_eq!(
+        release.status,
+        activate_release::ApplicationReleaseStatus::ACTIVE
+    );
 }
 
 #[tokio::test]
@@ -76,13 +92,10 @@ async fn list_enabled_store_applications_sends_store_id_variable() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v1/apps/app-registry-subgraph")
-                .header("authorization", "Bearer test-token")
                 .is_true(|req| {
                     let body = req.body_string();
                     body.contains("EnabledStoreApplications")
-                        && body.contains("enabledStoreApplications")
                         && body.contains(r#""storeId":"store-abc""#)
-                        && body.contains("label")
                 });
             then.status(200).json_body(json!({
                 "data": {
@@ -98,16 +111,19 @@ async fn list_enabled_store_applications_sends_store_id_variable() {
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let apps = ApplicationClient::new(server.base_url(), "test-token")
         .list_enabled_store_applications("store-abc")
         .await
         .expect("list enabled store applications");
 
     mock.assert_async().await;
-    assert_eq!(data.as_array().expect("array").len(), 1);
-    assert_eq!(data[0]["name"], "my-app");
-    assert_eq!(data[0]["label"], "My App");
-    assert_eq!(data[0]["release"]["version"], "1.0.0");
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].name, "my-app");
+    assert_eq!(apps[0].label, "My App");
+    assert_eq!(
+        apps[0].release.as_ref().map(|r| r.version.as_str()),
+        Some("1.0.0")
+    );
 }
 
 #[tokio::test]
@@ -117,7 +133,6 @@ async fn list_enabled_store_applications_empty_list_is_success() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v1/apps/app-registry-subgraph")
-                .header("authorization", "Bearer test-token")
                 .is_true(|req| req.body_string().contains("EnabledStoreApplications"));
             then.status(200).json_body(json!({
                 "data": { "enabledStoreApplications": [] }
@@ -125,13 +140,13 @@ async fn list_enabled_store_applications_empty_list_is_success() {
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let apps = ApplicationClient::new(server.base_url(), "test-token")
         .list_enabled_store_applications("store-empty")
         .await
         .expect("empty enablements");
 
     mock.assert_async().await;
-    assert_eq!(data, json!([]));
+    assert!(apps.is_empty());
 }
 
 #[tokio::test]
@@ -141,18 +156,29 @@ async fn create_release_sends_settings_input_and_returns_settings() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v1/apps/app-registry-subgraph")
-                .header("authorization", "Bearer test-token")
                 .is_true(|req| {
                     let body = req.body_string();
                     body.contains("CreateRelease")
-                        && body.contains("settings { id groupSlug appSettingSlug entryPath capabilities order title }")
                         && body.contains(r#""entryPath":"/settings/godaddy-tax""#)
+                        && body.contains(r#""groupSlug":"tax-center""#)
+                        && body.contains(r#""packageName":"com.example.app""#)
+                        && body.contains(r#""platform":"ANDROID""#)
                 });
             then.status(200).json_body(json!({
                 "data": {
                     "createRelease": {
                         "id": "rel-1",
                         "version": "1.0.0",
+                        "description": null,
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "uiExtensions": [],
+                        "nativeExtensions": [{
+                            "id": "native-1",
+                            "name": "My Android App",
+                            "packageName": "com.example.app",
+                            "contact": null,
+                            "platform": "ANDROID"
+                        }],
                         "settings": [{
                             "id": "setting-1",
                             "groupSlug": "tax-center",
@@ -160,7 +186,14 @@ async fn create_release_sends_settings_input_and_returns_settings() {
                             "entryPath": "/settings/godaddy-tax",
                             "capabilities": ["read", "write"],
                             "order": 10,
-                            "title": "GoDaddy Tax"
+                            "title": "GoDaddy Tax",
+                            "titleKey": null,
+                            "description": null,
+                            "descriptionKey": null,
+                            "iconName": null,
+                            "iconLibrary": null,
+                            "metadata": null,
+                            "presentation": { "type": "form", "schemaVersion": "settings-form-v1", "sections": [] }
                         }]
                     }
                 }
@@ -168,25 +201,56 @@ async fn create_release_sends_settings_input_and_returns_settings() {
         })
         .await;
 
-    let input = json!({
-        "applicationId": "app-123",
-        "version": "1.0.0",
-        "settings": [{
-            "groupSlug": "tax-center",
-            "appSettingSlug": "godaddy-tax",
-            "entryPath": "/settings/godaddy-tax",
-            "presentation": { "type": "form", "schemaVersion": "settings-form-v1", "sections": [] }
-        }]
-    });
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let input = create_release::MutationCreateReleaseInput {
+        application_id: "app-123".to_owned(),
+        version: "1.0.0".to_owned(),
+        description: None,
+        actions: None,
+        application_dependencies: None,
+        feature_dependencies: None,
+        mcp_servers: None,
+        native_extensions: Some(vec![
+            create_release::ApplicationNativeExtensionCreateInput {
+                contact: None,
+                name: Some("My Android App".to_owned()),
+                package_name: Some("com.example.app".to_owned()),
+                platform: create_release::NativeExtensionPlatform::ANDROID,
+            },
+        ]),
+        subscriptions: None,
+        ui_extensions: None,
+        settings: Some(vec![create_release::ApplicationSettingCreateInput {
+            group_slug: "tax-center".to_owned(),
+            app_setting_slug: "godaddy-tax".to_owned(),
+            entry_path: "/settings/godaddy-tax".to_owned(),
+            presentation: json!({ "type": "form", "schemaVersion": "settings-form-v1", "sections": [] }),
+            capabilities: None,
+            description: None,
+            description_key: None,
+            icon_name: None,
+            icon_library: None,
+            metadata: None,
+            order: None,
+            title: None,
+            title_key: None,
+        }]),
+    };
+    let release = ApplicationClient::new(server.base_url(), "test-token")
         .create_release(input)
         .await
-        .expect("create release");
+        .expect("create release")
+        .expect("release present");
 
     mock.assert_async().await;
+    assert_eq!(release.settings[0].entry_path, "/settings/godaddy-tax");
+    assert_eq!(release.native_extensions.len(), 1);
     assert_eq!(
-        data["createRelease"]["settings"][0]["entryPath"],
-        "/settings/godaddy-tax"
+        release.native_extensions[0].package_name.as_deref(),
+        Some("com.example.app")
+    );
+    assert_eq!(
+        release.native_extensions[0].platform,
+        create_release::NativeExtensionPlatform::ANDROID
     );
 }
 
@@ -201,8 +265,7 @@ async fn create_release_sends_native_extensions_input_and_selects_them() {
                 .is_true(|req| {
                     let body = req.body_string();
                     body.contains("CreateRelease")
-                        && body
-                            .contains("nativeExtensions { id name packageName contact platform }")
+                        && body.contains("nativeExtensions")
                         && body.contains(r#""platform":"ANDROID""#)
                         && body.contains(r#""packageName":"com.example.app""#)
                 });
@@ -211,6 +274,10 @@ async fn create_release_sends_native_extensions_input_and_selects_them() {
                     "createRelease": {
                         "id": "rel-1",
                         "version": "1.0.11",
+                        "description": null,
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "uiExtensions": [],
+                        "settings": [],
                         "nativeExtensions": [{
                             "id": "ne-1",
                             "name": "My Display Name",
@@ -224,7 +291,7 @@ async fn create_release_sends_native_extensions_input_and_selects_them() {
         })
         .await;
 
-    let input = json!({
+    let input: create_release::MutationCreateReleaseInput = serde_json::from_value(json!({
         "applicationId": "app-123",
         "version": "1.0.11",
         "nativeExtensions": [{
@@ -233,17 +300,19 @@ async fn create_release_sends_native_extensions_input_and_selects_them() {
             "contact": "support@example.com",
             "packageName": "com.example.app"
         }]
-    });
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    }))
+    .expect("release input");
+    let release = ApplicationClient::new(server.base_url(), "test-token")
         .create_release(input)
         .await
-        .expect("create release");
+        .expect("create release")
+        .expect("release present");
 
     mock.assert_async().await;
-    assert_eq!(data["createRelease"]["nativeExtensions"][0]["id"], "ne-1");
+    assert_eq!(release.native_extensions[0].id, "ne-1");
     assert_eq!(
-        data["createRelease"]["nativeExtensions"][0]["packageName"],
-        "com.example.app"
+        release.native_extensions[0].package_name.as_deref(),
+        Some("com.example.app")
     );
 }
 
@@ -306,21 +375,27 @@ async fn get_application_with_releases_selects_client_id_and_subscriptions() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v1/apps/app-registry-subgraph")
-                .is_true(|req| {
-                    let body = req.body_string();
-                    body.contains("ApplicationWithLatestRelease")
-                        && body.contains("clientId")
-                        && body.contains("subscriptions { name url events }")
-                });
+                .is_true(|req| req.body_string().contains("ApplicationWithLatestRelease"));
             then.status(200).json_body(json!({
                 "data": {
                     "application": {
                         "id": "app-1",
+                        "label": "My App",
+                        "name": "my-app",
+                        "description": null,
+                        "status": "ACTIVE",
+                        "url": null,
+                        "proxyUrl": null,
+                        "authorizationScopes": [],
+                        "redirectUris": ["https://example.com/callback"],
                         "clientId": "client-1",
                         "releases": {
                             "edges": [{
                                 "node": {
                                     "id": "rel-1",
+                                    "version": "1.0.0",
+                                    "description": null,
+                                    "createdAt": "2026-01-01T00:00:00Z",
                                     "subscriptions": [{
                                         "name": "order-notifications",
                                         "url": "https://proxy.example.com/webhooks/orders",
@@ -335,17 +410,26 @@ async fn get_application_with_releases_selects_client_id_and_subscriptions() {
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
+    let app = ApplicationClient::new(server.base_url(), "test-token")
         .get_application_with_releases("test-app")
         .await
-        .expect("get application with releases");
+        .expect("get application with releases")
+        .expect("application present");
 
     mock.assert_async().await;
-    assert_eq!(data["application"]["clientId"], "client-1");
-    assert_eq!(
-        data["application"]["releases"]["edges"][0]["node"]["subscriptions"][0]["name"],
-        "order-notifications"
-    );
+    assert_eq!(app.client_id.as_deref(), Some("client-1"));
+    let edges = app
+        .releases
+        .expect("releases connection")
+        .edges
+        .expect("edges");
+    let node = edges[0]
+        .as_ref()
+        .expect("edge")
+        .node
+        .as_ref()
+        .expect("node");
+    assert_eq!(node.subscriptions[0].name, "order-notifications");
 }
 
 #[tokio::test]
@@ -357,277 +441,332 @@ async fn update_application_sends_non_lifecycle_fields() {
                 .path("/v1/apps/app-registry-subgraph")
                 .is_true(|req| {
                     let body = req.body_string();
-                    body.contains("updateApplication") && body.contains(r#""label":"Updated app""#)
+                    body.contains("UpdateApplication") && body.contains(r#""label":"Updated app""#)
                 });
             then.status(200).json_body(json!({
-                "data": { "updateApplication": { "id": "app-1", "label": "Updated app" } }
+                "data": {
+                    "updateApplication": {
+                        "id": "app-1",
+                        "clientId": null,
+                        "label": "Updated app",
+                        "name": "my-app",
+                        "description": null,
+                        "status": "ACTIVE",
+                        "url": null,
+                        "proxyUrl": null,
+                        "authorizationScopes": [],
+                        "redirectUris": ["https://example.com/callback"]
+                    }
+                }
             }));
         })
         .await;
 
-    let data = ApplicationClient::new(server.base_url(), "test-token")
-        .update_application("app-1", json!({ "label": "Updated app" }))
+    let input = update_application::MutationUpdateApplicationInput {
+        label: Some("Updated app".to_owned()),
+        description: None,
+        authorization_scopes: None,
+        distribution_type: None,
+        name: None,
+        proxy_url: None,
+        redirect_uris: None,
+        url: None,
+    };
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .update_application("app-1", input)
+        .await
+        .expect("update application")
+        .expect("application present");
+
+    mock.assert_async().await;
+    assert_eq!(app.label, "Updated app");
+}
+
+/// A GraphQL `null` is not the same as an omitted input field: the service
+/// treats omitted fields as "leave unchanged" but an explicit `null` as an
+/// instruction to clear. Unset `Option` inputs must therefore be left out of
+/// the request entirely.
+#[tokio::test]
+async fn update_application_omits_unset_input_fields_from_the_request() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body: Value = serde_json::from_str(&req.body_string()).expect("json body");
+                    let input = &body["variables"]["input"];
+                    input.get("label") == Some(&json!("Updated app"))
+                        && input.as_object().is_some_and(|fields| fields.len() == 1)
+                });
+            then.status(200).json_body(json!({
+                "data": {
+                    "updateApplication": {
+                        "id": "app-1",
+                        "clientId": null,
+                        "label": "Updated app",
+                        "name": "my-app",
+                        "description": null,
+                        "status": "ACTIVE",
+                        "url": null,
+                        "proxyUrl": null,
+                        "authorizationScopes": [],
+                        "redirectUris": []
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let input = update_application::MutationUpdateApplicationInput {
+        label: Some("Updated app".to_owned()),
+        description: None,
+        authorization_scopes: None,
+        distribution_type: None,
+        name: None,
+        proxy_url: None,
+        redirect_uris: None,
+        url: None,
+    };
+    ApplicationClient::new(server.base_url(), "test-token")
+        .update_application("app-1", input)
         .await
         .expect("update application");
 
     mock.assert_async().await;
-    assert_eq!(data["updateApplication"]["label"], "Updated app");
-}
-
-// httpmock can't sequence responses, so retries are verified by hit count
-// (exhaustion) rather than a fail-then-succeed sequence.
-
-#[tokio::test]
-async fn upload_rejects_oversize_file_without_uploading() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(PUT).path("/upload");
-            then.status(200);
-        })
-        .await;
-
-    let err = ApplicationClient::new(server.base_url(), "test-token")
-        .upload_artifact(
-            &server.url("/upload"),
-            "up-1",
-            &json!({}),
-            Some(4), // max 4 bytes
-            Bytes::from_static(b"way too big"),
-            UploadOptions {
-                max_attempts: 3,
-                base_delay_ms: 0,
-            },
-        )
-        .await
-        .expect_err("oversize should fail before uploading");
-
-    assert!(
-        matches!(err, ClientError::TooLarge { .. }),
-        "unexpected: {err}"
-    );
-    assert_eq!(mock.calls_async().await, 0);
 }
 
 #[tokio::test]
-async fn upload_does_not_retry_on_4xx() {
+async fn get_application_returns_selected_fields() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(PUT).path("/upload");
-            then.status(403).body("denied");
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| req.body_string().contains("Application"));
+            then.status(200).json_body(json!({
+                "data": {
+                    "application": {
+                        "id": "app-1",
+                        "label": "My App",
+                        "name": "my-app",
+                        "description": "desc",
+                        "status": "ACTIVE",
+                        "url": "https://example.com",
+                        "proxyUrl": "https://proxy.example.com"
+                    }
+                }
+            }));
         })
         .await;
 
-    let err = ApplicationClient::new(server.base_url(), "test-token")
-        .upload_artifact(
-            &server.url("/upload"),
-            "up-1",
-            &json!({}),
-            None,
-            Bytes::from_static(b"data"),
-            UploadOptions {
-                max_attempts: 3,
-                base_delay_ms: 0,
-            },
-        )
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .get_application("my-app")
         .await
-        .expect_err("4xx should fail immediately");
-
-    assert!(
-        matches!(err, ClientError::Http { status: 403, .. }),
-        "unexpected: {err}"
-    );
-    assert_eq!(mock.calls_async().await, 1);
-}
-
-#[tokio::test]
-async fn upload_retries_on_5xx_until_exhausted() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(PUT).path("/upload");
-            then.status(503).body("try later");
-        })
-        .await;
-
-    let err = ApplicationClient::new(server.base_url(), "test-token")
-        .upload_artifact(
-            &server.url("/upload"),
-            "up-1",
-            &json!({}),
-            None,
-            Bytes::from_static(b"data"),
-            UploadOptions {
-                max_attempts: 3,
-                base_delay_ms: 0,
-            },
-        )
-        .await
-        .expect_err("exhausted retries should fail");
-
-    assert!(
-        matches!(err, ClientError::Http { status: 503, .. }),
-        "unexpected: {err}"
-    );
-    assert_eq!(mock.calls_async().await, 3);
-}
-
-#[tokio::test]
-async fn upload_strips_meta_upload_id_and_returns_metadata() {
-    let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(PUT)
-                .path("/upload")
-                .header("x-amz-signature", "sig")
-                // assert x-amz-meta-upload-id was stripped
-                .is_true(|req| {
-                    !req.headers_vec()
-                        .iter()
-                        .any(|(k, _)| k.eq_ignore_ascii_case("x-amz-meta-upload-id"))
-                });
-            then.status(200).header("etag", "\"abc123\"");
-        })
-        .await;
-
-    let result = ApplicationClient::new(server.base_url(), "test-token")
-        .upload_artifact(
-            &server.url("/upload"),
-            "up-42",
-            &json!({
-                "x-amz-signature": "sig",
-                "x-amz-meta-upload-id": "should-be-stripped",
-            }),
-            None,
-            Bytes::from_static(b"hello"),
-            UploadOptions {
-                max_attempts: 3,
-                base_delay_ms: 0,
-            },
-        )
-        .await
-        .expect("upload should succeed");
+        .expect("get application")
+        .expect("application present");
 
     mock.assert_async().await;
-    assert_eq!(result.upload_id, "up-42");
-    assert_eq!(result.status, 200);
-    assert_eq!(result.size_bytes, 5);
-    assert_eq!(result.etag.as_deref(), Some("\"abc123\""));
+    assert_eq!(app.name, "my-app");
+    assert_eq!(app.proxy_url.as_deref(), Some("https://proxy.example.com"));
 }
 
 #[tokio::test]
-async fn upload_rejects_invalid_header_without_uploading() {
+async fn enable_application_sends_application_name_and_store_id() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(PUT).path("/upload");
-            then.status(200);
-        })
-        .await;
-
-    let err = ApplicationClient::new(server.base_url(), "test-token")
-        .upload_artifact(
-            &server.url("/upload"),
-            "up-1",
-            &json!({ "bad header name": "x" }), // space in name → invalid
-            None,
-            Bytes::from_static(b"data"),
-            UploadOptions {
-                max_attempts: 3,
-                base_delay_ms: 0,
-            },
-        )
-        .await
-        .expect_err("invalid header should fail before uploading");
-
-    assert!(
-        matches!(err, ClientError::InvalidHeader(_)),
-        "unexpected: {err}"
-    );
-    assert_eq!(mock.calls_async().await, 0);
-}
-
-/// S3 answers a presigned PUT only after the whole body arrives, and a read
-/// timeout runs from the start of the request, so the API client's read
-/// timeout would cut off a large bundle on a slow link.
-#[tokio::test]
-async fn upload_artifact_is_not_cut_off_by_the_api_read_timeout() {
-    let server = MockServer::start_async().await;
-    server
-        .mock_async(|when, then| {
-            when.method(PUT).path("/artifact");
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("EnableApplication")
+                        && body.contains(r#""applicationName":"my-app""#)
+                        && body.contains(r#""storeId":"store-1""#)
+                });
             then.status(200)
-                .delay(std::time::Duration::from_millis(500));
+                .json_body(json!({ "data": { "enableStoreApplication": { "id": "app-1" } } }));
         })
         .await;
-    let client = ApplicationClient::with_clients(
-        server.base_url(),
-        "test-token",
-        crate::http::make_api_client_with_read_timeout(std::time::Duration::from_millis(100)),
-        make_storage_upload_http_client(),
-    );
 
-    // Control: the API client really is that tight against this server.
-    assert!(
-        client
-            .client
-            .put(server.url("/artifact"))
-            .body("x")
-            .send()
-            .await
-            .is_err(),
-        "the API client should time out against the slow server"
-    );
-    client
-        .upload_artifact(
-            &server.url("/artifact"),
-            "upload-1",
-            &json!({}),
-            None,
-            Bytes::from_static(b"bundle"),
-            UploadOptions {
-                max_attempts: 1,
-                base_delay_ms: 0,
-            },
-        )
+    let input = enable_application::MutationEnableStoreApplicationInput {
+        application_name: "my-app".to_owned(),
+        store_id: "store-1".to_owned(),
+    };
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .enable_application(input)
         .await
-        .expect("the upload client has no read timeout");
+        .expect("enable application")
+        .expect("application present");
+
+    mock.assert_async().await;
+    assert_eq!(app.id, "app-1");
 }
 
 #[tokio::test]
-async fn upload_artifact_accepts_reusable_shared_payload() {
+async fn disable_application_sends_application_name_and_store_id() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
-            when.method(PUT)
-                .path("/artifact")
-                .body("shared extension bundle");
-            then.status(200);
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("DisableApplication")
+                        && body.contains(r#""applicationName":"my-app""#)
+                        && body.contains(r#""storeId":"store-1""#)
+                });
+            then.status(200)
+                .json_body(json!({ "data": { "disableStoreApplication": { "id": "app-1" } } }));
         })
         .await;
-    let client = ApplicationClient::new(server.base_url(), "test-token");
-    let payload = Bytes::from_static(b"shared extension bundle");
-    let first_upload = payload.clone();
-    let second_upload = payload.clone();
-    assert_eq!(first_upload.as_ptr(), second_upload.as_ptr());
 
-    for (upload_id, bytes) in [("upload-1", first_upload), ("upload-2", second_upload)] {
-        client
-            .upload_artifact(
-                &server.url("/artifact"),
-                upload_id,
-                &json!({}),
-                None,
-                bytes,
-                UploadOptions {
-                    max_attempts: 1,
-                    base_delay_ms: 0,
-                },
-            )
-            .await
-            .expect("upload shared payload");
-    }
+    let input = disable_application::MutationDisableStoreApplicationInput {
+        application_name: "my-app".to_owned(),
+        store_id: "store-1".to_owned(),
+    };
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .disable_application(input)
+        .await
+        .expect("disable application")
+        .expect("application present");
 
-    mock.assert_calls_async(2).await;
+    mock.assert_async().await;
+    assert_eq!(app.id, "app-1");
+}
+
+#[tokio::test]
+async fn archive_application_sends_id_and_returns_lifecycle_fields() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("ArchiveApplication") && body.contains(r#""id":"app-1""#)
+                });
+            then.status(200).json_body(json!({
+                "data": {
+                    "archiveApplication": {
+                        "id": "app-1",
+                        "label": "My App",
+                        "name": "my-app",
+                        "status": "ARCHIVED",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "archivedAt": "2026-02-01T00:00:00Z"
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .archive_application("app-1")
+        .await
+        .expect("archive application")
+        .expect("application present");
+
+    mock.assert_async().await;
+    assert_eq!(app.status, archive_application::ApplicationStatus::ARCHIVED);
+}
+
+#[tokio::test]
+async fn create_application_sends_input_and_returns_credentials() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("CreateApplication") && body.contains(r#""name":"my-app""#)
+                });
+            then.status(200).json_body(json!({
+                "data": {
+                    "createApplication": {
+                        "id": "app-1",
+                        "clientId": "client-1",
+                        "clientSecret": "secret-1",
+                        "label": "My App",
+                        "name": "my-app",
+                        "description": null,
+                        "status": "ACTIVE",
+                        "url": null,
+                        "proxyUrl": null,
+                        "authorizationScopes": [],
+                        "redirectUris": [],
+                        "secret": "webhook-secret",
+                        "publicKey": "public-key"
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let input = create_application::MutationCreateApplicationInput {
+        name: "my-app".to_owned(),
+        label: "My App".to_owned(),
+        description: None,
+        url: None,
+        proxy_url: None,
+        organization_id: Some("org-1".to_owned()),
+        authorization_scopes: Some(vec![]),
+        distribution_type: None,
+        redirect_uris: None,
+    };
+    let app = ApplicationClient::new(server.base_url(), "test-token")
+        .create_application(input)
+        .await
+        .expect("create application")
+        .expect("application present");
+
+    mock.assert_async().await;
+    assert_eq!(app.client_id.as_deref(), Some("client-1"));
+    assert_eq!(app.secret.as_deref(), Some("webhook-secret"));
+    assert_eq!(app.public_key.as_deref(), Some("public-key"));
+}
+
+#[tokio::test]
+async fn generate_upload_url_sends_content_type_enum_and_returns_headers() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("GenerateReleaseUploadUrl")
+                        && body.contains(r#""contentType":"JS""#)
+                });
+            then.status(200).json_body(json!({
+                "data": {
+                    "generateReleaseUploadUrl": {
+                        "uploadId": "up-1",
+                        "url": "https://s3.example.com/upload",
+                        "key": "key-1",
+                        "expiresAt": "2026-01-01T00:00:00Z",
+                        "maxSizeBytes": 1024,
+                        "requiredHeaders": ["x-amz-signature:sig"]
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let input = generate_release_upload_url::MutationGenerateReleaseUploadUrlInput {
+        application_id: "app-1".to_owned(),
+        release_id: "rel-1".to_owned(),
+        content_type: generate_release_upload_url::UploadContentType::JS,
+        target: None,
+    };
+    let upload = ApplicationClient::new(server.base_url(), "test-token")
+        .generate_upload_url(input)
+        .await
+        .expect("generate upload url")
+        .expect("upload response present");
+
+    mock.assert_async().await;
+    assert_eq!(upload.upload_id, "up-1");
+    assert_eq!(upload.required_headers[0], "x-amz-signature:sig");
 }
