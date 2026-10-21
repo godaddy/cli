@@ -53,6 +53,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<HostingSubscriptionList>()
         .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
+            let limit = args.limit;
             let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
 
@@ -60,13 +61,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let mut page_token: Option<String> = None;
 
             loop {
+                let page_limit =
+                    limit.map(|cap| cap.saturating_sub(all_items.len() as u32).min(100));
+
                 let response = client
-                    .list_subscriptions(page_token.as_deref(), None, hosting_product)
+                    .list_subscriptions(page_token.as_deref(), page_limit, hosting_product)
                     .await
                     .map_err(client_err)?;
 
                 if let Some(items) = response.get("items").and_then(|v| v.as_array()) {
                     all_items.extend(items.iter().cloned());
+                }
+
+                if limit.is_some_and(|cap| all_items.len() >= cap as usize) {
+                    break;
                 }
 
                 match next_page_token(&response) {
@@ -75,13 +83,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            Ok(list_result(all_items, args.limit))
+            Ok(list_result(all_items, limit))
         },
     )
 }
 
-/// Slot totals and next actions come from every plan, so `--limit` only
-/// shortens the list shown and can't hide a plan with a free slot.
+/// Slot totals and next actions come from every plan fetched, so `--limit`
+/// only shortens the list shown and can't hide a plan with a free slot.
 fn list_result(mut items: Vec<Value>, limit: Option<u32>) -> CommandResult {
     let total_available_slots: u64 = items
         .iter()
