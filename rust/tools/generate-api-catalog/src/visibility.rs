@@ -650,4 +650,40 @@ mod tests {
             ["models/Hidden.yaml"]
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn case_insensitive_match_to_a_private_file_does_not_fall_back() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let schemas = dir.path().join("schemas");
+        std::fs::create_dir_all(schemas.join("models")).expect("create dirs");
+        std::fs::create_dir_all(dir.path().join("models")).expect("create dirs");
+        // The ref says `Hidden.yaml`; on disk the private file is `hidden.yaml`,
+        // so it is only found by the case-insensitive lookup.
+        std::fs::write(
+            schemas.join("models/hidden.yaml"),
+            "type: object\nx-visibility:\n  extent: private\n",
+        )
+        .expect("write private model");
+        std::fs::write(dir.path().join("models/Hidden.yaml"), "type: string\n")
+            .expect("write public model");
+        let spec_path = schemas.join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: 'models/Hidden.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert!(
+            defs.is_empty(),
+            "fallback file must not be lifted: {defs:?}"
+        );
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["models/Hidden.yaml"]
+        );
+    }
 }

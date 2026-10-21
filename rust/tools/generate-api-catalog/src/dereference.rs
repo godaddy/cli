@@ -1,4 +1,5 @@
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -333,25 +334,21 @@ fn resolve_ref(
     // Some repos store model files alongside the `schemas/` directory rather than
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
-    // Only a missing file falls back: one that exists but was rejected (e.g. a
-    // private file) must not be replaced by a same-named file elsewhere.
-    let external_root =
-        load_external_ref(&file_path, common_types_dir, qualify_namesakes, defs, depth).or_else(
-            || {
-                if file_path.exists() {
-                    return None;
-                }
-                spec_dir.parent().and_then(|parent| {
-                    load_external_ref(
-                        &parent.join(file_part),
-                        common_types_dir,
-                        qualify_namesakes,
-                        defs,
-                        depth,
-                    )
-                })
-            },
-        )?;
+    // Only a file that can't be located falls back: one that was found but then
+    // rejected (e.g. a private file) must not be replaced by a same-named file
+    // elsewhere.
+    let external_root = match locate_ref_file(&file_path, common_types_dir) {
+        Some(found) => load_ref_file(&found, common_types_dir, qualify_namesakes, defs, depth),
+        None => spec_dir.parent().and_then(|parent| {
+            load_external_ref(
+                &parent.join(file_part),
+                common_types_dir,
+                qualify_namesakes,
+                defs,
+                depth,
+            )
+        }),
+    }?;
 
     if let Some(frag) = fragment
         && !frag.is_empty()
@@ -389,14 +386,23 @@ fn load_external_ref(
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
+    let resolved = locate_ref_file(path, common_types_dir)?;
+    load_ref_file(&resolved, common_types_dir, qualify_namesakes, defs, depth)
+}
+
+/// Finds the file a `$ref` path names: as written, in the shared common-types
+/// directory, or by a case-insensitive match. `None` means no such file.
+fn locate_ref_file(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
     // Normalize path (resolve .. segments) so the common-types check below works on
     // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
     let normalized = normalize_path(path);
-    let resolved = if normalized.exists() {
-        normalized.clone()
-    } else if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
-        fallback
-    } else if let Some(ci) = resolve_case_insensitive(&normalized) {
+    if normalized.exists() {
+        return Some(normalized);
+    }
+    if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
+        return Some(fallback);
+    }
+    if let Some(ci) = resolve_case_insensitive(&normalized) {
         // Spec files authored on case-insensitive filesystems (macOS) sometimes
         // have mismatched filename casing.  Accept the match but warn so the
         // spec repo can be fixed.
@@ -405,23 +411,30 @@ fn load_external_ref(
             path.display(),
             ci.display()
         );
-        ci
-    } else {
-        eprintln!(
-            "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
-            path.display()
-        );
-        return None;
-    };
+        return Some(ci);
+    }
+    eprintln!(
+        "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
+        path.display()
+    );
+    None
+}
 
-    let src = std::fs::read_to_string(&resolved)
+fn load_ref_file(
+    resolved: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Option<Value> {
+    let src = std::fs::read_to_string(resolved)
         .map_err(|e| eprintln!("WARNING: cannot read ref file {}: {e}", resolved.display()))
         .ok()?;
-    let mut parsed = parse_yaml_or_json(&src, &resolved)
+    let mut parsed = parse_yaml_or_json(&src, resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    prune_ref_file(&resolved, &mut parsed)?;
-    let dir = resolved.parent().unwrap_or(&resolved);
+    prune_ref_file(resolved, &mut parsed)?;
+    let dir = resolved.parent().unwrap_or(resolved);
     Some(dereference(
         &parsed.clone(),
         parsed,
