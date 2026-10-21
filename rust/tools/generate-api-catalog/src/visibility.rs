@@ -18,7 +18,9 @@ use std::path::Path;
 use anyhow::{Result, bail};
 use serde_json::Value;
 
+use crate::github::parse_yaml_or_json;
 use crate::openapi::HTTP_METHODS;
+use crate::ref_paths::normalize_path;
 
 fn is_private(value: &Value) -> bool {
     value
@@ -211,6 +213,34 @@ pub(crate) fn prune_ref_file(file: &Path, parsed: &mut Value) -> Option<()> {
     prune_spec(file, parsed)
         .map_err(|e| eprintln!("WARNING: ignoring ref file: {e}"))
         .ok()
+}
+
+/// Whether `ref_str`, a relative file `$ref`, names a file whose own root is
+/// private. The lifted-definitions cache is keyed by file name, so a reference
+/// to a private file can hit the entry of a same-named public one without the
+/// file ever being loaded; callers check this first and leave the reference
+/// unresolved. Covers the same two locations as a normal load (beside the spec,
+/// or in its parent directory); URL refs and case-insensitive matches are not
+/// probed.
+pub(crate) fn ref_targets_private_file(ref_str: &str, spec_dir: &Path) -> bool {
+    let file_part = ref_str.split('#').next().unwrap_or(ref_str);
+    if file_part.is_empty() || file_part.contains("://") {
+        return false;
+    }
+    let candidates = [Some(spec_dir), spec_dir.parent()]
+        .into_iter()
+        .flatten()
+        .map(|dir| normalize_path(&dir.join(file_part)));
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .and_then(|path| {
+            let src = std::fs::read_to_string(&path).ok()?;
+            // Most files never mention the marker; skip parsing those.
+            src.contains("x-visibility")
+                .then(|| parse_yaml_or_json(&src, &path).ok())?
+        })
+        .is_some_and(|parsed| is_private(&parsed))
 }
 
 /// Drops path items left with no operations. Run on a dereferenced spec after
@@ -700,5 +730,35 @@ mod tests {
 
         crate::dereference::load_and_dereference(&spec_path, None)
             .expect("a file ref is not a bare schema name");
+    }
+
+    #[test]
+    fn reference_to_a_private_file_is_not_satisfied_by_a_same_named_public_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::create_dir_all(dir.path().join("private")).expect("create dir");
+        std::fs::write(dir.path().join("public/Widget.yaml"), "type: string\n")
+            .expect("write public model");
+        std::fs::write(
+            dir.path().join("private/Widget.yaml"),
+            "type: object\nx-visibility:\n  extent: private\n",
+        )
+        .expect("write private model");
+        let spec_path = dir.path().join("openapi.yaml");
+        // Components are visited in key order, so the public file is lifted first.
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    A:\n      $ref: './public/Widget.yaml'\n    B:\n      $ref: './private/Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert_eq!(defs["Widget"], json!({ "type": "string" }));
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./private/Widget.yaml"]
+        );
     }
 }

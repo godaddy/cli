@@ -10,7 +10,7 @@ use crate::ref_paths::{
     has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
     resolve_common_types_path, specification_root,
 };
-use crate::visibility::{drop_operationless_paths, prune_ref_file, prune_spec};
+use crate::visibility;
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -155,8 +155,11 @@ fn dereference(
                     } else {
                         key
                     };
-                    // Already registered — return the local pointer immediately (dedup)
+                    // Already registered — dedup, unless the target is a private file
                     if defs.contains_key(&key) {
+                        if visibility::ref_targets_private_file(&ref_str, spec_dir) {
+                            return Value::Object(map);
+                        }
                         return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
                     }
                     // Insert null placeholder before resolving (circular ref guard)
@@ -334,9 +337,7 @@ fn resolve_ref(
     // Some repos store model files alongside the `schemas/` directory rather than
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
-    // Only a file that can't be located falls back: one that was found but then
-    // rejected (e.g. a private file) must not be replaced by a same-named file
-    // elsewhere.
+    // Only a file that can't be located falls back, never one found and rejected.
     let external_root = match locate_ref_file(&file_path, common_types_dir) {
         Some(found) => load_ref_file(&found, common_types_dir, qualify_namesakes, defs, depth),
         None => spec_dir.parent().and_then(|parent| {
@@ -390,8 +391,7 @@ fn load_external_ref(
     load_ref_file(&resolved, common_types_dir, qualify_namesakes, defs, depth)
 }
 
-/// Finds the file a `$ref` path names: as written, in the shared common-types
-/// directory, or by a case-insensitive match. `None` means no such file.
+/// Finds the file a `$ref` path names (as written, common types, or case-insensitive).
 fn locate_ref_file(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
     // Normalize path (resolve .. segments) so the common-types check below works on
     // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
@@ -433,7 +433,7 @@ fn load_ref_file(
     let mut parsed = parse_yaml_or_json(&src, resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    prune_ref_file(resolved, &mut parsed)?;
+    visibility::prune_ref_file(resolved, &mut parsed)?;
     let dir = resolved.parent().unwrap_or(resolved);
     Some(dereference(
         &parsed.clone(),
@@ -557,7 +557,7 @@ fn load_and_dereference_with(
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
     let mut parsed = parse_yaml_or_json(&src, spec_file)?;
-    prune_spec(spec_file, &mut parsed)?;
+    visibility::prune_spec(spec_file, &mut parsed)?;
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
     let mut dereffed = dereference(
@@ -577,7 +577,7 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
-    drop_operationless_paths(&mut dereffed);
+    visibility::drop_operationless_paths(&mut dereffed);
     Ok((dereffed, defs))
 }
 
