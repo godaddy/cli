@@ -250,7 +250,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("domain", "Domain"),
         TableColumn::new("available", "Available"),
         TableColumn::new("price", "Price").align(Alignment::Right),
-        TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
+        TableColumn::new("renewalPrice", "Auto-Renewal Price").align(Alignment::Right),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("periodLabel", "Period"),
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),

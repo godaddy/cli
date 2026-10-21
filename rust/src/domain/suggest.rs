@@ -61,10 +61,10 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("price1Year", "1yr Price")
             .align(Alignment::Right)
             .essential(true),
-        TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
+        TableColumn::new("renewalPrice1Year", "1yr Auto-Renewal").align(Alignment::Right),
         TableColumn::new("fees1Year", "1yr Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
-        TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
+        TableColumn::new("renewalPrice2Year", "2yr Auto-Renewal").align(Alignment::Right),
         TableColumn::new("fees2Year", "2yr Fees"),
         TableColumn::new("currency", "Currency").essential(true),
         TableColumn::new("inventory", "Inventory"),
