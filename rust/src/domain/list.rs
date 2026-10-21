@@ -1,8 +1,8 @@
 //! `gddy domain list` — list the domains in the account (v3).
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, NextActionParam, PaginationConfig, Result,
-    RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, CursorConfig, CursorContinuation, NextActionParam,
+    Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
@@ -10,6 +10,7 @@ use domains_client::types;
 
 use super::common::{api_error, comma_joined, make_client};
 use crate::next_action::next_action;
+use crate::pagination_token;
 use crate::scopes::DOMAINS_READ;
 
 /// Lifecycle groups that make up GoDaddy's default "visible" domain view —
@@ -18,17 +19,9 @@ use crate::scopes::DOMAINS_READ;
 /// (the spec declares it a bare string), so these are validated server-side.
 const DEFAULT_VISIBLE_GROUPS: [&str; 3] = ["PENDING", "REGISTERED", "PENDING_TERMINAL"];
 
-/// v3's max `pageSize` (the spec's `maximum: 200`). Requesting it on every
-/// page minimizes round trips against an API observed to rate-limit as
-/// tightly as 5 requests per period.
+/// API's max page size
 const MAX_PAGE_SIZE: std::num::NonZeroU64 =
     std::num::NonZeroU64::new(200).expect("MAX_PAGE_SIZE is nonzero");
-
-/// Defensive cap on pages fetched for one invocation. No real account should
-/// ever approach `MAX_PAGE_SIZE * MAX_PAGES` (10,000) domains; hitting this
-/// is treated as a bug (a malformed or looping `next` link) rather than
-/// silently returned as if it were the complete list.
-const MAX_PAGES: usize = 50;
 
 /// Known `DomainStatus` values, mirrored from the schema's `examples` (the
 /// spec deliberately dropped the closed `enum` it used to declare, so
@@ -152,85 +145,79 @@ fn next_page_token(links: &[types::LinkDescription]) -> NextPage {
     }
 }
 
-/// Fetch every domain matching `statuses`/`visible_only`, following v3's
-/// `links[rel=next]` cursor until the API reports no further page — or until
-/// `stop_at` items have been accumulated, when an explicit `--limit`/
-/// `--offset` window needs no more than that many (cli-engine's own
-/// pagination pipeline slices the exact window from whatever this returns;
-/// fetching further would be wasted work against a tightly rate-limited
-/// API). `stop_at: None` fetches everything, matching this command's
-/// pre-v3 behavior of returning every domain when unflagged.
-async fn fetch_domains(
+/// Fetch a page of domains matching `statuses`/`visible_only`, resuming from
+/// `resume` (a previously-returned `pageToken`+direction) when given.
+async fn fetch_domain_page(
     client: &domains_client::Client,
     statuses: &[String],
     visible_only: bool,
-    stop_at: Option<usize>,
+    page_size: u64,
+    resume: Option<(String, Option<types::ListDomainsPageTokenDirection>)>,
     debug: bool,
-) -> Result<Vec<types::Domain>> {
-    let mut items = Vec::new();
-    let mut page_token = None;
-    for _ in 0..MAX_PAGES {
-        let mut req = client.list_domains().page_size(MAX_PAGE_SIZE);
-        if !statuses.is_empty() {
-            // `statuses` is `style: form, explode: false` — one
-            // comma-joined value, not repeated `statuses=` pairs
-            // (progenitor always seq-serializes a `Vec` as repeated pairs
-            // regardless of the spec's `explode` setting; see
-            // `comma_joined`'s doc comment / DEVEX-882).
-            req = req.statuses(comma_joined(statuses.to_vec()));
-        } else if visible_only {
-            req = req.lifecycle_groups(
-                comma_joined(
-                    DEFAULT_VISIBLE_GROUPS
-                        .into_iter()
-                        .map(str::to_string)
-                        .collect(),
-                )
-                .into_iter()
-                .map(types::DomainLifecycleGroup::from)
-                .collect::<Vec<_>>(),
-            );
-        }
-        if let Some((token, direction)) = page_token.take() {
-            req = req.page_token(token);
-            if let Some(direction) = direction {
-                req = req.page_token_direction(direction);
-            }
-        }
-        let collection = match req.send().await {
-            Ok(r) => r.into_inner(),
-            Err(e) => return Err(api_error("listing domains", debug, e).await),
-        };
-        items.extend(collection.items.unwrap_or_default());
-        if stop_at.is_some_and(|n| items.len() >= n) {
-            return Ok(items);
-        }
-        let next = collection
-            .links
-            .map_or(NextPage::Done, |links| next_page_token(&links));
-        page_token = match next {
-            NextPage::Done => return Ok(items),
-            NextPage::Token(token, direction) => Some((token, direction)),
-            NextPage::Unparseable => {
-                return Err(CliCoreError::message(format!(
-                    "domain list: the API reported another page of results but this CLI \
-                     couldn't parse its pagination link ({} domains fetched before stopping); \
-                     this looks like an API or CLI bug, not a real account size",
-                    items.len()
-                )));
-            }
-        };
+) -> Result<(Vec<types::Domain>, NextPage)> {
+    let page_size =
+        std::num::NonZeroU64::new(page_size.clamp(1, MAX_PAGE_SIZE.get())).unwrap_or(MAX_PAGE_SIZE);
+    let mut req = client.list_domains().page_size(page_size);
+    if !statuses.is_empty() {
+        // `statuses` is `style: form, explode: false` — one comma-joined
+        // value, not repeated `statuses=` pairs (progenitor always
+        // seq-serializes a `Vec` as repeated pairs regardless of the spec's
+        // `explode` setting).
+        req = req.statuses(comma_joined(statuses.to_vec()));
+    } else if visible_only {
+        req = req.lifecycle_groups(
+            comma_joined(
+                DEFAULT_VISIBLE_GROUPS
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+            .into_iter()
+            .map(types::DomainLifecycleGroup::from)
+            .collect::<Vec<_>>(),
+        );
     }
-    // Every earlier iteration returned as soon as a page had no `Token`
-    // (either genuinely `Done`, or an error on `Unparseable`), so reaching
-    // here means MAX_PAGES was exhausted with a next page still pending —
-    // a looping `next` link, not a real account size. Error instead of
-    // returning a partial list that would look complete to the caller.
-    Err(CliCoreError::message(format!(
-        "domain list: exceeded {MAX_PAGES} pages ({} domains fetched) without reaching the end \
-         of the list; this looks like a pagination bug rather than a real account size",
-        items.len()
-    )))
+    if let Some((token, direction)) = resume {
+        req = req.page_token(token);
+        if let Some(direction) = direction {
+            req = req.page_token_direction(direction);
+        }
+    }
+    let collection = match req.send().await {
+        Ok(r) => r.into_inner(),
+        Err(e) => return Err(api_error("listing domains", debug, e).await),
+    };
+    let items = collection.items.unwrap_or_default();
+    let next = collection
+        .links
+        .map_or(NextPage::Done, |links| next_page_token(&links));
+    Ok((items, next))
+}
+
+/// Encodes a [`NextPage::Token`]'s `(pageToken, direction)` pair into the
+/// opaque string this command hands back via [`CursorContinuation::more`]
+/// and reads back from `--continue` (see [`decode_resume`]).
+fn encode_resume(token: &str, direction: Option<types::ListDomainsPageTokenDirection>) -> String {
+    match direction {
+        Some(direction) => format!("token:{token},direction:{direction}"),
+        None => format!("token:{token}"),
+    }
+}
+
+/// Decodes a `--continue` value produced by [`encode_resume`]. A malformed
+/// value (no `token` field, or a `direction` outside the API's two known
+/// values) degrades to "start from the beginning" — the same convention
+/// [`pagination_token`] uses for a hand-edited/truncated token, rather than
+/// erroring the command.
+fn decode_resume(
+    continue_token: Option<&str>,
+) -> Option<(String, Option<types::ListDomainsPageTokenDirection>)> {
+    let fields = pagination_token::parse(continue_token);
+    let token = fields.get("token")?.clone();
+    let direction = fields
+        .get("direction")
+        .and_then(|d| d.parse::<types::ListDomainsPageTokenDirection>().ok());
+    Some((token, direction))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -248,27 +235,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_default_fields("domain,status,expiresAt,autoRenew")
             .with_json_schema::<types::Domain>()
             .with_scopes(&[DOMAINS_READ])
-            .with_pagination(PaginationConfig::new(0, 500)),
+            .with_cursor(CursorConfig::new(100, MAX_PAGE_SIZE.get() as i64)),
         |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
             let statuses = parse_statuses(&args.status)?;
             let show_hidden = args.show_hidden;
             let visible_only = wants_visible_only(&statuses, show_hidden);
             let client = make_client(&ctx).await?;
-            // An explicit `--limit`/`--offset` window needs no more than
-            // `offset + limit` domains; cli-engine's pagination pipeline
-            // (`ctx.middleware.limit`/`.offset`, populated from those flags)
-            // slices the exact window from whatever this returns, so
-            // fetching further would be wasted requests against a tightly
-            // rate-limited API. Unflagged (`limit == 0`, the "unlimited"
-            // sentinel) fetches every domain, matching this command's
-            // pre-v3 behavior.
-            let limit = ctx.middleware.limit;
-            let stop_at = (limit > 0).then(|| {
-                usize::try_from(ctx.middleware.offset.max(0).saturating_add(limit))
-                    .unwrap_or(usize::MAX)
-            });
-            let items = fetch_domains(&client, &statuses, visible_only, stop_at, debug).await?;
+            let page_size =
+                u64::try_from(ctx.middleware.cursor_limit).unwrap_or(MAX_PAGE_SIZE.get());
+            let resume = decode_resume(ctx.middleware.continue_token.as_deref());
+            let (items, next) =
+                fetch_domain_page(&client, &statuses, visible_only, page_size, resume, debug)
+                    .await?;
             let domains: Vec<serde_json::Value> = items
                 .iter()
                 .map(serde_json::to_value)
@@ -276,10 +255,26 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map_err(|e| {
                     CliCoreError::message(format!("failed to serialize domain list: {e}"))
                 })?;
-            Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
-                next_action("dns list <domain>", "View a domain's DNS records")
-                    .with_param("domain", NextActionParam::required()),
-            ]))
+            let continuation = match next {
+                NextPage::Done => CursorContinuation::done(),
+                NextPage::Token(token, direction) => {
+                    CursorContinuation::more(encode_resume(&token, direction))
+                }
+                NextPage::Unparseable => {
+                    return Err(CliCoreError::message(format!(
+                        "domain list: the API reported another page of results but this CLI \
+                         couldn't parse its pagination link ({} domains fetched before \
+                         stopping); this looks like an API or CLI bug, not a real account size",
+                        items.len()
+                    )));
+                }
+            };
+            Ok(CommandResult::new(json!(domains))
+                .with_cursor(continuation)
+                .with_next_actions(vec![
+                    next_action("dns list <domain>", "View a domain's DNS records")
+                        .with_param("domain", NextActionParam::required()),
+                ]))
         },
     )
 }
@@ -287,21 +282,50 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        NextPage, command, fetch_domains, next_page_token, parse_statuses, wants_visible_only,
+        NextPage, command, decode_resume, encode_resume, fetch_domain_page, next_page_token,
+        parse_statuses, wants_visible_only,
     };
-    use cli_engine::PaginationConfig;
+    use cli_engine::CursorConfig;
     use domains_client::types;
 
-    /// Regression pin: `domain list` opts into pagination with no forced
-    /// `default_limit` (an unflagged invocation must keep returning every
-    /// domain, exactly like before this feature existed) but a `max_limit`
-    /// so `--limit` can't be pointed at an absurd value.
+    /// Regression pin: `domain list` opts into cursor pagination with a
+    /// `default_limit` and a `max_limit` matching the API's real per-request
+    /// cap (`MAX_PAGE_SIZE`), so `--limit` maps straight onto `pageSize`.
     #[test]
-    fn opts_into_pagination_with_no_default_and_a_max_limit() {
-        assert_eq!(
-            command().spec.pagination,
-            Some(PaginationConfig::new(0, 500))
+    fn opts_into_cursor_pagination_with_a_default_and_a_max_limit() {
+        assert_eq!(command().spec.cursor, Some(CursorConfig::new(100, 200)));
+    }
+
+    #[test]
+    fn encode_and_decode_resume_round_trip_with_a_direction() {
+        let encoded = encode_resume(
+            "abc123",
+            Some(types::ListDomainsPageTokenDirection::Forward),
         );
+        assert_eq!(encoded, "token:abc123,direction:forward");
+        assert_eq!(
+            decode_resume(Some(&encoded)),
+            Some((
+                "abc123".to_string(),
+                Some(types::ListDomainsPageTokenDirection::Forward)
+            ))
+        );
+    }
+
+    #[test]
+    fn encode_and_decode_resume_round_trip_without_a_direction() {
+        let encoded = encode_resume("abc123", None);
+        assert_eq!(encoded, "token:abc123");
+        assert_eq!(
+            decode_resume(Some(&encoded)),
+            Some(("abc123".to_string(), None))
+        );
+    }
+
+    #[test]
+    fn decode_resume_of_none_or_malformed_starts_from_the_beginning() {
+        assert_eq!(decode_resume(None), None);
+        assert_eq!(decode_resume(Some("garbage")), None);
     }
 
     #[test]
@@ -467,12 +491,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_domains_follows_the_next_link_across_pages() {
-        // Regression: `listDomains` is cursor-paginated (`DomainCollection`
-        // with `links[rel=next]`), but a single `send()` only returns the
-        // first page — an account with more domains than one page would get
-        // silently truncated results. This proves `fetch_domains` follows
-        // `next` until it's exhausted rather than stopping after page one.
+    async fn fetch_domain_page_returns_a_token_when_a_next_link_is_present() {
+        // One cursor step is exactly one v3 request now — this proves the
+        // returned `NextPage` carries the `next` link's token forward
+        // instead of the old code following it automatically.
         let server = httpmock::MockServer::start_async().await;
         let page1 = server
             .mock_async(|when, then| {
@@ -488,6 +510,32 @@ mod tests {
                 }));
             })
             .await;
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
+
+        let (items, next) = fetch_domain_page(&client, &[], false, 100, None, false)
+            .await
+            .expect("fetch succeeds");
+
+        assert_eq!(
+            items
+                .iter()
+                .filter_map(|d| d.domain.clone())
+                .collect::<Vec<_>>(),
+            vec!["a.com".to_string()]
+        );
+        assert_eq!(next, NextPage::Token("page-2".to_string(), None));
+        page1.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_domain_page_resumes_from_a_provided_token() {
+        let server = httpmock::MockServer::start_async().await;
         let page2 = server
             .mock_async(|when, then| {
                 when.method(httpmock::Method::GET)
@@ -506,100 +554,34 @@ mod tests {
         )
         .expect("build client");
 
-        let items = fetch_domains(&client, &[], false, None, false)
-            .await
-            .expect("fetch succeeds");
+        let (items, next) = fetch_domain_page(
+            &client,
+            &[],
+            false,
+            100,
+            Some(("page-2".to_string(), None)),
+            false,
+        )
+        .await
+        .expect("fetch succeeds");
 
         assert_eq!(
             items
                 .iter()
                 .filter_map(|d| d.domain.clone())
                 .collect::<Vec<_>>(),
-            vec!["a.com".to_string(), "b.com".to_string()]
+            vec!["b.com".to_string()]
         );
-        page1.assert_async().await;
+        assert_eq!(next, NextPage::Done);
         page2.assert_async().await;
     }
 
     #[tokio::test]
-    async fn fetch_domains_stops_once_stop_at_is_satisfied_without_fetching_the_next_page() {
-        // The `--limit`/`--offset` window is satisfied by page one alone, so
-        // `fetch_domains` must not spend a second request (and a second hit
-        // against this API's tight rate limit) fetching page two.
-        let server = httpmock::MockServer::start_async().await;
-        let page1 = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::GET)
-                    .path("/v3/domains/domain-names");
-                then.status(200).json_body(serde_json::json!({
-                    "items": [{"domain": "a.com"}, {"domain": "b.com"}],
-                    "links": [{
-                        "rel": "next",
-                        "href": "/v3/domains/domain-names?pageToken=page-2",
-                    }],
-                }));
-            })
-            .await;
-        let client = domains_client::client_with_builder(
-            reqwest::Client::builder(),
-            &server.base_url(),
-            "Bearer tok",
-            "req-1",
-        )
-        .expect("build client");
-
-        let items = fetch_domains(&client, &[], false, Some(2), false)
-            .await
-            .expect("fetch succeeds");
-
-        assert_eq!(items.len(), 2);
-        assert_eq!(
-            page1.calls_async().await,
-            1,
-            "must not fetch beyond the satisfied stop_at window"
-        );
-    }
-
-    #[tokio::test]
-    async fn fetch_domains_errors_instead_of_silently_truncating_a_looping_next_link() {
-        // A malformed or looping `next` link must fail loudly rather than
-        // return a partial list that looks complete to the caller.
-        let server = httpmock::MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::GET)
-                    .path("/v3/domains/domain-names");
-                then.status(200).json_body(serde_json::json!({
-                    "items": [{"domain": "a.com"}],
-                    "links": [{
-                        "rel": "next",
-                        "href": "/v3/domains/domain-names?pageToken=always-more",
-                    }],
-                }));
-            })
-            .await;
-        let client = domains_client::client_with_builder(
-            reqwest::Client::builder(),
-            &server.base_url(),
-            "Bearer tok",
-            "req-1",
-        )
-        .expect("build client");
-
-        let err = fetch_domains(&client, &[], false, None, false)
-            .await
-            .expect_err("must not silently return a partial list");
-        assert!(err.to_string().contains("pages"), "{err}");
-        assert_eq!(mock.calls_async().await, super::MAX_PAGES);
-    }
-
-    #[tokio::test]
-    async fn fetch_domains_errors_immediately_on_an_unparseable_next_link() {
+    async fn fetch_domain_page_reports_unparseable_for_the_caller_to_error_on() {
         // Per the spec, `rel=next` only ever appears when more data exists,
-        // so a `next` link present but missing a `pageToken` must error on
-        // the spot — not be treated as "done" and silently return a partial
-        // list that looks complete. This must fire on page one, well before
-        // any MAX_PAGES cap.
+        // so a `next` link present but missing a `pageToken` must surface as
+        // `Unparseable` — not silently treated as `Done`, which would make a
+        // partial list look complete.
         let server = httpmock::MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -619,14 +601,11 @@ mod tests {
         )
         .expect("build client");
 
-        let err = fetch_domains(&client, &[], false, None, false)
+        let (_, next) = fetch_domain_page(&client, &[], false, 100, None, false)
             .await
-            .expect_err("must not silently return a partial list");
-        assert!(err.to_string().contains("couldn't parse"), "{err}");
-        assert_eq!(
-            mock.calls_async().await,
-            1,
-            "must error on page one, not loop to MAX_PAGES"
-        );
+            .expect("fetch succeeds");
+
+        assert_eq!(next, NextPage::Unparseable);
+        mock.assert_async().await;
     }
 }

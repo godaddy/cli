@@ -88,6 +88,14 @@ pub struct UploadResult {
     pub size_bytes: u64,
 }
 
+/// One Relay cursor page of [`ApplicationClient::list_applications`].
+#[derive(Debug, Clone)]
+pub struct ApplicationsPage {
+    pub items: Vec<applications_list::ApplicationsListApplicationsEdgesNode>,
+    pub has_next_page: bool,
+    pub end_cursor: Option<String>,
+}
+
 /// Retry/backoff tuning for [`ApplicationClient::upload_artifact`].
 #[derive(Debug, Clone)]
 pub struct UploadOptions {
@@ -151,14 +159,18 @@ impl ApplicationClient {
         )?)
     }
 
-    /// Lists applications across every App Registry status.
+    /// Lists applications across every App Registry status, one Relay cursor
+    /// page at a time (`first`/`after` per the `applications(...)` field in the
+    /// vendored subgraph schema).
     ///
     /// Always sends an explicit `status.in` of [`APPLICATION_STATUSES`]. Omitting
     /// the GraphQL `status` argument is *not* equivalent: the API defaults to
     /// ACTIVE-only.
     pub async fn list_applications(
         &self,
-    ) -> Result<Vec<applications_list::ApplicationsListApplicationsEdgesNode>, ClientError> {
+        first: i64,
+        after: Option<&str>,
+    ) -> Result<ApplicationsPage, ClientError> {
         use applications_list::ApplicationStatus;
         let statuses: Vec<ApplicationStatus> = APPLICATION_STATUSES
             .iter()
@@ -179,16 +191,29 @@ impl ApplicationClient {
                     in_: Some(statuses),
                     ne: None,
                 }),
+                first: Some(first),
+                after: after.map(str::to_owned),
             })
             .await?;
-        Ok(response
-            .applications
-            .and_then(|connection| connection.edges)
+        let Some(connection) = response.applications else {
+            return Ok(ApplicationsPage {
+                items: Vec::new(),
+                has_next_page: false,
+                end_cursor: None,
+            });
+        };
+        let items = connection
+            .edges
             .into_iter()
             .flatten()
             .flatten()
             .filter_map(|edge| edge.node)
-            .collect())
+            .collect();
+        Ok(ApplicationsPage {
+            items,
+            has_next_page: connection.page_info.has_next_page,
+            end_cursor: connection.page_info.end_cursor,
+        })
     }
 
     pub async fn get_application(

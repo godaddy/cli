@@ -23,10 +23,14 @@ pub(super) const LISTABLE_TYPES: &[&str] = &[
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
-/// Page size for the paginated v3 list; the handler pages through until every
-/// matching record is collected.
-const LIST_PAGE_SIZE: std::num::NonZeroU64 =
-    std::num::NonZeroU64::new(100).expect("LIST_PAGE_SIZE is nonzero");
+
+/// Upper bound on a single v3 DNS-records page request. [`fetch_records`]
+/// always requests this many — the biggest page minimizes round trips when
+/// walking the entire collection; [`fetch_records_page`] (`dns list`'s
+/// CLI-facing cursor pagination) clamps the caller's requested page size to
+/// at most this. Also `dns list`'s cursor `max_limit`.
+pub(super) const MAX_PAGE_SIZE: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(100).expect("MAX_PAGE_SIZE is nonzero");
 
 /// clap value-parser for a mutating `--type` (`add`/`set`/`delete`): validate
 /// against [`WRITABLE_TYPES`] and return the canonical upper-case wire string.
@@ -386,12 +390,16 @@ pub(super) async fn fetch_records(
     let mut all = Vec::new();
     let mut page: u64 = 1;
     loop {
-        let page_nz = std::num::NonZeroU64::new(page).expect("page starts at 1 and only grows");
+        // `page` starts at 1 and only grows (below), so it's always nonzero
+        // in practice; `unwrap_or(MIN)` keeps that a total, panic-free
+        // conversion rather than an `.expect()` on an invariant the type
+        // system can't see.
+        let page_nz = std::num::NonZeroU64::new(page).unwrap_or(std::num::NonZeroU64::MIN);
         let mut req = client
             .list_dns_records()
             .zone(zone)
             .page(page_nz)
-            .page_size(LIST_PAGE_SIZE)
+            .page_size(MAX_PAGE_SIZE)
             .total_required(true);
         if let Some(t) = type_ {
             req = req.type_(types::DnsRecordType(t.to_owned()));
@@ -411,13 +419,53 @@ pub(super) async fn fetch_records(
         let last = body
             .total_pages
             .map(|tp| page >= tp.get())
-            .unwrap_or(got < LIST_PAGE_SIZE.get() as usize);
+            .unwrap_or(got < MAX_PAGE_SIZE.get() as usize);
         if last || got == 0 {
             break;
         }
         page += 1;
     }
     Ok(all)
+}
+
+/// Fetch a page of matching DNS records.
+pub(super) async fn fetch_records_page(
+    client: &domains_client::Client,
+    zone: &str,
+    type_: Option<&str>,
+    name: Option<&str>,
+    page: u64,
+    page_size: i64,
+    debug: bool,
+) -> Result<(Vec<types::DnsRecord>, bool), CliCoreError> {
+    let page_size_nz =
+        std::num::NonZeroU64::new(page_size.clamp(1, MAX_PAGE_SIZE.get() as i64) as u64)
+            .unwrap_or(MAX_PAGE_SIZE);
+    let page_nz = std::num::NonZeroU64::new(page.max(1)).unwrap_or(std::num::NonZeroU64::MIN);
+    let mut req = client
+        .list_dns_records()
+        .zone(zone)
+        .page(page_nz)
+        .page_size(page_size_nz)
+        .total_required(true);
+    if let Some(t) = type_ {
+        req = req.type_(types::DnsRecordType(t.to_owned()));
+    }
+    if let Some(n) = name {
+        req = req.name(n);
+    }
+    let body = match req.send().await {
+        Ok(r) => r.into_inner(),
+        Err(e) => return Err(api_error("listing DNS records", debug, e).await),
+    };
+    let items = body.items.unwrap_or_default();
+    let got = items.len();
+    let page_size_usize = usize::try_from(page_size_nz.get()).unwrap_or(usize::MAX);
+    let has_more = body
+        .total_pages
+        .map(|tp| page_nz.get() < tp.get())
+        .unwrap_or(got == page_size_usize && got > 0);
+    Ok((items, has_more))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
@@ -671,5 +719,115 @@ mod tests {
         caa_opts_wild.tag = Some("issuewild".to_string());
         let desired_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts_wild);
         assert!(!same_content(&existing_caa, &desired_caa));
+    }
+
+    #[tokio::test]
+    async fn fetch_records_page_reports_has_more_from_total_pages() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("page", "1")
+                    .query_param("pageSize", "2");
+                then.status(200).json_body(serde_json::json!({
+                    "items": [{"type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600}],
+                    "totalPages": 2,
+                }));
+            })
+            .await;
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
+
+        let (items, has_more) = fetch_records_page(&client, "example.com", None, None, 1, 2, false)
+            .await
+            .expect("fetch succeeds");
+
+        assert_eq!(items.len(), 1);
+        assert!(has_more, "page 1 of 2 total pages has more");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_records_page_reports_no_more_on_the_last_page_without_total_pages() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("page", "3")
+                    .query_param("pageSize", "100");
+                then.status(200).json_body(serde_json::json!({
+                    "items": [{"type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600}],
+                }));
+            })
+            .await;
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
+
+        let (items, has_more) = fetch_records_page(
+            &client,
+            "example.com",
+            None,
+            None,
+            3,
+            MAX_PAGE_SIZE.get() as i64,
+            false,
+        )
+        .await
+        .expect("fetch succeeds");
+
+        assert_eq!(items.len(), 1);
+        assert!(
+            !has_more,
+            "a short page with no total_pages means exhausted"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_records_page_forwards_type_and_name_filters() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "A")
+                    .query_param("name", "www");
+                then.status(200)
+                    .json_body(serde_json::json!({ "items": [] }));
+            })
+            .await;
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
+
+        fetch_records_page(
+            &client,
+            "example.com",
+            Some("A"),
+            Some("www"),
+            1,
+            100,
+            false,
+        )
+        .await
+        .expect("fetch succeeds");
+
+        mock.assert_async().await;
     }
 }

@@ -5,7 +5,8 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::hosting::common::{
-    HostingProduct, HostingSubscriptionList, client_err, make_client, next_page_token,
+    HostingProduct, HostingSubscriptionList, client_err, make_client, more_pages_warning,
+    page_items, warn_user,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
@@ -44,7 +45,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "List hosting plan subscriptions available to attach to applications. \
-             --hosting-product is required. Results are autopaginated.",
+             --hosting-product is required.",
         )
         .with_system("hosting")
         .with_tier(Tier::Read)
@@ -53,37 +54,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<HostingSubscriptionList>()
         .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
-            let limit = args.limit;
             let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
 
-            let mut all_items: Vec<Value> = Vec::new();
-            let mut page_token: Option<String> = None;
-
-            loop {
-                let page_limit =
-                    limit.map(|cap| cap.saturating_sub(all_items.len() as u32).min(100));
-
-                let response = client
-                    .list_subscriptions(page_token.as_deref(), page_limit, hosting_product)
-                    .await
-                    .map_err(client_err)?;
-
-                if let Some(items) = response.get("items").and_then(|v| v.as_array()) {
-                    all_items.extend(items.iter().cloned());
-                }
-
-                if limit.is_some_and(|cap| all_items.len() >= cap as usize) {
-                    break;
-                }
-
-                match next_page_token(&response) {
-                    Some(token) => page_token = Some(token),
-                    None => break,
-                }
+            let response = client
+                .list_subscriptions(hosting_product)
+                .await
+                .map_err(client_err)?;
+            if let Some(warning) = more_pages_warning(&response, "subscriptions") {
+                warn_user(&warning);
             }
 
-            Ok(list_result(all_items, limit))
+            Ok(list_result(page_items(&response), args.limit))
         },
     )
 }

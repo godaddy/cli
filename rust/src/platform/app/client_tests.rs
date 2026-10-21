@@ -4,7 +4,7 @@ use serde_json::json;
 use super::*;
 
 #[tokio::test]
-async fn list_applications_sends_all_app_registry_statuses() {
+async fn list_applications_sends_all_app_registry_statuses_and_the_cursor_window() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
@@ -15,6 +15,8 @@ async fn list_applications_sends_all_app_registry_statuses() {
                     let body = req.body_string();
                     body.contains("ApplicationsList")
                         && body.contains(r#""in":["ACTIVE","ARCHIVED","BLOCKED","INACTIVE","VERIFYING"]"#)
+                        && body.contains(r#""first":10"#)
+                        && body.contains(r#""after":"cursor-1""#)
                 });
             then.status(200).json_body(json!({
                 "data": {
@@ -22,24 +24,63 @@ async fn list_applications_sends_all_app_registry_statuses() {
                         "edges": [
                             { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } },
                             { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "url": null, "proxyUrl": null } }
-                        ]
+                        ],
+                        "pageInfo": { "hasNextPage": true, "endCursor": "cursor-2" }
                     }
                 }
             }));
         })
         .await;
 
-    let nodes = ApplicationClient::new(server.base_url(), "test-token")
-        .list_applications()
+    let page = ApplicationClient::new(server.base_url(), "test-token")
+        .list_applications(10, Some("cursor-1"))
         .await
         .expect("list applications");
 
     mock.assert_async().await;
-    assert_eq!(nodes.len(), 2);
+    assert_eq!(page.items.len(), 2);
     assert_eq!(
-        nodes[1].status,
+        page.items[1].status,
         applications_list::ApplicationStatus::INACTIVE
     );
+    assert!(page.has_next_page);
+    assert_eq!(page.end_cursor, Some("cursor-2".to_string()));
+}
+
+#[tokio::test]
+async fn list_applications_with_no_after_omits_it_and_reports_the_last_page() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/apps/app-registry-subgraph")
+                .header("authorization", "Bearer test-token")
+                .is_true(|req| {
+                    let body = req.body_string();
+                    body.contains("ApplicationsList") && !body.contains(r#""after""#)
+                });
+            then.status(200).json_body(json!({
+                "data": {
+                    "applications": {
+                        "edges": [
+                            { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } }
+                        ],
+                        "pageInfo": { "hasNextPage": false, "endCursor": null }
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let page = ApplicationClient::new(server.base_url(), "test-token")
+        .list_applications(10, None)
+        .await
+        .expect("list applications");
+
+    mock.assert_async().await;
+    assert_eq!(page.items.len(), 1);
+    assert!(!page.has_next_page);
+    assert_eq!(page.end_cursor, None);
 }
 
 #[tokio::test]
