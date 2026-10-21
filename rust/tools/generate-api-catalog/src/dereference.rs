@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use crate::github::parse_yaml_or_json;
 use crate::ref_paths::{
-    has_conflicting_namesake, id_ref_to_file_ref, normalize_path, resolve_case_insensitive,
-    resolve_common_types_path, specification_root,
+    has_conflicting_namesake, id_ref_to_file_ref, locate_ref_file, normalize_path,
+    specification_root,
 };
 use crate::visibility;
 
@@ -391,35 +391,6 @@ fn load_external_ref(
     load_ref_file(&resolved, common_types_dir, qualify_namesakes, defs, depth)
 }
 
-/// Finds the file a `$ref` path names (as written, common types, or case-insensitive).
-fn locate_ref_file(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
-    // Normalize path (resolve .. segments) so the common-types check below works on
-    // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
-    let normalized = normalize_path(path);
-    if normalized.exists() {
-        return Some(normalized);
-    }
-    if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
-        return Some(fallback);
-    }
-    if let Some(ci) = resolve_case_insensitive(&normalized) {
-        // Spec files authored on case-insensitive filesystems (macOS) sometimes
-        // have mismatched filename casing.  Accept the match but warn so the
-        // spec repo can be fixed.
-        eprintln!(
-            "WARNING: case-insensitive match for {}: using {}",
-            path.display(),
-            ci.display()
-        );
-        return Some(ci);
-    }
-    eprintln!(
-        "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
-        path.display()
-    );
-    None
-}
-
 fn load_ref_file(
     resolved: &Path,
     common_types_dir: Option<&Path>,
@@ -577,7 +548,7 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
-    visibility::drop_operationless_paths(&mut dereffed);
+    visibility::drop_emptied_paths_and_tags(&mut dereffed);
     Ok((dereffed, defs))
 }
 

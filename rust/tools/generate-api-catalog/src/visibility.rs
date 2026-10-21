@@ -215,15 +215,16 @@ pub(crate) fn prune_ref_file(file: &Path, parsed: &mut Value) -> Option<()> {
         .ok()
 }
 
-/// Whether `ref_str`, a relative file `$ref`, names a file whose own root is
-/// private. The lifted-definitions cache is keyed by file name, so a reference
-/// to a private file can hit the entry of a same-named public one without the
-/// file ever being loaded; callers check this first and leave the reference
+/// Whether `ref_str`, a relative file `$ref`, targets private content: a file
+/// whose own root is private, or a fragment at or inside a private node of it.
+/// The lifted-definitions cache is keyed by name, so a reference to such a
+/// target can hit the entry of a same-named public schema without the target
+/// ever being checked; callers check this first and leave the reference
 /// unresolved. Covers the same two locations as a normal load (beside the spec,
 /// or in its parent directory); URL refs and case-insensitive matches are not
 /// probed.
 pub(crate) fn ref_targets_private_file(ref_str: &str, spec_dir: &Path) -> bool {
-    let file_part = ref_str.split('#').next().unwrap_or(ref_str);
+    let (file_part, fragment) = ref_str.split_once('#').unwrap_or((ref_str, ""));
     if file_part.is_empty() || file_part.contains("://") {
         return false;
     }
@@ -240,14 +241,18 @@ pub(crate) fn ref_targets_private_file(ref_str: &str, spec_dir: &Path) -> bool {
             src.contains("x-visibility")
                 .then(|| parse_yaml_or_json(&src, &path).ok())?
         })
-        .is_some_and(|parsed| is_private(&parsed))
+        .is_some_and(|parsed| {
+            is_private(&parsed)
+                || (!fragment.is_empty()
+                    && targets_private(&format!("#{fragment}"), &private_pointers(&parsed), false))
+        })
 }
 
-/// Drops path items left with no operations. Run on a dereferenced spec after
-/// [`prune_private`], so a path whose every operation was private doesn't
-/// linger as an empty (or parameters-only) entry. Non-path `paths` keys
-/// (`x-*` extensions) are left alone.
-pub(crate) fn drop_operationless_paths(spec: &mut Value) {
+/// Drops what pruning left empty in a dereferenced spec: path items with no
+/// operations (non-path `paths` keys, `x-*` extensions, are left alone) and
+/// top-level tags no remaining operation uses. Run after [`prune_private`], so a
+/// path or tag whose every operation was private doesn't linger as an empty entry.
+pub(crate) fn drop_emptied_paths_and_tags(spec: &mut Value) {
     let Some(paths) = spec.get_mut("paths").and_then(Value::as_object_mut) else {
         return;
     };
@@ -260,6 +265,21 @@ pub(crate) fn drop_operationless_paths(spec: &mut Value) {
                     || HTTP_METHODS.iter().any(|method| item.contains_key(*method))
             })
     });
+    let used: HashSet<String> = paths
+        .values()
+        .filter_map(Value::as_object)
+        .flat_map(|item| HTTP_METHODS.iter().filter_map(|method| item.get(*method)))
+        .filter_map(|operation| operation.get("tags").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|tag| tag.as_str().map(str::to_owned))
+        .collect();
+    if let Some(tags) = spec.get_mut("tags").and_then(Value::as_array_mut) {
+        tags.retain(|tag| {
+            tag.get("name")
+                .and_then(Value::as_str)
+                .is_none_or(|name| used.contains(name))
+        });
+    }
 }
 
 /// Drops the lifted `$defs` that nothing in `catalog` reaches, directly or
@@ -327,7 +347,7 @@ mod tests {
             }
         });
         prune_private(&mut spec);
-        drop_operationless_paths(&mut spec);
+        drop_emptied_paths_and_tags(&mut spec);
         assert_eq!(
             spec,
             json!({ "paths": { "/open": { "get": { "operationId": "open" } } } })
@@ -389,14 +409,14 @@ mod tests {
         });
         let mut spec = original.clone();
         prune_private(&mut spec);
-        drop_operationless_paths(&mut spec);
+        drop_emptied_paths_and_tags(&mut spec);
         assert_eq!(spec, original);
     }
 
     #[test]
     fn keeps_non_path_extensions_in_paths() {
         let mut spec = json!({ "paths": { "x-note": {}, "/a": {} } });
-        drop_operationless_paths(&mut spec);
+        drop_emptied_paths_and_tags(&mut spec);
         assert_eq!(spec, json!({ "paths": { "x-note": {} } }));
     }
 
@@ -519,7 +539,7 @@ mod tests {
     #[test]
     fn path_item_with_an_unresolved_ref_is_kept_for_validation() {
         let mut spec = json!({ "paths": { "/hidden": { "$ref": "./Hidden.yaml" } } });
-        drop_operationless_paths(&mut spec);
+        drop_emptied_paths_and_tags(&mut spec);
         assert!(spec["paths"].get("/hidden").is_some());
     }
 
@@ -759,6 +779,49 @@ mod tests {
         assert_eq!(
             crate::dereference::collect_unresolved_refs(&spec),
             ["./private/Widget.yaml"]
+        );
+    }
+
+    #[test]
+    fn tags_with_no_remaining_operation_are_dropped() {
+        let mut spec = json!({
+            "tags": [{ "name": "Renewals" }, { "name": "Domains" }],
+            "paths": {
+                "/domains": { "get": { "tags": ["Domains"] } },
+                "/renewals": { "post": { "tags": ["Renewals"], "x-visibility": { "extent": "private" } } }
+            }
+        });
+        prune_private(&mut spec);
+        drop_emptied_paths_and_tags(&mut spec);
+        assert_eq!(spec["tags"], json!([{ "name": "Domains" }]));
+    }
+
+    #[test]
+    fn fragment_into_a_private_node_of_a_public_file_is_not_satisfied_by_the_cache() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::write(dir.path().join("public/Hidden.yaml"), "type: string\n")
+            .expect("write public model");
+        std::fs::write(
+            dir.path().join("models.yaml"),
+            "components:\n  schemas:\n    Hidden:\n      type: object\n      x-visibility:\n        extent: private\n    Shown:\n      type: object\n",
+        )
+        .expect("write models");
+        let spec_path = dir.path().join("openapi.yaml");
+        // Components are visited in key order, so the public file is lifted first.
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    A:\n      $ref: './public/Hidden.yaml'\n    B:\n      $ref: './models.yaml#/components/schemas/Hidden'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert_eq!(defs["Hidden"], json!({ "type": "string" }));
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./models.yaml#/components/schemas/Hidden"]
         );
     }
 }
