@@ -123,8 +123,9 @@ fn collect_private_pointers(value: &Value, pointer: &str, out: &mut Vec<String>)
 /// is resolved. Counts `$ref`s and `discriminator.mapping` values, which carry
 /// references as plain strings.
 fn ensure_no_refs_to_private(spec_file: &Path, private: &[String], spec: &Value) -> Result<()> {
+    let dir = spec_file.parent().unwrap_or(spec_file);
     let mut found = Vec::new();
-    collect_refs_to_private(spec, private, &mut found);
+    collect_refs_to_private(spec, private, dir, &mut found);
     found.sort();
     found.dedup();
     if !found.is_empty() {
@@ -157,7 +158,7 @@ fn targets_private(reference: &str, private: &[String], bare_name: bool) -> bool
     })
 }
 
-fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<String>) {
+fn collect_refs_to_private(value: &Value, private: &[String], dir: &Path, out: &mut Vec<String>) {
     match value {
         Value::Object(map) => {
             if let Some(Value::String(reference)) = map.get("$ref")
@@ -174,17 +175,21 @@ fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<Stri
                     mapping
                         .values()
                         .filter_map(Value::as_str)
-                        .filter(|target| targets_private(target, private, true))
+                        .filter(|target| {
+                            targets_private(target, private, true)
+                                || (!target.starts_with('#')
+                                    && ref_targets_private_file(target, dir))
+                        })
                         .map(str::to_owned),
                 );
             }
             for child in map.values() {
-                collect_refs_to_private(child, private, out);
+                collect_refs_to_private(child, private, dir, out);
             }
         }
         Value::Array(values) => {
             for child in values {
-                collect_refs_to_private(child, private, out);
+                collect_refs_to_private(child, private, dir, out);
             }
         }
         _ => {}
@@ -823,5 +828,46 @@ mod tests {
             crate::dereference::collect_unresolved_refs(&spec),
             ["./models.yaml#/components/schemas/Hidden"]
         );
+    }
+
+    #[test]
+    fn external_discriminator_mapping_to_a_private_file_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::create_dir_all(dir.path().join("private")).expect("create dir");
+        std::fs::write(dir.path().join("public/Widget.yaml"), "type: object\n")
+            .expect("write public model");
+        std::fs::write(
+            dir.path().join("private/Widget.yaml"),
+            "type: object\nx-visibility:\n  extent: private\n",
+        )
+        .expect("write private model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Pet:\n      oneOf:\n        - $ref: './public/Widget.yaml'\n      discriminator:\n        propertyName: kind\n        mapping:\n          widget: './private/Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        let err = crate::dereference::load_and_dereference(&spec_path, None)
+            .expect_err("a mapping to a private file must fail");
+        assert!(err.to_string().contains("./private/Widget.yaml"), "{err}");
+    }
+
+    #[test]
+    fn external_discriminator_mapping_to_a_public_file_is_kept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::write(dir.path().join("public/Widget.yaml"), "type: object\n")
+            .expect("write public model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Pet:\n      oneOf:\n        - $ref: './public/Widget.yaml'\n      discriminator:\n        propertyName: kind\n        mapping:\n          widget: './public/Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        crate::dereference::load_and_dereference(&spec_path, None)
+            .expect("a mapping to a public file is not an error");
     }
 }
