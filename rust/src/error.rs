@@ -16,6 +16,7 @@ pub(crate) mod codes {
     pub(crate) const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
     pub(crate) const NETWORK_ERROR: &str = "NETWORK_ERROR";
     pub(crate) const AUTH_REQUIRED: &str = "AUTH_REQUIRED";
+    pub(crate) const ONBOARDING_REQUIRED: &str = "ONBOARDING_REQUIRED";
     pub(crate) const CONFIG_ERROR: &str = "CONFIG_ERROR";
     pub(crate) const SECURITY_BLOCKED: &str = "SECURITY_BLOCKED";
     pub(crate) const UNEXPECTED_ERROR: &str = "UNEXPECTED_ERROR";
@@ -28,6 +29,7 @@ mod fixes {
         "Narrow the query, or add --method, to match exactly one operation.";
     pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
+    pub(super) const ONBOARDING: &str = "Run: gddy platform app onboard, then retry after completion.";
     pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
     pub(super) const CONFIG: &str = "Check your config with: gddy env info";
     pub(super) const SECURITY: &str =
@@ -117,6 +119,13 @@ impl GddyError {
     #[must_use]
     pub(crate) fn auth(message: impl Into<String>) -> Self {
         Self::new(codes::AUTH_REQUIRED, message).with_fix(fixes::AUTH)
+    }
+
+    /// The account has not accepted the GoDaddy Developer agreements, so it has
+    /// no developer organization yet.
+    #[must_use]
+    pub(crate) fn onboarding_required(message: impl Into<String>) -> Self {
+        Self::new(codes::ONBOARDING_REQUIRED, message).with_fix(fixes::ONBOARDING)
     }
 
     #[must_use]
@@ -257,6 +266,15 @@ mod tests {
                 .is_some_and(|f| f.contains("platform app list")),
             "envelope.fix missing: {envelope:?}"
         );
+    }
+
+    #[test]
+    fn onboarding_required_points_at_app_onboard() {
+        let err = GddyError::onboarding_required("not set up");
+        assert_eq!(err.error_code(), codes::ONBOARDING_REQUIRED);
+        let fix = err.error_fix().expect("fix");
+        assert!(fix.contains("gddy platform app onboard"), "got {fix}");
+        assert!(fix.contains("AI assistants:"), "got {fix}");
     }
 
     #[test]

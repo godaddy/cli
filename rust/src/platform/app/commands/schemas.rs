@@ -27,6 +27,13 @@ output_schema!(ApplicationInit {
     "filesWritten": "object";
 });
 
+output_schema!(ApplicationOnboard {
+    "organizationId": "string";
+    "status": "string";
+    "alreadyOnboarded": "bool";
+    "action": "string";
+});
+
 output_schema!(ApplicationImport {
     "id": "string";
     "name": "string";
