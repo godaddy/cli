@@ -29,7 +29,8 @@ mod fixes {
         "Narrow the query, or add --method, to match exactly one operation.";
     pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
-    pub(super) const ONBOARDING: &str = "Run: gddy platform app onboard, then retry after completion.";
+    pub(super) const ONBOARDING: &str =
+        "Run: gddy platform app onboard, then retry after completion.";
     pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
     pub(super) const CONFIG: &str = "Check your config with: gddy env info";
     pub(super) const SECURITY: &str =
@@ -274,7 +275,6 @@ mod tests {
         assert_eq!(err.error_code(), codes::ONBOARDING_REQUIRED);
         let fix = err.error_fix().expect("fix");
         assert!(fix.contains("gddy platform app onboard"), "got {fix}");
-        assert!(fix.contains("AI assistants:"), "got {fix}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! `gddy platform app onboard` — accept the GoDaddy Developer agreements and
 //! finish developer account setup.
 
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use serde_json::json;
 
 use super::schemas::ApplicationOnboard;
@@ -13,8 +13,8 @@ use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 
 #[derive(Debug, Clone, clap::Args)]
 struct OnboardArgs {
-    /// Accept the GoDaddy Developer agreements without prompting (required
-    /// when not running in a terminal).
+    /// Accept the GoDaddy Developer agreements without a prompt. Required when
+    /// not running in a terminal; in a terminal you're always asked to confirm.
     #[arg(long)]
     accept_agreements: bool,
 }
@@ -24,7 +24,12 @@ fn follow_ups() -> Vec<cli_engine::NextAction> {
         next_action(
             "platform app init --name <name> --description <description> --url <url> --proxy-url <proxy-url> --scopes <scopes>",
             "Create your first application",
-        ),
+        )
+        .with_param("name", NextActionParam::required())
+        .with_param("description", NextActionParam::required())
+        .with_param("url", NextActionParam::required())
+        .with_param("proxy-url", NextActionParam::required())
+        .with_param("scopes", NextActionParam::required()),
         next_action("platform app list", "List your applications"),
     ]
 }
@@ -39,8 +44,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "Finish setting up your GoDaddy developer account by accepting the \
             GoDaddy Developer agreements. You'll be shown the agreements and \
             asked to press Enter to accept. Run this once before using other \
-            `gddy platform app` commands. In scripts, pass `--accept-agreements` \
-            to accept without prompting.\n\n\
+            `gddy platform app` commands. When not running in a terminal (for \
+            example in a script), pass `--accept-agreements` to accept without \
+            a prompt.\n\n\
             AI assistants: accepting the agreements is the user's decision. Ask \
             the user to review and accept them; do not pass \
             `--accept-agreements` on their behalf.",
@@ -96,7 +102,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::command;
+    use super::{command, follow_ups};
 
     #[test]
     fn command_is_mutating_and_handles_its_own_dry_run() {
@@ -110,5 +116,25 @@ mod tests {
         let long = command().spec.long.expect("long help");
         assert!(long.contains("AI assistants:"));
         assert!(long.contains("do not pass `--accept-agreements`"));
+    }
+
+    #[test]
+    fn every_placeholder_in_the_init_follow_up_is_a_required_param() {
+        let actions = follow_ups();
+        let init = &actions[0];
+        for name in ["name", "description", "url", "proxy-url", "scopes"] {
+            assert!(
+                init.command.contains(&format!("<{name}>")),
+                "template is missing <{name}>"
+            );
+            assert!(init.params[name].required, "{name} must be required");
+        }
+    }
+
+    #[test]
+    fn help_does_not_promise_a_prompt_free_run_in_a_terminal() {
+        let long = command().spec.long.expect("long help");
+        assert!(long.contains("When not running in a terminal"));
+        assert!(!long.contains("In scripts, pass"));
     }
 }
