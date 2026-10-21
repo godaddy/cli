@@ -220,8 +220,9 @@ pub(crate) fn prune_ref_file(file: &Path, parsed: &mut Value) -> Option<()> {
 }
 
 /// Reads the file a relative file `$ref` names, with its fragment, if it can be
-/// located and mentions the visibility marker at all (a file that never does
-/// can't be private or hold private nodes, so it isn't parsed). Covers the
+/// located and could be rejected on load. That takes the visibility marker, or
+/// a discriminator `mapping` that may name a private file; a file with neither
+/// can't be rejected, so it isn't parsed. Covers the
 /// same two locations as a normal load (beside the spec, or in its parent
 /// directory); URL refs and case-insensitive matches are not probed.
 fn read_marked_ref_file(ref_str: &str, spec_dir: &Path) -> Option<(PathBuf, Value, String)> {
@@ -235,8 +236,7 @@ fn read_marked_ref_file(ref_str: &str, spec_dir: &Path) -> Option<(PathBuf, Valu
         .map(|dir| normalize_path(&dir.join(file_part)))
         .find(|path| path.is_file())?;
     let src = std::fs::read_to_string(&path).ok()?;
-    let parsed = src
-        .contains("x-visibility")
+    let parsed = (src.contains("x-visibility") || src.contains("mapping"))
         .then(|| parse_yaml_or_json(&src, &path).ok())??;
     Some((path, parsed, fragment.to_owned()))
 }
@@ -937,5 +937,40 @@ mod tests {
 
         crate::dereference::load_and_dereference(&spec_path, None)
             .expect("mutually referencing mappings terminate");
+    }
+
+    #[test]
+    fn cache_hit_does_not_hide_a_marker_free_file_whose_mapping_names_a_private_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::create_dir_all(dir.path().join("other")).expect("create dir");
+        std::fs::write(dir.path().join("public/Widget.yaml"), "type: string\n")
+            .expect("write public model");
+        std::fs::write(
+            dir.path().join("Hidden.yaml"),
+            "type: object\nx-visibility:\n  extent: private\n",
+        )
+        .expect("write private model");
+        // No `x-visibility` here: it is only rejected through its mapping target.
+        std::fs::write(
+            dir.path().join("other/Widget.yaml"),
+            "discriminator:\n  propertyName: kind\n  mapping:\n    hidden: '../Hidden.yaml'\n",
+        )
+        .expect("write mapped model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    A:\n      $ref: './public/Widget.yaml'\n    B:\n      $ref: './other/Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert_eq!(defs["Widget"], json!({ "type": "string" }));
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./other/Widget.yaml"]
+        );
     }
 }
