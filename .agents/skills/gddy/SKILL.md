@@ -79,6 +79,8 @@ gddy dns delete example.com --type A --name www
 
 ## Hosting
 
+Run `gddy guide hosting` for a walkthrough of deploying a Node.js app. Publishing needs the app attached to a Web Hosting plan the customer owns. If the user wants to buy Node.js Hosting, or has no plan with a free slot, see "Buy a plan" in that guide. It starts with `gddy shopping catalog search --category webHosting`.
+
 Use the `hosting app restart` command after creating, updating or deleting an application's secrets.
 
 ## Global flags

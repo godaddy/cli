@@ -1,4 +1,7 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
+use serde_json::Value;
 
 use crate::hosting::common::{HostingSourceImport, client_err, make_client};
 use crate::next_action::next_action;
@@ -20,8 +23,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<SourceStatusArgs>("status", "Get the status of a source import")
             .with_long(
                 "Poll the status of a source import started with `hosting source upload` or \
-                 `hosting source github`. Keep polling until status is COMPLETED or FAILED, \
-                 then use `hosting deployment publish` to deploy.",
+                 `hosting source github`. Keep polling until status is COMPLETED or FAILED. \
+                 Once COMPLETED, check that the app has a hosting plan with \
+                 `hosting subscription get`, then publish with `hosting deployment publish`.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -34,13 +38,59 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .get_import(&app_id, &args.import_id)
                 .await
                 .map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
-                next_action(
-                    "hosting deployment publish --app-id <app-id>",
-                    "Deploy the imported source",
-                )
-                .with_param("app-id", NextActionParam::value(app_id)),
-            ]))
+            let next_actions = next_actions(&data, &app_id);
+            Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
     )
+}
+
+fn next_actions(data: &Value, app_id: &str) -> Vec<NextAction> {
+    if data["status"] != "COMPLETED" {
+        return Vec::new();
+    }
+    vec![
+        next_action(
+            "hosting subscription get --app-id <app-id>",
+            "Check the app has a hosting plan before publishing",
+        )
+        .with_param("app-id", NextActionParam::value(app_id)),
+        next_action(
+            "hosting deployment publish --app-id <app-id>",
+            "Publish to production. The app needs a hosting plan",
+        )
+        .with_param("app-id", NextActionParam::value(app_id)),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn completed_import_suggests_plan_check_then_publish() {
+        let actions = next_actions(&json!({ "status": "COMPLETED" }), "NODEJS-1");
+        let commands: Vec<&str> = actions.iter().map(|a| a.command.as_str()).collect();
+        assert_eq!(
+            commands,
+            [
+                "gddy hosting subscription get --app-id <app-id>",
+                "gddy hosting deployment publish --app-id <app-id>",
+            ]
+        );
+        assert!(
+            actions
+                .iter()
+                .all(|a| a.params["app-id"].value.as_deref() == Some("NODEJS-1"))
+        );
+    }
+
+    #[test]
+    fn unfinished_or_failed_import_suggests_nothing() {
+        for status in ["IN_PROGRESS", "FAILED"] {
+            assert!(next_actions(&json!({ "status": status }), "NODEJS-1").is_empty());
+        }
+        assert!(next_actions(&json!({}), "NODEJS-1").is_empty());
+    }
 }

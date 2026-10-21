@@ -1,5 +1,5 @@
 ---
-summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview, then publish
+summary: Deploy a Node.js app to GoDaddy hosting: create, upload, preview, attach to a plan, publish
 ---
 
 # `gddy hosting` — deploying a Node.js application
@@ -12,11 +12,11 @@ summary: Deploy a Node.js app to GoDaddy hosting — provision, upload, preview,
 
 **Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
 
-**Subscription** — the API name for a hosting plan you already bought (resources and billing). Attach the app to one subscription before the first publish.
+**Subscription** — a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? See *Buy a plan*.
 
 **Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
-## 1. Create an application
+## Create the app
 
 App creation is asynchronous. The command returns an operation ID immediately:
 
@@ -30,7 +30,7 @@ Poll until COMPLETED, then note the `app.id` in the response:
 gddy hosting operation get --operation-id <operation-id>
 ```
 
-## 2. Prepare source code
+## Prepare the source
 
 The GoDaddy hosting platform is flexible, supporting a wide range of Node.js app frameworks. Source code can be deployed using a `.zip` file containing your project directory.
 
@@ -49,7 +49,7 @@ When zipping your project, exclude the `node_modules` directory.
 
 For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
-## 3. Upload source code
+## Upload
 
 Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
@@ -63,7 +63,7 @@ Poll the import until COMPLETED:
 gddy hosting source status --app-id <app-id> --import-id <import-id>
 ```
 
-## 4. Test on PREVIEW
+## Preview
 
 Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
@@ -73,7 +73,7 @@ gddy hosting app get --app-id <app-id>
 
 The `urls` field shows the address for each environment.
 
-## 5. Attach a subscription (first deploy only)
+## Attach a plan (first deploy only)
 
 Check whether the app is already on a subscription:
 
@@ -88,17 +88,31 @@ gddy hosting subscription list --hosting-product=WEB_HOSTING
 gddy hosting subscription attach --app-id <app-id> --subscription-id <subscription-id>
 ```
 
-If `totalAvailableSlots` is 0, buy a Web Hosting plan (`gddy shopping catalog search --category webHosting` for NODEJS), poll list until a slot appears, then attach. See `gddy guide shopping` for checkout.
+If several plans have open slots, pick the one you want.
+
+If `totalAvailableSlots` is 0, see *Buy a plan*.
 
 Skip this on later deploys.
 
-## 6. Publish to production
+## Buy a plan
+
+To publish to a live URL, the app must be attached to a Web Hosting plan you own. Buy a plan if none has an open slot, or if you want a separate one. Find one in the catalog, then check out by following `gddy guide shopping`:
+
+```sh
+gddy shopping catalog search --category webHosting
+```
+
+AI assistants: if an existing plan has an open slot, tell the user and let them choose between attaching the app to it and buying a new plan. Buying is a purchase, so follow the consent steps in `gddy guide shopping` before checkout.
+
+When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot appears whose `subscriptionId` was not in the list before checkout. Attach the app to that plan.
+
+## Publish
 
 ```sh
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app is not attached. Go back to step 4.
+If publish returns `WH_PLAN_REQUIRED`, the app has no plan. See *Attach a plan*.
 
 Poll until COMPLETED:
 
@@ -106,7 +120,7 @@ Poll until COMPLETED:
 gddy hosting deployment get --app-id <app-id> --deployment-id <deployment-id>
 ```
 
-## 7. Custom domains
+## Custom domains
 
 Attach after the app is published:
 
@@ -128,7 +142,7 @@ Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN pro
 
 ## Redeploying
 
-Upload source again (step 2), wait for the import to complete, then run `deployment publish` again (step 5). Skip steps 1 and 4.
+Upload the source again, wait for the import to complete, then publish again. Skip *Create the app* and *Attach a plan*.
 
 ## Other commands
 

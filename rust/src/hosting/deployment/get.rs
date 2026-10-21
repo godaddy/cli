@@ -1,4 +1,7 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
+use serde_json::Value;
 
 use crate::hosting::common::{HostingDeploymentSummary, client_err, make_client};
 use crate::next_action::next_action;
@@ -35,21 +38,49 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .get_deployment(&app_id, &deployment_id)
                 .await
                 .map_err(client_err)?;
-            Ok(CommandResult::new(data).with_next_actions(vec![
-                next_action(
-                    "hosting operation get --operation-id <id>",
-                    "Poll the operation for this deployment",
-                )
-                .with_param("operation-id", NextActionParam::required()),
-            ]))
+            let next_actions = next_actions(&data, &app_id);
+            Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
     )
+}
+
+fn next_actions(data: &Value, app_id: &str) -> Vec<NextAction> {
+    if data["status"] != "COMPLETED" {
+        return Vec::new();
+    }
+    vec![
+        next_action(
+            "hosting app get --app-id <app-id>",
+            "See the URL for each environment",
+        )
+        .with_param("app-id", NextActionParam::value(app_id)),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use clap::{Args, FromArgMatches};
+    use serde_json::json;
+
+    #[test]
+    fn completed_deployment_suggests_app_get() {
+        let actions = next_actions(&json!({ "status": "COMPLETED" }), "NODEJS-1");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy hosting app get --app-id <app-id>");
+        assert_eq!(
+            actions[0].params["app-id"].value.as_deref(),
+            Some("NODEJS-1")
+        );
+    }
+
+    #[test]
+    fn unfinished_or_failed_deployment_suggests_nothing() {
+        for status in ["IN_PROGRESS", "FAILED"] {
+            assert!(next_actions(&json!({ "status": status }), "NODEJS-1").is_empty());
+        }
+        assert!(next_actions(&json!({}), "NODEJS-1").is_empty());
+    }
 
     #[test]
     fn deployment_id_starting_with_hyphen_is_parsed_as_a_value() {
