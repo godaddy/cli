@@ -4,8 +4,9 @@ use cli_engine::{
 };
 use serde_json::{Value, json};
 
-use crate::hosting::client::{ClientError, HostingClient};
-use crate::hosting::common::{HostingProduct, HostingSubscriptionList, client_err, make_client};
+use crate::hosting::common::{
+    HostingProduct, HostingSubscriptionList, client_err, make_client, next_page_token,
+};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
@@ -43,7 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "List hosting plan subscriptions available to attach to applications. \
-             --hosting-product is required.",
+             --hosting-product is required. Results are autopaginated.",
         )
         .with_system("hosting")
         .with_tier(Tier::Read)
@@ -52,11 +53,29 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_output_schema::<HostingSubscriptionList>()
         .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
+            let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
-            let items = fetch_subscriptions(&client, args.hosting_product.as_str())
-                .await
-                .map_err(client_err)?;
-            Ok(list_result(items, args.limit))
+
+            let mut all_items: Vec<Value> = Vec::new();
+            let mut page_token: Option<String> = None;
+
+            loop {
+                let response = client
+                    .list_subscriptions(page_token.as_deref(), None, hosting_product)
+                    .await
+                    .map_err(client_err)?;
+
+                if let Some(items) = response.get("items").and_then(|v| v.as_array()) {
+                    all_items.extend(items.iter().cloned());
+                }
+
+                match next_page_token(&response) {
+                    Some(token) => page_token = Some(token),
+                    None => break,
+                }
+            }
+
+            Ok(list_result(all_items, args.limit))
         },
     )
 }
@@ -77,20 +96,6 @@ fn list_result(mut items: Vec<Value>, limit: Option<u32>) -> CommandResult {
         "totalAvailableSlots": total_available_slots,
     }))
     .with_next_actions(next_actions)
-}
-
-/// The endpoint takes no paging parameters yet, so this is a single request
-/// even if the response carries a `rel=next` link.
-async fn fetch_subscriptions(
-    client: &HostingClient,
-    hosting_product: &str,
-) -> Result<Vec<Value>, ClientError> {
-    let response = client.list_subscriptions(hosting_product).await?;
-    Ok(response
-        .get("items")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default())
 }
 
 fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
@@ -137,36 +142,6 @@ fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn fetch_makes_one_request_even_with_a_next_link() {
-        let server = httpmock::MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::GET)
-                    .path("/v1/hosting/subscriptions")
-                    .query_param("hostingProduct", "WEB_HOSTING");
-                then.status(200).json_body(json!({
-                    "items": [
-                        { "subscriptionId": "sub-1", "availableSlots": 1 },
-                        { "subscriptionId": "sub-2", "availableSlots": 0 }
-                    ],
-                    "links": [{
-                        "rel": "next",
-                        "href": "https://api.godaddy.com/v1/hosting/subscriptions?hostingProduct=WEB_HOSTING&pageToken=tok-2"
-                    }]
-                }));
-            })
-            .await;
-
-        let client = HostingClient::new(server.base_url(), "test-token");
-        let items = fetch_subscriptions(&client, "WEB_HOSTING")
-            .await
-            .expect("fetch subscriptions");
-
-        mock.assert_calls_async(1).await;
-        assert_eq!(items.len(), 2);
-    }
 
     #[test]
     fn limit_shortens_the_list_but_not_the_slot_total_or_next_actions() {

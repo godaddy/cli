@@ -603,11 +603,17 @@ impl HostingClient {
         .await
     }
 
-    pub async fn list_subscriptions(&self, hosting_product: &str) -> Result<Value, ClientError> {
+    pub async fn list_subscriptions(
+        &self,
+        page_token: Option<&str>,
+        limit: Option<u32>,
+        hosting_product: &str,
+    ) -> Result<Value, ClientError> {
         let client = self.api()?;
         let request = client
             .list_subscriptions()
             .hosting_product(HostingProduct::from(hosting_product.to_owned()));
+        let _ = (page_token, limit);
         response(request.send().await).await
     }
 
