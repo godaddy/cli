@@ -53,23 +53,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(view_columns()),
         |ctx, args: SubscriptionListArgs| async move {
             let client = make_client(&ctx, &[SUB_READ]).await?;
-            let items = fetch_subscriptions(&client, args.hosting_product.as_str(), args.limit)
+            let items = fetch_subscriptions(&client, args.hosting_product.as_str())
                 .await
                 .map_err(client_err)?;
-
-            let total_available_slots: u64 = items
-                .iter()
-                .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
-                .sum();
-
-            let next_actions = list_next_actions(&items);
-            Ok(CommandResult::new(json!({
-                "items": items,
-                "totalAvailableSlots": total_available_slots,
-            }))
-            .with_next_actions(next_actions))
+            Ok(list_result(items, args.limit))
         },
     )
+}
+
+/// Slot totals and next actions come from every plan, so `--limit` only
+/// shortens the list shown and can't hide a plan with a free slot.
+fn list_result(mut items: Vec<Value>, limit: Option<u32>) -> CommandResult {
+    let total_available_slots: u64 = items
+        .iter()
+        .filter_map(|item| item.get("availableSlots").and_then(|v| v.as_u64()))
+        .sum();
+    let next_actions = list_next_actions(&items);
+    if let Some(cap) = limit {
+        items.truncate(cap as usize);
+    }
+    CommandResult::new(json!({
+        "items": items,
+        "totalAvailableSlots": total_available_slots,
+    }))
+    .with_next_actions(next_actions)
 }
 
 /// The endpoint takes no paging parameters yet, so this is a single request
@@ -77,18 +84,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
 async fn fetch_subscriptions(
     client: &HostingClient,
     hosting_product: &str,
-    limit: Option<u32>,
 ) -> Result<Vec<Value>, ClientError> {
     let response = client.list_subscriptions(hosting_product).await?;
-    let mut items = response
+    Ok(response
         .get("items")
         .and_then(Value::as_array)
         .cloned()
-        .unwrap_or_default();
-    if let Some(cap) = limit {
-        items.truncate(cap as usize);
-    }
-    Ok(items)
+        .unwrap_or_default())
 }
 
 fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
@@ -158,14 +160,35 @@ mod tests {
             .await;
 
         let client = HostingClient::new(server.base_url(), "test-token");
-        let items = fetch_subscriptions(&client, "WEB_HOSTING", Some(1))
+        let items = fetch_subscriptions(&client, "WEB_HOSTING")
             .await
             .expect("fetch subscriptions");
 
         mock.assert_calls_async(1).await;
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn limit_shortens_the_list_but_not_the_slot_total_or_next_actions() {
+        let result = list_result(
+            vec![
+                json!({ "subscriptionId": "sub-full", "availableSlots": 0 }),
+                json!({ "subscriptionId": "sub-free", "availableSlots": 1 }),
+            ],
+            Some(1),
+        );
+
         assert_eq!(
-            items,
-            vec![json!({ "subscriptionId": "sub-1", "availableSlots": 1 })]
+            result.data["items"],
+            json!([{ "subscriptionId": "sub-full", "availableSlots": 0 }])
+        );
+        assert_eq!(result.data["totalAvailableSlots"], 1);
+        let actions = &result.metadata.next_actions;
+        assert_eq!(actions.len(), 1);
+        assert!(actions[0].command.contains("subscription attach"));
+        assert_eq!(
+            actions[0].params["subscription-id"].r#enum,
+            vec!["sub-free".to_owned()]
         );
     }
 
@@ -187,12 +210,22 @@ mod tests {
                     "links": []
                 }]
             }),
-            &view_columns(),
+            &command().spec.view_columns,
         );
         assert!(rendered.contains("Plans:"), "{rendered}");
         assert!(rendered.contains("SUBSCRIPTION ID"), "{rendered}");
         assert!(rendered.contains("sub-1"), "{rendered}");
         assert!(!rendered.contains('{'), "{rendered}");
+    }
+
+    #[test]
+    fn no_plans_render_without_raw_json() {
+        let rendered = cli_engine::preview_human_view(
+            json!({ "totalAvailableSlots": 0, "items": [] }),
+            &command().spec.view_columns,
+        );
+        assert!(rendered.contains("Available Slots: 0"), "{rendered}");
+        assert!(!rendered.contains('['), "{rendered}");
     }
 
     #[test]
