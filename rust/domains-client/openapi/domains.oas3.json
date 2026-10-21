@@ -4079,14 +4079,6 @@
       "name": "Records"
     },
     {
-      "description": "Quote a domain renewal. Returns the locked renewal price, current and projected expiry dates, and a single-use quoteToken. Free and read-only. A 200 is returned only when a quoteToken is issued; ineligible requests fail with 404 or 422.\n",
-      "name": "Renewal Quotes"
-    },
-    {
-      "description": "Top-level renewal entity collection. Execute a domain renewal by POSTing with a quoteToken, domain, and consent. Returns a Renewal entity with links to the concrete poll URL (GET /renewals/{renewalId}) and the abstract operation (GET /operations/{operationId}).\n",
-      "name": "Renewals"
-    },
-    {
       "description": "Abstract operation polling. Poll GET /operations/{operationId} for any domain mutation until it reaches COMPLETED or FAILED. Operation IDs are unique across Registration, Renewal, and Transfer — clients that prefer typed polling can use the concrete resource endpoints instead.\n",
       "name": "Operations"
     }
