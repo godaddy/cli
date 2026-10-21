@@ -10,8 +10,8 @@ use crate::ref_paths::{
     resolve_common_types_path, specification_root,
 };
 use crate::visibility::{
-    drop_operationless_paths, ensure_no_refs_to_private, ensure_public_root, is_private,
-    private_pointers, prune_private,
+    drop_operationless_paths, ensure_no_refs_to_private, ensure_public_root, private_pointers,
+    prune_private, prune_ref_file,
 };
 
 // ---------------------------------------------------------------------------
@@ -418,15 +418,10 @@ fn load_external_ref(
     let mut parsed = parse_yaml_or_json(&src, &resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    // A private root can't be pruned from inside; reject the whole file so the
-    // `$ref` stays unresolved (and fails the sync) instead of exposing it.
-    if is_private(&parsed) {
-        eprintln!("WARNING: ignoring private ref file {}", resolved.display());
-        return None;
-    }
-    prune_private(&mut parsed);
+    let private = prune_ref_file(&resolved, &mut parsed)?;
     let dir = resolved.parent().unwrap_or(&resolved);
-    Some(dereference(
+    let lifted_before = defs.len();
+    let result = dereference(
         &parsed.clone(),
         parsed,
         dir,
@@ -434,7 +429,14 @@ fn load_external_ref(
         qualify_namesakes,
         defs,
         depth + 1,
-    ))
+    );
+    // Reject a file that still points at a private node of its own, along with
+    // anything it lifted; the `$ref` to it then stays unresolved.
+    let roots = std::iter::once(&result).chain(defs.values().skip(lifted_before));
+    ensure_no_refs_to_private(&resolved, &private, roots)
+        .map_err(|e| eprintln!("WARNING: ignoring ref file: {e}"))
+        .ok()?;
+    Some(result)
 }
 
 /// Walk a dereferenced value and collect any remaining external `$ref` strings.
@@ -570,7 +572,11 @@ fn load_and_dereference_with(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
-    ensure_no_refs_to_private(spec_file, &private, &dereffed, &defs)?;
+    ensure_no_refs_to_private(
+        spec_file,
+        &private,
+        std::iter::once(&dereffed).chain(defs.values()),
+    )?;
     drop_operationless_paths(&mut dereffed);
     Ok((dereffed, defs))
 }

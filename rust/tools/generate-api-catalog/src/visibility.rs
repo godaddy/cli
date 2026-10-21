@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::openapi::HTTP_METHODS;
 
-pub(crate) fn is_private(value: &Value) -> bool {
+fn is_private(value: &Value) -> bool {
     value
         .get("x-visibility")
         .and_then(|visibility| visibility.get("extent"))
@@ -126,27 +126,27 @@ fn collect_private_pointers(value: &Value, pointer: &str, out: &mut Vec<String>)
     }
 }
 
-/// Fails if a dereferenced spec still holds a local `$ref` into a node the
-/// filter removed (see [`private_pointers`]). Dereferencing leaves a `$ref` it
+/// Fails if a dereferenced document still points into a node the filter
+/// removed (see [`private_pointers`]). Dereferencing leaves a reference it
 /// can't resolve in place, and `collect_unresolved_refs` ignores local
 /// pointers, so without this a public node pointing at a private component
 /// would sync "successfully" with a reference the API explorer can't follow.
-pub(crate) fn ensure_no_refs_to_private(
+/// `roots` are the document plus any defs lifted out of it. Counts `$ref`s and
+/// `discriminator.mapping` values, which carry references as plain strings.
+pub(crate) fn ensure_no_refs_to_private<'a>(
     spec_file: &Path,
     private: &[String],
-    spec: &Value,
-    defs: &IndexMap<String, Value>,
+    roots: impl IntoIterator<Item = &'a Value>,
 ) -> Result<()> {
     let mut found = Vec::new();
-    collect_refs_to_private(spec, private, &mut found);
-    for def in defs.values() {
-        collect_refs_to_private(def, private, &mut found);
+    for root in roots {
+        collect_refs_to_private(root, private, &mut found);
     }
     found.sort();
     found.dedup();
     if !found.is_empty() {
         bail!(
-            "{} $ref(s) in {} point at nodes marked private:\n  {}",
+            "{} reference(s) in {} point at nodes marked private:\n  {}",
             found.len(),
             spec_file.display(),
             found.join("\n  ")
@@ -155,18 +155,45 @@ pub(crate) fn ensure_no_refs_to_private(
     Ok(())
 }
 
+/// Whether `reference` is, or points inside, one of the `private` pointers. A
+/// bare schema name (a `discriminator.mapping` shorthand) means
+/// `#/components/schemas/<name>`.
+fn targets_private(reference: &str, private: &[String]) -> bool {
+    let bare;
+    let reference = if reference.contains(['/', '#']) {
+        reference
+    } else {
+        bare = format!("#/components/schemas/{reference}");
+        &bare
+    };
+    private.iter().any(|pointer| {
+        reference == pointer
+            || reference
+                .strip_prefix(pointer.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
 fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<String>) {
     match value {
         Value::Object(map) => {
             if let Some(Value::String(reference)) = map.get("$ref")
-                && private.iter().any(|pointer| {
-                    reference == pointer
-                        || reference
-                            .strip_prefix(pointer.as_str())
-                            .is_some_and(|rest| rest.starts_with('/'))
-                })
+                && targets_private(reference, private)
             {
                 out.push(reference.clone());
+            }
+            if let Some(mapping) = map
+                .get("discriminator")
+                .and_then(|discriminator| discriminator.get("mapping"))
+                .and_then(Value::as_object)
+            {
+                out.extend(
+                    mapping
+                        .values()
+                        .filter_map(Value::as_str)
+                        .filter(|target| targets_private(target, private))
+                        .map(str::to_owned),
+                );
             }
             for child in map.values() {
                 collect_refs_to_private(child, private, out);
@@ -179,6 +206,21 @@ fn collect_refs_to_private(value: &Value, private: &[String], out: &mut Vec<Stri
         }
         _ => {}
     }
+}
+
+/// Prepares a `$ref`'d file for dereferencing. A file whose own root is
+/// private can't be pruned from inside, so it is rejected outright (`None`) and
+/// the `$ref` to it stays unresolved, failing the sync instead of exposing it.
+/// Otherwise prunes it and returns its private pointers for
+/// [`ensure_no_refs_to_private`].
+pub(crate) fn prune_ref_file(file: &Path, parsed: &mut Value) -> Option<Vec<String>> {
+    if is_private(parsed) {
+        eprintln!("WARNING: ignoring private ref file {}", file.display());
+        return None;
+    }
+    let private = private_pointers(parsed);
+    prune_private(parsed);
+    Some(private)
 }
 
 /// Drops path items left with no operations. Run on a dereferenced spec after
@@ -473,5 +515,69 @@ mod tests {
 
         crate::dereference::load_and_dereference(&spec_path, None)
             .expect("an upstream-dangling ref is not a private-node error");
+    }
+
+    #[test]
+    fn external_file_referencing_its_own_private_node_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Widget.yaml"),
+            "type: object\nproperties:\n  hidden:\n    $ref: '#/definitions/Hidden'\ndefinitions:\n  Hidden:\n    type: object\n    x-visibility:\n      extent: private\n",
+        )
+        .expect("write model");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: './Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert!(
+            defs.is_empty(),
+            "rejected file must not be lifted: {defs:?}"
+        );
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./Widget.yaml"]
+        );
+    }
+
+    #[test]
+    fn discriminator_mapping_to_a_pruned_schema_fails() {
+        for target in ["'#/components/schemas/Hidden'", "Hidden"] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let spec_path = dir.path().join("openapi.yaml");
+            std::fs::write(
+                &spec_path,
+                format!(
+                    "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Pet:\n      type: object\n      discriminator:\n        propertyName: kind\n        mapping:\n          hidden: {target}\n    Hidden:\n      type: object\n      x-visibility:\n        extent: private\n"
+                ),
+            )
+            .expect("write spec");
+
+            let err = crate::dereference::load_and_dereference(&spec_path, None)
+                .expect_err("mapping to a private schema must fail");
+            assert!(
+                err.to_string().contains("marked private"),
+                "{target}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn discriminator_mapping_to_a_public_schema_is_kept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Pet:\n      type: object\n      discriminator:\n        propertyName: kind\n        mapping:\n          dog: Dog\n    Dog:\n      type: object\n    Hidden:\n      type: object\n      x-visibility:\n        extent: private\n",
+        )
+        .expect("write spec");
+
+        crate::dereference::load_and_dereference(&spec_path, None)
+            .expect("a public mapping target is not an error");
     }
 }
