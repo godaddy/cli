@@ -59,7 +59,9 @@ impl DetailedError for AgreementsRequiredError {
 /// Ensure the authenticated customer has an active org before creating an
 /// application or a native-app record.
 ///
-/// Prompts only for `PENDING` users. Does not run during `auth login`.
+/// Prompts only for `PENDING` users in a terminal who did not pass
+/// `accept_agreements`; passing it is the explicit acceptance, so it never
+/// prompts. Does not run during `auth login`.
 pub async fn ensure_ready_for_app_init(
     token: &str,
     env: &str,
@@ -145,7 +147,7 @@ pub(crate) async fn ensure_ready_for_app_init_at(
         ))
     })?;
 
-    let prompt_accepted = if status.status == "PENDING" && is_tty {
+    let prompt_accepted = if status.status == "PENDING" && is_tty && !accept_agreements {
         // Keep the stdin lock off the async path so the command future stays `Send`.
         let prompt_result = {
             let mut stdin = io::stdin().lock();
@@ -184,7 +186,7 @@ pub(crate) async fn ensure_ready_for_app_init_with(
         ))
     })?;
 
-    let prompt_accepted = if status.status == "PENDING" && is_tty {
+    let prompt_accepted = if status.status == "PENDING" && is_tty && !accept_agreements {
         Some(prompt_accept_agreements(reader, stderr).map_err(prompt_error)?)
     } else {
         None
@@ -421,6 +423,46 @@ mod tests {
         assert!(outcome.newly_onboarded);
         let prompt = String::from_utf8(stderr).expect("utf8");
         assert!(prompt.contains("terms-of-use"));
+        complete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn pending_tty_with_flag_completes_without_prompting() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": { "id": "org-pending", "status": "PENDING" }
+                }));
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/cli");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": { "organizationId": "org-pending", "status": "ACTIVE" }
+                }));
+            })
+            .await;
+
+        let mut stderr = Vec::new();
+        let outcome = ensure_ready_for_app_init_with(
+            "test-token",
+            &server.base_url(),
+            true,
+            true,
+            &mut Cursor::new(b""),
+            &mut stderr,
+        )
+        .await
+        .expect("completed");
+
+        assert_eq!(outcome.org_id, "org-pending");
+        assert!(outcome.newly_onboarded);
+        assert!(stderr.is_empty(), "the flag must replace the prompt");
         complete.assert_async().await;
     }
 

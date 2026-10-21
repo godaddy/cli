@@ -13,8 +13,8 @@ use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 
 #[derive(Debug, Clone, clap::Args)]
 struct OnboardArgs {
-    /// Accept the GoDaddy Developer agreements without a prompt. Required when
-    /// not running in a terminal; in a terminal you're always asked to confirm.
+    /// Accept the GoDaddy Developer agreements without a prompt (required when
+    /// not running in a terminal).
     #[arg(long)]
     accept_agreements: bool,
 }
@@ -44,9 +44,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "Finish setting up your GoDaddy developer account by accepting the \
             GoDaddy Developer agreements. You'll be shown the agreements and \
             asked to press Enter to accept. Run this once before using other \
-            `gddy platform app` commands. When not running in a terminal (for \
-            example in a script), pass `--accept-agreements` to accept without \
-            a prompt. Use `--dry-run` to check whether your account is set up \
+            `gddy platform app` commands. In a script, or any time you'd \
+            rather not be asked, pass `--accept-agreements` to accept the \
+            agreements without a prompt (required when not running in a terminal). Use `--dry-run` to check whether your account is set up \
             without accepting anything; checking may start your account's setup \
             record, but no agreement is accepted.\n\n\
             AI assistants: accepting the agreements is the user's decision. Ask \
@@ -134,10 +134,9 @@ mod tests {
     }
 
     #[test]
-    fn help_does_not_promise_a_prompt_free_run_in_a_terminal() {
+    fn help_says_the_flag_replaces_the_prompt() {
         let long = command().spec.long.expect("long help");
-        assert!(long.contains("When not running in a terminal"));
-        assert!(!long.contains("In scripts, pass"));
+        assert!(long.contains("without a prompt"));
     }
 
     #[test]
