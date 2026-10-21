@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 
 use indexmap::IndexMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 use serde_json::Value;
@@ -177,8 +177,7 @@ fn collect_refs_to_private(value: &Value, private: &[String], dir: &Path, out: &
                         .filter_map(Value::as_str)
                         .filter(|target| {
                             targets_private(target, private, true)
-                                || (!target.starts_with('#')
-                                    && ref_targets_private_file(target, dir))
+                                || (!target.starts_with('#') && targets_private_node(target, dir))
                         })
                         .map(str::to_owned),
                 );
@@ -220,37 +219,52 @@ pub(crate) fn prune_ref_file(file: &Path, parsed: &mut Value) -> Option<()> {
         .ok()
 }
 
-/// Whether `ref_str`, a relative file `$ref`, targets private content: a file
-/// whose own root is private, or a fragment at or inside a private node of it.
-/// The lifted-definitions cache is keyed by name, so a reference to such a
-/// target can hit the entry of a same-named public schema without the target
-/// ever being checked; callers check this first and leave the reference
-/// unresolved. Covers the same two locations as a normal load (beside the spec,
-/// or in its parent directory); URL refs and case-insensitive matches are not
-/// probed.
-pub(crate) fn ref_targets_private_file(ref_str: &str, spec_dir: &Path) -> bool {
+/// Reads the file a relative file `$ref` names, with its fragment, if it can be
+/// located and mentions the visibility marker at all (a file that never does
+/// can't be private or hold private nodes, so it isn't parsed). Covers the
+/// same two locations as a normal load (beside the spec, or in its parent
+/// directory); URL refs and case-insensitive matches are not probed.
+fn read_marked_ref_file(ref_str: &str, spec_dir: &Path) -> Option<(PathBuf, Value, String)> {
     let (file_part, fragment) = ref_str.split_once('#').unwrap_or((ref_str, ""));
     if file_part.is_empty() || file_part.contains("://") {
-        return false;
+        return None;
     }
-    let candidates = [Some(spec_dir), spec_dir.parent()]
+    let path = [Some(spec_dir), spec_dir.parent()]
         .into_iter()
         .flatten()
-        .map(|dir| normalize_path(&dir.join(file_part)));
-    candidates
-        .into_iter()
-        .find(|path| path.is_file())
-        .and_then(|path| {
-            let src = std::fs::read_to_string(&path).ok()?;
-            // Most files never mention the marker; skip parsing those.
-            src.contains("x-visibility")
-                .then(|| parse_yaml_or_json(&src, &path).ok())?
-        })
-        .is_some_and(|parsed| {
-            is_private(&parsed)
-                || (!fragment.is_empty()
-                    && targets_private(&format!("#{fragment}"), &private_pointers(&parsed), false))
-        })
+        .map(|dir| normalize_path(&dir.join(file_part)))
+        .find(|path| path.is_file())?;
+    let src = std::fs::read_to_string(&path).ok()?;
+    let parsed = src
+        .contains("x-visibility")
+        .then(|| parse_yaml_or_json(&src, &path).ok())??;
+    Some((path, parsed, fragment.to_owned()))
+}
+
+/// Whether `ref_str`, a relative file `$ref`, targets private content: a file
+/// whose own root is private, or a fragment at or inside a private node of it.
+/// Shallow on purpose — it never follows the target's own references — so
+/// discriminator mappings can use it without risking a cycle.
+fn targets_private_node(ref_str: &str, spec_dir: &Path) -> bool {
+    read_marked_ref_file(ref_str, spec_dir).is_some_and(|(_, parsed, fragment)| {
+        is_private(&parsed)
+            || (!fragment.is_empty()
+                && targets_private(&format!("#{fragment}"), &private_pointers(&parsed), false))
+    })
+}
+
+/// Whether loading the file `ref_str` names would have been rejected: it is
+/// private, the fragment is inside a private node, or [`prune_spec`] would fail
+/// on it (it still points at one of its own private nodes). The
+/// lifted-definitions cache is keyed by name, so such a reference can hit the
+/// entry of a same-named public schema without the target ever being checked;
+/// callers check this first and leave the reference unresolved.
+pub(crate) fn ref_targets_private_file(ref_str: &str, spec_dir: &Path) -> bool {
+    if targets_private_node(ref_str, spec_dir) {
+        return true;
+    }
+    read_marked_ref_file(ref_str, spec_dir)
+        .is_some_and(|(path, mut parsed, _)| prune_spec(&path, &mut parsed).is_err())
 }
 
 /// Drops what pruning left empty in a dereferenced spec: path items with no
@@ -869,5 +883,59 @@ mod tests {
 
         crate::dereference::load_and_dereference(&spec_path, None)
             .expect("a mapping to a public file is not an error");
+    }
+
+    #[test]
+    fn cache_hit_does_not_hide_a_same_named_file_that_references_its_private_node() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("public")).expect("create dir");
+        std::fs::create_dir_all(dir.path().join("other")).expect("create dir");
+        std::fs::write(dir.path().join("public/Widget.yaml"), "type: string\n")
+            .expect("write public model");
+        std::fs::write(
+            dir.path().join("other/Widget.yaml"),
+            "properties:\n  hidden:\n    $ref: '#/definitions/Hidden'\ndefinitions:\n  Hidden:\n    x-visibility:\n      extent: private\n",
+        )
+        .expect("write model with a dangling private ref");
+        let spec_path = dir.path().join("openapi.yaml");
+        // Components are visited in key order, so the public file is lifted first.
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    A:\n      $ref: './public/Widget.yaml'\n    B:\n      $ref: './other/Widget.yaml'\n",
+        )
+        .expect("write spec");
+
+        let (spec, defs) =
+            crate::dereference::load_and_dereference(&spec_path, None).expect("dereference");
+
+        assert_eq!(defs["Widget"], json!({ "type": "string" }));
+        assert_eq!(
+            crate::dereference::collect_unresolved_refs(&spec),
+            ["./other/Widget.yaml"]
+        );
+    }
+
+    #[test]
+    fn discriminator_mappings_that_point_at_each_other_do_not_loop() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("A.yaml"),
+            "discriminator:\n  propertyName: k\n  mapping:\n    b: './B.yaml'\nx-note: x-visibility\n",
+        )
+        .expect("write A");
+        std::fs::write(
+            dir.path().join("B.yaml"),
+            "discriminator:\n  propertyName: k\n  mapping:\n    a: './A.yaml'\nx-note: x-visibility\n",
+        )
+        .expect("write B");
+        let spec_path = dir.path().join("openapi.yaml");
+        std::fs::write(
+            &spec_path,
+            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    X:\n      $ref: './A.yaml'\n    Y:\n      $ref: './A.yaml'\n",
+        )
+        .expect("write spec");
+
+        crate::dereference::load_and_dereference(&spec_path, None)
+            .expect("mutually referencing mappings terminate");
     }
 }
