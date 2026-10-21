@@ -104,7 +104,7 @@ gddy shopping catalog search --category webHosting
 
 AI assistants: if an existing plan has an open slot, tell the user and let them choose between attaching the app to it and buying a new plan. Buying is a purchase, so follow the consent steps in `gddy guide shopping` before checkout.
 
-When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan shows a free slot. Then attach the app to it.
+When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot appears whose `subscriptionId` was not in the list before checkout. Attach the app to that plan.
 
 ## Publish
 
