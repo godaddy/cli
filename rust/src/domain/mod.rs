@@ -4,7 +4,8 @@
 //! host (see the [`domains_client`] crate):
 //!
 //! * **v3** (Domain Lifecycle Management API) — `available`, `suggest`, `get`,
-//!   `quote`, `purchase` (quote → register), and `nameserver set`.
+//!   `quote`, `purchase` (quote → register), `nameserver set`, `auto-renew set`,
+//!   and `transfer-lock set`.
 //! * **v1** — `list` (the shopper's domains) and `agreement` (a TLD's legal
 //!   agreements), which v3 does not yet serve.
 //!
@@ -19,6 +20,7 @@
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 mod agreements;
+mod auto_renew;
 mod available;
 pub(crate) mod common;
 mod contacts;
@@ -31,6 +33,7 @@ mod purchase;
 mod quote;
 mod quote_cache;
 mod suggest;
+mod transfer_lock;
 
 // Shared with the `dns` module, which builds the same Domains API client and
 // reuses the repeatable-argument helper.
@@ -59,16 +62,19 @@ pub fn module() -> Module {
             .with_long(
                 "Work with domains on your GoDaddy account and the public registry.\n\
              \n\
-             • list / get        — your existing domains and their details\n\
+             • list / get         — your existing domains and their details\n\
              • available / suggest — find a name to register\n\
-             • quote             — price a registration and see required agreements\n\
-             • purchase          — register a new domain (charges your account)\n\
-             • nameserver set    — point a domain at custom nameservers\n\
-             • operation status  — check on an async operation (e.g. a pending purchase)\n\
+             • quote              — price a registration and see required agreements\n\
+             • purchase           — register a new domain (charges your account)\n\
+             • nameserver set     — point a domain at custom nameservers\n\
+             • auto-renew set     — toggle automatic renewal before expiration\n\
+             • transfer-lock set  — lock or unlock a domain against transfers\n\
+             • operation status   — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase also needs\n\
-             `domains.domain:create`, and `nameserver set` needs\n\
-             `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
+             `domains.domain:create`, `nameserver set` needs\n\
+             `domains.nameserver:update`, and `auto-renew set`/`transfer-lock set`\n\
+             need `domains.domain:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )
         .with_command(list::command())
@@ -81,6 +87,8 @@ pub fn module() -> Module {
         .with_group(nameservers::group())
         .with_group(contacts::group())
         .with_group(operation::group())
+        .with_group(auto_renew::group())
+        .with_group(transfer_lock::group())
     })
     .with_guides_from_markdown([(
         "domain-purchase.md",
@@ -101,7 +109,7 @@ mod tests {
     #[tokio::test]
     async fn domain_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 9] = [
+        let cases: [&[&str]; 11] = [
             &["gddy", "domain", "list", "--output", "json"],
             &["gddy", "domain", "get", "example.com", "--output", "json"],
             &[
@@ -153,6 +161,26 @@ mod tests {
                 "operation",
                 "status",
                 "dummy-op-id",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
+                "auto-renew",
+                "set",
+                "example.com",
+                "--enable",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
+                "transfer-lock",
+                "set",
+                "example.com",
+                "--enable",
                 "--output",
                 "json",
             ],
