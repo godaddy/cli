@@ -688,6 +688,7 @@ pub(crate) fn checkout_completion_response(completion: &Value) -> Value {
         "order_id": completion.pointer("/order/id").and_then(Value::as_str),
         "order_permalink": completion.pointer("/order/permalink_url").and_then(Value::as_str),
         "total": money::format_total(completion.get("totals"), completion.get("currency").and_then(Value::as_str)),
+        "selected_payment": selected_payment_instrument(completion).map(|_| selected_payment(completion)),
     })
 }
 
@@ -711,6 +712,9 @@ fn render_checkout_completion(completion: &Value) -> String {
     }
     if let Some(total) = completion.get("total").and_then(Value::as_str) {
         output.push_str(&format!("Total: {total}\n"));
+    }
+    if let Some(payment) = completion.get("selected_payment").and_then(Value::as_str) {
+        output.push_str(&format!("Selected payment: {payment}\n"));
     }
     output
 }
@@ -798,6 +802,71 @@ fn optional_text(value: &Value, key: &str, default: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_checkout_responses_keep_payment_descriptions_in_json_and_human_views() {
+        let payload = json!({
+            "id": "checkout-1",
+            "status": "ready_for_complete",
+            "payment": {"instruments": [
+                {"id": "wallet-1", "selected": true,
+                 "rich_text_description": "E_WALLET/PAYPAL PayPal Agreement example"},
+                {"id": "card-1", "rich_text_description": "CREDIT_CARD/VISA 4242",
+                 "brand": "visa", "last_digits": "4242", "expiry_month": 12, "expiry_year": 2030}
+            ]}
+        });
+        macro_rules! round_trip {
+            ($response:ty) => {{
+                let typed: $response =
+                    serde_json::from_value(payload.clone()).expect("decode response");
+                serde_json::to_value(typed).expect("encode response")
+            }};
+        }
+        for response in [
+            round_trip!(shopping_client::types::CreateCheckoutResponse),
+            round_trip!(shopping_client::types::GetCheckoutResponse),
+            round_trip!(shopping_client::types::UpdateCheckoutResponse),
+            round_trip!(shopping_client::types::CompleteCheckoutResponse),
+        ] {
+            let instruments = &response["payment"]["instruments"];
+            for index in 0..2 {
+                assert_eq!(
+                    instruments[index]["rich_text_description"],
+                    payload["payment"]["instruments"][index]["rich_text_description"]
+                );
+            }
+            for field in ["brand", "last_digits", "expiry_month", "expiry_year"] {
+                assert!(instruments[1].get(field).is_none(), "unexpected {field}");
+            }
+            let cart = checkout_response(&response, false);
+            let human = render_checkout(&cart);
+            assert!(human.contains(
+                "Selected payment: E_WALLET/PAYPAL PayPal Agreement example (ID: wallet-1)"
+            ));
+            assert!(human.contains("- CREDIT_CARD/VISA 4242 (ID: card-1)"));
+            let completion = checkout_completion_response(&response);
+            let human = render_checkout_completion(&completion);
+            assert!(human.contains(
+                "Selected payment: E_WALLET/PAYPAL PayPal Agreement example (ID: wallet-1)"
+            ));
+            assert!(!human.contains("CREDIT_CARD/VISA"));
+        }
+    }
+
+    #[test]
+    fn completion_payment_summary_handles_missing_description_and_selection() {
+        let response = checkout_completion_response(&json!({
+            "payment": {"instruments": [{"id": "card-1", "selected": true}]}
+        }));
+        assert!(
+            render_checkout_completion(&response)
+                .contains("Selected payment: Saved payment method (ID: card-1)")
+        );
+        for payment in [Value::Null, json!({"instruments": [{"id": "card-1"}]})] {
+            let response = checkout_completion_response(&json!({"payment": payment}));
+            assert!(!render_checkout_completion(&response).contains("Selected payment:"));
+        }
+    }
 
     fn catalog_response() -> Value {
         json!({

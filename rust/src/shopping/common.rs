@@ -328,6 +328,7 @@ fn preserved_payment_body(
             // an unchanged checkout update must echo them back unchanged.
             handler_id: payment.handler_id.clone(),
             type_: payment.type_.clone(),
+            ..Default::default()
         }],
     }))
 }
@@ -581,6 +582,7 @@ mod tests {
                     selected: Some(true),
                     handler_id: Some("com.godaddy.payments".to_owned()),
                     type_: Some("card".to_owned()),
+                    rich_text_description: Some("CREDIT_CARD/VISA 4242".to_owned()),
                     ..Default::default()
                 }],
             }),
@@ -605,6 +607,7 @@ mod tests {
             "an unchanged selected instrument must keep its handler routing metadata"
         );
         assert_eq!(instrument.type_, Some("card".to_owned()));
+        assert!(instrument.rich_text_description.is_none());
     }
 
     #[test]
