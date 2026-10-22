@@ -21,6 +21,7 @@ mod info;
 mod init;
 mod lifecycle;
 mod list;
+mod onboard;
 mod release;
 mod schemas;
 mod update;
@@ -87,7 +88,8 @@ pub fn application_group() -> RuntimeGroupSpec {
             .with_long(
                 "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
                 developer-platform app described by a godaddy.toml manifest in your working \
-                directory. Use `gddy platform app init` to create one, `gddy platform app \
+                directory. Use `gddy platform app onboard` once to accept the developer \
+                agreements, `gddy platform app init` to create one, `gddy platform app \
                 import <name>` to sync an already-registered app's config into a local \
                 manifest, `gddy platform app config validate` to check the local manifest, \
                 `gddy platform app validate <name>` to check remote application state, and \
@@ -98,6 +100,7 @@ pub fn application_group() -> RuntimeGroupSpec {
     )
     .with_command(list::command())
     .with_command(info::command())
+    .with_command(onboard::command())
     .with_command(init::command())
     .with_command(import::command())
     .with_command(validate::command())

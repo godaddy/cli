@@ -18,8 +18,8 @@ pub fn decide(
         "ACTIVE" => AgreementDecision::AlreadyComplete {
             org_id: status.org_id.clone(),
         },
+        "PENDING" if accept_flag => AgreementDecision::CompletePending,
         "PENDING" if is_tty && prompt_accepted == Some(true) => AgreementDecision::CompletePending,
-        "PENDING" if !is_tty && accept_flag => AgreementDecision::CompletePending,
         "PENDING" => AgreementDecision::AgreementsRequired,
         _ => AgreementDecision::UnsupportedStatus,
     }
@@ -64,13 +64,21 @@ mod tests {
     }
 
     #[test]
-    fn pending_tty_requires_successful_prompt() {
+    fn pending_tty_flag_completes_without_a_prompt() {
         assert_eq!(
-            decide(&status("PENDING"), true, true, Some(true)),
+            decide(&status("PENDING"), true, true, None),
+            AgreementDecision::CompletePending
+        );
+    }
+
+    #[test]
+    fn pending_tty_requires_successful_prompt_without_the_flag() {
+        assert_eq!(
+            decide(&status("PENDING"), true, false, Some(true)),
             AgreementDecision::CompletePending
         );
         assert_eq!(
-            decide(&status("PENDING"), true, true, Some(false)),
+            decide(&status("PENDING"), true, false, Some(false)),
             AgreementDecision::AgreementsRequired
         );
     }
