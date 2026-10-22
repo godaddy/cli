@@ -5,8 +5,7 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::hosting::common::{
-    HostingProduct, HostingSubscriptionList, client_err, make_client, more_pages_warning,
-    page_items,
+    HostingProduct, HostingSubscriptionList, client_err, incomplete_list_warning, make_client,
 };
 use crate::next_action::next_action;
 use crate::pagination_token::warn_user;
@@ -58,15 +57,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let hosting_product = args.hosting_product.as_str();
             let client = make_client(&ctx, &[SUB_READ]).await?;
 
-            let response = client
+            let listed = client
                 .list_subscriptions(hosting_product)
                 .await
                 .map_err(client_err)?;
-            if let Some(warning) = more_pages_warning(&response, "subscriptions") {
-                warn_user(&warning);
+            if listed.incomplete {
+                warn_user(&incomplete_list_warning("subscriptions"));
             }
 
-            Ok(list_result(page_items(&response), args.limit))
+            Ok(list_result(listed.items, args.limit))
         },
     )
 }

@@ -182,6 +182,29 @@ pub(crate) fn filter_known_collection(
     })
 }
 
+/// How many items a [`paginate_known_collection`] call will look at: the
+/// window's end plus one, because seeing an item past the window is what says
+/// there is a next page. A caller that gathers the collection from a paged
+/// service can stop reading once it holds this many.
+pub(crate) fn known_collection_need(
+    continue_token: Option<&str>,
+    limit: i64,
+    max_limit: i64,
+) -> usize {
+    let fields = parse(continue_token);
+    let offset = field(&fields, "offset", 0usize);
+    let size = saturating_usize(inherited_limit(&fields, limit, max_limit)).max(1);
+    offset.saturating_add(size).saturating_add(1)
+}
+
+/// Drops `total` and `remaining` from a continuation whose collection was only
+/// read as far as the window needed: the length of a prefix is not a count.
+pub(crate) fn forget_totals(mut continuation: CursorContinuation) -> CursorContinuation {
+    continuation.total = None;
+    continuation.remaining = None;
+    continuation
+}
+
 /// Slices an already-fully-known collection using a `limit:<n>,offset:<n>`
 /// continuation token.
 pub(crate) fn paginate_known_collection(
@@ -411,6 +434,34 @@ mod tests {
         assert!(page.is_empty());
         assert!(cont.continue_from.is_none());
         assert_eq!(cont.total, Some(0));
+    }
+
+    #[test]
+    fn known_collection_need_is_the_window_end_plus_one() {
+        assert_eq!(known_collection_need(None, 10, 100), 11);
+        assert_eq!(
+            known_collection_need(Some("limit:5,offset:20"), 10, 100),
+            26
+        );
+        // A token limit out of range falls back to the request's, like slicing.
+        assert_eq!(
+            known_collection_need(Some("limit:-1,offset:20"), 10, 100),
+            31
+        );
+        assert_eq!(known_collection_need(Some("offset:3"), 7, 100), 11);
+        assert_eq!(
+            known_collection_need(Some("offset:18446744073709551615"), 10, 100),
+            usize::MAX
+        );
+    }
+
+    #[test]
+    fn forget_totals_clears_only_the_counts() {
+        let (_, cont) = paginate_known_collection(items(5), 2, 100, None);
+        assert_eq!((cont.total, cont.remaining), (Some(5), Some(3)));
+        let cont = forget_totals(cont);
+        assert_eq!((cont.total, cont.remaining), (None, None));
+        assert_eq!(cont.continue_from.as_deref(), Some("limit:2,offset:2"));
     }
 
     #[test]

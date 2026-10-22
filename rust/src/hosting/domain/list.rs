@@ -4,7 +4,7 @@ use cli_engine::{
 use serde_json::json;
 
 use crate::hosting::common::{
-    HostingDomainSummary, client_err, make_client, more_pages_warning, page_items,
+    HostingDomainSummary, client_err, incomplete_list_warning, make_client,
 };
 use crate::next_action::next_action;
 use crate::pagination_token::{self, warn_user};
@@ -21,8 +21,11 @@ struct DomainListArgs {
     offset: Option<i64>,
 }
 
-/// The API accepts no paging parameters (see `HostingClient::list_domains`),
-/// so the one response is paged client-side by `--limit` / `--continue`.
+/// The service doesn't paginate this listing yet (see
+/// `HostingClient::list_domains`), so every domain is gathered — following the
+/// service's `next` links if it ever sends them — and `--limit` / `--continue`
+/// page through that whole list client-side. Once the service accepts paging
+/// parameters this moves to its own cursor.
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<DomainListArgs, _, _, _>(
         CommandSpec::from_args::<DomainListArgs>("list", "List domains attached to an application")
@@ -40,24 +43,41 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let app_id = args.app_id.clone();
             let client = make_client(&ctx, &[DOMAIN_READ]).await?;
 
-            let response = client.list_domains(&app_id).await.map_err(client_err)?;
-            if let Some(warning) = more_pages_warning(&response, "domains") {
-                warn_user(&warning);
-            }
-
             let continue_token = pagination_token::resolve_continue_token(
                 args.offset,
                 ctx.middleware.continue_token.as_deref(),
             );
+            // Read only as many pages as the window needs. A `--filter` runs
+            // after collection, so with one the whole list is needed.
+            let want = ctx.middleware.filter.is_empty().then(|| {
+                pagination_token::known_collection_need(
+                    continue_token.as_deref(),
+                    ctx.middleware.cursor_limit,
+                    200,
+                )
+            });
+            let listed = client
+                .list_domains(&app_id, want)
+                .await
+                .map_err(client_err)?;
+            if listed.incomplete {
+                warn_user(&incomplete_list_warning("domains"));
+            }
+
             let (page, continuation) = pagination_token::paginate_known_collection(
-                pagination_token::filter_known_collection(
-                    page_items(&response),
-                    &ctx.middleware.filter,
-                )?,
+                pagination_token::filter_known_collection(listed.items, &ctx.middleware.filter)?,
                 ctx.middleware.cursor_limit,
                 200,
                 continue_token.as_deref(),
             );
+
+            // Pages past the window were deliberately not read, so the length of
+            // what was read says nothing about the total.
+            let continuation = if listed.stopped_early {
+                pagination_token::forget_totals(continuation)
+            } else {
+                continuation
+            };
 
             Ok(CommandResult::new(json!(page))
                 .with_cursor(continuation)
