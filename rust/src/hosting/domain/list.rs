@@ -69,6 +69,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if listed.incomplete {
                 warn_user(&incomplete_list_warning("domains"));
             }
+            let partial = listed.is_partial();
 
             let domain_format = args.domain_format.form(&ctx)?;
             let mut items = listed.items;
@@ -82,9 +83,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 continue_token.as_deref(),
             )?;
 
-            // Pages past the window were deliberately not read, so the length of
-            // what was read says nothing about the total.
-            let continuation = if listed.stopped_early {
+            // Pages past the window were left unread, on purpose or because a
+            // link could not be followed, so the length of what was read says
+            // nothing about the total.
+            let continuation = if partial {
                 pagination_token::forget_totals(continuation)
             } else {
                 continuation
