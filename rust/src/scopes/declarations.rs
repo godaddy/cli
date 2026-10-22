@@ -77,6 +77,10 @@ declare_scopes! {
             // Can take a live site offline.
             /// Replace a domain's nameservers
             DOMAINS_NAMESERVER_UPDATE => "domains.nameserver:update",
+            // Mutates domain-level settings (auto-renew, transfer lock). Security-sensitive:
+            // disabling transfer-lock allows outbound transfer; disabling auto-renew risks expiry.
+            /// Update domain settings (auto-renew, transfer lock)
+            DOMAINS_DOMAIN_UPDATE => "domains.domain:update",
 
             // Deletes a whole billable resource.
             /// Delete a hosting application

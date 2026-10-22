@@ -83,6 +83,7 @@ fn step_up_only_scopes_are_exactly_the_sensitive_ones() {
     let expected = std::collections::BTreeSet::from([
         DOMAINS_CREATE,
         DOMAINS_NAMESERVER_UPDATE,
+        DOMAINS_DOMAIN_UPDATE,
         HOSTING_APPLICATION_DELETE,
         HOSTING_DATABASE_TUNNEL_EXECUTE,
         SHOPPING_CHECKOUT_EXECUTE,
