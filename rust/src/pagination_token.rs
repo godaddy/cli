@@ -66,21 +66,26 @@ fn saturating_i64(value: usize) -> i64 {
 }
 
 /// Resolves the effective `--continue` value for a "known collection"
-/// command: an explicit `--offset` wins, synthesized into a bare
+/// command. A `--continue` token (which includes a `limit`) is used as-is and
+/// wins; otherwise an explicit `--offset` is synthesized into a bare
 /// `offset:<n>` token (deliberately without a `limit` field — a fresh jump
 /// has no prior page to inherit a size from, so [`paginate_known_collection`]
-/// falls back to the request's own `--limit` when it sees one); otherwise
-/// the parsed `--continue` token (which includes a `limit`) is used as-is. Lets
-/// a user jump straight to a position without walking there one token at a
-/// time, without giving `--offset` and `--continue` two different encodings to
+/// falls back to the request's own `--limit` when it sees one). Lets a user
+/// jump straight to a position without walking there one token at a time,
+/// without giving `--offset` and `--continue` two different encodings to
 /// keep in sync.
+///
+/// The token has to win because the engine's "next page" action replays the
+/// command's own arguments, so after `--offset 20` the advertised follow-up is
+/// `… --offset 20 --continue <token>`; letting the offset override the token
+/// would send the user back to the same page forever.
 pub(crate) fn resolve_continue_token(
     explicit_offset: Option<i64>,
     continue_token: Option<&str>,
 ) -> Option<String> {
-    explicit_offset
-        .map(|offset| build(&[("offset", &offset.to_string())]))
-        .or_else(|| continue_token.map(str::to_owned))
+    continue_token
+        .map(str::to_owned)
+        .or_else(|| explicit_offset.map(|offset| build(&[("offset", &offset.to_string())])))
 }
 
 /// Resolves the starting page and page size for a page/pageSize-backed
@@ -95,10 +100,12 @@ pub(crate) fn resolve_continue_token(
 /// way a real forward-only cursor already carries its own page size
 /// server-side, opaque to the caller.
 ///
-/// An explicit `--page` (a command's own supplemental direct-jump arg,
-/// `conflicts_with = "continue"`) always wins for the page instead, and in
-/// that case `limit` (the request's own parsed `--limit`) always wins for
-/// the size — there's no prior token to inherit a size from.
+/// An explicit `--page` (a command's own supplemental direct-jump arg) is
+/// used only when there is no `--continue` token, in which case `limit` (the
+/// request's own parsed `--limit`) sets the size — there's no prior token to
+/// inherit a size from. A token's page wins over `--page` for the same reason
+/// as in [`resolve_continue_token`]: the engine's next-page action replays the
+/// command's own `--page` alongside the new `--continue`.
 pub(crate) fn resolve_page_request<P: FromStr>(
     explicit_page: Option<P>,
     continue_token: Option<&str>,
@@ -106,7 +113,8 @@ pub(crate) fn resolve_page_request<P: FromStr>(
     limit: i64,
 ) -> (P, i64) {
     let fields = parse(continue_token);
-    let page = explicit_page.unwrap_or_else(|| field(&fields, "page", default_page));
+    let token_page = fields.get("page").and_then(|value| value.parse().ok());
+    let page = token_page.or(explicit_page).unwrap_or(default_page);
     let page_size = field(&fields, "limit", limit);
     (page, page_size)
 }
@@ -190,8 +198,16 @@ mod tests {
     }
 
     #[test]
-    fn resolve_continue_token_prefers_an_explicit_offset() {
-        let resolved = resolve_continue_token(Some(20), Some("offset:5"));
+    fn resolve_continue_token_prefers_a_continue_token_over_an_explicit_offset() {
+        // The engine's next-page action replays `--offset 20` next to the new
+        // `--continue`; the token has to win or the user never advances.
+        let resolved = resolve_continue_token(Some(20), Some("limit:5,offset:25"));
+        assert_eq!(resolved.as_deref(), Some("limit:5,offset:25"));
+    }
+
+    #[test]
+    fn resolve_continue_token_uses_an_explicit_offset_when_there_is_no_token() {
+        let resolved = resolve_continue_token(Some(20), None);
         assert_eq!(resolved.as_deref(), Some("offset:20"));
     }
 
@@ -225,12 +241,23 @@ mod tests {
     }
 
     #[test]
-    fn resolve_page_request_an_explicit_page_wins_and_uses_the_requests_own_limit() {
-        // No continue token at all (--page conflicts_with --continue), so
-        // there's no prior size to inherit — the request's own limit applies.
+    fn resolve_page_request_an_explicit_page_is_used_without_a_token_and_takes_the_requests_limit()
+    {
+        // No continue token, so there's no prior size to inherit — the
+        // request's own limit applies.
         let (page, page_size) = resolve_page_request(Some(5u32), None, 1u32, 25);
         assert_eq!(page, 5);
         assert_eq!(page_size, 25);
+    }
+
+    #[test]
+    fn resolve_page_request_a_continue_token_wins_over_an_explicit_page() {
+        // The engine's next-page action replays `--page 5` next to the new
+        // `--continue`; the token's page has to win or the user never advances.
+        let token = build(&[("limit", "10"), ("page", "6")]);
+        let (page, page_size) = resolve_page_request(Some(5u32), Some(&token), 1u32, 25);
+        assert_eq!(page, 6);
+        assert_eq!(page_size, 10);
     }
 
     fn items(n: usize) -> Vec<Value> {
