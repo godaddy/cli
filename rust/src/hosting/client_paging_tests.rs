@@ -329,6 +329,47 @@ async fn list_subscriptions_keeps_the_required_filter_when_a_next_link_drops_it(
 }
 
 #[tokio::test]
+async fn list_subscriptions_does_not_read_the_same_request_twice_when_a_link_adds_the_filter() {
+    // The first link omits `hostingProduct` (we add it); the next one carries
+    // it explicitly but is otherwise the identical request. Reading it again
+    // would count the same plans twice and inflate the slot totals.
+    let server = MockServer::start_async().await;
+    subscriptions_first_page(
+        &server,
+        json!({
+            "items": [{ "subscriptionId": "s1" }],
+            "links": [{ "rel": "next", "href": "/v1/hosting/subscriptions?pageToken=t2" }]
+        }),
+    );
+    let second = server.mock(|when, then| {
+        when.method(GET)
+            .path("/v1/hosting/subscriptions")
+            .query_param("pageToken", "t2")
+            .query_param("hostingProduct", "WEB_HOSTING");
+        then.status(200).json_body(json!({
+            "items": [{ "subscriptionId": "s2" }],
+            "links": [{
+                "rel": "next",
+                "href": "/v1/hosting/subscriptions?pageToken=t2&hostingProduct=WEB_HOSTING"
+            }]
+        }));
+    });
+
+    let listed = client(&server.base_url())
+        .list_subscriptions("WEB_HOSTING")
+        .await
+        .expect("list subscriptions");
+
+    second.assert_calls(1);
+    assert_eq!(
+        subscription_ids(&listed),
+        ["s1", "s2"],
+        "no duplicated plans"
+    );
+    assert!(listed.incomplete, "the loop was cut short, so say so");
+}
+
+#[tokio::test]
 async fn list_subscriptions_stops_at_a_repeated_next_link_and_reports_it() {
     let server = MockServer::start_async().await;
     subscriptions_first_page(
