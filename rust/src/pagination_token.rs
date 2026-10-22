@@ -177,7 +177,15 @@ pub(crate) fn resolve_page_request<P: FromStr>(
 ) -> cli_engine::Result<(P, i64)> {
     let fields = parse(continue_token, &["limit", "page"])?;
     let page = match fields.typed::<P>("page")? {
-        Some(page) => page,
+        Some(page) => {
+            // Pages are 1-based, and a token is only ever minted as `page + 1`.
+            // Zero would be clamped to page one by a caller that cannot send
+            // it, then advertise page one again as the next page.
+            if fields.typed::<u64>("page")? == Some(0) {
+                return Err(invalid_token(&fields.raw, "`page` must be at least 1"));
+            }
+            page
+        }
         None => explicit_page.unwrap_or(default_page),
     };
     let page_size = limit_from(&fields, limit, max_limit)?;
@@ -650,12 +658,25 @@ mod tests {
     }
 
     #[test]
+    fn resolve_page_request_rejects_a_zero_page_token_for_every_page_type() {
+        // dns list reads the page as u64 and clamps it, email list as u32; either
+        // would otherwise act on page one while the token claims page zero.
+        let err = resolve_page_request(None::<u64>, Some("limit:25,page:0"), 1u64, 25, 100)
+            .expect_err("zero page");
+        assert!(err.to_string().contains("at least 1"), "{err}");
+        assert!(resolve_page_request(None::<u32>, Some("limit:25,page:0"), 1u32, 25, 100).is_err());
+        // A valid token page passes (an explicit --page is validated by clap).
+        assert!(resolve_page_request(None::<u64>, Some("limit:25,page:1"), 1u64, 25, 100).is_ok());
+    }
+
+    #[test]
     fn resolve_page_request_rejects_an_out_of_range_or_garbled_token() {
         for bad in [
             "limit:-1,page:2",
             "limit:0,page:2",
             "limit:101,page:2",
             "limit:25,page:abc",
+            "limit:25,page:0",
             "limit:25,pag",
             "offset:5",
         ] {

@@ -26,6 +26,14 @@ pub struct CombinedPages {
     pub stopped_early: bool,
 }
 
+impl CombinedPages {
+    /// Whether the items are only part of the collection, for either reason —
+    /// so their count must not be reported as a total.
+    pub fn is_partial(&self) -> bool {
+        self.incomplete || self.stopped_early
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
@@ -121,6 +129,12 @@ impl HostingClient {
     const REDACTED_RESPONSE_BODY: &'static [u8] =
         b"<redacted: response body withheld (contains a credential)>";
 
+    /// Marker written to the `--debug transport` trace in place of a listing
+    /// page's body, which carries customer data. The generated client already
+    /// traces only status and headers for these endpoints; pages followed by
+    /// hand must not be more revealing than the first.
+    const WITHHELD_RESPONSE_BODY: &'static [u8] = b"<redacted: response body withheld>";
+
     fn api(&self) -> Result<hosting_client::Client, ClientError> {
         hosting_client::client_with_builder(
             crate::http::api_client_builder(),
@@ -156,13 +170,18 @@ impl HostingClient {
         let request = req
             .build()
             .map_err(|e| ClientError::Network(e.to_string()))?;
-        self.execute_json(request).await
+        self.execute_json(request, true).await
     }
 
     /// Sends an already-built request and decodes the JSON response, with the
     /// transport debug trace and the non-2xx → [`ClientError::Http`] mapping
-    /// the hand-built requests here share.
-    async fn execute_json(&self, request: reqwest::Request) -> Result<Value, ClientError> {
+    /// the hand-built requests here share. `log_response_body: false` keeps the
+    /// body out of the trace (status and headers still log).
+    async fn execute_json(
+        &self,
+        request: reqwest::Request,
+        log_response_body: bool,
+    ) -> Result<Value, ClientError> {
         cli_engine::transport::debug_log_reqwest_request(&request);
         let resp = self
             .http
@@ -176,7 +195,11 @@ impl HostingClient {
             .bytes()
             .await
             .map_err(|e| ClientError::Network(e.to_string()))?;
-        cli_engine::transport::debug_log_reqwest_response(status, &headers, &bytes);
+        cli_engine::transport::debug_log_reqwest_response(
+            status,
+            &headers,
+            Self::body_for_trace(log_response_body, &bytes),
+        );
 
         let status = status.as_u16();
         if !(200..300).contains(&status) {
@@ -191,6 +214,15 @@ impl HostingClient {
         }
 
         serde_json::from_slice(&bytes).map_err(ClientError::Response)
+    }
+
+    /// What to hand the transport logger for a response body.
+    fn body_for_trace(log_response_body: bool, bytes: &[u8]) -> &[u8] {
+        if log_response_body {
+            bytes
+        } else {
+            Self::WITHHELD_RESPONSE_BODY
+        }
     }
 
     /// GET `path` with the paging parameters a collection's `links[rel=next]`
@@ -216,7 +248,8 @@ impl HostingClient {
             .header("x-request-id", Self::new_request_id())
             .build()
             .map_err(|e| ClientError::Network(e.to_string()))?;
-        self.execute_json(request).await
+        // A followed listing page holds customer data; trace it like the first.
+        self.execute_json(request, false).await
     }
 
     // Spec has no request body; Akamai still 411s a POST with no Content-Length.
@@ -837,3 +870,7 @@ async fn response<T: serde::Serialize>(
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_paging_tests.rs"]
+mod paging_tests;
