@@ -199,8 +199,10 @@ async fn fetch_domain_page(
 /// and reads back from `--continue` (see [`decode_resume`]).
 fn encode_resume(token: &str, direction: Option<types::ListDomainsPageTokenDirection>) -> String {
     match direction {
-        Some(direction) => format!("token:{token},direction:{direction}"),
-        None => format!("token:{token}"),
+        Some(direction) => {
+            pagination_token::build(&[("token", token), ("direction", &direction.to_string())])
+        }
+        None => pagination_token::build(&[("token", token)]),
     }
 }
 

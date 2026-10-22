@@ -11,6 +11,9 @@ use crate::pagination_token;
 
 use super::catalog::{catalog, graphql_sub_endpoint_rows, search_endpoints};
 
+/// Largest page `api search` returns (its cursor `max_limit`).
+const MAX_LIMIT: i64 = 100;
+
 output_schema!(ApiEndpoint {
     "domain": "string";
     "operationId": "string";
@@ -50,13 +53,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .no_auth(true)
             .with_default_fields("operationId,domain,method,path,summary")
             .with_output_schema::<ApiEndpoint>()
-            .with_cursor(CursorConfig::new(50, 100)),
+            .with_cursor(CursorConfig::new(50, MAX_LIMIT)),
         |ctx, args: SearchArgs| async move {
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
                 let (page, continuation) = pagination_token::paginate_known_collection(
                     Vec::new(),
                     ctx.middleware.cursor_limit,
+                    MAX_LIMIT,
                     None,
                 );
                 return Ok(CommandResult::new(json!(page)).with_cursor(continuation));
@@ -130,6 +134,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let (page, continuation) = pagination_token::paginate_known_collection(
                 results,
                 ctx.middleware.cursor_limit,
+                MAX_LIMIT,
                 continue_token.as_deref(),
             );
             Ok(CommandResult::new(json!(page))

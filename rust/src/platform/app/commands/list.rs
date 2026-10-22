@@ -7,6 +7,7 @@ use cli_engine::{
 
 use super::schemas::ApplicationSummary;
 use crate::next_action::next_action;
+use crate::pagination_token;
 
 /// Pages through `applications(first:, after:)` with the Relay `endCursor` as
 /// the `--continue` token. No supplemental `--offset` (unlike the client-side
@@ -35,13 +36,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 )
                 .await
                 .map_err(super::client_err)?;
-            let continuation = match (page.has_next_page, page.end_cursor) {
-                (true, Some(cursor)) => CursorContinuation::more(cursor),
-                // `hasNextPage: true` with no `endCursor` would be a
-                // malformed response — treat it the same as "done" rather
-                // than fabricating a token that can't actually resume.
-                _ => CursorContinuation::done(),
-            };
+            let (continuation, missing_cursor) =
+                continuation_for(page.has_next_page, page.end_cursor);
+            if missing_cursor {
+                pagination_token::warn_user(
+                    "The App Registry reports more applications than this response \
+                     contains but returned no cursor to fetch them; the list may be \
+                     incomplete.",
+                );
+            }
             let data = serde_json::to_value(page.items).map_err(|e| {
                 crate::error::GddyError::unexpected(format!("failed to encode applications: {e}"))
                     .into_cli_error()
@@ -63,11 +66,46 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
+/// The continuation for one Relay page, plus whether the page is truncated
+/// without a way to resume: `hasNextPage: true` with no `endCursor` is a
+/// malformed response, so the listing ends there but the caller should say
+/// it may be incomplete rather than letting it look complete.
+fn continuation_for(has_next_page: bool, end_cursor: Option<String>) -> (CursorContinuation, bool) {
+    match (has_next_page, end_cursor) {
+        (true, Some(cursor)) => (CursorContinuation::more(cursor), false),
+        (true, None) => (CursorContinuation::done(), true),
+        (false, _) => (CursorContinuation::done(), false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use cli_engine::{Cli, CliConfig, CursorConfig, Stage};
 
-    use super::command;
+    use super::{command, continuation_for};
+
+    #[test]
+    fn a_next_page_with_a_cursor_continues() {
+        let (continuation, missing) = continuation_for(true, Some("cursor-2".to_owned()));
+        assert_eq!(continuation.continue_from.as_deref(), Some("cursor-2"));
+        assert!(!missing);
+    }
+
+    #[test]
+    fn a_next_page_without_a_cursor_ends_but_is_flagged_as_incomplete() {
+        let (continuation, missing) = continuation_for(true, None);
+        assert_eq!(continuation.continue_from, None);
+        assert!(missing, "must warn instead of looking complete");
+    }
+
+    #[test]
+    fn the_last_page_is_done_and_not_flagged() {
+        for cursor in [None, Some("stale".to_owned())] {
+            let (continuation, missing) = continuation_for(false, cursor);
+            assert_eq!(continuation.continue_from, None);
+            assert!(!missing);
+        }
+    }
     use crate::platform::app::client::APPLICATION_STATUSES;
 
     #[test]

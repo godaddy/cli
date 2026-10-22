@@ -4,10 +4,10 @@ use cli_engine::{
 use serde_json::json;
 
 use crate::hosting::common::{
-    HostingDomainSummary, client_err, make_client, more_pages_warning, page_items, warn_user,
+    HostingDomainSummary, client_err, make_client, more_pages_warning, page_items,
 };
 use crate::next_action::next_action;
-use crate::pagination_token;
+use crate::pagination_token::{self, warn_user};
 use crate::scopes::HOSTING_DOMAIN_READ as DOMAIN_READ;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -52,6 +52,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let (page, continuation) = pagination_token::paginate_known_collection(
                 page_items(&response),
                 ctx.middleware.cursor_limit,
+                200,
                 continue_token.as_deref(),
             );
 

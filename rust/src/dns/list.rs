@@ -86,6 +86,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ctx.middleware.continue_token.as_deref(),
                 1u64,
                 ctx.middleware.cursor_limit,
+                MAX_PAGE_SIZE.get() as i64,
             );
             let fetched = fetch_records_page(
                 &client,

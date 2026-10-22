@@ -6,9 +6,10 @@ use serde_json::{Value, json};
 
 use crate::hosting::common::{
     HostingProduct, HostingSubscriptionList, client_err, make_client, more_pages_warning,
-    page_items, warn_user,
+    page_items,
 };
 use crate::next_action::next_action;
+use crate::pagination_token::warn_user;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
 #[derive(Debug, Clone, clap::Args)]
