@@ -428,6 +428,14 @@ pub(super) async fn fetch_records(
     Ok(all)
 }
 
+/// One page of DNS records plus what the API reports about the rest.
+pub(super) struct RecordsPage {
+    pub records: Vec<types::DnsRecord>,
+    pub has_more: bool,
+    /// Matching records across all pages; `None` when the API doesn't say.
+    pub total: Option<i64>,
+}
+
 /// Fetch a page of matching DNS records.
 pub(super) async fn fetch_records_page(
     client: &domains_client::Client,
@@ -437,7 +445,7 @@ pub(super) async fn fetch_records_page(
     page: u64,
     page_size: i64,
     debug: bool,
-) -> Result<(Vec<types::DnsRecord>, bool), CliCoreError> {
+) -> Result<RecordsPage, CliCoreError> {
     let page_size_nz =
         std::num::NonZeroU64::new(page_size.clamp(1, MAX_PAGE_SIZE.get() as i64) as u64)
             .unwrap_or(MAX_PAGE_SIZE);
@@ -465,7 +473,14 @@ pub(super) async fn fetch_records_page(
         .total_pages
         .map(|tp| page_nz.get() < tp.get())
         .unwrap_or(got == page_size_usize && got > 0);
-    Ok((items, has_more))
+    let total = body
+        .total_items
+        .map(|total| i64::try_from(total.get()).unwrap_or(i64::MAX));
+    Ok(RecordsPage {
+        records: items,
+        has_more,
+        total,
+    })
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
@@ -733,6 +748,7 @@ mod tests {
                 then.status(200).json_body(serde_json::json!({
                     "items": [{"type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600}],
                     "totalPages": 2,
+                    "totalItems": 3,
                 }));
             })
             .await;
@@ -744,12 +760,13 @@ mod tests {
         )
         .expect("build client");
 
-        let (items, has_more) = fetch_records_page(&client, "example.com", None, None, 1, 2, false)
+        let page = fetch_records_page(&client, "example.com", None, None, 1, 2, false)
             .await
             .expect("fetch succeeds");
 
-        assert_eq!(items.len(), 1);
-        assert!(has_more, "page 1 of 2 total pages has more");
+        assert_eq!(page.records.len(), 1);
+        assert!(page.has_more, "page 1 of 2 total pages has more");
+        assert_eq!(page.total, Some(3));
         mock.assert_async().await;
     }
 
@@ -775,7 +792,7 @@ mod tests {
         )
         .expect("build client");
 
-        let (items, has_more) = fetch_records_page(
+        let page = fetch_records_page(
             &client,
             "example.com",
             None,
@@ -787,11 +804,12 @@ mod tests {
         .await
         .expect("fetch succeeds");
 
-        assert_eq!(items.len(), 1);
+        assert_eq!(page.records.len(), 1);
         assert!(
-            !has_more,
+            !page.has_more,
             "a short page with no total_pages means exhausted"
         );
+        assert_eq!(page.total, None, "no totalItems in the response");
         mock.assert_async().await;
     }
 

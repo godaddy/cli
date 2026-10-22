@@ -20,8 +20,8 @@ struct ResponseListArgs {
     #[arg(long, value_name = "OPERATION")]
     operation: String,
 
-    /// Jump directly to an offset in the collection.
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// Jump directly to an offset in the collection. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N")]
     offset: Option<i64>,
 }
 

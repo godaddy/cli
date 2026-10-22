@@ -289,11 +289,7 @@ pub fn next_link_href(response: &Value) -> Option<String> {
 /// (`hosting domain list`, `hosting subscription list`). `None` when the
 /// service reports nothing further.
 pub fn more_pages_warning(response: &Value, what: &str) -> Option<String> {
-    next_link_href(response).map(|_| {
-        format!(
-            "The API reports more {what} than can be displayed."
-        )
-    })
+    next_link_href(response).map(|_| format!("The API reports more {what} than can be displayed."))
 }
 
 /// Writes `message` as a one-line warning to `out`.
@@ -450,7 +446,7 @@ mod tests {
         });
         let warning = more_pages_warning(&more, "domains").expect("next link warns");
         assert!(warning.contains("more domains"), "{warning}");
-        assert!(warning.contains("incomplete"), "{warning}");
+        assert!(warning.contains("than can be displayed"), "{warning}");
 
         let complete = json!({
             "items": [],

@@ -31,8 +31,8 @@ struct SearchArgs {
     query: String,
 
     /// Jump directly to this offset instead of walking there one --continue
-    /// token at a time.
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// token at a time. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N")]
     offset: Option<i64>,
 }
 

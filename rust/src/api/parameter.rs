@@ -23,8 +23,8 @@ struct ParameterListArgs {
     #[arg(long, value_name = "OPERATION")]
     operation: String,
 
-    /// Jump directly to an offset in the collection.
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// Jump directly to an offset in the collection. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N")]
     offset: Option<i64>,
 }
 
@@ -248,6 +248,55 @@ mod tests {
             "expected an auto-generated next-page hint: {}",
             output.rendered
         );
+    }
+
+    /// The next-page action the engine advertises after a direct `--offset`
+    /// jump replays that `--offset` next to the new `--continue`. Executing it
+    /// exactly as printed must advance to the following page, not fail to
+    /// parse and not land on the same page again.
+    #[tokio::test]
+    async fn parameter_list_next_action_after_an_offset_jump_advances() {
+        let first = operation_cli()
+            .run([
+                "gddy",
+                "api",
+                "parameter",
+                "list",
+                "--operation",
+                "get_transaction_disputes",
+                "--limit",
+                "5",
+                "--offset",
+                "20",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first: serde_json::Value = serde_json::from_str(&first.rendered).expect("valid json");
+        let command = first["next_actions"]
+            .as_array()
+            .and_then(|actions| {
+                actions
+                    .iter()
+                    .filter_map(|a| a["command"].as_str())
+                    .find(|c| c.contains("--continue"))
+            })
+            .expect("a next-page action");
+
+        let argv: Vec<&str> = command
+            .split_whitespace()
+            .map(|part| part.trim_matches('"'))
+            .chain(["--output", "json"])
+            .collect();
+        let second = operation_cli().run(argv).await;
+        assert_eq!(second.exit_code, 0, "{command}: {}", second.rendered);
+        let second: serde_json::Value = serde_json::from_str(&second.rendered).expect("valid json");
+
+        // 26 rows: offsets 20..25 were page one, so only offset 25 remains.
+        assert_eq!(second["data"].as_array().expect("data array").len(), 1);
+        assert_eq!(second["cursor"]["has_more"], json!(false));
+        assert_ne!(first["data"], second["data"]);
     }
 
     /// `max_limit` (`OPERATION_CHILD_LIST_MAX_LIMIT`) rejects an

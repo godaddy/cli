@@ -29,8 +29,8 @@ struct ListArgs {
     #[arg(long, value_name = "NAME", requires = "record_type")]
     name: Option<String>,
 
-    /// Jump directly to a page of results (1-based).
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// Jump directly to a page of results (1-based). Ignored when `--continue` is given.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
     page: Option<u64>,
 }
 
@@ -87,7 +87,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 1u64,
                 ctx.middleware.cursor_limit,
             );
-            let (records, has_more) = fetch_records_page(
+            let fetched = fetch_records_page(
                 &client,
                 domain.as_str(),
                 type_opt.as_deref(),
@@ -98,10 +98,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await?;
 
-            let out = build_list_output(&records).map_err(|e| {
+            let out = build_list_output(&fetched.records).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize DNS records: {e}"))
             })?;
-            let continuation = if has_more {
+            let mut continuation = if fetched.has_more {
                 CursorContinuation::more(pagination_token::build(&[
                     ("limit", &page_size.to_string()),
                     ("page", &(page + 1).to_string()),
@@ -109,10 +109,33 @@ pub(super) fn command() -> RuntimeCommandSpec {
             } else {
                 CursorContinuation::done()
             };
+            if let Some(total) = fetched.total {
+                continuation = continuation
+                    .with_total(total)
+                    .with_remaining(remaining_after(
+                        total,
+                        page,
+                        page_size,
+                        fetched.records.len(),
+                    ));
+            }
             let continuation = continuation.with_limit(page_size);
             Ok(CommandResult::new(json!(out)).with_cursor(continuation))
         },
     )
+}
+
+/// Records left after `page` (1-based) of `page_size`, given the API's `total`
+/// and how many records that page returned. Saturating throughout, so a
+/// hand-edited `--continue` token or an out-of-range `--page` can't underflow
+/// or go negative.
+fn remaining_after(total: i64, page: u64, page_size: i64, returned: usize) -> i64 {
+    let page_size = page_size.clamp(1, MAX_PAGE_SIZE.get() as i64);
+    let before = i64::try_from(page.saturating_sub(1))
+        .unwrap_or(i64::MAX)
+        .saturating_mul(page_size);
+    let seen = before.saturating_add(i64::try_from(returned).unwrap_or(i64::MAX));
+    total.saturating_sub(seen).max(0)
 }
 
 /// Serialize fetched records for `dns list`'s output, re-merging TLSA's
@@ -140,6 +163,22 @@ fn build_list_output(records: &[types::DnsRecord]) -> Result<Vec<Value>, serde_j
 mod tests {
     use super::*;
     use cli_engine::CursorConfig;
+
+    #[test]
+    fn remaining_after_counts_what_is_left_past_the_current_page() {
+        assert_eq!(remaining_after(250, 1, 100, 100), 150);
+        assert_eq!(remaining_after(250, 2, 100, 100), 50);
+        assert_eq!(remaining_after(250, 3, 100, 50), 0);
+    }
+
+    #[test]
+    fn remaining_after_never_goes_negative_or_overflows() {
+        // Page past the end, an oversized page size (clamped), and extreme values.
+        assert_eq!(remaining_after(10, 9, 100, 0), 0);
+        assert_eq!(remaining_after(250, 1, 10_000, 100), 150);
+        assert_eq!(remaining_after(i64::MAX, u64::MAX, i64::MAX, usize::MAX), 0);
+        assert_eq!(remaining_after(0, 1, 50, 0), 0);
+    }
 
     #[test]
     fn opts_into_cursor_pagination_with_a_default_and_a_max_limit() {

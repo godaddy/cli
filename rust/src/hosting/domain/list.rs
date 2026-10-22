@@ -16,8 +16,8 @@ struct DomainListArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// Jump directly to an offset in the results.
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// Jump directly to an offset in the results. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N")]
     offset: Option<i64>,
 }
 

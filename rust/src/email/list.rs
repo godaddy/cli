@@ -21,8 +21,8 @@ struct ListArgs {
     /// Comma-separated list of fields to include in the response.
     #[arg(long, value_name = "FIELDS")]
     fields: Option<String>,
-    /// Jump directly to a page of results (1-based).
-    #[arg(long, value_name = "N", conflicts_with = "continue")]
+    /// Jump directly to a page of results (1-based). Ignored when `--continue` is given.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     page: Option<u32>,
 }
 
@@ -76,10 +76,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Fetches a page from `GET /v1/email/mailboxes`. `has_more` is a
-/// short-page heuristic (a full page might still be the exact last one) —
-/// this API never reports a true total, so "short page = done" is the best
-/// signal available.
+/// Fetches a page from `GET /v1/email/mailboxes`. `has_more` is whether the
+/// response carries a `links[rel=next]`, which the spec says is absent on the
+/// last page — so a full final page correctly reports no more, and a short
+/// page with a next link correctly reports more.
 async fn fetch_mailbox_page(
     client: &EmailClient,
     status: Option<&str>,
@@ -95,7 +95,7 @@ async fn fetch_mailbox_page(
             fields,
         )
         .await?;
-    let has_more = list.items.len() >= page_size;
+    let has_more = list.links.iter().any(|link| link.rel == "next");
     Ok((list.items, has_more))
 }
 
@@ -137,8 +137,13 @@ mod tests {
                     .path("/v1/email/mailboxes")
                     .query_param("page", "1")
                     .query_param("pageSize", "3");
-                then.status(200)
-                    .json_body(json!({ "items": page_of(3, 0) }));
+                then.status(200).json_body(json!({
+                    "items": page_of(3, 0),
+                    "links": [
+                        { "rel": "self", "href": "/v1/email/mailboxes?page=1&pageSize=3" },
+                        { "rel": "next", "href": "/v1/email/mailboxes?page=2&pageSize=3" }
+                    ]
+                }));
             })
             .await;
 
@@ -149,7 +154,66 @@ mod tests {
 
         mock.assert_calls_async(1).await;
         assert_eq!(mailboxes.len(), 3);
-        assert!(has_more, "a full page is treated as possibly having more");
+        assert!(has_more, "a next link means another page exists");
+    }
+
+    #[tokio::test]
+    async fn fetch_mailbox_page_reports_no_more_on_a_full_final_page() {
+        // Exactly page-size items and no next link: the last page happens to be
+        // full. An item-count heuristic would wrongly offer a page that is empty.
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v1/email/mailboxes")
+                    .query_param("page", "2")
+                    .query_param("pageSize", "3");
+                then.status(200).json_body(json!({
+                    "items": page_of(3, 3),
+                    "links": [
+                        { "rel": "self", "href": "/v1/email/mailboxes?page=2&pageSize=3" },
+                        { "rel": "prev", "href": "/v1/email/mailboxes?page=1&pageSize=3" }
+                    ]
+                }));
+            })
+            .await;
+
+        let client = client_for(&server);
+        let (mailboxes, has_more) = fetch_mailbox_page(&client, None, None, 2, 3)
+            .await
+            .expect("fetch mailboxes");
+
+        mock.assert_calls_async(1).await;
+        assert_eq!(mailboxes.len(), 3);
+        assert!(!has_more, "no next link means this is the last page");
+    }
+
+    #[tokio::test]
+    async fn fetch_mailbox_page_reports_more_on_a_short_page_with_a_next_link() {
+        // The server may return fewer than pageSize items and still have more
+        // (e.g. filtering after paging); the link, not the count, decides.
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v1/email/mailboxes");
+                then.status(200).json_body(json!({
+                    "items": page_of(2, 0),
+                    "links": [
+                        { "rel": "next", "href": "/v1/email/mailboxes?page=2&pageSize=100" }
+                    ]
+                }));
+            })
+            .await;
+
+        let client = client_for(&server);
+        let (mailboxes, has_more) =
+            fetch_mailbox_page(&client, None, None, 1, SERVER_PAGE_SIZE_CAP)
+                .await
+                .expect("fetch mailboxes");
+
+        mock.assert_calls_async(1).await;
+        assert_eq!(mailboxes.len(), 2);
+        assert!(has_more, "a next link means more even on a short page");
     }
 
     #[tokio::test]
@@ -174,7 +238,7 @@ mod tests {
 
         mock.assert_calls_async(1).await;
         assert_eq!(mailboxes.len(), 10);
-        assert!(!has_more, "a short page means the list is exhausted");
+        assert!(!has_more, "no next link means the list is exhausted");
     }
 
     #[tokio::test]

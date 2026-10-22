@@ -109,9 +109,9 @@ pub fn group() -> RuntimeGroupSpec {
                         .long("offset")
                         .value_name("N")
                         .value_parser(clap::value_parser!(i64).range(0..))
-                        .conflicts_with("continue")
                         .help(
-                            "Jump directly to an offset in the results",
+                            "Jump directly to an offset in the results. \
+                             Ignored when `--continue` is given.",
                         ),
                 ),
             |ctx| async move {
@@ -209,6 +209,62 @@ mod tests {
         let cursor = &rendered["cursor"];
         assert_eq!(cursor["total"], cursor["count"]);
         assert_eq!(cursor["has_more"], serde_json::json!(false));
+    }
+
+    /// The advertised next-page action replays `--offset` next to the new
+    /// `--continue`; run exactly as printed it must advance, not fail to parse.
+    #[tokio::test]
+    async fn list_next_action_after_an_offset_jump_advances() {
+        let cli = test_cli();
+        let first = cli
+            .run([
+                "gddy", "platform", "actions", "list", "--limit", "3", "--offset", "3", "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first: serde_json::Value =
+            serde_json::from_str(&first.rendered).expect("stdout should contain json");
+        let command = first["next_actions"]
+            .as_array()
+            .and_then(|actions| {
+                actions
+                    .iter()
+                    .filter_map(|a| a["command"].as_str())
+                    .find(|c| c.contains("--continue"))
+            })
+            .expect("a next-page action");
+
+        let argv: Vec<&str> = command
+            .split_whitespace()
+            .map(|part| part.trim_matches('"'))
+            .chain(["--output", "json"])
+            .collect();
+        let second = cli.run(argv).await;
+        assert_eq!(second.exit_code, 0, "{command}: {}", second.rendered);
+        let second: serde_json::Value =
+            serde_json::from_str(&second.rendered).expect("stdout should contain json");
+
+        let names = |page: &serde_json::Value| -> Vec<String> {
+            page["data"]
+                .as_array()
+                .expect("array")
+                .iter()
+                .map(|item| item["name"].as_str().unwrap_or_default().to_owned())
+                .collect()
+        };
+        let expected: Vec<String> = super::ACTIONS[6..]
+            .iter()
+            .map(|(n, _)| (*n).to_owned())
+            .collect();
+        assert_eq!(
+            names(&first),
+            super::ACTIONS[3..6]
+                .iter()
+                .map(|(n, _)| (*n).to_owned())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(names(&second), expected);
     }
 
     #[tokio::test]
