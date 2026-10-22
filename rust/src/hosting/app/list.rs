@@ -3,14 +3,13 @@ use serde_json::{Value, json};
 
 use crate::hosting::common::{
     HostingAppSummary, HostingAppType, app_type_command, client_err, make_client, next_page_token,
-    supported_app_types,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
 #[derive(Debug, Clone, clap::Args)]
 struct AppListArgs {
-    /// Hosting product.
+    /// Application type (required).
     #[arg(long = "app-type", value_name = "TYPE", ignore_case = true)]
     app_type: HostingAppType,
 
@@ -22,13 +21,10 @@ struct AppListArgs {
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppListArgs, _, _, _>(
         app_type_command::<AppListArgs>("list", "List hosting applications", mhwp)
-            .with_long(format!(
+            .with_long(
                 "List all hosting applications of a given type. Results are autopaginated — \
-                 all pages are fetched and combined. Use --limit to cap the total returned.\n\
-                 \n\
-                 --app-type is required. Currently supported: {}.",
-                supported_app_types(mhwp)
-            ))
+                 all pages are fetched and combined. Use --limit to cap the total returned.",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])

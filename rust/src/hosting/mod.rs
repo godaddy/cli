@@ -9,6 +9,8 @@ mod runtime;
 mod secrets;
 mod source;
 mod subscription;
+#[cfg(test)]
+mod test_support;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
