@@ -31,6 +31,10 @@ irm https://github.com/godaddy/cli/releases/latest/download/install.ps1 | iex
 
 Verify that installation works by running `gddy --version`.
 
+## Updates
+
+`gddy` is under active development, so an older install may lack commands or fixes described here. When you start working with `gddy` in a session, run `gddy update check` to see if a newer version is available. If an update is available, ask permission before installing it with `gddy update apply`. If `gddy update apply` can't write to the install location, send the user to the install commands above.
+
 ## Documentation
 
 The `gddy` CLI is self-documenting. Use:
