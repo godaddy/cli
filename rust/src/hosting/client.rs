@@ -1,6 +1,6 @@
 use hosting_client::types::{
     AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
-    HostingProduct, ImportGitHubSourceRequest, RestartRequest,
+    HostingProduct, ImportGitHubSourceRequest, PagedDomains, PagedSubscriptions, RestartRequest,
 };
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
@@ -8,6 +8,23 @@ use serde_json::{Value, json};
 use crate::http::{make_api_upload_http_client, make_http_client};
 
 const BASE_PATH: &str = "/v1/hosting";
+
+/// Upper bound on pages combined into one aggregate listing. No real account
+/// approaches it; it only stops a misbehaving service from turning a list
+/// command into an endless crawl.
+const MAX_COMBINED_PAGES: usize = 20;
+
+/// The items gathered from a paged listing, and why any pages were left unread.
+pub struct CombinedPages {
+    pub items: Vec<Value>,
+    /// The service reported another page that could not be read (a link with
+    /// nothing to replay, a repeated link, or the page limit). Worth a warning.
+    pub incomplete: bool,
+    /// Reading stopped on purpose, because the caller's window was already
+    /// covered, while the service still had more. The collection is therefore
+    /// not the whole of it, so its length is not a total.
+    pub stopped_early: bool,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -139,6 +156,13 @@ impl HostingClient {
         let request = req
             .build()
             .map_err(|e| ClientError::Network(e.to_string()))?;
+        self.execute_json(request).await
+    }
+
+    /// Sends an already-built request and decodes the JSON response, with the
+    /// transport debug trace and the non-2xx → [`ClientError::Http`] mapping
+    /// the hand-built requests here share.
+    async fn execute_json(&self, request: reqwest::Request) -> Result<Value, ClientError> {
         cli_engine::transport::debug_log_reqwest_request(&request);
         let resp = self
             .http
@@ -167,6 +191,32 @@ impl HostingClient {
         }
 
         serde_json::from_slice(&bytes).map_err(ClientError::Response)
+    }
+
+    /// GET `path` with the paging parameters a collection's `links[rel=next]`
+    /// carried (`query` is that link's query string, e.g.
+    /// `pageToken=abc&pageSize=50`).
+    ///
+    /// For listings whose spec declares no paging request parameters, so the
+    /// generated builders cannot send them. Only the *query* of the server's
+    /// link is replayed; the path and host stay ours, so the bearer token only
+    /// ever goes to the configured API. Replace with the generated builders once
+    /// the spec declares the parameters (DEVEX-1340).
+    async fn get_with_query(&self, path: &str, query: &str) -> Result<Value, ClientError> {
+        // Set the query as given rather than decoding and re-encoding it: a
+        // cursor is opaque, and a form decode would turn a literal `+` into a
+        // space.
+        let mut url = reqwest::Url::parse(&self.url(path))
+            .map_err(|e| ClientError::Request(format!("invalid request URL: {e}")))?;
+        url.set_query(Some(query));
+        let request = self
+            .http
+            .request(Method::GET, url)
+            .bearer_auth(&self.token)
+            .header("x-request-id", Self::new_request_id())
+            .build()
+            .map_err(|e| ClientError::Network(e.to_string()))?;
+        self.execute_json(request).await
     }
 
     // Spec has no request body; Akamai still 411s a POST with no Content-Length.
@@ -549,14 +599,27 @@ impl HostingClient {
         response(client.get_runtime().app_id(app_id).send().await).await
     }
 
-    /// One request, no paging parameters: the spec types this response as
-    /// paged (`items`/`links`) but declares no `pageToken`/`pageSize`, and the
-    /// service rejects them on the sibling `GET /subscriptions` with a 400
-    /// ("Unrecognized key"). Callers use [`super::common::more_pages_warning`]
-    /// to tell the user when the service reports more than this page.
-    pub async fn list_domains(&self, app_id: &str) -> Result<Value, ClientError> {
+    /// Every attached domain, combining pages (see [`Self::collect_pages`]).
+    /// The spec types the response as paged (`items`/`links`) but declares no
+    /// `pageToken`/`pageSize`, and the service rejects them on the sibling
+    /// `GET /subscriptions` with a 400 ("Unrecognized key"), so the first request
+    /// carries no paging parameters.
+    ///
+    /// `want` is how many items the caller needs; once that many are held, later
+    /// pages are not read (see [`CombinedPages::stopped_early`]).
+    pub async fn list_domains(
+        &self,
+        app_id: &str,
+        want: Option<usize>,
+    ) -> Result<CombinedPages, ClientError> {
         let client = self.api()?;
-        response(client.list_domains().app_id(app_id).send().await).await
+        let first = response(client.list_domains().app_id(app_id).send().await).await?;
+        let path = format!(
+            "/apps/{}/domains",
+            crate::api::http::encode_path_segment(app_id)
+        );
+        self.collect_pages::<PagedDomains>(&path, &[], first, want)
+            .await
     }
 
     pub async fn get_domain(&self, app_id: &str, domain_id: &str) -> Result<Value, ClientError> {
@@ -601,13 +664,97 @@ impl HostingClient {
         .await
     }
 
-    /// One request, no paging parameters — see [`Self::list_domains`].
-    pub async fn list_subscriptions(&self, hosting_product: &str) -> Result<Value, ClientError> {
+    /// Every subscription, combining pages (see [`Self::collect_pages`]). The
+    /// command reports slot totals and suggests a plan to attach, both only
+    /// correct over *all* plans. The service rejects `pageSize`/`pageToken` here
+    /// with a 400 today, so the first request carries only the required
+    /// `hostingProduct`.
+    pub async fn list_subscriptions(
+        &self,
+        hosting_product: &str,
+    ) -> Result<CombinedPages, ClientError> {
         let client = self.api()?;
         let request = client
             .list_subscriptions()
             .hosting_product(HostingProduct::from(hosting_product.to_owned()));
-        response(request.send().await).await
+        let first = response(request.send().await).await?;
+        // Always every page: slot totals and the plan to suggest are only
+        // correct over all plans, whatever `--limit` shows.
+        self.collect_pages::<PagedSubscriptions>(
+            "/subscriptions",
+            &[("hostingProduct", hosting_product)],
+            first,
+            None,
+        )
+        .await
+    }
+
+    /// Gathers a collection the service serves in pages, so a command can slice
+    /// the whole of it client-side. Until the service really paginates these
+    /// endpoints it returns everything in one page, so this is one request; when
+    /// it starts sending `links[rel=next]` (per the collections-and-pagination
+    /// standard) each page is read in turn, up to [`MAX_COMBINED_PAGES`].
+    ///
+    /// Later pages replay the query of the previous page's next link
+    /// ([`Self::get_with_query`]); `required` names query parameters that must be
+    /// present on every request, added if a link leaves one out. Each followed
+    /// page goes through the endpoint's generated type `T`, like the first, so
+    /// every item has the same shape.
+    ///
+    /// With `want`, stops as soon as that many items are held (reporting
+    /// `stopped_early` if the service still had more), so a command showing a
+    /// small window never reads pages it won't display.
+    ///
+    /// Otherwise stops, keeping what it has and reporting `incomplete`, at a
+    /// link that repeats, has no query to replay, or is past the page limit —
+    /// never an error, since the pages already read are good data. A request for
+    /// a followed page that fails still errors, like any other call.
+    async fn collect_pages<T>(
+        &self,
+        path: &str,
+        required: &[(&str, &str)],
+        first: Value,
+        want: Option<usize>,
+    ) -> Result<CombinedPages, ClientError>
+    where
+        T: serde::de::DeserializeOwned + serde::Serialize,
+    {
+        let mut page = first;
+        let mut items = super::common::page_items(&page);
+        let mut seen = std::collections::HashSet::new();
+        let mut stopped_early = false;
+        for _ in 1..MAX_COMBINED_PAGES {
+            if want.is_some_and(|want| items.len() >= want) {
+                stopped_early = super::common::next_link_href(&page).is_some();
+                break;
+            }
+            let Some(mut query) = super::common::next_link_query(&page) else {
+                break;
+            };
+            if !seen.insert(query.clone()) {
+                break;
+            }
+            for (name, value) in required {
+                if !query
+                    .split('&')
+                    .any(|pair| pair.split('=').next() == Some(*name))
+                {
+                    let value: String =
+                        url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
+                    query.push_str(&format!("&{name}={value}"));
+                }
+            }
+            let raw = self.get_with_query(path, &query).await?;
+            let typed: T = serde_json::from_value(raw).map_err(ClientError::Response)?;
+            page = serde_json::to_value(typed).map_err(ClientError::Response)?;
+            items.extend(super::common::page_items(&page));
+        }
+        let incomplete = !stopped_early && super::common::next_link_href(&page).is_some();
+        Ok(CombinedPages {
+            items,
+            incomplete,
+            stopped_early,
+        })
     }
 
     pub async fn get_app_subscription(&self, app_id: &str) -> Result<Value, ClientError> {

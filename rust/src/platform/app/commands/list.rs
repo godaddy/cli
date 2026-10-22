@@ -40,9 +40,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 continuation_for(page.has_next_page, page.end_cursor);
             if missing_cursor {
                 pagination_token::warn_user(
-                    "The App Registry reports more applications than this response \
-                     contains but returned no cursor to fetch them; the list may be \
-                     incomplete.",
+                    "More applications exist than were returned, but there is no way to \
+                     fetch the rest; the list may be incomplete.",
                 );
             }
             let data = serde_json::to_value(page.items).map_err(|e| {

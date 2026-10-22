@@ -283,13 +283,24 @@ pub fn next_link_href(response: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The warning to show when a listing that this CLI can only read one page of
-/// reports another page via `links[rel=next]` — for the endpoints whose spec
-/// types the response as paged but declares no paging request parameters
-/// (`hosting domain list`, `hosting subscription list`). `None` when the
-/// service reports nothing further.
-pub fn more_pages_warning(response: &Value, what: &str) -> Option<String> {
-    next_link_href(response).map(|_| format!("The API reports more {what} than can be displayed."))
+/// Longest `next`-link query string accepted as a continuation; anything longer
+/// is treated as unusable rather than handed to the user as a token.
+const MAX_CURSOR_QUERY_LEN: usize = 2048;
+
+/// The query string of a paged response's `links[rel=next].href` (for example
+/// `pageToken=abc&pageSize=50`), which is everything a follow-up request needs:
+/// the collections-and-pagination standard surfaces the cursor only through
+/// that link. `None` when there is no next link, or it has no query to replay
+/// (it could not advance), or the query is unreasonably long.
+pub fn next_link_query(response: &Value) -> Option<String> {
+    let href = next_link_href(response)?;
+    let query = href.split_once('?')?.1.split('#').next()?;
+    (!query.is_empty() && query.len() <= MAX_CURSOR_QUERY_LEN).then(|| query.to_owned())
+}
+
+/// The warning for a listing that ended with pages left unread.
+pub fn incomplete_list_warning(what: &str) -> String {
+    format!("The API reports more {what} than can be displayed.")
 }
 
 /// The `items` array of a paged hosting response (empty when absent).
@@ -430,21 +441,40 @@ mod tests {
     }
 
     #[test]
-    fn more_pages_warning_appears_only_when_the_api_reports_a_next_page() {
-        let more = json!({
-            "items": [],
-            "links": [{ "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=t2" }]
-        });
-        let warning = more_pages_warning(&more, "domains").expect("next link warns");
-        assert!(warning.contains("more domains"), "{warning}");
-        assert!(warning.contains("than can be displayed"), "{warning}");
+    fn next_link_query_returns_the_query_of_the_next_link() {
+        let relative = json!({ "links": [
+            { "rel": "self", "href": "/v1/hosting/apps/a/domains" },
+            { "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=ab%2Bc%3D&pageSize=25" }
+        ]});
+        assert_eq!(
+            next_link_query(&relative).as_deref(),
+            Some("pageToken=ab%2Bc%3D&pageSize=25"),
+            "returned verbatim, still encoded"
+        );
+        let absolute = json!({ "links": [
+            { "rel": "next", "href": "https://api.example/v1/hosting/x?page=2&pageSize=10#frag" }
+        ]});
+        assert_eq!(
+            next_link_query(&absolute).as_deref(),
+            Some("page=2&pageSize=10")
+        );
+    }
 
-        let complete = json!({
-            "items": [],
-            "links": [{ "rel": "self", "href": "/v1/hosting/apps/a/domains" }]
-        });
-        assert_eq!(more_pages_warning(&complete, "domains"), None);
-        assert_eq!(more_pages_warning(&json!({ "items": [] }), "domains"), None);
+    #[test]
+    fn next_link_query_is_none_when_the_link_cannot_advance() {
+        for response in [
+            json!({ "items": [] }),
+            json!({ "links": [{ "rel": "self", "href": "/x?pageToken=t" }] }),
+            json!({ "links": [{ "rel": "next", "href": "/v1/hosting/x" }] }),
+            json!({ "links": [{ "rel": "next", "href": "/v1/hosting/x?" }] }),
+        ] {
+            assert_eq!(next_link_query(&response), None, "{response}");
+        }
+        let long = format!("/x?pageToken={}", "a".repeat(MAX_CURSOR_QUERY_LEN + 1));
+        assert_eq!(
+            next_link_query(&json!({ "links": [{ "rel": "next", "href": long }] })),
+            None
+        );
     }
 
     #[test]
