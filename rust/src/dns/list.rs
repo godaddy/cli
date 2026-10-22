@@ -87,7 +87,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 1u64,
                 ctx.middleware.cursor_limit,
                 MAX_PAGE_SIZE.get() as i64,
-            );
+            )?;
             let fetched = fetch_records_page(
                 &client,
                 domain.as_str(),

@@ -43,7 +43,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 1u32,
                 ctx.middleware.cursor_limit,
                 SERVER_PAGE_SIZE_CAP as i64,
-            );
+            )?;
             let page_size = usize::try_from(page_size).unwrap_or(SERVER_PAGE_SIZE_CAP);
             let (mailboxes, has_more) = fetch_mailbox_page(
                 &client,

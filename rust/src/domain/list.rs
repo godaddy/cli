@@ -206,20 +206,26 @@ fn encode_resume(token: &str, direction: Option<types::ListDomainsPageTokenDirec
     }
 }
 
-/// Decodes a `--continue` value produced by [`encode_resume`]. A malformed
-/// value (no `token` field, or a `direction` outside the API's two known
-/// values) degrades to "start from the beginning" — the same convention
-/// [`pagination_token`] uses for a hand-edited/truncated token, rather than
-/// erroring the command.
+/// Decodes a `--continue` value produced by [`encode_resume`]. An absent or
+/// blank value starts from the beginning; anything else must be a token this
+/// command issued — a `token` field and, if present, one of the API's known
+/// `direction` values — or it is rejected, since quietly restarting from page
+/// one would repeat rows without any sign that the value was wrong.
 fn decode_resume(
     continue_token: Option<&str>,
-) -> Option<(String, Option<types::ListDomainsPageTokenDirection>)> {
-    let fields = pagination_token::parse(continue_token);
-    let token = fields.get("token")?.clone();
-    let direction = fields
-        .get("direction")
-        .and_then(|d| d.parse::<types::ListDomainsPageTokenDirection>().ok());
-    Some((token, direction))
+) -> Result<Option<(String, Option<types::ListDomainsPageTokenDirection>)>> {
+    let fields = pagination_token::parse(continue_token, &["token", "direction"])?;
+    if continue_token.is_none_or(|t| t.trim().is_empty()) {
+        return Ok(None);
+    }
+    let Some(token) = fields.text("token") else {
+        return Err(pagination_token::invalid_token(
+            continue_token.unwrap_or_default(),
+            "it has no `token`",
+        ));
+    };
+    let direction = fields.typed::<types::ListDomainsPageTokenDirection>("direction")?;
+    Ok(Some((token.to_owned(), direction)))
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -246,7 +252,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let client = make_client(&ctx).await?;
             let page_size =
                 u64::try_from(ctx.middleware.cursor_limit).unwrap_or(MAX_PAGE_SIZE.get());
-            let resume = decode_resume(ctx.middleware.continue_token.as_deref());
+            let resume = decode_resume(ctx.middleware.continue_token.as_deref())?;
             let (items, next) =
                 fetch_domain_page(&client, &statuses, visible_only, page_size, resume, debug)
                     .await?;
@@ -306,7 +312,7 @@ mod tests {
         );
         assert_eq!(encoded, "token:abc123,direction:forward");
         assert_eq!(
-            decode_resume(Some(&encoded)),
+            decode_resume(Some(&encoded)).expect("valid token"),
             Some((
                 "abc123".to_string(),
                 Some(types::ListDomainsPageTokenDirection::Forward)
@@ -319,15 +325,30 @@ mod tests {
         let encoded = encode_resume("abc123", None);
         assert_eq!(encoded, "token:abc123");
         assert_eq!(
-            decode_resume(Some(&encoded)),
+            decode_resume(Some(&encoded)).expect("valid token"),
             Some(("abc123".to_string(), None))
         );
     }
 
     #[test]
-    fn decode_resume_of_none_or_malformed_starts_from_the_beginning() {
-        assert_eq!(decode_resume(None), None);
-        assert_eq!(decode_resume(Some("garbage")), None);
+    fn decode_resume_of_none_or_blank_starts_from_the_beginning() {
+        assert_eq!(decode_resume(None).expect("absent"), None);
+        assert_eq!(decode_resume(Some("")).expect("blank"), None);
+        assert_eq!(decode_resume(Some("  ")).expect("blank"), None);
+    }
+
+    #[test]
+    fn decode_resume_rejects_a_token_it_did_not_issue() {
+        for bad in [
+            "garbage",
+            "token:abc,direction:sideways",
+            "direction:forward",
+            "token:abc,direction",
+            "limit:5,offset:0",
+        ] {
+            let err = decode_resume(Some(bad)).expect_err(bad);
+            assert!(err.to_string().contains("--continue"), "{bad}: {err}");
+        }
     }
 
     #[test]

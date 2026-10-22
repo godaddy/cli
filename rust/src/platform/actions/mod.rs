@@ -129,7 +129,7 @@ pub fn group() -> RuntimeGroupSpec {
                     ctx.middleware.cursor_limit,
                     200,
                     continue_token.as_deref(),
-                );
+                )?;
                 Ok(CommandResult::new(json!(page))
                     .with_cursor(continuation)
                     .with_next_actions(vec![

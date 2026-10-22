@@ -17,7 +17,7 @@ struct DomainListArgs {
     app_id: String,
 
     /// Jump directly to an offset in the results. Ignored when `--continue` is given.
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
     offset: Option<i64>,
 }
 
@@ -49,13 +49,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
             );
             // Read only as many pages as the window needs. A `--filter` runs
             // after collection, so with one the whole list is needed.
-            let want = ctx.middleware.filter.is_empty().then(|| {
-                pagination_token::known_collection_need(
+            let want = if ctx.middleware.filter.is_empty() {
+                Some(pagination_token::known_collection_need(
                     continue_token.as_deref(),
                     ctx.middleware.cursor_limit,
                     200,
-                )
-            });
+                )?)
+            } else {
+                None
+            };
             let listed = client
                 .list_domains(&app_id, want)
                 .await
@@ -69,7 +71,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ctx.middleware.cursor_limit,
                 200,
                 continue_token.as_deref(),
-            );
+            )?;
 
             // Pages past the window were deliberately not read, so the length of
             // what was read says nothing about the total.
