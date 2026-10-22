@@ -6,6 +6,7 @@ use serde_json::json;
 use crate::hosting::common::{
     HostingDomainSummary, client_err, incomplete_list_warning, make_client,
 };
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::pagination_token::{self, warn_user};
 use crate::scopes::HOSTING_DOMAIN_READ as DOMAIN_READ;
@@ -19,6 +20,9 @@ struct DomainListArgs {
     /// Jump directly to an offset in the results. Ignored when `--continue` is given.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
     offset: Option<i64>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// The service doesn't paginate this listing yet (see
@@ -67,8 +71,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
             let partial = listed.is_partial();
 
+            // Names are shown in the form the user asked for before `--filter`
+            // and paging, so a filter matches what is displayed.
+            let mut items = listed.items;
+            for item in &mut items {
+                args.domain_format
+                    .form()
+                    .convert_fields(item, &["hostname"]);
+            }
+
             let (page, continuation) = pagination_token::paginate_known_collection(
-                pagination_token::filter_known_collection(listed.items, &ctx.middleware.filter)?,
+                pagination_token::filter_known_collection(items, &ctx.middleware.filter)?,
                 ctx.middleware.cursor_limit,
                 200,
                 continue_token.as_deref(),

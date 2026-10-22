@@ -266,6 +266,11 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
         serde_json::json!({"type": "string"}),
     );
     properties.insert("type".to_owned(), serde_json::json!({"type": "string"}));
+    // The API builds this display label from the saved payment profile.
+    properties.insert(
+        "rich_text_description".to_owned(),
+        serde_json::json!({"type": "string"}),
+    );
     Ok(())
 }
 
@@ -657,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn preserving_payment_instrument_fields_adds_handler_routing_metadata() {
+    fn preserving_payment_instrument_fields_adds_routing_metadata_and_display_text() {
         let mut spec = json!({
             "components": {
                 "schemas": {
@@ -693,6 +698,9 @@ mod tests {
             "type must survive so a checkout update can echo the selected instrument's routing metadata back unchanged"
         );
         assert_eq!(properties["selected"]["type"], "boolean");
+        assert_eq!(properties["rich_text_description"]["type"], "string");
+        assert!(properties.get("expiry_month").is_none());
+        assert!(properties.get("expiry_year").is_none());
     }
 
     #[test]

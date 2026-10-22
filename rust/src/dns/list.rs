@@ -7,6 +7,7 @@ use cli_engine::{
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
+use crate::idn::DomainFormArgs;
 use crate::pagination_token;
 use crate::scopes::DOMAINS_READ;
 
@@ -17,7 +18,7 @@ use super::records::{MAX_PAGE_SIZE, fetch_records_page, merged_tlsa_data, parse_
 #[derive(Debug, Clone, clap::Args)]
 struct ListArgs {
     /// Domain whose records to list (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
     /// Only records of this type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, NS,
@@ -26,12 +27,15 @@ struct ListArgs {
     record_type: Option<String>,
 
     /// Only records with this name (requires --type).
-    #[arg(long, value_name = "NAME", requires = "record_type")]
+    #[arg(long, value_name = "NAME", requires = "record_type", value_parser = crate::idn::parse_name_arg)]
     name: Option<String>,
 
     /// Jump directly to a page of results (1-based). Ignored when `--continue` is given.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
     page: Option<u64>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// A record is unreadable without its type/name/data, so those three are
@@ -99,9 +103,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await?;
 
-            let out = build_list_output(&fetched.records).map_err(|e| {
+            let mut out = build_list_output(&fetched.records).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize DNS records: {e}"))
             })?;
+            for record in &mut out {
+                args.domain_format.form().convert_fields(record, &["name"]);
+            }
             let mut continuation = if fetched.has_more {
                 CursorContinuation::more(pagination_token::build(&[
                     ("limit", &page_size.to_string()),

@@ -14,6 +14,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, format_operation_error, is_terminal_status, make_client};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -34,6 +35,9 @@ struct OperationStatusArgs {
     /// The operationId returned by an async domain mutation.
     #[arg(value_name = "OPERATION_ID")]
     operation_id: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 fn status_command() -> RuntimeCommandSpec {
@@ -81,6 +85,8 @@ fn status_command() -> RuntimeCommandSpec {
                 .unwrap_or(operation_id);
 
             let op_type = op.type_.as_ref().map(|t| t.to_string()).unwrap_or_default();
+            let domain_format = args.domain_format.form();
+            let domain = domain_format.render(&domain);
             let mut result = json!({
                 "operationId": op_id,
                 "type": op_type,

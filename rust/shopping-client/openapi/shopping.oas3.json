@@ -1903,6 +1903,9 @@
               "id": {
                 "type": "string"
               },
+              "rich_text_description": {
+                "type": "string"
+              },
               "selected": {
                 "type": "boolean"
               },

@@ -9,6 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, comma_joined, make_client};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::pagination_token;
 use crate::scopes::DOMAINS_READ;
@@ -86,6 +87,9 @@ struct ListArgs {
     /// Include domains hidden by default, e.g. cancelled or confiscated.
     #[arg(long)]
     show_hidden: bool,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// The result of looking for a `rel=next` link in a page's `links`. Per the
@@ -256,7 +260,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let (items, next) =
                 fetch_domain_page(&client, &statuses, visible_only, page_size, resume, debug)
                     .await?;
-            let domains: Vec<serde_json::Value> = items
+            let mut domains: Vec<serde_json::Value> = items
                 .iter()
                 .map(serde_json::to_value)
                 .collect::<std::result::Result<_, _>>()
@@ -277,6 +281,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     )));
                 }
             };
+            for domain in &mut domains {
+                args.domain_format
+                    .form()
+                    .convert_fields(domain, &["domain", "nameServers"]);
+            }
             Ok(CommandResult::new(json!(domains))
                 .with_cursor(continuation)
                 .with_next_actions(vec![

@@ -6,11 +6,11 @@ use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
-use super::records::verify_with_list_action;
 use super::records::{
     RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
     validate_svcb_fields, validate_tlsa_fields,
 };
+use super::records::{ZONE_AND_NAME, verified_result};
 
 mod outcome;
 mod plan;
@@ -99,6 +99,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.write.domain;
             let record_type = args.write.record_type;
             let name = args.write.name;
+            let domain_format = args.write.domain_format.form();
             let replace_conflicting = args.replace_conflicting_types;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
@@ -143,13 +144,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let desired = v3_records(&name, &record_type, &data, &opts);
             let plan = plan_set(&existing, &desired);
             if ctx.dry_run() {
-                return Ok(CommandResult::new(dry_run_set_preview(
-                    &domain,
-                    &record_type,
-                    &name,
-                    &plan,
-                ))
-                .with_dry_run());
+                let mut preview = dry_run_set_preview(&domain, &record_type, &name, &plan);
+                domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
+                return Ok(CommandResult::new(preview).with_dry_run());
             }
 
             let mut outcomes = Vec::new();
@@ -208,13 +205,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
-                .map(|v| {
-                    CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
-                        &domain,
-                        &record_type,
-                        &name,
-                    )])
-                })
+                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
                 .map_err(super::mutate_failed)
         },
     )

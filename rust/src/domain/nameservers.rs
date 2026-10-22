@@ -9,6 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, make_client, validate_domain_name, validate_nameserver_hosts};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
@@ -30,6 +31,9 @@ struct NameserversSetArgs {
     /// Nameserver host (repeatable; replaces the full set).
     #[arg(long, value_name = "HOST", required = true)]
     nameserver: Vec<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
@@ -89,9 +93,13 @@ pub(super) fn group() -> RuntimeGroupSpec {
             if let Some(status) = op.status.as_ref() {
                 result["status"] = json!(status.to_string());
             }
+            let domain_format = args.domain_format.form();
+            domain_format.convert_fields(&mut result, &["domain", "nameservers"]);
             Ok(CommandResult::new(result).with_next_actions(vec![
-                next_action("domain get <domain>", "Confirm the updated nameservers")
-                    .with_param("domain", NextActionParam::value(domain)),
+                next_action("domain get <domain>", "Confirm the updated nameservers").with_param(
+                    "domain",
+                    NextActionParam::value(domain_format.render(&domain)),
+                ),
             ]))
         },
     ))

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.31](https://github.com/godaddy/cli/compare/v0.2.30...v0.2.31) (2026-10-21)
+
+
+### Features
+
+* **api:** add App Registry to the browsable API catalog [DEVEX-1173] ([#325](https://github.com/godaddy/cli/issues/325)) ([9815ba1](https://github.com/godaddy/cli/commit/9815ba1c64d1dcc2bb76c85aacca46967a1a5c59))
+* **platform-app:** convert App Registry GraphQL client to a spec-generated client ([#282](https://github.com/godaddy/cli/issues/282)) ([9442ee0](https://github.com/godaddy/cli/commit/9442ee0e3c434a40c264b21858dfdc38ebc2a032))
+
+
+### Bug Fixes
+
+* **api:** stop listing operations marked private in the API catalog ([#339](https://github.com/godaddy/cli/issues/339)) ([a6abc15](https://github.com/godaddy/cli/commit/a6abc1537494c66d5b544cf1a1217345a5637817))
+* **hosting:** make it easier for agents to buy a hosting plan before publishing Node.js apps ([#332](https://github.com/godaddy/cli/issues/332)) ([246d6f6](https://github.com/godaddy/cli/commit/246d6f66404f63d315510af7d6ce4fc309dbac6d))
+* **hosting:** show subscription list as a table and keep its totals independent of --limit ([#342](https://github.com/godaddy/cli/issues/342)) ([096f4c2](https://github.com/godaddy/cli/commit/096f4c2a57571d3caf29a7c5d5f49f94051cfc3e))
+
+
+### Miscellaneous
+
+* **platform-app:** add the generated App Registry GraphQL client crate [DEVEX-1173] ([#326](https://github.com/godaddy/cli/issues/326)) ([beb920e](https://github.com/godaddy/cli/commit/beb920e461e589ace043da17b7ff65f7aa2e7cd1))
+
 ## [0.2.30](https://github.com/godaddy/cli/compare/v0.2.29...v0.2.30) (2026-10-20)
 
 
