@@ -406,7 +406,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     );
                 }
             }
-            args.domain_format.form().convert_domain_fields(&mut result);
+            args.domain_format
+                .form()
+                .convert_fields(&mut result, &["domain"]);
             Ok(CommandResult::new(result).with_next_actions(actions))
         },
     )

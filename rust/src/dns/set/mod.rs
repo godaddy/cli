@@ -6,11 +6,11 @@ use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
-use super::records::verified_result;
 use super::records::{
     RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
     validate_svcb_fields, validate_tlsa_fields,
 };
+use super::records::{ZONE_AND_NAME, verified_result};
 
 mod outcome;
 mod plan;
@@ -145,7 +145,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let plan = plan_set(&existing, &desired);
             if ctx.dry_run() {
                 let mut preview = dry_run_set_preview(&domain, &record_type, &name, &plan);
-                domain_format.convert_dns_fields(&mut preview);
+                domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
                 return Ok(CommandResult::new(preview).with_dry_run());
             }
 

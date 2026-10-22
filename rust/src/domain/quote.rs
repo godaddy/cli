@@ -420,7 +420,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            args.domain_format.form().convert_domain_fields(&mut view);
+            args.domain_format.form().convert_fields(&mut view, &["domain", "resolved.nameServers"]);
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )

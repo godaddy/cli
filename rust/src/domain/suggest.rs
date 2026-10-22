@@ -215,7 +215,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .iter()
                 .filter_map(suggestion_to_json)
                 .map(|mut s| {
-                    domain_format.convert_domain_fields(&mut s);
+                    domain_format.convert_fields(&mut s, &["domain"]);
                     s
                 })
                 .collect();

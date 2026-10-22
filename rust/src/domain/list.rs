@@ -281,7 +281,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     CliCoreError::message(format!("failed to serialize domain list: {e}"))
                 })?;
             for domain in &mut domains {
-                args.domain_format.form().convert_domain_fields(domain);
+                args.domain_format
+                    .form()
+                    .convert_fields(domain, &["domain", "nameServers"]);
             }
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                 next_action("dns list <domain>", "View a domain's DNS records")

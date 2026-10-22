@@ -13,12 +13,13 @@ const ACE_PREFIX: &str = "xn--";
 
 /// The ASCII (punycode) form of a domain name or DNS record name.
 ///
-/// Pure-ASCII input is returned untouched, so names the API already accepts —
-/// including `@`, `*` and `_dmarc`-style labels — never change. Anything else
-/// is run through IDNA, which also lowercases it.
+/// The result is always lowercase, since domain names are case-insensitive.
+/// Pure-ASCII input is otherwise returned as typed, so names the API already
+/// accepts — including `@`, `*` and `_dmarc`-style labels — never change.
+/// Anything else is run through IDNA.
 pub(crate) fn to_ascii(name: &str) -> Result<String, GddyError> {
     if name.is_ascii() {
-        return Ok(name.to_owned());
+        return Ok(name.to_ascii_lowercase());
     }
     idna::domain_to_ascii(name).map_err(|_| {
         GddyError::validation(format!("{name:?} is not a valid internationalized name"))
@@ -46,20 +47,6 @@ fn has_ace_label(name: &str) -> bool {
     })
 }
 
-/// Response fields that hold a domain name or a list of host names, across the
-/// domain and hosting APIs.
-const DOMAIN_FIELDS: &[&str] = &[
-    "domain",
-    "idnDomain",
-    "unicodeDomain",
-    "nameServers",
-    "nameservers",
-    "hostname",
-];
-
-/// Fields of a DNS command's output that hold a zone or a record name.
-const DNS_FIELDS: &[&str] = &["domain", "name"];
-
 /// Which form of a domain name to show.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum DomainForm {
@@ -85,42 +72,27 @@ impl DomainForm {
         }
     }
 
-    /// Convert, in place, every string under a key in `keys` — at any depth,
-    /// including strings inside arrays under such a key — to this form.
-    pub(crate) fn convert_fields(self, value: &mut Value, keys: &[&str]) {
-        match value {
-            Value::Object(map) => {
-                for (key, child) in map.iter_mut() {
-                    if keys.contains(&key.as_str()) {
-                        self.convert_all(child);
-                    } else {
-                        self.convert_fields(child, keys);
-                    }
-                }
+    /// Convert to this form the value at each dotted path in `paths` (for
+    /// example `"domain"` or `"resolved.nameServers"`). A path names a string
+    /// or an array of strings reached through objects only; a path that is not
+    /// present, or leads anywhere else, is left alone. Callers list exactly
+    /// the fields their command's output holds domain names in, and loop over
+    /// list items themselves.
+    pub(crate) fn convert_fields(self, value: &mut Value, paths: &[&str]) {
+        for path in paths {
+            let target = path
+                .split('.')
+                .try_fold(&mut *value, |node, key| node.get_mut(key));
+            if let Some(target) = target {
+                self.convert_names(target);
             }
-            Value::Array(items) => {
-                for item in items {
-                    self.convert_fields(item, keys);
-                }
-            }
-            _ => {}
         }
     }
 
-    /// [`Self::convert_fields`] over the standard domain-name response fields.
-    pub(crate) fn convert_domain_fields(self, value: &mut Value) {
-        self.convert_fields(value, DOMAIN_FIELDS);
-    }
-
-    /// [`Self::convert_fields`] over the zone and record-name fields of DNS output.
-    pub(crate) fn convert_dns_fields(self, value: &mut Value) {
-        self.convert_fields(value, DNS_FIELDS);
-    }
-
-    fn convert_all(self, value: &mut Value) {
+    fn convert_names(self, value: &mut Value) {
         match value {
             Value::String(s) => *s = self.render(s),
-            Value::Array(items) => items.iter_mut().for_each(|v| self.convert_all(v)),
+            Value::Array(items) => items.iter_mut().for_each(|v| self.convert_names(v)),
             _ => {}
         }
     }
@@ -156,10 +128,21 @@ mod tests {
             to_ascii("xn--mnchen-3ya.de").expect("valid name"),
             "xn--mnchen-3ya.de"
         );
-        assert_eq!(to_ascii("Example.COM").expect("valid name"), "Example.COM");
         for special in ["@", "*", "_dmarc", "www"] {
             assert_eq!(to_ascii(special).expect("valid name"), special);
         }
+    }
+
+    #[test]
+    fn to_ascii_lowercases_ascii_and_unicode_names_alike() {
+        assert_eq!(
+            to_ascii("WWW.Example.COM").expect("valid name"),
+            "www.example.com"
+        );
+        assert_eq!(
+            to_ascii("MÜNCHEN.de").expect("valid name"),
+            "xn--mnchen-3ya.de"
+        );
     }
 
     #[test]
@@ -205,24 +188,50 @@ mod tests {
     }
 
     #[test]
-    fn convert_fields_walks_nested_values_and_string_arrays() {
+    fn convert_fields_converts_only_the_listed_paths() {
         let mut v = json!({
             "domain": "xn--mnchen-3ya.de",
+            "idnDomain": "xn--mnchen-3ya.de",
             "status": "xn--mnchen-3ya.de",
             "nameServers": ["ns1.xn--mnchen-3ya.de", "ns2.example.com"],
-            "items": [{"name": "xn--mnchen-3ya", "type": "A"}],
+            "resolved": {
+                "nameServers": ["ns1.xn--mnchen-3ya.de"],
+                "name": "xn--mnchen-3ya",
+            },
+            "items": [{"domain": "xn--mnchen-3ya.de"}],
             "count": 3,
         });
-        DomainForm::Unicode.convert_fields(&mut v, &["domain", "nameServers", "name"]);
+        DomainForm::Unicode.convert_fields(
+            &mut v,
+            &[
+                "domain",
+                "nameServers",
+                "resolved.nameServers",
+                "missing.path",
+            ],
+        );
         assert_eq!(
             v,
             json!({
                 "domain": "münchen.de",
+                "idnDomain": "xn--mnchen-3ya.de",
                 "status": "xn--mnchen-3ya.de",
                 "nameServers": ["ns1.münchen.de", "ns2.example.com"],
-                "items": [{"name": "münchen", "type": "A"}],
+                "resolved": {
+                    "nameServers": ["ns1.münchen.de"],
+                    "name": "xn--mnchen-3ya",
+                },
+                "items": [{"domain": "xn--mnchen-3ya.de"}],
                 "count": 3,
             })
         );
+    }
+
+    #[test]
+    fn convert_fields_ignores_paths_that_do_not_lead_to_names() {
+        let mut v = json!({"domain": 7, "nameServers": {"a": "xn--mnchen-3ya.de"}, "items": ["xn--mnchen-3ya.de"]});
+        let before = v.clone();
+        DomainForm::Unicode.convert_fields(&mut v, &["domain", "nameServers.a.b", "items.x"]);
+        assert_eq!(v, before);
     }
 }

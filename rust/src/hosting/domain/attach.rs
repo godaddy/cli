@@ -46,7 +46,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .attach_domain(&app_id, &args.hostname)
                 .await
                 .map_err(client_err)?;
-            args.domain_format.form().convert_domain_fields(&mut data);
+            args.domain_format
+                .form()
+                .convert_fields(&mut data, &["hostname"]);
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "hosting domain list --app-id <app-id>",

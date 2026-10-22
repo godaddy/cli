@@ -65,7 +65,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             }
 
             for item in &mut all_items {
-                args.domain_format.form().convert_domain_fields(item);
+                args.domain_format
+                    .form()
+                    .convert_fields(item, &["hostname"]);
             }
             Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
                 next_action(

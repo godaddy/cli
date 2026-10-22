@@ -11,7 +11,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use domains_client::types;
 
 use super::records::{
-    fetch_records, parse_dns_name_arg, parse_write_type_arg, record_value, verified_result,
+    ZONE_AND_NAME, fetch_records, parse_dns_name_arg, parse_write_type_arg, record_value,
+    verified_result,
 };
 
 output_schema!(DnsDeleteResult {
@@ -193,7 +194,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             if ctx.dry_run() {
                 let mut preview = dry_run_delete_preview(&domain, &record_type, &name, &existing);
-                domain_format.convert_dns_fields(&mut preview);
+                domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
                 return Ok(CommandResult::new(preview).with_dry_run());
             }
 

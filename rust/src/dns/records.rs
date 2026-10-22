@@ -25,6 +25,9 @@ pub(super) const LISTABLE_TYPES: &[&str] = &[
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
+/// The output fields of a DNS write that hold the zone and the record name.
+pub(super) const ZONE_AND_NAME: &[&str] = &["domain", "name"];
+
 /// Page size for the paginated v3 list; the handler pages through until every
 /// matching record is collected.
 const LIST_PAGE_SIZE: std::num::NonZeroU64 =
@@ -442,7 +445,7 @@ pub(super) fn verified_result(
     record_type: &str,
     name: &str,
 ) -> CommandResult {
-    domain_format.convert_dns_fields(&mut payload);
+    domain_format.convert_fields(&mut payload, ZONE_AND_NAME);
     CommandResult::new(payload).with_next_actions(vec![verify_with_list_action(
         &domain_format.render(domain),
         record_type,
