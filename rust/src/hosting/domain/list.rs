@@ -50,7 +50,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ctx.middleware.continue_token.as_deref(),
             );
             let (page, continuation) = pagination_token::paginate_known_collection(
-                page_items(&response),
+                pagination_token::filter_known_collection(
+                    page_items(&response),
+                    &ctx.middleware.filter,
+                )?,
                 ctx.middleware.cursor_limit,
                 200,
                 continue_token.as_deref(),

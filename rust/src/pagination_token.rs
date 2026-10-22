@@ -15,6 +15,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use cli_engine::{PipelineOpts, apply_pipeline};
+
 use cli_engine::CursorContinuation;
 use serde_json::Value;
 
@@ -146,6 +148,38 @@ fn inherited_limit(fields: &HashMap<String, String>, request_limit: i64, max_lim
     } else {
         request_limit
     }
+}
+
+/// Applies the global `--filter` to an already-fully-known collection
+/// *before* it is sliced.
+///
+/// The engine runs `--filter` after the handler returns, so for a cursor
+/// command it would filter the page it was handed — pages of a filtered
+/// collection would come out short, offsets would select different rows than
+/// they did when the engine paginated after filtering, and `cursor.total`
+/// would count unfiltered rows. A command that holds the whole collection
+/// filters it here first, with the engine's own filter, and propagates its
+/// invalid-expression error. The engine's later pass over the returned page is
+/// harmless: a per-item predicate keeps what it already kept.
+pub(crate) fn filter_known_collection(
+    items: Vec<Value>,
+    filter: &str,
+) -> cli_engine::Result<Vec<Value>> {
+    if filter.is_empty() {
+        return Ok(items);
+    }
+    let mut data = Value::Array(items);
+    apply_pipeline(
+        &mut data,
+        &PipelineOpts {
+            filter: filter.to_owned(),
+            ..PipelineOpts::default()
+        },
+    )?;
+    Ok(match data {
+        Value::Array(items) => items,
+        _ => Vec::new(),
+    })
 }
 
 /// Slices an already-fully-known collection using a `limit:<n>,offset:<n>`
@@ -377,6 +411,32 @@ mod tests {
         assert!(page.is_empty());
         assert!(cont.continue_from.is_none());
         assert_eq!(cont.total, Some(0));
+    }
+
+    #[test]
+    fn filter_known_collection_keeps_only_matching_items_in_order() {
+        let all = vec![
+            json!({ "name": "a.one" }),
+            json!({ "name": "b.two" }),
+            json!({ "name": "a.three" }),
+        ];
+        let kept =
+            filter_known_collection(all.clone(), "starts_with(name, 'a.')").expect("filters");
+        assert_eq!(
+            kept,
+            vec![json!({ "name": "a.one" }), json!({ "name": "a.three" })]
+        );
+        assert_eq!(
+            filter_known_collection(all.clone(), "").expect("no filter"),
+            all
+        );
+    }
+
+    #[test]
+    fn filter_known_collection_propagates_an_invalid_expression() {
+        let err = filter_known_collection(vec![json!({ "name": "x" })], "starts_with(((")
+            .expect_err("an invalid filter must surface, not be swallowed");
+        assert!(!err.to_string().is_empty());
     }
 
     #[test]
