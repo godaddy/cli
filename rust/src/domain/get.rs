@@ -50,7 +50,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 CliCoreError::message(format!("failed to serialize domain details: {e}"))
             })?;
             args.domain_format
-                .form()
+                .form(&ctx)?
                 .convert_fields(&mut value, &["domain", "nameServers"]);
             Ok(CommandResult::new(value).with_next_actions(vec![
                 next_action("dns list <domain>", "View this domain's DNS records")

@@ -40,6 +40,8 @@ gddy shopping catalog search --category webHosting --category email
 
 `--limit` controls the number of products, not the number of purchase options. Use a product ID with `catalog get` or `catalog lookup`; use a purchase option ID when creating a checkout session. A requested currency is a preference—the currency returned with the price is authoritative.
 
+If you always shop in one currency, save it once with `gddy config set currency GBP` (undo it with `gddy config unset currency`). `catalog search`, `catalog get`, `catalog lookup` and `checkout create` then use it unless you pass `--currency` or set the `GDDY_CURRENCY` environment variable; precedence is the flag, then the environment variable, then your saved setting. `checkout update` changes a session's currency only when you pass `--currency`, so a saved setting never re-prices an existing checkout session.
+
 ```bash
 gddy shopping catalog get <product-id> --currency GBP
 gddy shopping catalog lookup <product-id> --currency GBP

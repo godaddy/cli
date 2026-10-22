@@ -85,7 +85,7 @@ fn status_command() -> RuntimeCommandSpec {
                 .unwrap_or(operation_id);
 
             let op_type = op.type_.as_ref().map(|t| t.to_string()).unwrap_or_default();
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             let domain = domain_format.render(&domain);
             let mut result = json!({
                 "operationId": op_id,

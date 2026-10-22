@@ -92,8 +92,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let mut out = build_list_output(&records).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize DNS records: {e}"))
             })?;
+            let domain_format = args.domain_format.form(&ctx)?;
             for record in &mut out {
-                args.domain_format.form().convert_fields(record, &["name"]);
+                domain_format.convert_fields(record, &["name"]);
             }
             Ok(CommandResult::new(json!(out)))
         },

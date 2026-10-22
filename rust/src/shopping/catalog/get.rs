@@ -8,8 +8,9 @@ use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{
-    client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
+    client_err, make_client, merge_context_currency, reject_response_errors,
 };
+use crate::shopping::currency::CurrencyArgs;
 use crate::shopping::human::{CATALOG_GET_VIEW_ID, catalog_product_response};
 use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
@@ -24,9 +25,8 @@ struct Args {
     #[arg(value_name = "ID")]
     id: String,
 
-    /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or GBP).
-    #[arg(long, value_name = "CODE", value_parser = currency_code)]
-    currency: Option<String>,
+    #[command(flatten)]
+    currency: CurrencyArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -43,7 +43,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 id: Some(args.id),
                 ..Default::default()
             };
-            merge_context_currency(&mut request.context, args.currency.as_deref());
+            let currency = args.currency.resolve(&ctx)?;
+            merge_context_currency(&mut request.context, currency.as_deref());
             let client = make_client(&ctx).await?;
             let response = decode::<GetProductResponse>(
                 client

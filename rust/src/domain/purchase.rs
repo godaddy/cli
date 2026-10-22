@@ -175,6 +175,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let agree = args.agree;
             let confirm = args.confirm;
             let debug = !ctx.middleware.debug.is_empty();
+            // Resolve the display form up front: a bad preference must fail
+            // before the registration is submitted, not after the charge.
+            let domain_format = args.domain_format.form(&ctx)?;
 
             // Resolve auth *before* consuming the cached quote, so an auth
             // failure fails locally rather than after the cache entry (and the
@@ -406,9 +409,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     );
                 }
             }
-            args.domain_format
-                .form()
-                .convert_fields(&mut result, &["domain"]);
+            domain_format.convert_fields(&mut result, &["domain"]);
             Ok(CommandResult::new(result).with_next_actions(actions))
         },
     )

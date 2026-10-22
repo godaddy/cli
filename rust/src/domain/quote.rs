@@ -323,6 +323,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // build the profile. The token is bound to a hash of this quoted
             // request, so what's quoted here is what `purchase` later registers.
             let client = make_client(&ctx).await?;
+            // Resolve the display form before a quote is requested and cached,
+            // so a bad preference can't discard a token that was just issued.
+            let domain_format = args.domain_format.form(&ctx)?;
             let profile = build_profile(privacy, renew_auto, &name_servers)?;
             // Cache the exact profile we quote with: the token binds a hash of the
             // domain/price/profile, so `purchase` must re-send this verbatim or the
@@ -410,17 +413,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // same next step `domain available` offers for a taken name.
                 // `domain suggest` accepts a seed domain, so the domain just
                 // quoted is a valid query to copy/paste directly.
-                let resolved_domain = args
-                    .domain_format
-                    .form()
-                    .render(&quote.domain.clone().unwrap_or_else(|| domain.clone()));
+                let resolved_domain =
+                    domain_format.render(&quote.domain.clone().unwrap_or_else(|| domain.clone()));
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
                         .with_param("query", NextActionParam::value(resolved_domain)),
                 );
             }
 
-            args.domain_format.form().convert_fields(&mut view, &["domain", "resolved.nameServers"]);
+            domain_format.convert_fields(&mut view, &["domain", "resolved.nameServers"]);
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )

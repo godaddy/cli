@@ -9,6 +9,7 @@ use serde_json::json;
 use super::common::{
     api_error, format_operation_error, is_terminal_status, make_client, validate_domain_name,
 };
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DOMAIN_UPDATE;
@@ -42,6 +43,9 @@ struct TransferLockSetArgs {
     /// Domain to update (e.g. example.com).
     #[arg(value_name = "DOMAIN")]
     domain: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 
     #[command(flatten)]
     toggle: TransferLockToggle,
@@ -81,6 +85,9 @@ pub(super) fn group() -> RuntimeGroupSpec {
             // Clap's ArgGroup guarantees exactly one of --enable/--disable was passed.
             let enabled = args.toggle.enable;
             let debug = !ctx.middleware.debug.is_empty();
+            // Resolve the display form before the update is sent, so a bad
+            // preference can't hide the operation ID of a change already made.
+            let domain_format = args.domain_format.form(&ctx)?;
 
             let client = make_client(&ctx).await?;
             let idempotency_key = uuid::Uuid::new_v4().to_string();
@@ -124,6 +131,8 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 result["status"] = json!(status);
             }
 
+            domain_format.convert_fields(&mut result, &["domain"]);
+
             let mut actions = Vec::new();
             if is_terminal_status(&status) {
                 actions.push(
@@ -131,7 +140,10 @@ pub(super) fn group() -> RuntimeGroupSpec {
                         "domain get <domain>",
                         "Confirm the updated transfer-lock setting",
                     )
-                    .with_param("domain", NextActionParam::value(domain)),
+                    .with_param(
+                        "domain",
+                        NextActionParam::value(domain_format.render(&domain)),
+                    ),
                 );
             } else if let Some(op_id) = operation_id.as_ref() {
                 actions.push(
