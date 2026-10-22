@@ -9,7 +9,10 @@
 //! [`maybe_print_update_notice`], wired into `main.rs`'s `pre_run`/
 //! `on_shutdown` hooks) checks GitHub in the background at most once every
 //! [`CACHE_TTL`] and prints a one-line heads-up on stderr when a newer
-//! release is cached — never blocking, never auto-installing.
+//! release is cached — never blocking, never auto-installing. The notice goes
+//! to stderr whether or not the output is a terminal, so scripts and AI
+//! assistants (which run `gddy` with piped output) hear about updates too;
+//! stdout, and so the JSON result, is never touched.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -242,10 +245,8 @@ pub fn maybe_spawn_background_refresh() {
     });
 }
 
-/// Prints a one-line "update available" notice to stderr based on the
-/// previously cached check, if any. Skipped entirely when stdout or stderr
-/// isn't a TTY or a CI environment is detected, so scripted/piped/CI output
-/// is never polluted.
+/// Prints an "update available" notice to stderr based on the previously
+/// cached check, if any.
 pub fn maybe_print_update_notice() {
     if !should_show_notice() || UPDATE_APPLIED.load(Ordering::Relaxed) {
         return;
@@ -257,25 +258,40 @@ pub fn maybe_print_update_notice() {
     let Some(latest) = parse_version(&cache.latest_version) else {
         return;
     };
-    if latest <= current_version() {
+    let current = current_version();
+    if latest <= current {
         return;
     }
     let _ = writeln!(
         std::io::stderr(),
-        "A new gddy version is available: {} -> {latest} — run `gddy update apply` to install it.",
-        current_version(),
+        "{}",
+        update_notice(&current, &latest, is_interactive())
     );
 }
 
-fn should_show_notice() -> bool {
+/// Builds the notice text. Non-interactive runs (scripts, AI assistants) get
+/// an extra line addressed to AI assistants, since they are the ones who need
+/// to be told to relay the news and to ask before installing.
+fn update_notice(current: &semver::Version, latest: &semver::Version, interactive: bool) -> String {
+    let mut notice = format!(
+        "A new gddy version is available: {current} -> {latest} — run `gddy update apply` to install it."
+    );
+    if !interactive {
+        notice.push_str(
+            "\nAI assistants: tell the user a gddy update is available, and run \
+             `gddy update apply` only after they agree.",
+        );
+    }
+    notice
+}
+
+fn is_interactive() -> bool {
     use std::io::IsTerminal as _;
-    if !std::io::stdout().is_terminal() || !std::io::stderr().is_terminal() {
-        return false;
-    }
-    if std::env::var_os("CI").is_some() || std::env::var_os("GITHUB_ACTIONS").is_some() {
-        return false;
-    }
-    true
+    std::io::stdout().is_terminal() && std::io::stderr().is_terminal()
+}
+
+fn should_show_notice() -> bool {
+    std::env::var_os("CI").is_none() && std::env::var_os("GITHUB_ACTIONS").is_none()
 }
 
 fn current_version() -> semver::Version {
@@ -559,6 +575,23 @@ mod tests {
         assert_eq!(actions[0].command, "gddy completion --install");
 
         assert!(completion_next_actions("already up to date").is_empty());
+    }
+
+    #[test]
+    fn update_notice_addresses_ai_assistants_only_when_not_interactive() {
+        let current = parse_version("0.2.31").expect("valid semver");
+        let latest = parse_version("0.3.0").expect("valid semver");
+
+        let interactive = update_notice(&current, &latest, true);
+        assert_eq!(
+            interactive,
+            "A new gddy version is available: 0.2.31 -> 0.3.0 — run `gddy update apply` to install it."
+        );
+
+        let piped = update_notice(&current, &latest, false);
+        assert!(piped.starts_with(&interactive));
+        assert!(piped.contains("\nAI assistants: tell the user"));
+        assert!(piped.contains("only after they agree"));
     }
 
     #[test]
