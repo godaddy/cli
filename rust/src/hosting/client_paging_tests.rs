@@ -370,6 +370,77 @@ async fn list_subscriptions_does_not_read_the_same_request_twice_when_a_link_add
 }
 
 #[tokio::test]
+async fn list_subscriptions_does_not_read_a_page_again_when_parameters_are_reordered() {
+    let server = MockServer::start_async().await;
+    subscriptions_first_page(
+        &server,
+        json!({
+            "items": [{ "subscriptionId": "s1" }],
+            "links": [{ "rel": "next", "href": "/v1/hosting/subscriptions?pageToken=t2" }]
+        }),
+    );
+    let second = server.mock(|when, then| {
+        when.method(GET)
+            .path("/v1/hosting/subscriptions")
+            .query_param("pageToken", "t2");
+        then.status(200).json_body(json!({
+            "items": [{ "subscriptionId": "s2" }],
+            "links": [{
+                "rel": "next",
+                "href": "/v1/hosting/subscriptions?hostingProduct=WEB_HOSTING&pageToken=t2"
+            }]
+        }));
+    });
+
+    let listed = client(&server.base_url())
+        .list_subscriptions("WEB_HOSTING")
+        .await
+        .expect("list subscriptions");
+
+    second.assert_calls(1);
+    assert_eq!(
+        subscription_ids(&listed),
+        ["s1", "s2"],
+        "no duplicated plans"
+    );
+    assert!(listed.incomplete);
+}
+
+#[tokio::test]
+async fn list_subscriptions_does_not_read_the_first_request_again() {
+    // A link back to the request that produced the first page must not be
+    // fetched: its plans would be appended a second time.
+    let server = MockServer::start_async().await;
+    let first = subscriptions_first_page(
+        &server,
+        json!({
+            "items": [{ "subscriptionId": "s1", "availableSlots": 2 }],
+            "links": [{
+                "rel": "next",
+                "href": "/v1/hosting/subscriptions?hostingProduct=WEB_HOSTING"
+            }]
+        }),
+    );
+
+    let listed = client(&server.base_url())
+        .list_subscriptions("WEB_HOSTING")
+        .await
+        .expect("list subscriptions");
+
+    first.assert_calls(1);
+    assert_eq!(subscription_ids(&listed), ["s1"], "no duplicated plans");
+    assert!(listed.incomplete);
+}
+
+#[test]
+fn request_key_ignores_parameter_order_but_not_values() {
+    assert_eq!(request_key("a=1&b=2"), request_key("b=2&a=1"));
+    assert_ne!(request_key("a=1&b=2"), request_key("a=1&b=3"));
+    assert_ne!(request_key("a=1"), request_key("a=1&b=2"));
+    assert_eq!(request_key(""), request_key("&"));
+}
+
+#[tokio::test]
 async fn list_subscriptions_stops_at_a_repeated_next_link_and_reports_it() {
     let server = MockServer::start_async().await;
     subscriptions_first_page(
