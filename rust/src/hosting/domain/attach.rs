@@ -12,16 +12,11 @@ struct DomainAttachArgs {
     app_id: String,
 
     /// Fully-qualified domain name to attach (e.g. www.example.com).
-    #[arg(long, value_name = "HOSTNAME", value_parser = parse_hostname_arg)]
+    #[arg(long, value_name = "HOSTNAME", value_parser = crate::idn::parse_name_arg)]
     hostname: String,
 
     #[command(flatten)]
     domain_format: DomainFormArgs,
-}
-
-/// Clap value-parser: a Unicode hostname is sent in its ASCII (punycode) form.
-fn parse_hostname_arg(raw: &str) -> Result<String, String> {
-    crate::idn::to_ascii(raw).map_err(|e| e.to_string())
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {

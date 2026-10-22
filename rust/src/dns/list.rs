@@ -12,12 +12,12 @@ use crate::scopes::DOMAINS_READ;
 
 use domains_client::types;
 
-use super::records::{fetch_records, merged_tlsa_data, parse_dns_name_arg, parse_list_type_arg};
+use super::records::{fetch_records, merged_tlsa_data, parse_list_type_arg};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ListArgs {
     /// Domain whose records to list (e.g. example.com).
-    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
     /// Only records of this type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, NS,
@@ -26,7 +26,7 @@ struct ListArgs {
     record_type: Option<String>,
 
     /// Only records with this name (requires --type).
-    #[arg(long, value_name = "NAME", requires = "record_type", value_parser = parse_dns_name_arg)]
+    #[arg(long, value_name = "NAME", requires = "record_type", value_parser = crate::idn::parse_name_arg)]
     name: Option<String>,
 
     #[command(flatten)]

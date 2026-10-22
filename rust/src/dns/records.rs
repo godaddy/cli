@@ -37,12 +37,6 @@ const LIST_PAGE_SIZE: std::num::NonZeroU64 =
 /// against [`WRITABLE_TYPES`] and return the canonical upper-case wire string.
 /// The read-only NS/SOA get a clear "managed by GoDaddy" reason. Validating in
 /// clap rejects invalid input at parse time — before `--dry-run`/auth short-circuits.
-/// Clap value-parser for a zone or record name: Unicode names are sent to the
-/// API in their ASCII (punycode) form; ASCII names pass through unchanged.
-pub(super) fn parse_dns_name_arg(raw: &str) -> Result<String, String> {
-    crate::idn::to_ascii(raw).map_err(|e| e.to_string())
-}
-
 pub(super) fn parse_write_type_arg(raw: &str) -> Result<String, String> {
     let upper = raw.to_ascii_uppercase();
     if WRITABLE_TYPES.contains(&upper.as_str()) {
@@ -129,7 +123,7 @@ pub(crate) const CONDITIONALLY_REQUIRED_FLAGS: &[(&str, &str)] = &[
 #[derive(Debug, Clone, clap::Args)]
 pub(super) struct RecordWriteArgs {
     /// Domain whose records to modify (e.g. example.com).
-    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     pub(super) domain: String,
 
     // `ignore_case` is load-bearing, not cosmetic. The `required_if_eq` predicates
@@ -142,7 +136,7 @@ pub(super) struct RecordWriteArgs {
     pub(super) record_type: String,
 
     /// Record name relative to the domain (e.g. www, @ for the apex).
-    #[arg(long, value_name = "NAME", value_parser = parse_dns_name_arg)]
+    #[arg(long, value_name = "NAME", value_parser = crate::idn::parse_name_arg)]
     pub(super) name: String,
 
     #[command(flatten)]
@@ -436,6 +430,16 @@ pub(super) async fn fetch_records(
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
 /// the domain/type/name the write just touched.
+pub(super) fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
+    next_action(
+        "dns list <domain> --type <type> --name <name>",
+        "Verify the records for this type+name",
+    )
+    .with_param("domain", NextActionParam::value(domain))
+    .with_param("type", NextActionParam::value(record_type))
+    .with_param("name", NextActionParam::value(name))
+}
+
 /// A mutation's success payload plus the "verify with `dns list`" next action,
 /// with the zone and record name shown in `domain_format`.
 pub(super) fn verified_result(
@@ -453,35 +457,9 @@ pub(super) fn verified_result(
     )])
 }
 
-pub(super) fn verify_with_list_action(domain: &str, record_type: &str, name: &str) -> NextAction {
-    next_action(
-        "dns list <domain> --type <type> --name <name>",
-        "Verify the records for this type+name",
-    )
-    .with_param("domain", NextActionParam::value(domain))
-    .with_param("type", NextActionParam::value(record_type))
-    .with_param("name", NextActionParam::value(name))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_dns_name_arg_encodes_unicode_and_keeps_special_names() {
-        assert_eq!(
-            parse_dns_name_arg("münchen.de").expect("valid name"),
-            "xn--mnchen-3ya.de"
-        );
-        assert_eq!(
-            parse_dns_name_arg("*.münchen").expect("valid name"),
-            "*.xn--mnchen-3ya"
-        );
-        for plain in ["example.com", "xn--mnchen-3ya.de", "@", "www", "_dmarc"] {
-            assert_eq!(parse_dns_name_arg(plain).expect("valid name"), plain);
-        }
-        assert!(parse_dns_name_arg("\u{301}abc.com").is_err());
-    }
 
     #[test]
     fn verified_result_shows_the_requested_form_of_zone_and_name() {

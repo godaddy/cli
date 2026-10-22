@@ -6,6 +6,8 @@
 
 use serde_json::Value;
 
+use cli_engine::DetailedError;
+
 use crate::error::GddyError;
 
 /// Prefix of an ASCII-compatible-encoded (punycode) label, any case.
@@ -24,6 +26,16 @@ pub(crate) fn to_ascii(name: &str) -> Result<String, GddyError> {
     idna::domain_to_ascii(name).map_err(|_| {
         GddyError::validation(format!("{name:?} is not a valid internationalized name"))
             .with_fix("Remove any characters that can't appear in a domain name.")
+    })
+}
+
+/// Clap value-parser for a domain name, record name or hostname argument:
+/// sends the ASCII (lowercase, punycode) form. The error keeps the `fix`, since
+/// clap shows only a message.
+pub(crate) fn parse_name_arg(raw: &str) -> Result<String, String> {
+    to_ascii(raw).map_err(|e| match e.error_fix() {
+        Some(fix) => format!("{e}. {fix}"),
+        None => e.to_string(),
     })
 }
 
@@ -156,6 +168,20 @@ mod tests {
     #[test]
     fn to_ascii_rejects_names_idna_disallows() {
         assert!(to_ascii("\u{301}abc.com").is_err());
+    }
+
+    #[test]
+    fn parse_name_arg_sends_ascii_and_keeps_the_fix_in_its_error() {
+        assert_eq!(
+            parse_name_arg("MÜNCHEN.de").expect("valid name"),
+            "xn--mnchen-3ya.de"
+        );
+        let err = parse_name_arg("\u{301}abc.com").expect_err("invalid name");
+        assert!(
+            err.contains("is not a valid internationalized name"),
+            "{err}"
+        );
+        assert!(err.contains("Remove any characters"), "{err}");
     }
 
     #[test]

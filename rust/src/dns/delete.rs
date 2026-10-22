@@ -11,8 +11,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use domains_client::types;
 
 use super::records::{
-    ZONE_AND_NAME, fetch_records, parse_dns_name_arg, parse_write_type_arg, record_value,
-    verified_result,
+    ZONE_AND_NAME, fetch_records, parse_write_type_arg, record_value, verified_result,
 };
 
 output_schema!(DnsDeleteResult {
@@ -118,7 +117,7 @@ fn dry_run_delete_preview(
 #[derive(Debug, Clone, clap::Args)]
 struct DeleteArgs {
     /// Domain whose records to delete (e.g. example.com).
-    #[arg(value_name = "DOMAIN", value_parser = parse_dns_name_arg)]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
     /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
@@ -126,7 +125,7 @@ struct DeleteArgs {
     record_type: String,
 
     /// Record name relative to the domain (e.g. www).
-    #[arg(long, value_name = "NAME", value_parser = parse_dns_name_arg)]
+    #[arg(long, value_name = "NAME", value_parser = crate::idn::parse_name_arg)]
     name: String,
 
     #[command(flatten)]
