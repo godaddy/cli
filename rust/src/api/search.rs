@@ -55,13 +55,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_output_schema::<ApiEndpoint>()
             .with_cursor(CursorConfig::new(50, MAX_LIMIT)),
         |ctx, args: SearchArgs| async move {
+            let continue_token = pagination_token::resolve_continue_token(
+                args.offset,
+                ctx.middleware.continue_token.as_deref(),
+            );
             let hits = search_endpoints(catalog(), &args.query);
             if hits.is_empty() {
+                // Same token handling as a search with results: a malformed
+                // token is rejected, and a valid one's page size is reported.
                 let (page, continuation) = pagination_token::paginate_known_collection(
                     Vec::new(),
                     ctx.middleware.cursor_limit,
                     MAX_LIMIT,
-                    None,
+                    continue_token.as_deref(),
                 )?;
                 return Ok(CommandResult::new(json!(page)).with_cursor(continuation));
             }
@@ -127,10 +133,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            let continue_token = pagination_token::resolve_continue_token(
-                args.offset,
-                ctx.middleware.continue_token.as_deref(),
-            );
             let (page, continuation) = pagination_token::paginate_known_collection(
                 pagination_token::filter_known_collection(results, &ctx.middleware.filter)?,
                 ctx.middleware.cursor_limit,
@@ -161,6 +163,51 @@ mod tests {
                 .with_min_stage(Stage::Experimental)
                 .with_modules(crate::all_modules()),
         )
+    }
+
+    /// A search with no matches takes the same `--continue` handling as one
+    /// with results: a malformed token is rejected rather than ignored, and a
+    /// valid one's page size is what the cursor reports.
+    #[tokio::test]
+    async fn an_empty_search_validates_and_honours_the_continue_token() {
+        let cli = test_cli();
+        let nothing = "zzqqxxnomatchzzqqxx";
+
+        let bad = cli
+            .run([
+                "gddy",
+                "api",
+                "search",
+                nothing,
+                "--continue",
+                "limit:1,offs",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_ne!(bad.exit_code, 0, "{}", bad.rendered);
+        assert!(
+            bad.rendered.contains("invalid --continue value"),
+            "{}",
+            bad.rendered
+        );
+
+        let ok = cli
+            .run([
+                "gddy",
+                "api",
+                "search",
+                nothing,
+                "--continue",
+                "limit:1,offset:1",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(ok.exit_code, 0, "{}", ok.rendered);
+        let ok: serde_json::Value = serde_json::from_str(&ok.rendered).expect("valid json");
+        assert_eq!(ok["data"].as_array().expect("array").len(), 0);
+        assert_eq!(ok["cursor"]["limit"], serde_json::json!(1));
     }
 
     #[tokio::test]

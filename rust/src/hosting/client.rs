@@ -764,9 +764,6 @@ impl HostingClient {
             let Some(mut query) = super::common::next_link_query(&page) else {
                 break;
             };
-            if !seen.insert(query.clone()) {
-                break;
-            }
             for (name, value) in required {
                 if !query
                     .split('&')
@@ -776,6 +773,12 @@ impl HostingClient {
                         url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
                     query.push_str(&format!("&{name}={value}"));
                 }
+            }
+            // Compare the request actually sent: a link that omits a required
+            // parameter and a later one that includes it are the same request,
+            // and reading it twice would count its items twice.
+            if !seen.insert(query.clone()) {
+                break;
             }
             let raw = self.get_with_query(path, &query).await?;
             let typed: T = serde_json::from_value(raw).map_err(ClientError::Response)?;
