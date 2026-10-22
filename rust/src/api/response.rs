@@ -21,7 +21,7 @@ struct ResponseListArgs {
     operation: String,
 
     /// Jump directly to an offset in the collection. Ignored when `--continue` is given.
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
     offset: Option<i64>,
 }
 
@@ -61,7 +61,7 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 ctx.middleware.cursor_limit,
                 OPERATION_CHILD_LIST_MAX_LIMIT,
                 continue_token.as_deref(),
-            );
+            )?;
             let next_actions = vec![
                 next_action(
                     "api response get <status> --operation <operation>",

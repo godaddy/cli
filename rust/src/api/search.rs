@@ -35,7 +35,7 @@ struct SearchArgs {
 
     /// Jump directly to this offset instead of walking there one --continue
     /// token at a time. Ignored when `--continue` is given.
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
     offset: Option<i64>,
 }
 
@@ -62,7 +62,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     ctx.middleware.cursor_limit,
                     MAX_LIMIT,
                     None,
-                );
+                )?;
                 return Ok(CommandResult::new(json!(page)).with_cursor(continuation));
             }
             let mut results: Vec<Value> = hits
@@ -136,7 +136,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 ctx.middleware.cursor_limit,
                 MAX_LIMIT,
                 continue_token.as_deref(),
-            );
+            )?;
             Ok(CommandResult::new(json!(page))
                 .with_cursor(continuation)
                 .with_next_actions(next_actions))
