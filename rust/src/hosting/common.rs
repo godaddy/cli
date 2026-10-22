@@ -292,21 +292,6 @@ pub fn more_pages_warning(response: &Value, what: &str) -> Option<String> {
     next_link_href(response).map(|_| format!("The API reports more {what} than can be displayed."))
 }
 
-/// Writes `message` as a one-line warning to `out`.
-fn write_warning(out: &mut impl std::io::Write, message: &str) {
-    let _ = writeln!(out, "warning: {message}");
-}
-
-/// Shows a non-fatal warning to the user on stderr, keeping stdout's JSON/TOON
-/// payload clean.
-///
-/// Interim: the engine has no result-level warning channel yet. Replace calls
-/// with `CommandResult::with_warning` once cli-engine#131 is released and
-/// adopted.
-pub fn warn_user(message: &str) {
-    write_warning(&mut std::io::stderr(), message);
-}
-
 /// The `items` array of a paged hosting response (empty when absent).
 pub fn page_items(response: &Value) -> Vec<Value> {
     response
@@ -319,9 +304,15 @@ pub fn page_items(response: &Value) -> Vec<Value> {
 /// Maps a paged hosting response's `links[rel=next]` onto the engine's cursor
 /// continuation, using the server's own `pageToken` as the `--continue` token.
 pub fn page_continuation(response: &Value) -> CursorContinuation {
-    match next_page_token(response) {
+    let continuation = match next_page_token(response) {
         Some(token) => CursorContinuation::more(token),
         None => CursorContinuation::done(),
+    };
+    // `totalItems` is only present when the service was asked for it
+    // (`totalRequired`); leave the total absent otherwise.
+    match response.get("totalItems").and_then(Value::as_i64) {
+        Some(total) => continuation.with_total(total),
+        None => continuation,
     }
 }
 
@@ -457,16 +448,6 @@ mod tests {
     }
 
     #[test]
-    fn write_warning_emits_one_prefixed_line() {
-        let mut out = Vec::new();
-        write_warning(&mut out, "list may be incomplete");
-        assert_eq!(
-            String::from_utf8(out).expect("utf8"),
-            "warning: list may be incomplete\n"
-        );
-    }
-
-    #[test]
     fn page_items_returns_the_items_array_or_empty() {
         assert_eq!(
             page_items(&json!({ "items": [{ "id": "a" }, { "id": "b" }] })).len(),
@@ -504,6 +485,13 @@ mod tests {
             None
         );
         assert_eq!(next_link_href(&json!({ "items": [] })), None);
+    }
+
+    #[test]
+    fn page_continuation_carries_total_items_only_when_the_service_sends_it() {
+        let with_total = page_continuation(&json!({ "items": [], "totalItems": 42 }));
+        assert_eq!(with_total.total, Some(42));
+        assert_eq!(page_continuation(&json!({ "items": [] })).total, None);
     }
 
     #[test]

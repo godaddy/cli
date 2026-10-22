@@ -33,8 +33,22 @@ pub(crate) fn parse(token: Option<&str>) -> HashMap<String, String> {
     token
         .split(',')
         .filter_map(|pair| pair.split_once(':'))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .map(|(key, value)| (key.to_owned(), unescape(value)))
         .collect()
+}
+
+/// Escapes the two characters that would corrupt a `key:value,key:value`
+/// token — `%` (the escape itself) and `,` (the pair separator) — so an opaque
+/// value, such as a server's page token, survives [`build`] then [`parse`]
+/// byte for byte.
+fn escape(value: &str) -> String {
+    value.replace('%', "%25").replace(',', "%2C")
+}
+
+/// Inverse of [`escape`]. `%2C` must be decoded before `%25`, so that an
+/// original `%2C` (escaped to `%252C`) is not turned into a comma.
+fn unescape(value: &str) -> String {
+    value.replace("%2C", ",").replace("%25", "%")
 }
 
 /// Reads a typed field out of a [`parse`]d map, falling back to `default`
@@ -52,7 +66,7 @@ pub(crate) fn field<T: FromStr>(fields: &HashMap<String, String>, key: &str, def
 pub(crate) fn build(pairs: &[(&str, &str)]) -> String {
     pairs
         .iter()
-        .map(|(key, value)| format!("{key}:{value}"))
+        .map(|(key, value)| format!("{key}:{}", escape(value)))
         .collect::<Vec<_>>()
         .join(",")
 }
@@ -111,12 +125,27 @@ pub(crate) fn resolve_page_request<P: FromStr>(
     continue_token: Option<&str>,
     default_page: P,
     limit: i64,
+    max_limit: i64,
 ) -> (P, i64) {
     let fields = parse(continue_token);
     let token_page = fields.get("page").and_then(|value| value.parse().ok());
     let page = token_page.or(explicit_page).unwrap_or(default_page);
-    let page_size = field(&fields, "limit", limit);
+    let page_size = inherited_limit(&fields, limit, max_limit);
     (page, page_size)
+}
+
+/// The page size a `--continue` token carries, if it is within the command's
+/// `1..=max_limit` range; otherwise the request's own already-validated
+/// `--limit`. A hand-edited token must not widen a page past the command's
+/// maximum (`limit:-1` would otherwise mean "everything") or send the backend
+/// a size it rejects.
+fn inherited_limit(fields: &HashMap<String, String>, request_limit: i64, max_limit: i64) -> i64 {
+    let inherited = field(fields, "limit", request_limit);
+    if (1..=max_limit).contains(&inherited) {
+        inherited
+    } else {
+        request_limit
+    }
 }
 
 /// Slices an already-fully-known collection using a `limit:<n>,offset:<n>`
@@ -124,11 +153,12 @@ pub(crate) fn resolve_page_request<P: FromStr>(
 pub(crate) fn paginate_known_collection(
     items: Vec<Value>,
     limit: i64,
+    max_limit: i64,
     continue_token: Option<&str>,
 ) -> (Vec<Value>, CursorContinuation) {
     let fields = parse(continue_token);
     let offset = field(&fields, "offset", 0usize);
-    let limit = field(&fields, "limit", limit);
+    let limit = inherited_limit(&fields, limit, max_limit);
     let limit = saturating_usize(limit).max(1);
     let total = items.len();
     let start = offset.min(total);
@@ -149,6 +179,21 @@ pub(crate) fn paginate_known_collection(
         .with_remaining(saturating_i64(remaining))
         .with_limit(saturating_i64(limit));
     (page, continuation)
+}
+
+/// Writes `message` as a one-line warning to `out`.
+fn write_warning(out: &mut impl std::io::Write, message: &str) {
+    let _ = writeln!(out, "warning: {message}");
+}
+
+/// Shows a non-fatal warning about an incomplete listing to the user on
+/// stderr, keeping stdout's JSON/TOON payload clean.
+///
+/// Interim: the engine has no result-level warning channel yet. Replace calls
+/// with `CommandResult::with_warning` once cli-engine#131 is released and
+/// adopted.
+pub(crate) fn warn_user(message: &str) {
+    write_warning(&mut std::io::stderr(), message);
 }
 
 #[cfg(test)]
@@ -224,7 +269,7 @@ mod tests {
 
     #[test]
     fn resolve_page_request_with_no_input_defaults_the_page_and_uses_the_given_limit() {
-        let (page, page_size) = resolve_page_request(None::<u32>, None, 1u32, 25);
+        let (page, page_size) = resolve_page_request(None::<u32>, None, 1u32, 25, 100);
         assert_eq!(page, 1);
         assert_eq!(page_size, 25);
     }
@@ -235,7 +280,7 @@ mod tests {
         // this call's own --limit defaulted to something else (25) — page 2
         // of size-10 pages and page 2 of size-25 pages cover different items.
         let token = build(&[("limit", "10"), ("page", "2")]);
-        let (page, page_size) = resolve_page_request(None::<u32>, Some(&token), 1u32, 25);
+        let (page, page_size) = resolve_page_request(None::<u32>, Some(&token), 1u32, 25, 100);
         assert_eq!(page, 2);
         assert_eq!(page_size, 10);
     }
@@ -245,7 +290,7 @@ mod tests {
     {
         // No continue token, so there's no prior size to inherit — the
         // request's own limit applies.
-        let (page, page_size) = resolve_page_request(Some(5u32), None, 1u32, 25);
+        let (page, page_size) = resolve_page_request(Some(5u32), None, 1u32, 25, 100);
         assert_eq!(page, 5);
         assert_eq!(page_size, 25);
     }
@@ -255,7 +300,7 @@ mod tests {
         // The engine's next-page action replays `--page 5` next to the new
         // `--continue`; the token's page has to win or the user never advances.
         let token = build(&[("limit", "10"), ("page", "6")]);
-        let (page, page_size) = resolve_page_request(Some(5u32), Some(&token), 1u32, 25);
+        let (page, page_size) = resolve_page_request(Some(5u32), Some(&token), 1u32, 25, 100);
         assert_eq!(page, 6);
         assert_eq!(page_size, 10);
     }
@@ -266,7 +311,7 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_returns_the_first_page_with_no_token() {
-        let (page, cont) = paginate_known_collection(items(5), 2, None);
+        let (page, cont) = paginate_known_collection(items(5), 2, 100, None);
         assert_eq!(page, vec![json!({"id": 0}), json!({"id": 1})]);
         assert!(cont.continue_from.is_some());
         assert_eq!(cont.total, Some(5));
@@ -275,9 +320,9 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_resumes_from_the_continue_token() {
-        let (_, cont) = paginate_known_collection(items(5), 2, None);
+        let (_, cont) = paginate_known_collection(items(5), 2, 100, None);
         let token = cont.continue_from.expect("has_more implies a token");
-        let (page, cont2) = paginate_known_collection(items(5), 2, Some(&token));
+        let (page, cont2) = paginate_known_collection(items(5), 2, 100, Some(&token));
         assert_eq!(page, vec![json!({"id": 2}), json!({"id": 3})]);
         assert!(cont2.continue_from.is_some());
         assert_eq!(cont2.remaining, Some(1));
@@ -285,14 +330,14 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_continue_token_embeds_and_inherits_the_limit() {
-        let (_, cont) = paginate_known_collection(items(5), 2, None);
+        let (_, cont) = paginate_known_collection(items(5), 2, 100, None);
         let token = cont.continue_from.expect("has_more implies a token");
         assert_eq!(token, "limit:2,offset:2");
 
         // A caller that resumes with --continue alone, and whose --limit
         // defaulted to something else entirely (25) this call, must still
         // get the size (2) that produced the token, not the new default.
-        let (page, cont2) = paginate_known_collection(items(5), 25, Some(&token));
+        let (page, cont2) = paginate_known_collection(items(5), 25, 100, Some(&token));
         assert_eq!(page, vec![json!({"id": 2}), json!({"id": 3})]);
         assert_eq!(cont2.remaining, Some(1));
     }
@@ -303,7 +348,7 @@ mod tests {
         // `limit`) for an explicit --offset — the request's own limit
         // applies, same as a fresh, tokenless call.
         let token = resolve_continue_token(Some(2), None).expect("explicit offset");
-        let (page, _) = paginate_known_collection(items(5), 3, Some(&token));
+        let (page, _) = paginate_known_collection(items(5), 3, 100, Some(&token));
         assert_eq!(
             page,
             vec![json!({"id": 2}), json!({"id": 3}), json!({"id": 4})]
@@ -312,7 +357,7 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_reaches_the_end_with_no_further_token() {
-        let (page, cont) = paginate_known_collection(items(5), 2, Some("offset:4"));
+        let (page, cont) = paginate_known_collection(items(5), 2, 100, Some("offset:4"));
         assert_eq!(page, vec![json!({"id": 4})]);
         assert!(cont.continue_from.is_none());
         assert_eq!(cont.remaining, Some(0));
@@ -320,7 +365,7 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_past_the_end_returns_empty() {
-        let (page, cont) = paginate_known_collection(items(3), 2, Some("offset:10"));
+        let (page, cont) = paginate_known_collection(items(3), 2, 100, Some("offset:10"));
         assert!(page.is_empty());
         assert!(cont.continue_from.is_none());
         assert_eq!(cont.remaining, Some(0));
@@ -328,9 +373,71 @@ mod tests {
 
     #[test]
     fn paginate_known_collection_of_an_empty_collection() {
-        let (page, cont) = paginate_known_collection(Vec::new(), 10, None);
+        let (page, cont) = paginate_known_collection(Vec::new(), 10, 100, None);
         assert!(page.is_empty());
         assert!(cont.continue_from.is_none());
         assert_eq!(cont.total, Some(0));
+    }
+
+    #[test]
+    fn write_warning_emits_one_prefixed_line() {
+        let mut out = Vec::new();
+        write_warning(&mut out, "list may be incomplete");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "warning: list may be incomplete\n"
+        );
+    }
+
+    #[test]
+    fn build_and_parse_round_trip_opaque_values_byte_for_byte() {
+        for opaque in [
+            "abc,def", "100%", "a+b c", "%2C", "%252C", ",,%,%25,", "x:y,z",
+        ] {
+            let token = build(&[("token", opaque), ("direction", "forward")]);
+            let fields = parse(Some(&token));
+            assert_eq!(
+                fields.get("token").map(String::as_str),
+                Some(opaque),
+                "{token}"
+            );
+            assert_eq!(fields.get("direction").map(String::as_str), Some("forward"));
+        }
+    }
+
+    #[test]
+    fn a_comma_in_a_value_does_not_split_the_token() {
+        assert_eq!(build(&[("token", "abc,def")]), "token:abc%2Cdef");
+    }
+
+    #[test]
+    fn paginate_known_collection_ignores_an_out_of_range_token_limit() {
+        // Negative would otherwise convert to usize::MAX and return everything;
+        // zero and oversized values fall back to the request's own limit.
+        for bad in [
+            "limit:-1,offset:0",
+            "limit:0,offset:0",
+            "limit:101,offset:0",
+        ] {
+            let (page, _) = paginate_known_collection(items(300), 7, 100, Some(bad));
+            assert_eq!(page.len(), 7, "{bad}");
+        }
+        let (page, _) = paginate_known_collection(items(300), 7, 100, Some("limit:100,offset:0"));
+        assert_eq!(
+            page.len(),
+            100,
+            "an in-range token limit is still inherited"
+        );
+    }
+
+    #[test]
+    fn resolve_page_request_ignores_an_out_of_range_token_limit() {
+        for bad in ["limit:-1,page:2", "limit:0,page:2", "limit:101,page:2"] {
+            let (page, page_size) = resolve_page_request(None::<u32>, Some(bad), 1u32, 25, 100);
+            assert_eq!((page, page_size), (2, 25), "{bad}");
+        }
+        let (_, page_size) =
+            resolve_page_request(None::<u32>, Some("limit:100,page:2"), 1u32, 25, 100);
+        assert_eq!(page_size, 100);
     }
 }
