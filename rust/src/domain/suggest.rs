@@ -8,7 +8,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, comma_joined, fees_to_json, format_money, make_client, term_for_period,
+    PRICE_EXCLUDES_TAXES_AND_FEES, api_error, comma_joined, fees_to_json, format_money,
+    make_client, term_for_period,
 };
 use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
@@ -63,10 +64,10 @@ fn view_columns() -> Vec<TableColumn> {
             .align(Alignment::Right)
             .essential(true),
         TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
-        TableColumn::new("fees1Year", "1yr Fees"),
+        TableColumn::new("fees1Year", "1yr Premium Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
         TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
-        TableColumn::new("fees2Year", "2yr Fees"),
+        TableColumn::new("fees2Year", "2yr Premium Fees"),
         TableColumn::new("currency", "Currency").essential(true),
         TableColumn::new("inventory", "Inventory"),
     ]
@@ -175,7 +176,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "Suggest available domains from a seed word, phrase, or domain. \
                  Narrow results with --tlds (repeatable), bound the name length \
                  with --length-min/--length-max, and cap the count with --limit \
-                 (1-50).",
+                 (1-50).\n\
+                 \n\
+                 Prices are indicative and exclude taxes and fees, such as the \
+                 ICANN fee, which are added when you register.",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
@@ -221,8 +225,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .collect();
             Ok(
                 CommandResult::new(json!(suggestions)).with_next_actions(vec![
-                    next_action("domain available <domain>", "Check a suggested domain")
-                        .with_param("domain", NextActionParam::required()),
+                    next_action(
+                        "domain available <domain>",
+                        format!("Check a suggested domain. {PRICE_EXCLUDES_TAXES_AND_FEES}"),
+                    )
+                    .with_param("domain", NextActionParam::required()),
                 ]),
             )
         },
@@ -447,7 +454,7 @@ mod tests {
             .filter(|c| c.field == "fees1Year")
             .collect();
         let rendered = cli_engine::preview_human_view(suggestions, &columns);
-        assert!(rendered.contains("1YR FEES"), "{rendered}");
+        assert!(rendered.contains("1YR PREMIUM FEES"), "{rendered}");
         assert!(
             rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
             "{rendered}"

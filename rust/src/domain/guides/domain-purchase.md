@@ -11,15 +11,11 @@ Registering a domain is a **two-step, quote-then-purchase** flow:
 2. `gddy domain purchase --quote-token <token> --agree --confirm` accepts that
    quote and registers the domain.
 
-A purchase is **paid and not reversible**, so `purchase` has two gates
-(`--agree`, `--confirm`) on top of the token. Because the token locks the price
-and settings you reviewed, you're charged exactly what the quote showed.
+A purchase is **paid and not reversible**, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
 
-Registration completes **asynchronously**: `purchase` submits the registration
-and waits briefly for the registry, reporting the operation's `status`
-(`COMPLETED` when done). The domain then appears in `gddy domain list`. If
-`purchase` gives up waiting before reaching a terminal status, it still
-succeeded — check on it later (the ID it printed) with:
+**The quoted price does not include taxes and fees.** The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
+
+Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then appears in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
 `gddy domain operation status <operation-id>`.
 
 ## The flow
@@ -52,31 +48,24 @@ succeeded — check on it later (the ID it printed) with:
    gddy domain purchase --quote-token <token> --agree --confirm
    ```
 
-The quote is cached locally (next to your `contacts.toml`), so **run `quote` and
-`purchase` on the same machine**, within the token's ~10-minute lifetime. If the
-token has expired or isn't found, just re-run `gddy domain quote`.
+The quote is cached locally (next to your `contacts.toml`), so **run `quote` and `purchase` on the same machine**, within the token's ~10-minute lifetime. If the token has expired or isn't found, just re-run `gddy domain quote`.
 
 ### The three decisions
 
 - **The quote token** selects *which* quote you're buying — the exact domain,
-  settings, and locked price you reviewed.
+  settings, and registration price you reviewed.
 - `--agree` is your **consent** to the quote's legal agreements. Run `purchase`
   without it and it lists the agreements you must accept.
 - `--confirm` acknowledges that the purchase **charges your account**. Without
   it, the command stops before buying.
 
-AI assistants: Before using `--agree` or `--confirm`, show the end user the exact price from `domain quote` (including any premium/registration fees) and each required legal agreement's title AND link (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. Do not summarize an agreement by name only — the user must be able to click through and read it. Do not infer confirmation from a general request to buy or register a domain.
+AI assistants: Before using `--agree` or `--confirm`, show the end user the quoted price from `domain quote` (including any premium fees), tell them that taxes and fees such as the ICANN fee are added on top so the total charged will be higher, and show each required legal agreement's title and URL (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. The user must be able to click through and read the agreements. Do not infer confirmation from a general request to buy or register a domain.
 
 ## Contacts
 
-A registration has four contact roles: **registrant**, **admin**, **billing**,
-and **tech**. If you don't supply them, the API uses your GoDaddy account's
-default contacts — which is usually what you want. Contacts are part of the
-quote, so configure them *before* you quote.
+A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, the API uses your GoDaddy account's default contacts — which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
 
-If you register many domains and want to set your own contacts once, save them
-in a `contacts.toml` in your `gddy` config directory. The quickest start is to
-generate a template and edit it:
+If you register many domains and want to set your own contacts once, save them in a `contacts.toml` in your `gddy` config directory. The quickest start is to generate a template and edit it:
 
 ```
 gddy domain contact init
@@ -88,10 +77,7 @@ That writes a starter `contacts.toml` (with every role commented out) to:
 - macOS: `~/Library/Application Support/gddy/contacts.toml`
 - Windows: `%APPDATA%\gddy\contacts.toml`
 
-Open it, uncomment the role(s) you want, and fill in the values. Each role is an
-optional table: a role you omit falls back to the account default; a role you
-uncomment must be **complete** (the required fields below), or the file fails to
-load.
+Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table: a role you omit falls back to the account default; a role you uncomment must be **complete** (the required fields below), or the file fails to load.
 
 ```toml
 [registrant]
@@ -122,6 +108,5 @@ country     = "US"
 # default for it.
 ```
 
-Required fields per role: `name_first`, `name_last`, `email`, `phone`,
-`address1`, `city`, `state`, `postal_code`, `country`. Optional fields:
-`organization`, `address2`.
+Required fields per role: `name_first`, `name_last`, `email`, `phone`, `address1`, `city`, `state`, `postal_code`, `country`.
+Optional fields: `organization`, `address2`.

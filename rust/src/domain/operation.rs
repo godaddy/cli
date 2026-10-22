@@ -13,7 +13,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_operation_error, is_terminal_status, make_client};
+use super::common::{
+    api_error, format_operation_error, is_terminal_status, make_client, order_next_action,
+};
 use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -122,6 +124,9 @@ fn status_command() -> RuntimeCommandSpec {
                         next_action("domain get <domain>", "See the domain's details")
                             .with_param("domain", NextActionParam::value(domain)),
                     );
+                }
+                if let Some(order_id) = result.get("orderId").and_then(|v| v.as_str()) {
+                    actions.push(order_next_action(order_id.to_owned()));
                 }
             } else {
                 actions.push(
