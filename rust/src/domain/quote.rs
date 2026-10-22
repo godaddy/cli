@@ -14,6 +14,7 @@ use super::common::{
 };
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::error::GddyError;
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -239,6 +240,9 @@ struct QuoteArgs {
     /// Custom nameserver (repeatable); omit to use GoDaddy defaults.
     #[arg(long, value_name = "HOST")]
     nameserver: Vec<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// `requiredAgreements`/`resolved` aren't in the default fields (the
@@ -346,7 +350,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Err(e) => return Err(api_error("quoting registration", debug, e).await),
             };
 
-            let view = quote_to_json(&quote, &domain);
+            let mut view = quote_to_json(&quote, &domain);
 
             // Persist the quote so `purchase --quote-token` can reproduce this
             // exact request (only possible when it's available and got a token).
@@ -406,13 +410,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // same next step `domain available` offers for a taken name.
                 // `domain suggest` accepts a seed domain, so the domain just
                 // quoted is a valid query to copy/paste directly.
-                let resolved_domain = quote.domain.clone().unwrap_or_else(|| domain.clone());
+                let resolved_domain = args
+                    .domain_format
+                    .form()
+                    .render(&quote.domain.clone().unwrap_or_else(|| domain.clone()));
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
                         .with_param("query", NextActionParam::value(resolved_domain)),
                 );
             }
 
+            args.domain_format.form().convert_fields(&mut view, &["domain", "resolved.nameServers"]);
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )

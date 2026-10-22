@@ -2,9 +2,11 @@
 //! subcommand: type/name validation, the `RecordOptions` bundle, converting
 //! CLI input into v3 `DnsRecord`s, and the paginated `list_dns_records` fetch.
 
-use cli_engine::{CliCoreError, NextAction, NextActionParam};
+use cli_engine::{CliCoreError, CommandResult, NextAction, NextActionParam};
+use serde_json::Value;
 
 use crate::domain::api_error;
+use crate::idn::DomainForm;
 use crate::next_action::next_action;
 
 use domains_client::types;
@@ -23,6 +25,9 @@ pub(super) const LISTABLE_TYPES: &[&str] = &[
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
+/// The output fields of a DNS write that hold the zone and the record name.
+pub(super) const ZONE_AND_NAME: &[&str] = &["domain", "name"];
+
 /// Page size for the paginated v3 list; the handler pages through until every
 /// matching record is collected.
 const LIST_PAGE_SIZE: std::num::NonZeroU64 =
@@ -118,7 +123,7 @@ pub(crate) const CONDITIONALLY_REQUIRED_FLAGS: &[(&str, &str)] = &[
 #[derive(Debug, Clone, clap::Args)]
 pub(super) struct RecordWriteArgs {
     /// Domain whose records to modify (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     pub(super) domain: String,
 
     // `ignore_case` is load-bearing, not cosmetic. The `required_if_eq` predicates
@@ -131,8 +136,11 @@ pub(super) struct RecordWriteArgs {
     pub(super) record_type: String,
 
     /// Record name relative to the domain (e.g. www, @ for the apex).
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", value_parser = crate::idn::parse_name_arg)]
     pub(super) name: String,
+
+    #[command(flatten)]
+    pub(super) domain_format: crate::idn::DomainFormArgs,
 
     /// Record value (repeatable for multiple records on the same name). For
     /// TLSA, this is the hex-encoded certificate association data; use
@@ -432,9 +440,62 @@ pub(super) fn verify_with_list_action(domain: &str, record_type: &str, name: &st
     .with_param("name", NextActionParam::value(name))
 }
 
+/// A mutation's success payload plus the "verify with `dns list`" next action,
+/// with the zone and record name shown in `domain_format`.
+pub(super) fn verified_result(
+    domain_format: DomainForm,
+    mut payload: Value,
+    domain: &str,
+    record_type: &str,
+    name: &str,
+) -> CommandResult {
+    domain_format.convert_fields(&mut payload, ZONE_AND_NAME);
+    CommandResult::new(payload).with_next_actions(vec![verify_with_list_action(
+        &domain_format.render(domain),
+        record_type,
+        &domain_format.render(name),
+    )])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verified_result_shows_the_requested_form_of_zone_and_name() {
+        let payload = || {
+            serde_json::json!({
+                "domain": "xn--mnchen-3ya.de",
+                "name": "xn--bcher-kva",
+                "type": "A",
+            })
+        };
+        let unicode = verified_result(
+            DomainForm::Unicode,
+            payload(),
+            "xn--mnchen-3ya.de",
+            "A",
+            "xn--bcher-kva",
+        );
+        assert_eq!(unicode.data["domain"], "münchen.de");
+        assert_eq!(unicode.data["name"], "bücher");
+        let params =
+            serde_json::to_string(&unicode.metadata.next_actions).expect("next actions serialize");
+        assert!(
+            params.contains("münchen.de") && params.contains("bücher"),
+            "{params}"
+        );
+
+        let ascii = verified_result(
+            DomainForm::Punycode,
+            payload(),
+            "xn--mnchen-3ya.de",
+            "A",
+            "xn--bcher-kva",
+        );
+        assert_eq!(ascii.data["domain"], "xn--mnchen-3ya.de");
+        assert_eq!(ascii.data["name"], "xn--bcher-kva");
+    }
 
     fn opts() -> RecordOptions {
         RecordOptions {

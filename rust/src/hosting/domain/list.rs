@@ -2,6 +2,7 @@ use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec
 use serde_json::{Value, json};
 
 use crate::hosting::common::{HostingDomainSummary, client_err, make_client, next_page_token};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_DOMAIN_READ as DOMAIN_READ;
 
@@ -14,6 +15,9 @@ struct DomainListArgs {
     /// Maximum number of domains to return. Omit to return all.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     limit: Option<u32>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -60,6 +64,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
+            for item in &mut all_items {
+                args.domain_format
+                    .form()
+                    .convert_fields(item, &["hostname"]);
+            }
             Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
                 next_action(
                     "hosting domain attach --app-id <app-id> --hostname <hostname>",

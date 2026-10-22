@@ -9,6 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, comma_joined, make_client};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -93,6 +94,9 @@ struct ListArgs {
     /// Include domains hidden by default, e.g. cancelled or confiscated.
     #[arg(long)]
     show_hidden: bool,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// The result of looking for a `rel=next` link in a page's `links`. Per the
@@ -269,13 +273,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .unwrap_or(usize::MAX)
             });
             let items = fetch_domains(&client, &statuses, visible_only, stop_at, debug).await?;
-            let domains: Vec<serde_json::Value> = items
+            let mut domains: Vec<serde_json::Value> = items
                 .iter()
                 .map(serde_json::to_value)
                 .collect::<std::result::Result<_, _>>()
                 .map_err(|e| {
                     CliCoreError::message(format!("failed to serialize domain list: {e}"))
                 })?;
+            for domain in &mut domains {
+                args.domain_format
+                    .form()
+                    .convert_fields(domain, &["domain", "nameServers"]);
+            }
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                 next_action("dns list <domain>", "View a domain's DNS records")
                     .with_param("domain", NextActionParam::required()),

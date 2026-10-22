@@ -1,6 +1,6 @@
 //! `dns add` — append new DNS records to a domain without touching existing ones.
 
-use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{Alignment, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
@@ -10,7 +10,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use super::conflicts::{WriteErrorContext, describe_write_error};
 use super::records::{
     RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, validate_svcb_fields,
-    validate_tlsa_fields, verify_with_list_action,
+    validate_tlsa_fields, verified_result,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -124,6 +124,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
+            let domain_format = args.domain_format.form();
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
             validate_tlsa_fields(&record_type, &opts)
@@ -171,13 +172,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // All-created → success payload; any failure → non-zero error
             // with a per-record breakdown.
             summarize_add_outcomes(&domain, &record_type, &name, outcomes)
-                .map(|v| {
-                    CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
-                        &domain,
-                        &record_type,
-                        &name,
-                    )])
-                })
+                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
                 .map_err(super::mutate_failed)
         },
     )

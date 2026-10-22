@@ -10,6 +10,7 @@ use domains_client::types;
 use super::common::{
     api_error, fees_to_json, format_money, make_client, period_label, validate_domain_name,
 };
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -114,6 +115,9 @@ struct AvailableArgs {
     /// Optimize for speed (fast) or accuracy (full).
     #[arg(long = "check-type", value_name = "TYPE", value_parser = ["fast", "full"])]
     check_type: Option<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -177,6 +181,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     result["currency"] = json!(currency);
                 }
             }
+
+            let domain_format = args.domain_format.form();
+            domain_format.convert_fields(&mut result, &["domain"]);
+            let resolved_domain = domain_format.render(&resolved_domain);
 
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
