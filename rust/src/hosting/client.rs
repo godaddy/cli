@@ -754,7 +754,17 @@ impl HostingClient {
     {
         let mut page = first;
         let mut items = super::common::page_items(&page);
-        let mut seen = std::collections::HashSet::new();
+        // The request that produced `first` counts as already read, so a link
+        // pointing back at it cannot be fetched (and its items counted) again.
+        let first_query: Vec<String> = required
+            .iter()
+            .map(|(name, value)| {
+                let value: String =
+                    url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
+                format!("{name}={value}")
+            })
+            .collect();
+        let mut seen = std::collections::HashSet::from([request_key(&first_query.join("&"))]);
         let mut stopped_early = false;
         for _ in 1..MAX_COMBINED_PAGES {
             if want.is_some_and(|want| items.len() >= want) {
@@ -774,10 +784,11 @@ impl HostingClient {
                     query.push_str(&format!("&{name}={value}"));
                 }
             }
-            // Compare the request actually sent: a link that omits a required
-            // parameter and a later one that includes it are the same request,
-            // and reading it twice would count its items twice.
-            if !seen.insert(query.clone()) {
+            // Compare the request actually sent, regardless of parameter order:
+            // a link that omits a required parameter and a later one that
+            // includes it, or the same parameters in another order, are the same
+            // request, and reading it twice would count its items twice.
+            if !seen.insert(request_key(&query)) {
                 break;
             }
             let raw = self.get_with_query(path, &query).await?;
@@ -868,6 +879,15 @@ async fn response<T: serde::Serialize>(
         }
         Err(error) => Err(ClientError::Request(error.to_string())),
     }
+}
+
+/// A query string's identity for repeat detection: its `name=value` pairs
+/// sorted, so the same request in a different parameter order compares equal.
+/// Used only as a key; the query actually sent is left as the service wrote it.
+fn request_key(query: &str) -> String {
+    let mut pairs: Vec<&str> = query.split('&').filter(|pair| !pair.is_empty()).collect();
+    pairs.sort_unstable();
+    pairs.join("&")
 }
 
 #[cfg(test)]
