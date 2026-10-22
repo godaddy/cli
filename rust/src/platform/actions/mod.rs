@@ -125,7 +125,7 @@ pub fn group() -> RuntimeGroupSpec {
                     ctx.middleware.continue_token.as_deref(),
                 );
                 let (page, continuation) = pagination_token::paginate_known_collection(
-                    actions,
+                    pagination_token::filter_known_collection(actions, &ctx.middleware.filter)?,
                     ctx.middleware.cursor_limit,
                     200,
                     continue_token.as_deref(),
@@ -210,6 +210,87 @@ mod tests {
         let cursor = &rendered["cursor"];
         assert_eq!(cursor["total"], cursor["count"]);
         assert_eq!(cursor["has_more"], serde_json::json!(false));
+    }
+
+    /// `--filter` has to apply to the whole collection before it is sliced:
+    /// the offset jump selects among the *matching* rows, `cursor.total` counts
+    /// only those, and the replayed next-page action keeps the filter.
+    #[tokio::test]
+    async fn list_filter_applies_before_an_offset_jump_and_continuation() {
+        let matching: Vec<&str> = super::ACTIONS
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| name.starts_with("commerce."))
+            .collect();
+        assert!(
+            matching.len() >= 3,
+            "fixture needs several commerce.* actions"
+        );
+        assert!(
+            matching.len() < super::ACTIONS.len(),
+            "filter must exclude something"
+        );
+
+        let cli = test_cli();
+        let first = cli
+            .run([
+                "gddy",
+                "platform",
+                "actions",
+                "list",
+                "--filter",
+                "starts_with(name, 'commerce.')",
+                "--offset",
+                "1",
+                "--limit",
+                "1",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first: serde_json::Value =
+            serde_json::from_str(&first.rendered).expect("stdout should contain json");
+        assert_eq!(first["data"].as_array().expect("array").len(), 1);
+        assert_eq!(first["data"][0]["name"], matching[1]);
+        assert_eq!(first["cursor"]["total"], matching.len());
+        assert_eq!(first["cursor"]["remaining"], matching.len() - 2);
+
+        let command = first["next_actions"]
+            .as_array()
+            .and_then(|actions| {
+                actions
+                    .iter()
+                    .filter_map(|a| a["command"].as_str())
+                    .find(|c| c.contains("--continue"))
+            })
+            .expect("a next-page action");
+        assert!(
+            command.contains("--filter"),
+            "replay keeps the filter: {command}"
+        );
+        // The replay keeps the filter expression as one quoted token containing spaces,
+        // so rebuild argv around it rather than splitting on whitespace.
+        let (before, after) = command.split_once("--filter").expect("has --filter");
+        let expr_start = after
+            .find('"')
+            .or_else(|| after.find('\''))
+            .expect("quoted expr");
+        let quote = after.as_bytes()[expr_start] as char;
+        let expr_end = after[expr_start + 1..].find(quote).expect("closing quote") + expr_start + 1;
+        let expr = &after[expr_start + 1..expr_end];
+        let rest = &after[expr_end + 1..];
+        let argv: Vec<&str> = before
+            .split_whitespace()
+            .chain(["--filter", expr])
+            .chain(rest.split_whitespace().map(|part| part.trim_matches('"')))
+            .chain(["--output", "json"])
+            .collect();
+        let second = cli.run(argv).await;
+        assert_eq!(second.exit_code, 0, "{command}: {}", second.rendered);
+        let second: serde_json::Value =
+            serde_json::from_str(&second.rendered).expect("stdout should contain json");
+        assert_eq!(second["data"][0]["name"], matching[2]);
     }
 
     /// The advertised next-page action replays `--offset` next to the new

@@ -59,7 +59,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 domain_format.convert_fields(item, &["hostname"]);
             }
             let (page, continuation) = pagination_token::paginate_known_collection(
-                items,
+                pagination_token::filter_known_collection(items, &ctx.middleware.filter)?,
                 ctx.middleware.cursor_limit,
                 200,
                 continue_token.as_deref(),

@@ -65,7 +65,7 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 ctx.middleware.continue_token.as_deref(),
             );
             let (page, continuation) = pagination_token::paginate_known_collection(
-                items,
+                pagination_token::filter_known_collection(items, &ctx.middleware.filter)?,
                 ctx.middleware.cursor_limit,
                 OPERATION_CHILD_LIST_MAX_LIMIT,
                 continue_token.as_deref(),
