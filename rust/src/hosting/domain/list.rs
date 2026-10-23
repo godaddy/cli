@@ -1,9 +1,14 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
-use serde_json::{Value, json};
+use cli_engine::{
+    CommandResult, CommandSpec, CursorConfig, NextActionParam, RuntimeCommandSpec, Tier,
+};
+use serde_json::json;
 
-use crate::hosting::common::{HostingDomainSummary, client_err, make_client, next_page_token};
+use crate::hosting::common::{
+    HostingDomainSummary, client_err, incomplete_list_warning, make_client,
+};
 use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
+use crate::pagination_token::{self, warn_user};
 use crate::scopes::HOSTING_DOMAIN_READ as DOMAIN_READ;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -12,70 +17,106 @@ struct DomainListArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// Maximum number of domains to return. Omit to return all.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
-    limit: Option<u32>,
+    /// Jump directly to an offset in the results. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
+    offset: Option<i64>,
 
     #[command(flatten)]
     domain_format: DomainFormArgs,
 }
 
+/// The service doesn't paginate this listing yet (see
+/// `HostingClient::list_domains`), so every domain is gathered — following the
+/// service's `next` links if it ever sends them — and `--limit` / `--continue`
+/// page through that whole list client-side. Once the service accepts paging
+/// parameters this moves to its own cursor.
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<DomainListArgs, _, _, _>(
         CommandSpec::from_args::<DomainListArgs>("list", "List domains attached to an application")
             .with_long(
-                "List all domains attached to a hosting application. \
-                 Results are autopaginated.",
+                "List domains attached to a hosting application. Shows up to 50 by \
+                 default; use --limit/--continue to page through the rest.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[DOMAIN_READ])
             .with_default_fields("id,hostname,verificationStatus")
-            .with_output_schema::<HostingDomainSummary>(),
+            .with_output_schema::<HostingDomainSummary>()
+            .with_cursor(CursorConfig::new(50, 200)),
         |ctx, args: DomainListArgs| async move {
             let app_id = args.app_id.clone();
-            let limit = args.limit;
             let client = make_client(&ctx, &[DOMAIN_READ]).await?;
 
-            let mut all_items: Vec<Value> = Vec::new();
-            let mut page_token: Option<String> = None;
-
-            loop {
-                let page_limit =
-                    limit.map(|cap| cap.saturating_sub(all_items.len() as u32).min(100));
-
-                let response = client
-                    .list_domains(&app_id, page_token.as_deref(), page_limit)
-                    .await
-                    .map_err(client_err)?;
-
-                if let Some(items) = response.get("items").and_then(|v| v.as_array()) {
-                    all_items.extend(items.iter().cloned());
-                }
-
-                if limit.is_some_and(|cap| all_items.len() >= cap as usize) {
-                    all_items.truncate(limit.expect("checked") as usize);
-                    break;
-                }
-
-                match next_page_token(&response) {
-                    Some(token) => page_token = Some(token),
-                    None => break,
-                }
+            let continue_token = pagination_token::resolve_continue_token(
+                args.offset,
+                ctx.middleware.continue_token.as_deref(),
+            );
+            // Read only as many pages as the window needs. A `--filter` runs
+            // after collection, so with one the whole list is needed.
+            let want = if ctx.middleware.filter.is_empty() {
+                Some(pagination_token::known_collection_need(
+                    continue_token.as_deref(),
+                    ctx.middleware.cursor_limit,
+                    200,
+                )?)
+            } else {
+                None
+            };
+            let listed = client
+                .list_domains(&app_id, want)
+                .await
+                .map_err(client_err)?;
+            if listed.incomplete {
+                warn_user(&incomplete_list_warning("domains"));
             }
+            let partial = listed.is_partial();
 
-            for item in &mut all_items {
+            // Names are shown in the form the user asked for before `--filter`
+            // and paging, so a filter matches what is displayed.
+            let mut items = listed.items;
+            for item in &mut items {
                 args.domain_format
                     .form()
                     .convert_fields(item, &["hostname"]);
             }
-            Ok(CommandResult::new(json!(all_items)).with_next_actions(vec![
-                next_action(
-                    "hosting domain attach --app-id <app-id> --hostname <hostname>",
-                    "Attach a new domain",
-                )
-                .with_param("app-id", NextActionParam::value(app_id)),
-            ]))
+
+            let (page, continuation) = pagination_token::paginate_known_collection(
+                pagination_token::filter_known_collection(items, &ctx.middleware.filter)?,
+                ctx.middleware.cursor_limit,
+                200,
+                continue_token.as_deref(),
+            )?;
+
+            // Pages past the window were left unread, on purpose or because a
+            // link could not be followed, so the length of what was read says
+            // nothing about the total.
+            let continuation = if partial {
+                pagination_token::forget_totals(continuation)
+            } else {
+                continuation
+            };
+
+            Ok(CommandResult::new(json!(page))
+                .with_cursor(continuation)
+                .with_next_actions(vec![
+                    next_action(
+                        "hosting domain attach --app-id <app-id> --hostname <hostname>",
+                        "Attach a new domain",
+                    )
+                    .with_param("app-id", NextActionParam::value(app_id)),
+                ]))
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::CursorConfig;
+
+    use super::command;
+
+    #[test]
+    fn opts_into_cursor_pagination_with_a_default_and_a_max_limit() {
+        assert_eq!(command().spec.cursor, Some(CursorConfig::new(50, 200)));
+    }
 }

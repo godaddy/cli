@@ -22,10 +22,10 @@ use super::schema_tree::{SchemaLocation, compute_schema_id, describe_schema};
 const SCHEMA_PROPERTY_PREVIEW_CAP: usize = 20;
 
 /// Default page size for `api parameter list`/`api response list` (via
-/// `CommandSpec::with_pagination`) when neither `--limit` nor `--offset` is
-/// passed, and for `api operation get`'s own embedded parameter/response
-/// previews (which aren't paginated themselves — see `Summary::capped`
-/// there — but use the same "how many rows to show inline" size).
+/// `CommandSpec::with_cursor`) when `--limit` is omitted, and for `api
+/// operation get`'s own embedded parameter/response previews (which aren't
+/// paginated themselves — see `Summary::capped` there — but use the same
+/// "how many rows to show inline" size).
 pub(super) const OPERATION_CHILD_LIST_DEFAULT_LIMIT: usize = 20;
 
 /// Upper bound a user can request with `--limit` on `api parameter list`/
