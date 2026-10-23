@@ -8,7 +8,8 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, fees_to_json, format_money, make_client, period_label, validate_domain_name,
+    PRICE_EXCLUDES_TAXES_AND_FEES, api_error, fees_to_json, format_money, make_client,
+    period_label, validate_domain_name,
 };
 use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
@@ -48,7 +49,7 @@ fn view_columns() -> Vec<TableColumn> {
                 .essential(true),
             TableColumn::new("firstTermPrice", "First-Term Price").align(Alignment::Right),
             TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
-            TableColumn::new("fees", "Fees").essential(true),
+            TableColumn::new("fees", "Premium Fees").essential(true),
         ]),
     ]
 }
@@ -125,10 +126,15 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<AvailableArgs>("available", "Check whether a domain is available")
             .with_long(
                 "Check whether a domain can be registered, and at what price. \
-                 --check-type fast trades accuracy for speed; full is authoritative \
-                 (the `definitive` field tells you which you got). Lists every \
-                 registration term the API prices (1 year, 2 years, …), including \
-                 any first-term promotion.",
+                 --check-type fast trades accuracy for speed; full is \
+                 authoritative (the `definitive` field tells you which you got). \
+                 Lists every registration term the API prices, with any \
+                 promotional discounts applied.\n\
+                 \n\
+                 Prices exclude taxes and fees, such as the ICANN fee, which are \
+                 added when you register. `Premium Fees` lists only the extra \
+                 purchase cost of a premium domain; it is empty for an ordinary \
+                 domain.",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
@@ -189,8 +195,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
                 Ok(cmd.with_next_actions(vec![
-                    next_action("domain quote <domain>", "Price a registration")
-                        .with_param("domain", NextActionParam::value(resolved_domain)),
+                    next_action(
+                        "domain quote <domain>",
+                        format!("Price a registration. {PRICE_EXCLUDES_TAXES_AND_FEES}"),
+                    )
+                    .with_param("domain", NextActionParam::value(resolved_domain)),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![

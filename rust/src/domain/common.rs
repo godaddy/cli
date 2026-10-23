@@ -2,12 +2,30 @@
 //! client, money formatting, argument helpers, and API-error rendering. Each
 //! `gddy domain` subcommand lives in its own sibling module and draws from here.
 
-use cli_engine::{CliCoreError, CommandContext, Credential, Result};
+use cli_engine::{CliCoreError, CommandContext, Credential, NextAction, NextActionParam, Result};
 use serde_json::json;
 
 use crate::environments;
+use crate::next_action::next_action;
 
 use domains_client::types;
+
+/// Appended to the next-step text under every price a domain command shows. The
+/// domains API quotes the registration price only: the ICANN fee and any tax
+/// are added when the order is placed, so the total charged is higher.
+pub(super) const PRICE_EXCLUDES_TAXES_AND_FEES: &str = "Prices exclude applicable taxes and fees.";
+
+/// Points at the completed order, which is where the total actually charged
+/// (including tax) can be read — the registration and operation records only
+/// carry the quoted price. `--wait` because a new order takes a few seconds to
+/// become visible.
+pub(super) fn order_next_action(order_id: String) -> NextAction {
+    next_action(
+        "shopping order get <order-id> --wait",
+        "See the total charged, including any taxes and fees",
+    )
+    .with_param("order-id", NextActionParam::value(order_id))
+}
 
 /// The ISO-4217 minor-unit exponent for a currency — how many implied decimal
 /// places a [`types::SimpleMoney`] `value` carries (the v3 spec defers money
@@ -538,6 +556,17 @@ mod tests {
             currency_code: (!currency.is_empty())
                 .then(|| types::CurrencyCode(currency.to_string())),
         }
+    }
+
+    #[test]
+    fn order_next_action_uses_a_structured_param_and_waits_for_the_order() {
+        let action = order_next_action("2211623318".to_owned());
+        assert_eq!(action.command, "gddy shopping order get <order-id> --wait");
+        assert_eq!(
+            action.params["order-id"].value.as_deref(),
+            Some("2211623318")
+        );
+        assert!(action.description.contains("taxes and fees"));
     }
 
     #[test]

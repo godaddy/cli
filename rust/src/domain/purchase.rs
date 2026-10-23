@@ -7,7 +7,9 @@ use serde_json::json;
 
 use domains_client::types;
 
-use super::common::{api_error, format_operation_error, is_terminal_status, make_client_with_cred};
+use super::common::{
+    api_error, format_operation_error, is_terminal_status, make_client_with_cred, order_next_action,
+};
 use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::error::GddyError;
 use crate::idn::DomainFormArgs;
@@ -20,9 +22,53 @@ output_schema!(DomainPurchaseResult {
     "status": "string";
     // Present depending on the async operation + the cached quote's receipt.
     "operationId": "string", optional;
+    // The order that holds the total actually charged (tax and fees included).
+    // Absent while registration is still in progress.
+    "orderId": "string", optional;
+    // The quoted price from `domain quote`, not the amount charged.
     "price": "string", optional;
     "currency": "string", optional;
+    "note": "string", optional;
 });
+
+/// Printed beside `price`, which is the quote's registration price echoed back —
+/// the API's registration record carries no total, so the charge itself is only
+/// readable on the order.
+const QUOTED_PRICE_NOTE: &str = "price is the quoted registration price. Taxes and fees such as the ICANN \
+    fee are added to it, so the total charged is higher; see the order for the \
+    total.";
+
+/// Build the result payload. Optional fields are only emitted when present —
+/// never JSON null (the schema marks them optional strings, and null leaks into
+/// tables). `note` accompanies `price` so the quote's registration price isn't
+/// read as the amount charged.
+fn purchase_result(
+    domain: &str,
+    status: &str,
+    operation_id: Option<String>,
+    order_id: Option<&str>,
+    price: Option<&str>,
+    currency: Option<&str>,
+) -> serde_json::Value {
+    let mut result = json!({
+        "domain": domain,
+        "status": status,
+    });
+    if let Some(op) = operation_id {
+        result["operationId"] = json!(op);
+    }
+    if let Some(id) = order_id {
+        result["orderId"] = json!(id);
+    }
+    if let Some(p) = price {
+        result["price"] = json!(p);
+        result["note"] = json!(QUOTED_PRICE_NOTE);
+    }
+    if let Some(c) = currency {
+        result["currency"] = json!(c);
+    }
+    result
+}
 
 /// Format a UTC instant as the API's consent timestamp: RFC 3339 with a literal
 /// trailing `Z` (e.g. `2026-06-30T22:34:43Z`), sub-second digits dropped.
@@ -107,8 +153,10 @@ fn purchase_consent_types(
             String::new()
         };
         return Err(CliCoreError::message(format!(
-            "registering {domain} for {period} year(s) charges your account and cannot be undone; \
-             re-run with --confirm to proceed.{agent_note}"
+            "registering {domain} for {period} year(s) charges your account and \
+            cannot be undone. The quoted price does not include applicable taxes \
+            and fees, so the total charged will be higher. Re-run with --confirm \
+            to proceed.{agent_note}"
         )));
     }
 
@@ -147,7 +195,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_long(format!(
             "Register a domain by accepting a quote from `gddy domain quote`. \
             This charges your GoDaddy account and cannot be undone, so it is \
-            gated behind --confirm.\n\
+            gated behind --confirm. The quoted price does not include taxes and \
+            fees such as the ICANN fee; those are added to the total charged. \
+            Once registration completes, `gddy shopping order get <order-id>` \
+            shows the total.\n\
             \n\
             Registration settings (period, privacy, nameservers, contacts) are \
             fixed at quote time — the quote token locks both those settings and \
@@ -167,7 +218,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         ))
         .with_system("domain")
         .with_tier(Tier::Destructive)
-        .with_default_fields("domain,status,operationId,price,currency")
+        .with_default_fields("domain,status,operationId,orderId,price,currency,note")
         .with_output_schema::<DomainPurchaseResult>()
         .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE]),
         |ctx, args: PurchaseArgs| async move {
@@ -319,6 +370,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "SUBMITTED".to_string());
             let operation_id = accepted.operation_id.clone();
+            let mut order_id = accepted.order_id.clone();
             let mut operation_error: Option<types::Error> = None;
             if let Some(op_id) = operation_id.as_ref() {
                 for _ in 0..20 {
@@ -338,6 +390,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 status = s.to_string();
                             }
                             operation_error = op.error;
+                            if let Some(id) = op.result.and_then(|r| r.order_id) {
+                                order_id = Some(id);
+                            }
                         }
                         // A transient poll failure shouldn't fail the purchase —
                         // it already succeeded; report the last-known status.
@@ -375,25 +430,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            // Only emit the optional fields when present — never JSON null (the
-            // schema marks them optional strings, and null leaks into tables).
-            let mut result = json!({
-                "domain": domain,
-                "status": status,
-            });
-            if let Some(op) = operation_id.as_ref() {
-                result["operationId"] = json!(op.to_string());
-            }
-            if let Some(p) = price.as_ref() {
-                result["price"] = json!(p);
-            }
-            if let Some(c) = currency.as_ref() {
-                result["currency"] = json!(c);
-            }
+            let mut result = purchase_result(
+                &domain,
+                &status,
+                operation_id.as_ref().map(|op| op.to_string()),
+                order_id.as_deref(),
+                price.as_deref(),
+                currency.as_deref(),
+            );
             let mut actions = vec![
                 next_action("domain get <domain>", next_action_description(&status))
                     .with_param("domain", NextActionParam::required()),
             ];
+            if let Some(id) = order_id {
+                actions.push(order_next_action(id));
+            }
             if still_pending {
                 // `still_pending` implies `operation_id.is_some()`.
                 if let Some(op) = &operation_id {
@@ -416,8 +467,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{iso_datetime, next_action_description, purchase_consent_types};
+    use super::{iso_datetime, next_action_description, purchase_consent_types, purchase_result};
     use domains_client::types;
+    use serde_json::json;
 
     #[test]
     fn purchase_consent_requires_agree_then_confirm() {
@@ -438,9 +490,9 @@ mod tests {
         // Regression: an agent that only named the agreement (no link) still
         // technically "showed the agreements" — the instruction must be
         // unambiguous that the link itself is required, not just the title.
-        assert!(msg.contains("title AND link"), "{msg}");
+        assert!(msg.contains("title and URL"), "{msg}");
         assert!(
-            msg.contains("Do not summarize an agreement by name only"),
+            msg.contains("click through and read the agreements"),
             "{msg}"
         );
 
@@ -449,12 +501,18 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("--confirm"), "{msg}");
         assert!(msg.contains("2 year(s)"), "{msg}");
-        assert!(msg.contains("AI assistants:"), "{msg}");
+        // The gate that precedes the charge must say the quoted price is not the
+        // total, even for a human who never sees the agent note.
         assert!(
-            msg.contains("show the end user the exact price from `domain quote`"),
+            msg.contains("does not include applicable taxes and fees"),
             "{msg}"
         );
-        assert!(msg.contains("title AND link"), "{msg}");
+        assert!(msg.contains("AI assistants:"), "{msg}");
+        assert!(
+            msg.contains("show the end user the quoted price from `domain quote`"),
+            "{msg}"
+        );
+        assert!(msg.contains("title and URL"), "{msg}");
 
         let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty, true)
             .expect("both gates satisfied");
@@ -537,6 +595,37 @@ mod tests {
                 "status {status:?} must not claim the domain is registered: {desc}"
             );
         }
+    }
+
+    #[test]
+    fn result_labels_price_as_quoted_and_carries_the_order_id() {
+        // Regression: `price` is the quote echoed back, not the charge (a test
+        // purchase quoted 9.19 and was charged 9.39 once the ICANN fee was
+        // added), so the result must say so and point at the order that holds
+        // the real total.
+        let result = purchase_result(
+            "example.com",
+            "COMPLETED",
+            Some("op-1".to_owned()),
+            Some("2211623318"),
+            Some("9.19"),
+            Some("USD"),
+        );
+        assert_eq!(result["orderId"], "2211623318");
+        assert_eq!(result["price"], "9.19");
+        let note = result["note"].as_str().expect("note accompanies price");
+        assert!(note.contains("quoted"), "{note}");
+        assert!(note.to_lowercase().contains("taxes and fees"), "{note}");
+    }
+
+    #[test]
+    fn result_omits_order_id_and_note_when_absent() {
+        // Still in progress and no cached price: no JSON nulls, no stray note.
+        let result = purchase_result("example.com", "EXECUTING", None, None, None, None);
+        assert_eq!(
+            result,
+            json!({"domain": "example.com", "status": "EXECUTING"})
+        );
     }
 
     #[test]

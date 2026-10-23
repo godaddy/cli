@@ -196,11 +196,13 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
 fn purchase_next_action(quote_token: String, show_agent_note: bool) -> cli_engine::NextAction {
     let description = if show_agent_note {
         format!(
-            "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm. \
-             {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+            "Register at the quoted price (plus applicable taxes and fees) \
+            within ~10 minutes — requires --agree and --confirm. \
+            {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
         )
     } else {
-        "Register at the quoted price (within ~10 minutes) — requires --agree and --confirm."
+        "Register at the quoted price (plus applicable taxes and fees) within \
+        ~10 minutes — requires --agree and --confirm."
             .to_owned()
     };
     next_action("domain purchase --quote-token <quote-token>", description)
@@ -253,7 +255,7 @@ fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("available", "Available"),
-        TableColumn::new("price", "Price").align(Alignment::Right),
+        TableColumn::new("price", "Price (before taxes and fees)").align(Alignment::Right),
         TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("periodLabel", "Period"),
@@ -261,7 +263,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("expiresAt", "Expires At"),
         TableColumn::new("irreversible", "Irreversible"),
         TableColumn::new("inventory", "Inventory"),
-        TableColumn::new("fees", "Fees").nested(vec![
+        TableColumn::new("fees", "Premium Fees").nested(vec![
             TableColumn::new("type", "Type").essential(true),
             TableColumn::new("amount", "Amount")
                 .align(Alignment::Right)
@@ -291,15 +293,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "Price a domain registration and lock a quote",
         )
         .with_long(
-            "Quote a single-domain registration: returns the locked price, the \
-                 legal agreements you must accept, the contact/preference settings that \
-                 would apply, and a single-use quote token (valid ~10 minutes). Quoting \
-                 is free and changes nothing.\n\
-                 \n\
-                 The quote — including the registration settings you pass here \
-                 (--period/--privacy/--no-renew/--nameserver and your contacts.toml) — is \
-                 saved locally so `gddy domain purchase --quote-token <token>` buys the \
-                 exact thing you reviewed, at the price you were quoted.",
+            "Quote a single-domain registration: returns the registration price, \
+            the legal agreements you must accept, the contact/preference \
+            settings that would apply, and a single-use quote token (valid ~10 \
+            minutes). Quoting is free and changes nothing.\n\
+            \n\
+            The price excludes taxes and fees, such as the ICANN fee, which are \
+            added when you register — the total charged will be higher. Whether \
+            tax applies depends on the billing address of your payment method. \
+            After purchasing, `gddy shopping order get <order-id>` shows the \
+            total charged.",
         )
         .with_system("domain")
         .with_tier(Tier::Read)
@@ -458,7 +461,7 @@ mod tests {
         assert!(
             action
                 .description
-                .contains("show the end user the exact price from `domain quote`")
+                .contains("show the end user the quoted price from `domain quote`")
         );
         assert!(
             action
@@ -468,11 +471,42 @@ mod tests {
         // Regression: an agent that only named the agreement (no link) still
         // technically "showed the agreements" — the instruction must be
         // unambiguous that the link itself is required, not just the title.
-        assert!(action.description.contains("title AND link"));
+        assert!(action.description.contains("title and URL"));
         assert!(
             action
                 .description
-                .contains("Do not summarize an agreement by name only")
+                .contains("click through and read the agreements")
+        );
+    }
+
+    #[test]
+    fn purchase_next_action_says_taxes_and_fees_are_extra() {
+        // Both the human and the agent variants: the quoted price is not the
+        // total charged.
+        for show_agent_note in [true, false] {
+            let action = purchase_next_action("quote-token-1".to_owned(), show_agent_note);
+            assert!(
+                action
+                    .description
+                    .contains("Register at the quoted price (plus applicable taxes and fees)"),
+                "{}",
+                action.description
+            );
+            assert!(
+                action
+                    .description
+                    .contains("requires --agree and --confirm")
+            );
+        }
+    }
+
+    #[test]
+    fn price_column_says_it_is_before_taxes_and_fees() {
+        let quote = json!({"domain": "example.com", "available": true, "price": "9.19"});
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
+        assert!(
+            rendered.contains("Price (before taxes and fees): 9.19"),
+            "{rendered}"
         );
     }
 
@@ -570,7 +604,7 @@ mod tests {
         let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
-        assert!(rendered.contains("Fees:"), "{rendered}");
+        assert!(rendered.contains("Premium Fees:"), "{rendered}");
         assert!(
             rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
             "{rendered}"
