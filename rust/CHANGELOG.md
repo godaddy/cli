@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.32](https://github.com/godaddy/cli/compare/v0.2.31...v0.2.32) (2026-10-23)
+
+
+### Features
+
+* **domain:** accept and show internationalized domain names ([#331](https://github.com/godaddy/cli/issues/331)) ([8313527](https://github.com/godaddy/cli/commit/8313527ab7ce9d44b81f2d56d2d444706678376c))
+* **domain:** add auto-renew and transfer-lock set commands [GDDEVPLAT-320] ([#348](https://github.com/godaddy/cli/issues/348)) ([841c7a0](https://github.com/godaddy/cli/commit/841c7a065cd5268f8ce8ba92428816e0ac7284f8))
+
+
+### Bug Fixes
+
+* **domain:** say quoted prices exclude taxes and fees, and show the order after purchase [GDDEVPLAT-389] ([#349](https://github.com/godaddy/cli/issues/349)) ([9671f97](https://github.com/godaddy/cli/commit/9671f970b1cb13fe0e02ce7b129d15a1cbfb8f98))
+* **shopping:** preserve API payment descriptions ([#347](https://github.com/godaddy/cli/issues/347)) ([6aa32df](https://github.com/godaddy/cli/commit/6aa32dff2b33e714a4683cc12d3f2ed941506f82))
+
 ## [0.2.31](https://github.com/godaddy/cli/compare/v0.2.30...v0.2.31) (2026-10-21)
 
 

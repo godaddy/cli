@@ -1,6 +1,6 @@
 [package]
 name = "platform-app-client"
-version = "0.2.31"
+version = "0.2.32"
 edition = "2024"
 license = "Proprietary"
 description = "Generated App Registry GraphQL client (application/release/enablement operations), produced from the vendored subgraph schema by graphql_client at build time."
