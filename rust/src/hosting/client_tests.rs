@@ -31,6 +31,29 @@ async fn list_apps_sends_app_type_query_param() {
 }
 
 #[tokio::test]
+async fn list_apps_sends_a_decoded_page_token_exactly_once_encoded() {
+    // A cursor taken from a next link and decoded (see `next_page_token`) must
+    // reach the service as the same cursor: encoded once, not twice.
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps")
+                .query_param("pageToken", "a+b==");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_apps("NODEJS", Some("a+b=="), None)
+        .await
+        .expect("list apps");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn list_apps_sends_page_token_and_limit() {
     let server = MockServer::start_async().await;
     let mock = server
