@@ -332,16 +332,16 @@ pub fn page_limit(cursor_limit: i64) -> Option<u32> {
     u32::try_from(cursor_limit).ok().filter(|n| *n > 0)
 }
 
+/// The decoded value of query parameter `param` in `url`.
+///
+/// Decoded, because the value is handed to the generated client, which encodes
+/// it again when it builds the next request; passing it on still encoded would
+/// send `a%252Bb` for a cursor that is really `a%2Bb`.
 fn extract_query_param(url: &str, param: &str) -> Option<String> {
-    let query = url.split_once('?')?.1;
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=')
-            && k == param
-        {
-            return Some(v.to_owned());
-        }
-    }
-    None
+    let query = url.split_once('?')?.1.split('#').next()?;
+    url::form_urlencoded::parse(query.as_bytes())
+        .find(|(name, _)| name == param)
+        .map(|(_, value)| value.into_owned())
 }
 
 #[cfg(test)]
@@ -475,6 +475,20 @@ mod tests {
             next_link_query(&json!({ "links": [{ "rel": "next", "href": long }] })),
             None
         );
+    }
+
+    #[test]
+    fn next_page_token_is_decoded_so_it_is_not_encoded_twice() {
+        let response = json!({ "links": [{
+            "rel": "next",
+            "href": "/v1/hosting/apps?appType=NODEJS&pageToken=a%2Bb%3D%3D&pageSize=10#frag"
+        }]});
+        assert_eq!(next_page_token(&response).as_deref(), Some("a+b=="));
+        // Percent signs and spaces survive the same way.
+        let response = json!({ "links": [{
+            "rel": "next", "href": "/x?pageToken=100%25%20done"
+        }]});
+        assert_eq!(next_page_token(&response).as_deref(), Some("100% done"));
     }
 
     #[test]
