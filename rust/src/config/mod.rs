@@ -101,9 +101,15 @@ impl Config {
                 validate_dependency(&mut errors, &format!("dependencies[{i}].app[{j}]"), dep);
             }
             for (j, dep) in deps.feature.iter().enumerate() {
-                validate_dependency(&mut errors, &format!("dependencies[{i}].feature[{j}]"), dep);
+                require_min_len(
+                    &mut errors,
+                    &format!("dependencies[{i}].feature[{j}].name"),
+                    &dep.name,
+                    MIN_IDENT_LEN,
+                );
             }
         }
+        validate_unique_feature_names(&mut errors, &self.dependencies);
 
         if let Some(extensions) = &self.extensions {
             for (i, ext) in extensions.embed.iter().enumerate() {
@@ -278,6 +284,20 @@ fn validate_dependency(errors: &mut Vec<String>, path: &str, dep: &DependencyCon
     }
 }
 
+/// The API rejects a release that declares the same feature twice, across
+/// every `[[dependencies]]` block.
+fn validate_unique_feature_names(errors: &mut Vec<String>, dependencies: &[DependenciesConfig]) {
+    let mut seen = std::collections::HashSet::new();
+    for dep in dependencies.iter().flat_map(|d| &d.feature) {
+        if !seen.insert(dep.name.as_str()) {
+            errors.push(format!(
+                "dependencies feature {:?} is declared more than once",
+                dep.name
+            ));
+        }
+    }
+}
+
 fn validate_named_extension(
     errors: &mut Vec<String>,
     path: &str,
@@ -325,13 +345,30 @@ pub struct DependenciesConfig {
     #[serde(default)]
     pub app: Vec<DependencyConfig>,
     #[serde(default)]
-    pub feature: Vec<DependencyConfig>,
+    pub feature: Vec<FeatureDependencyConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyConfig {
     pub name: String,
     pub version: Option<String>,
+}
+
+/// A feature the release declares, sent as `createRelease.featureDependencies`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeatureDependencyConfig {
+    pub name: String,
+    pub state: FeatureDependencyState,
+}
+
+/// Mirrors the App Registry `FeatureDependencyState` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum FeatureDependencyState {
+    Required,
+    Excluded,
+    Enabled,
+    Disabled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

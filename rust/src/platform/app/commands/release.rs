@@ -5,8 +5,8 @@ use std::path::Path;
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 use platform_app_client::create_release::{
     ApplicationActionCreateInput, ApplicationSettingCreateInput,
-    ApplicationSubscriptionCreateInput, ApplicationUiExtensionCreateInput,
-    MutationCreateReleaseInput,
+    ApplicationSubscriptionCreateInput, ApplicationUiExtensionCreateInput, FeatureDependencyInput,
+    FeatureDependencyState, MutationCreateReleaseInput,
 };
 use serde_json::{Value, json};
 
@@ -148,6 +148,26 @@ fn build_settings(
         .collect()
 }
 
+/// Map godaddy.toml `[[dependencies]]` feature entries to the release
+/// `featureDependencies` input.
+fn build_feature_dependencies(config: &crate::config::Config) -> Vec<FeatureDependencyInput> {
+    use crate::config::FeatureDependencyState as State;
+    config
+        .dependencies
+        .iter()
+        .flat_map(|d| &d.feature)
+        .map(|f| FeatureDependencyInput {
+            name: f.name.clone(),
+            state: match f.state {
+                State::Required => FeatureDependencyState::REQUIRED,
+                State::Excluded => FeatureDependencyState::EXCLUDED,
+                State::Enabled => FeatureDependencyState::ENABLED,
+                State::Disabled => FeatureDependencyState::DISABLED,
+            },
+        })
+        .collect()
+}
+
 /// Missing manifest returns `Ok(None)`; a manifest that exists but fails to
 /// read, parse, or validate is an error rather than a silent empty fallback.
 fn load_manifest(path: &Path) -> cli_engine::Result<Option<crate::config::Config>> {
@@ -237,48 +257,63 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let config_path = crate::config::config_path(Some(&ctx.middleware.env));
             let manifest_dir = config_path.parent().unwrap_or_else(|| Path::new(""));
-            // Pulls actions/subscriptions/uiExtensions/settings from godaddy.toml; see load_manifest.
-            let (actions, subscriptions, ui_extensions, settings, native_extension) =
-                match load_manifest(&config_path)? {
-                    Some(config) => {
-                        let actions: Vec<ApplicationActionCreateInput> = config
-                            .actions
-                            .iter()
-                            .map(|a| ApplicationActionCreateInput {
-                                name: a.name.clone(),
-                                url: a.url.clone(),
-                            })
-                            .collect();
-                        let subscriptions: Vec<ApplicationSubscriptionCreateInput> = config
-                            .subscriptions
-                            .as_ref()
-                            .map(|s| {
-                                s.webhook
-                                    .iter()
-                                    .map(|w| ApplicationSubscriptionCreateInput {
-                                        name: w.name.clone(),
-                                        events: w.events.clone(),
-                                        url: w.url.clone(),
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let ui_extensions = build_ui_extensions(&config)?;
-                        let settings = build_settings(&config, manifest_dir)?;
-                        let native_extension = native_extension::native_extension_draft_if_visible(
-                            &config,
-                            &ctx.middleware.flag_policy,
-                        );
-                        (
-                            actions,
-                            subscriptions,
-                            ui_extensions,
-                            settings,
-                            native_extension,
-                        )
-                    }
-                    None => (Vec::new(), Vec::new(), Vec::new(), Vec::new(), None),
-                };
+            // Pulls actions/subscriptions/uiExtensions/settings/feature deps from godaddy.toml; see load_manifest.
+            let (
+                actions,
+                subscriptions,
+                ui_extensions,
+                settings,
+                feature_dependencies,
+                native_extension,
+            ) = match load_manifest(&config_path)? {
+                Some(config) => {
+                    let actions: Vec<ApplicationActionCreateInput> = config
+                        .actions
+                        .iter()
+                        .map(|a| ApplicationActionCreateInput {
+                            name: a.name.clone(),
+                            url: a.url.clone(),
+                        })
+                        .collect();
+                    let subscriptions: Vec<ApplicationSubscriptionCreateInput> = config
+                        .subscriptions
+                        .as_ref()
+                        .map(|s| {
+                            s.webhook
+                                .iter()
+                                .map(|w| ApplicationSubscriptionCreateInput {
+                                    name: w.name.clone(),
+                                    events: w.events.clone(),
+                                    url: w.url.clone(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let ui_extensions = build_ui_extensions(&config)?;
+                    let settings = build_settings(&config, manifest_dir)?;
+                    let feature_dependencies = build_feature_dependencies(&config);
+                    let native_extension = native_extension::native_extension_draft_if_visible(
+                        &config,
+                        &ctx.middleware.flag_policy,
+                    );
+                    (
+                        actions,
+                        subscriptions,
+                        ui_extensions,
+                        settings,
+                        feature_dependencies,
+                        native_extension,
+                    )
+                }
+                None => (
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                ),
+            };
 
             let mut input = MutationCreateReleaseInput {
                 application_id: app_id,
@@ -288,7 +323,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 subscriptions: Some(subscriptions),
                 settings: Some(settings),
                 application_dependencies: None,
-                feature_dependencies: None,
+                feature_dependencies: Some(feature_dependencies),
                 mcp_servers: None,
                 native_extensions: None,
                 ui_extensions: None,
@@ -758,6 +793,48 @@ authorization_scopes = []
         assert!(
             err.to_string().contains("failed to load"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn build_feature_dependencies_maps_manifest_entries() {
+        use platform_app_client::create_release::FeatureDependencyState;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("godaddy.toml");
+        std::fs::write(
+            &path,
+            r#"
+name = "my-app"
+client_id = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+version = "1.0.0"
+url = "https://example.com"
+proxy_url = "https://example.com/proxy"
+authorization_scopes = ["openid"]
+
+[[dependencies]]
+feature = [
+  { name = "automations", state = "ENABLED" },
+  { name = "payouts", state = "EXCLUDED" },
+]
+"#,
+        )
+        .expect("write manifest");
+        let config = super::load_manifest(&path)
+            .expect("manifest loads")
+            .expect("manifest exists");
+
+        let deps = super::build_feature_dependencies(&config);
+
+        let mapped: Vec<_> = deps.iter().map(|d| (d.name.as_str(), &d.state)).collect();
+        assert!(
+            matches!(
+                mapped.as_slice(),
+                [
+                    ("automations", FeatureDependencyState::ENABLED),
+                    ("payouts", FeatureDependencyState::EXCLUDED),
+                ]
+            ),
+            "unexpected mapping: {deps:?}"
         );
     }
 
