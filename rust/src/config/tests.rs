@@ -351,6 +351,35 @@ fn validate_rejects_subscription_without_events() {
 }
 
 #[test]
+fn validate_rejects_duplicate_feature_dependency_across_blocks() {
+    let mut config = valid_config();
+    for _ in 0..2 {
+        config.dependencies.push(DependenciesConfig {
+            app: vec![],
+            feature: vec![FeatureDependencyConfig {
+                name: "automations".to_owned(),
+                state: FeatureDependencyState::Enabled,
+            }],
+        });
+    }
+    let err = config.validate().expect_err("duplicate feature");
+    assert!(
+        err.to_string()
+            .contains("feature \"automations\" is declared more than once"),
+        "{err}"
+    );
+}
+
+#[test]
+fn parse_rejects_unknown_feature_dependency_state() {
+    let err = toml::from_str::<DependenciesConfig>(
+        r#"feature = [{ name = "automations", state = "ON" }]"#,
+    )
+    .expect_err("unknown state");
+    assert!(err.to_string().contains("unknown variant"), "{err}");
+}
+
+#[test]
 fn validate_rejects_dependency_with_bad_semver() {
     let mut config = valid_config();
     config.dependencies.push(DependenciesConfig {
