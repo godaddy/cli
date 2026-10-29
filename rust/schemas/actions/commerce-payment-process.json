@@ -24,6 +24,10 @@
         "$ref": "#/$defs/DetailedAmount",
         "description": "Transaction amount to be processed"
       },
+      "collectionEntityTargetId": {
+        "$ref": "#/$defs/Id",
+        "description": "Optional collection entity target where the payment should be initiated"
+      },
       "context": {
         "$ref": "#/$defs/TransactionContext",
         "description": "Additional context about where the transaction was initiated"
@@ -52,6 +56,17 @@
     "required": ["type", "amount", "fundingSource"],
     "additionalProperties": false,
     "$defs": {
+      "Id": {
+        "$id": "https://godaddy.com/schemas/commerce/transaction/id.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Custom ID format that can take a URN or a UUID",
+        "example": "urn:tid:oak:410dee2e-abbf-3f59-b640-fc3aca175344",
+        "pattern": "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})|(urn:[a-z]{1,3}:[a-z]{1,3}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        "title": "Id",
+        "type": "string",
+        "x-custom-id": true,
+        "x-custom-type": true
+      },
       "RefNum": {
         "title": "ReferenceNumber",
         "description": "Reference number (UUID format)",
