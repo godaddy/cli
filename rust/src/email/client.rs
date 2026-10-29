@@ -110,6 +110,20 @@ impl EmailClient {
         )
         .await
     }
+
+    pub async fn get_attestation_status(
+        &self,
+        attestation_id: &str,
+    ) -> Result<types::AttestationStatusResult, ClientError> {
+        response(
+            self.client
+                .get_m365_attestation_status()
+                .attestation_id(attestation_id)
+                .send()
+                .await,
+        )
+        .await
+    }
 }
 
 async fn response<T>(

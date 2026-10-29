@@ -192,6 +192,28 @@
       }
     },
     "schemas": {
+      "AttestationStatusResult": {
+        "description": "Result of a Microsoft Customer Agreement attestation status poll.",
+        "example": {
+          "attestationId": "1860fc65-9382-4629-9659-e26c7d20caf6",
+          "status": "Accepted"
+        },
+        "properties": {
+          "attestationId": {
+            "description": "The attestation ID that was polled.",
+            "example": "1860fc65-9382-4629-9659-e26c7d20caf6",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current acceptance status of the Microsoft Customer Agreement.",
+            "enum": ["Pending", "Accepted"],
+            "type": "string"
+          }
+        },
+        "required": ["attestationId", "status"],
+        "title": "Attestation Status Result",
+        "type": "object"
+      },
       "AgreementRequirement": {
         "$id": "https://godaddy.com/schemas/email/mailbox-management/agreement-requirement.v1",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -844,6 +866,49 @@
           }
         ],
         "summary": "Check if a mailbox can be provisioned",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/v1/email/m365-attestation-status/{attestationId}": {
+      "get": {
+        "description": "Polls the acceptance status of a Microsoft Customer Agreement attestation. Returns Accepted once the customer has clicked Accept on the MCA page.",
+        "operationId": "getM365AttestationStatus",
+        "parameters": [
+          {
+            "description": "The attestation ID from the attestationid query parameter of the MCA acceptance URL.",
+            "in": "path",
+            "name": "attestationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttestationStatusResult"
+                }
+              }
+            },
+            "description": "Current attestation status."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Attestation ID not found."
+          }
+        },
+        "summary": "Get Microsoft Customer Agreement attestation status",
         "tags": [
           "Mailboxes"
         ]

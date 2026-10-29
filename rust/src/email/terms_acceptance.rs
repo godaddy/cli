@@ -27,7 +27,8 @@
 use std::time::{Duration, Instant};
 
 use cli_engine::StreamSender;
-use serde_json::{Value, json};
+use email_client::types::EligibleAccount;
+use serde_json::json;
 use tracing::debug;
 
 use crate::email::client::{ClientError, EmailClient};
@@ -64,11 +65,10 @@ impl TermsRequirement {
 ///
 /// Returns `None` when no such requirement is present (common case: no T&C
 /// gate) or when the URL is missing the `attestationid` query param.
-pub(super) fn extract_mca_requirement(data: &Value) -> Option<TermsRequirement> {
-    let requirements = data.get("requirements")?.as_array()?;
-    requirements.iter().find_map(|req| {
-        if req.get("type").and_then(Value::as_str) == Some("MICROSOFT_MCA") {
-            let url = req.get("reference").and_then(Value::as_str)?.to_owned();
+pub(super) fn extract_mca_requirement(account: &EligibleAccount) -> Option<TermsRequirement> {
+    account.requirements.iter().find_map(|req| {
+        if req.type_ == "MICROSOFT_MCA" {
+            let url = req.reference.as_deref()?.to_owned();
             let attestation_id = attestation_id_from_url(&url)?;
             Some(TermsRequirement {
                 acceptance_url: url,
@@ -174,65 +174,78 @@ async fn poll_attestation_status(
     client: &EmailClient,
     attestation_id: &str,
 ) -> Result<AttestationStatus, ClientError> {
-    let body = client.get_attestation_status(attestation_id).await?;
-    let status = body
-        .get("status")
-        .and_then(|s| s.as_str())
-        .unwrap_or("Pending");
-    Ok(if status == "Accepted" {
-        AttestationStatus::Accepted
-    } else {
-        AttestationStatus::Pending
-    })
+    use email_client::types::AttestationStatusResultStatus;
+    let result = client.get_attestation_status(attestation_id).await?;
+    Ok(
+        if result.status == AttestationStatusResultStatus::Accepted {
+            AttestationStatus::Accepted
+        } else {
+            AttestationStatus::Pending
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
+    use email_client::types::{AgreementRequirement, EligibleAccount, MailboxType, Uuid};
+
     use super::*;
     use crate::email::client::EmailClient;
 
+    fn make_account(requirements: Vec<AgreementRequirement>) -> EligibleAccount {
+        EligibleAccount {
+            account_id: Uuid("acct-1".to_owned()),
+            account_name: None,
+            default: false,
+            mailbox_type: MailboxType("TITAN".to_owned()),
+            requirements,
+        }
+    }
+
+    fn mca_req(reference: Option<&str>) -> AgreementRequirement {
+        AgreementRequirement {
+            type_: "MICROSOFT_MCA".to_owned(),
+            title: Some("Microsoft Customer Agreement".to_owned()),
+            reference: reference.map(str::to_owned),
+        }
+    }
+
     #[test]
     fn extract_returns_none_when_no_requirements() {
-        assert!(extract_mca_requirement(&json!({ "isEligible": true })).is_none());
+        let account = make_account(vec![]);
+        assert!(extract_mca_requirement(&account).is_none());
     }
 
     #[test]
     fn extract_returns_none_for_unrelated_requirement_type() {
-        let data = json!({
-            "requirements": [{ "type": "FREETRIAL_AUTORENEW" }]
-        });
-        assert!(extract_mca_requirement(&data).is_none());
+        let account = make_account(vec![AgreementRequirement {
+            type_: "FREETRIAL_AUTORENEW".to_owned(),
+            title: None,
+            reference: None,
+        }]);
+        assert!(extract_mca_requirement(&account).is_none());
     }
 
     #[test]
     fn extract_returns_none_when_reference_missing() {
-        let data = json!({
-            "requirements": [{ "type": "MICROSOFT_MCA", "title": "MCA" }]
-        });
-        assert!(extract_mca_requirement(&data).is_none());
+        let account = make_account(vec![mca_req(None)]);
+        assert!(extract_mca_requirement(&account).is_none());
     }
 
     #[test]
     fn extract_returns_none_when_attestationid_param_absent() {
-        let data = json!({
-            "requirements": [{
-                "type": "MICROSOFT_MCA",
-                "reference": "https://cdn.partner.microsoft.com/mca/"
-            }]
-        });
-        assert!(extract_mca_requirement(&data).is_none());
+        let account = make_account(vec![mca_req(Some(
+            "https://cdn.partner.microsoft.com/mca/",
+        ))]);
+        assert!(extract_mca_requirement(&account).is_none());
     }
 
     #[test]
     fn extract_parses_full_mca_requirement() {
-        let data = json!({
-            "requirements": [{
-                "type": "MICROSOFT_MCA",
-                "title": "Microsoft Customer Agreement",
-                "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6"
-            }]
-        });
-        let req = extract_mca_requirement(&data).expect("should find MCA requirement");
+        let account = make_account(vec![mca_req(Some(
+            "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6",
+        ))]);
+        let req = extract_mca_requirement(&account).expect("should find MCA requirement");
         assert_eq!(
             req.acceptance_url,
             "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6"
@@ -242,17 +255,17 @@ mod tests {
 
     #[test]
     fn extract_finds_mca_among_multiple_requirements() {
-        let data = json!({
-            "requirements": [
-                { "type": "FREETRIAL_AUTORENEW" },
-                {
-                    "type": "MICROSOFT_MCA",
-                    "title": "Microsoft Customer Agreement",
-                    "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=abc-123"
-                }
-            ]
-        });
-        let req = extract_mca_requirement(&data).expect("should find MCA");
+        let account = make_account(vec![
+            AgreementRequirement {
+                type_: "FREETRIAL_AUTORENEW".to_owned(),
+                title: None,
+                reference: None,
+            },
+            mca_req(Some(
+                "https://cdn.partner.microsoft.com/mca/?attestationid=abc-123",
+            )),
+        ]);
+        let req = extract_mca_requirement(&account).expect("should find MCA");
         assert_eq!(req.attestation_id, "abc-123");
     }
 
@@ -296,7 +309,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token").expect("build client");
         let status = poll_attestation_status(&client, "1860fc65-9382-4629-9659-e26c7d20caf6")
             .await
             .expect("should succeed");
@@ -319,7 +332,7 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token");
+        let client = EmailClient::new(server.base_url(), "test-token").expect("build client");
         let status = poll_attestation_status(&client, "id-1")
             .await
             .expect("should succeed");
