@@ -224,7 +224,7 @@ When `check-eligibility` returns a 422, the `details` array contains one or more
 | `DOMAIN_NOT_ELIGIBLE`            | The domain exists but is not eligible for API provisioning.                            | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                 |
 | `NEEDS_TITAN_PLAN`               | There is no active Titan email plan for this domain.                                   | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `NEEDS_MICROSOFT_PLAN`           | There is no active Microsoft 365 email plan for this domain.                           | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 plans, select one to purchase, then retry. |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | Legacy code — no active email plan for this domain (treated as `NEEDS_TITAN_PLAN`).    | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                           |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                 |
 
@@ -239,7 +239,7 @@ The create command re-runs the eligibility check internally. A 422 can occur eve
 | `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                                            |
 | `NEEDS_TITAN_PLAN`               | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `NEEDS_MICROSOFT_PLAN`           | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 plans, select one to purchase, then retry. |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | Legacy code — treated as `NEEDS_TITAN_PLAN`. Run `gddy shopping catalog search --query titan`. |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type.                    |
 | `MCA_AGREEMENT_NOT_ACCEPTED`     | The Microsoft Customer Agreement has not been accepted for this account. Re-run `gddy email check-eligibility` — the CLI will open the browser to accept the agreement, then retry `create`. |
 | `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                                              |
