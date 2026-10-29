@@ -5,6 +5,7 @@ mod check_eligibility;
 mod create;
 mod get;
 mod list;
+mod terms_acceptance;
 
 pub(crate) use common::{body_has_issue, client_err, client_err_with_fix, make_client};
 

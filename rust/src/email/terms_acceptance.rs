@@ -11,11 +11,11 @@
 //! {
 //!   "type": "MICROSOFT_MCA",
 //!   "title": "Microsoft Customer Agreement",
-//!   "url": "https://cdn.partner.microsoft.com/mca/?attestationid=<id>"
+//!   "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=<id>"
 //! }
 //! ```
 //!
-//! The attestation ID is the `attestationid` query parameter of `url`.
+//! The attestation ID is the `attestationid` query parameter of `reference`.
 //!
 //! ## Attestation status endpoint (productivity API)
 //!
@@ -68,7 +68,7 @@ pub(super) fn extract_mca_requirement(data: &Value) -> Option<TermsRequirement> 
     let requirements = data.get("requirements")?.as_array()?;
     requirements.iter().find_map(|req| {
         if req.get("type").and_then(Value::as_str) == Some("MICROSOFT_MCA") {
-            let url = req.get("url").and_then(Value::as_str)?.to_owned();
+            let url = req.get("reference").and_then(Value::as_str)?.to_owned();
             let attestation_id = attestation_id_from_url(&url)?;
             Some(TermsRequirement {
                 acceptance_url: url,
@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_returns_none_when_url_missing() {
+    fn extract_returns_none_when_reference_missing() {
         let data = json!({
             "requirements": [{ "type": "MICROSOFT_MCA", "title": "MCA" }]
         });
@@ -217,7 +217,7 @@ mod tests {
         let data = json!({
             "requirements": [{
                 "type": "MICROSOFT_MCA",
-                "url": "https://cdn.partner.microsoft.com/mca/"
+                "reference": "https://cdn.partner.microsoft.com/mca/"
             }]
         });
         assert!(extract_mca_requirement(&data).is_none());
@@ -229,7 +229,7 @@ mod tests {
             "requirements": [{
                 "type": "MICROSOFT_MCA",
                 "title": "Microsoft Customer Agreement",
-                "url": "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6"
+                "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=1860fc65-9382-4629-9659-e26c7d20caf6"
             }]
         });
         let req = extract_mca_requirement(&data).expect("should find MCA requirement");
@@ -248,7 +248,7 @@ mod tests {
                 {
                     "type": "MICROSOFT_MCA",
                     "title": "Microsoft Customer Agreement",
-                    "url": "https://cdn.partner.microsoft.com/mca/?attestationid=abc-123"
+                    "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=abc-123"
                 }
             ]
         });
