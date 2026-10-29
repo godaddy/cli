@@ -66,6 +66,32 @@ Key fields:
 | `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
 
 
+### Microsoft Customer Agreement (MICROSOFT_MCA)
+
+Before returning eligible accounts, the API may require acceptance of the **Microsoft Customer Agreement**. When this is needed, the response includes a top-level `requirements` array (separate from `eligibleAccounts[].requirements`):
+
+```json
+{
+  "requirements": [
+    {
+      "type": "MICROSOFT_MCA",
+      "actionType": "EXTERNAL_URL",
+      "title": "Microsoft Customer Agreement",
+      "url": "https://cdn.partner.microsoft.com/mca/?attestationid=1360fc65-3333-1111-2222-e26c7d20caf6"
+    }
+  ]
+}
+```
+
+**The CLI handles this automatically** — no manual steps are needed:
+
+1. The agreement page opens in your browser.
+2. Click **Accept** on the Microsoft Customer Agreement page.
+3. The CLI polls in the background until acceptance is confirmed.
+4. The eligibility check retries automatically and returns results.
+
+`MICROSOFT_MCA` is a pre-flight prerequisite handled before eligibility results are returned. It is **not** passed as `--consent` to `email create`.
+
 When the account has **no free-trial** plan, `requirements` is an empty array and no `--consent` flag is needed:
 
 ```json
@@ -95,7 +121,7 @@ gddy email create --email someone@example.com \
   --consent FREETRIAL_AUTORENEW
 ```
 
-`--consent` is repeatable — pass one per required requirement type. `FREETRIAL_AUTORENEW` is currently the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
+`--consent` is repeatable — pass one per required `eligibleAccounts[].requirements[].type`. Currently the only consent type issued by the API is `FREETRIAL_AUTORENEW`. If `requirements` does not contain `FREETRIAL_AUTORENEW`, omit `--consent` entirely. (`MICROSOFT_MCA` is handled automatically by `check-eligibility` and is never passed as `--consent`.)
 
 `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
 
@@ -196,7 +222,9 @@ When `check-eligibility` returns a 422, the `details` array contains one or more
 | `EMAIL_PLAN_NOT_ELIGIBLE`        | The domain is linked to an email plan that does not support provisioning via this API. | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail) to create the mailbox manually.  |
 | `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | The domain is already provisioned through a different email provider.                  | The domain cannot be used with GoDaddy Business Email. No action available via the API.                            |
 | `DOMAIN_NOT_ELIGIBLE`            | The domain exists but is not eligible for API provisioning.                            | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                 |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `NEEDS_TITAN_PLAN`               | There is no active Titan email plan for this domain.                                   | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `NEEDS_MICROSOFT_PLAN`           | There is no active Microsoft 365 email plan for this domain.                           | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 plans, select one to purchase, then retry. |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | Legacy code — no active email plan for this domain (treated as `NEEDS_TITAN_PLAN`).    | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                           |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                 |
 
@@ -209,8 +237,11 @@ The create command re-runs the eligibility check internally. A 422 can occur eve
 | `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                                          |
 | `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                                          |
 | `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                                            |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `NEEDS_TITAN_PLAN`               | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `NEEDS_MICROSOFT_PLAN`           | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 plans, select one to purchase, then retry. |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | Legacy code — treated as `NEEDS_TITAN_PLAN`. Run `gddy shopping catalog search --query titan`. |
 | `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type.                    |
+| `MCA_AGREEMENT_NOT_ACCEPTED`     | The Microsoft Customer Agreement has not been accepted for this account. Re-run `gddy email check-eligibility` — the CLI will open the browser to accept the agreement, then retry `create`. |
 | `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                                              |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                                        |
 

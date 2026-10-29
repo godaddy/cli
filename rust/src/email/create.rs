@@ -80,13 +80,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let body = request_body(&args);
             let data = client.create_mailbox(body).await.map_err(|e| match &e {
                 ClientError::Http { status, body }
-                    if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                    if *status == 422
+                        && (body_has_issue(body, "NEEDS_TITAN_PLAN")
+                            || body_has_issue(body, "NEEDS_MICROSOFT_PLAN")
+                            || body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE")) =>
                 {
-                    client_err_with_fix(
-                        e,
+                    let fix = if body_has_issue(body, "NEEDS_MICROSOFT_PLAN") {
+                        "Run: 'gddy shopping catalog search --query microsoft' \
+                         to see available Microsoft 365 email plans, select one to purchase, then retry."
+                    } else {
                         "Run: 'gddy shopping catalog search --query titan' \
-                         to see available email plans, select one to purchase, then retry.",
-                    )
+                         to see available email plans, select one to purchase, then retry."
+                    };
+                    client_err_with_fix(e, fix)
                 }
                 ClientError::Http { status, body }
                     if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
@@ -182,10 +188,10 @@ mod tests {
     }
 
     #[test]
-    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+    fn needs_titan_plan_fix_points_at_titan_catalog_search() {
         use cli_engine::build_error_envelope;
 
-        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let body = r#"{"message":"no plan","details":[{"issue":"NEEDS_TITAN_PLAN"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
                 status: 422,
@@ -199,7 +205,30 @@ mod tests {
             envelope
                 .fix
                 .as_deref()
-                .is_some_and(|f| f.contains("shopping catalog search")),
+                .is_some_and(|f| f.contains("--query titan")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn needs_microsoft_plan_fix_points_at_microsoft_catalog_search() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"no plan","details":[{"issue":"NEEDS_MICROSOFT_PLAN"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Run: 'gddy shopping catalog search --query microsoft' \
+             to see available Microsoft 365 email plans, select one to purchase, then retry.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("--query microsoft")),
             "{envelope:?}"
         );
     }
