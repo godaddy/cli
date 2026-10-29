@@ -236,6 +236,7 @@ The create command re-runs the eligibility check internally. A 422 can occur eve
 | `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                                            |
 | `EMAIL_PLAN_NOT_AVAILABLE`       | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type.                    |
+| `MCA_AGREEMENT_NOT_ACCEPTED`     | The Microsoft Customer Agreement has not been accepted for this account. Re-run `gddy email check-eligibility` — the CLI will open the browser to accept the agreement, then retry `create`. |
 | `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                                              |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                                        |
 

@@ -130,8 +130,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             // Step 3: Create the mailbox. If the API requires fresh MCA consent
             // (CONSENT_NOT_PROVIDED with an embedded attestation URL), open the
-            // browser, wait for acceptance, then retry once with the consent.
-            let mut extra_consents = accepted_types;
+            // browser, wait for acceptance, then retry. MICROSOFT_MCA is never
+            // sent in the consents payload — acceptance is recorded via browser
+            // attestation, so mca_accepted tracks the retry guard separately.
+            let extra_consents = accepted_types;
+            let mut mca_accepted = false;
             let data = loop {
                 let body = request_body(&args, &account_id, &extra_consents);
                 match client.create_mailbox(body).await {
@@ -140,8 +143,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     Err(ClientError::Http {
                         status: 422,
                         body: err_body,
-                    }) if body_has_issue(&err_body, "CONSENT_NOT_PROVIDED")
-                        && !extra_consents.iter().any(|c| c == "MICROSOFT_MCA") =>
+                    }) if body_has_issue(&err_body, "MCA_AGREEMENT_NOT_ACCEPTED")
+                        && !mca_accepted =>
                     {
                         match mca_requirement_from_consent_error(&err_body) {
                             Some(req) => {
@@ -151,8 +154,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 {
                                     return Err(fail_create(&sender, e).await);
                                 }
-                                extra_consents.push("MICROSOFT_MCA".to_owned());
-                                // loop to retry create with consent
+                                mca_accepted = true;
+                                // loop to retry create; attestation recorded via URL, not consent flag
                             }
                             None => {
                                 return Err(fail_create(
@@ -240,11 +243,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// Extracts the MCA [`terms_acceptance::TermsRequirement`] from a 422
-/// `CONSENT_NOT_PROVIDED` error body. The create API embeds the attestation
+/// `MCA_AGREEMENT_NOT_ACCEPTED` error body. The create API embeds the attestation
 /// URL in the `details[].description` field of those errors, e.g.:
 ///
 /// ```json
-/// {"details": [{"issue": "CONSENT_NOT_PROVIDED",
+/// {"details": [{"issue": "MCA_AGREEMENT_NOT_ACCEPTED",
 ///               "description": "...at https://cdn.partner.microsoft.com/mca/?attestationid=..."}]}
 /// ```
 fn mca_requirement_from_consent_error(body: &str) -> Option<terms_acceptance::TermsRequirement> {
@@ -262,7 +265,7 @@ fn mca_requirement_from_consent_error(body: &str) -> Option<terms_acceptance::Te
     let description = parsed
         .details
         .iter()
-        .find(|d| d.issue.as_deref() == Some("CONSENT_NOT_PROVIDED"))?
+        .find(|d| d.issue.as_deref() == Some("MCA_AGREEMENT_NOT_ACCEPTED"))?
         .description
         .as_deref()?;
     // The description embeds the URL:
@@ -324,14 +327,29 @@ mod tests {
             last_name: None,
             consent: vec!["FREETRIAL_AUTORENEW".to_owned()],
         };
-        let body = request_body(&args, "1401049", &["MICROSOFT_MCA".to_owned()]);
+        let body = request_body(&args, "1401049", &["TERMS_OF_SERVICE".to_owned()]);
         assert_eq!(body["emailAddress"], "someone@example.com");
         assert_eq!(body["accountId"], "1401049");
         assert!(body.get("firstName").is_none());
         let consents = body["consents"].as_array().expect("consents array");
         assert_eq!(consents.len(), 2);
         assert!(consents.iter().any(|c| c["type"] == "FREETRIAL_AUTORENEW"));
-        assert!(consents.iter().any(|c| c["type"] == "MICROSOFT_MCA"));
+        assert!(consents.iter().any(|c| c["type"] == "TERMS_OF_SERVICE"));
+    }
+
+    #[test]
+    fn request_body_does_not_include_microsoft_mca_in_consents() {
+        // MCA acceptance is recorded via browser attestation, not a consent flag.
+        let args = CreateArgs {
+            email: "someone@example.com".to_owned(),
+            account_id: None,
+            first_name: None,
+            last_name: None,
+            consent: vec!["FREETRIAL_AUTORENEW".to_owned()],
+        };
+        let body = request_body(&args, "1401049", &[]);
+        let consents = body["consents"].as_array().expect("consents array");
+        assert!(!consents.iter().any(|c| c["type"] == "MICROSOFT_MCA"));
     }
 
     #[test]
@@ -341,9 +359,9 @@ mod tests {
             account_id: None,
             first_name: None,
             last_name: None,
-            consent: vec!["MICROSOFT_MCA".to_owned()],
+            consent: vec!["FREETRIAL_AUTORENEW".to_owned()],
         };
-        let body = request_body(&args, "1401049", &["MICROSOFT_MCA".to_owned()]);
+        let body = request_body(&args, "1401049", &["FREETRIAL_AUTORENEW".to_owned()]);
         let consents = body["consents"].as_array().expect("consents array");
         assert_eq!(consents.len(), 1);
     }

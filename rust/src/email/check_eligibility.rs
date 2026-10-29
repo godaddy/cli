@@ -58,9 +58,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 /// 2. The eligibility check is retried automatically.
 ///
 /// Returns `(eligibility_data, accepted_requirement_types)` where
-/// `accepted_requirement_types` lists the requirement `type` strings that were
-/// accepted through the interactive browser flow. Callers that subsequently
-/// call `create_mailbox` should include these as consents in the request body.
+/// `accepted_requirement_types` lists non-MCA requirement `type` strings that
+/// were accepted interactively. `MICROSOFT_MCA` is intentionally excluded —
+/// acceptance is recorded via browser attestation, not a consent payload flag.
 ///
 /// All other errors are returned immediately.
 pub(super) async fn run_eligibility_with_mca(
@@ -83,9 +83,9 @@ pub(super) async fn run_eligibility_with_mca(
             if let Some(req) = mca_req {
                 terms_acceptance::wait_for_acceptance(&req, client, sender).await?;
                 // Don't re-check eligibility — the backend may not immediately
-                // reflect the acceptance. Pass MICROSOFT_MCA as a consent on
-                // the create request instead.
-                Ok((data, vec!["MICROSOFT_MCA".to_owned()]))
+                // reflect the acceptance. MCA is recorded via attestation URL,
+                // not a consent payload flag, so accepted_types stays empty.
+                Ok((data, Vec::new()))
             } else {
                 Ok((data, Vec::new()))
             }
