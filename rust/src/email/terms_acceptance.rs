@@ -47,18 +47,6 @@ pub(super) struct TermsRequirement {
     pub(super) attestation_id: String,
 }
 
-impl TermsRequirement {
-    /// Builds a [`TermsRequirement`] from the MCA page URL, extracting the
-    /// attestation ID from the `attestationid` query param. Returns `None`
-    /// when the URL does not contain the required param.
-    pub(super) fn from_url(url: String) -> Option<Self> {
-        let attestation_id = attestation_id_from_url(&url)?;
-        Some(Self {
-            acceptance_url: url,
-            attestation_id,
-        })
-    }
-}
 
 /// Scans a 200 eligibility response for a `MICROSOFT_MCA` requirement and
 /// returns the corresponding [`TermsRequirement`].
