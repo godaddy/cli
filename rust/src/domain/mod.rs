@@ -91,10 +91,16 @@ pub fn module() -> Module {
         .with_group(auto_renew::group())
         .with_group(transfer_lock::group())
     })
-    .with_guides_from_markdown([(
-        "domain-purchase.md",
-        include_bytes!("guides/domain-purchase.md").as_slice(),
-    )])
+    .with_guides_from_markdown([
+        (
+            "domain-purchase.md",
+            include_bytes!("guides/domain-purchase.md").as_slice(),
+        ),
+        (
+            "domain-settings.md",
+            include_bytes!("guides/domain-settings.md").as_slice(),
+        ),
+    ])
 }
 
 #[cfg(test)]
