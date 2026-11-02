@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.33](https://github.com/godaddy/cli/compare/v0.2.32...v0.2.33) (2026-11-02)
+
+
+### Features
+
+* **platform:** send manifest feature dependencies on app release. ([#351](https://github.com/godaddy/cli/issues/351)) ([5427df3](https://github.com/godaddy/cli/commit/5427df3b48df9c5d87a36827b825a92384081b9d))
+
+
+### Bug Fixes
+
+* **domain:** label renewal prices as auto-renewal prices ([#341](https://github.com/godaddy/cli/issues/341)) ([cad8a4d](https://github.com/godaddy/cli/commit/cad8a4d84ecaf2c50c6c96de3723ea5436ccdf3f))
+* **hosting:** mark app-type and hosting-product as required in help. ([77b824a](https://github.com/godaddy/cli/commit/77b824af7a66ba650ced77a2f6d671e78c12673f))
+* **update:** show the update notice to scripts and AI assistants ([#346](https://github.com/godaddy/cli/issues/346)) ([4763cee](https://github.com/godaddy/cli/commit/4763ceee25bf01edb394eeedfd730675a06cb30d))
+
 ## [0.2.32](https://github.com/godaddy/cli/compare/v0.2.31...v0.2.32) (2026-10-23)
 
 
