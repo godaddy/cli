@@ -12,7 +12,7 @@ Most setting changes run **asynchronously**: the command returns an operation ID
 
 ## Inspect your domains
 
-List domains on your account (status, expiry, and auto-renew by default):
+List domains on your account (status, expiry, and auto-renew are shown by default):
 
 ```
 gddy domain list
