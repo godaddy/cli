@@ -33,6 +33,25 @@ impl Fields {
         }
     }
 
+    /// Whether there was no token to read (absent or blank): "start from the
+    /// beginning", where request defaults apply.
+    fn is_blank(&self) -> bool {
+        self.raw.is_empty()
+    }
+
+    /// Fails unless every key in `required` is present. A token this command
+    /// issued always carries them, so a missing one means it was cut short, and
+    /// guessing a default (page one, offset zero) would repeat rows silently.
+    fn require(&self, required: &[&str]) -> cli_engine::Result<()> {
+        match required.iter().find(|key| !self.map.contains_key(**key)) {
+            None => Ok(()),
+            Some(missing) => Err(invalid_token(
+                &self.raw,
+                format!("it is missing `{missing}`, so it looks cut short"),
+            )),
+        }
+    }
+
     /// The raw text of a field, if the token has it.
     pub(crate) fn text(&self, key: &str) -> Option<&str> {
         self.map.get(key).map(String::as_str)
@@ -176,6 +195,9 @@ pub(crate) fn resolve_page_request<P: FromStr>(
     max_limit: i64,
 ) -> cli_engine::Result<(P, i64)> {
     let fields = parse(continue_token, &["limit", "page"])?;
+    if !fields.is_blank() {
+        fields.require(&["page", "limit"])?;
+    }
     let page = match fields.typed::<P>("page")? {
         Some(page) => {
             // Pages are 1-based, and a token is only ever minted as `page + 1`.
@@ -238,6 +260,18 @@ pub(crate) fn filter_known_collection(
     })
 }
 
+/// The fields of a known-collection `--continue` token. Any non-blank token
+/// must say where it points (`offset`); the page size may be absent only
+/// because the offset-only token that `--offset` becomes (see
+/// [`resolve_continue_token`]) has no earlier page to inherit one from.
+fn known_collection_fields(continue_token: Option<&str>) -> cli_engine::Result<Fields> {
+    let fields = parse(continue_token, &["limit", "offset"])?;
+    if !fields.is_blank() {
+        fields.require(&["offset"])?;
+    }
+    Ok(fields)
+}
+
 /// How many items a [`paginate_known_collection`] call will look at: the
 /// window's end plus one, because seeing an item past the window is what says
 /// there is a next page. A caller that gathers the collection from a paged
@@ -247,7 +281,7 @@ pub(crate) fn known_collection_need(
     limit: i64,
     max_limit: i64,
 ) -> cli_engine::Result<usize> {
-    let fields = parse(continue_token, &["limit", "offset"])?;
+    let fields = known_collection_fields(continue_token)?;
     let offset = fields.typed::<usize>("offset")?.unwrap_or(0);
     let size = saturating_usize(limit_from(&fields, limit, max_limit)?).max(1);
     Ok(offset.saturating_add(size).saturating_add(1))
@@ -269,7 +303,7 @@ pub(crate) fn paginate_known_collection(
     max_limit: i64,
     continue_token: Option<&str>,
 ) -> cli_engine::Result<(Vec<Value>, CursorContinuation)> {
-    let fields = parse(continue_token, &["limit", "offset"])?;
+    let fields = known_collection_fields(continue_token)?;
     let offset = fields.typed::<usize>("offset")?.unwrap_or(0);
     let limit = saturating_usize(limit_from(&fields, limit, max_limit)?).max(1);
     let total = items.len();
@@ -667,6 +701,51 @@ mod tests {
         assert!(resolve_page_request(None::<u32>, Some("limit:25,page:0"), 1u32, 25, 100).is_err());
         // A valid token page passes (an explicit --page is validated by clap).
         assert!(resolve_page_request(None::<u64>, Some("limit:25,page:1"), 1u64, 25, 100).is_ok());
+    }
+
+    #[test]
+    fn page_based_tokens_must_carry_both_page_and_limit() {
+        // Cut short at a pair boundary: `limit:10,page:2` -> `limit:10` would
+        // repeat page one; `page:2` alone would use the default size and skip rows.
+        for cut in ["limit:10", "page:2", "limit:10,", "page:2,"] {
+            let err = resolve_page_request(None::<u32>, Some(cut), 1u32, 25, 100).expect_err(cut);
+            assert!(
+                err.to_string().contains("cut short") || err.to_string().contains("invalid"),
+                "{cut}: {err}"
+            );
+        }
+        // Blank still means "start from the beginning" with request defaults.
+        for blank in [None, Some(""), Some("  ")] {
+            assert_eq!(
+                resolve_page_request(None::<u32>, blank, 1u32, 25, 100).expect("blank"),
+                (1, 25)
+            );
+        }
+        // The full token and an explicit --page (no token) are unaffected.
+        assert!(resolve_page_request(None::<u32>, Some("limit:10,page:2"), 1u32, 25, 100).is_ok());
+        assert_eq!(
+            resolve_page_request(Some(7u32), None, 1u32, 25, 100).expect("explicit"),
+            (7, 25)
+        );
+    }
+
+    #[test]
+    fn known_collection_tokens_must_say_where_they_point() {
+        // `limit:3,offset:3` cut to `limit:3` would silently return page one again.
+        let err = paginate_known_collection(items(10), 5, 100, Some("limit:3"))
+            .expect_err("missing offset");
+        assert!(err.to_string().contains("`offset`"), "{err}");
+        assert!(known_collection_need(Some("limit:3"), 5, 100).is_err());
+        // A trailing comma is a different cut and is rejected as malformed.
+        assert!(paginate_known_collection(items(10), 5, 100, Some("limit:3,")).is_err());
+        assert!(known_collection_need(Some("limit:3,"), 5, 100).is_err());
+        // The offset-only token that `--offset` becomes still works, as do full
+        // tokens and blank ones.
+        let (page, _) =
+            paginate_known_collection(items(10), 5, 100, Some("offset:4")).expect("synthesized");
+        assert_eq!(page.len(), 5);
+        assert!(paginate_known_collection(items(10), 5, 100, Some("limit:3,offset:3")).is_ok());
+        assert!(paginate_known_collection(items(10), 5, 100, Some("")).is_ok());
     }
 
     #[test]
