@@ -1,12 +1,13 @@
 //! `api parameter list` and `api parameter get`.
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextActionParam, PaginationConfig, RuntimeCommandSpec, TableColumn,
+    CommandResult, CommandSpec, CursorConfig, NextActionParam, RuntimeCommandSpec, TableColumn,
     Tier,
 };
 use serde_json::json;
 
 use crate::next_action::{next_action, required_value};
+use crate::pagination_token;
 
 use super::catalog::{
     catalog, graphql_operation_redirect_error, resolve_graphql_operation, resolve_operation,
@@ -21,10 +22,14 @@ struct ParameterListArgs {
     /// Operation ID to list parameters for (see `api operation list`).
     #[arg(long, value_name = "OPERATION")]
     operation: String,
+
+    /// Jump directly to an offset in the collection. Ignored when `--continue` is given.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..))]
+    offset: Option<i64>,
 }
 
 pub(super) fn list_command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed::<ParameterListArgs, _, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<ParameterListArgs, _, _, _>(
         CommandSpec::from_args::<ParameterListArgs>("list", "List an operation's parameters")
             .with_long(
                 "Summarizes every parameter for an operation — query/path/header/cookie/body. \
@@ -42,11 +47,11 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
             .with_system("api")
             .with_tier(Tier::Read)
             .no_auth(true)
-            .with_pagination(PaginationConfig::new(
+            .with_cursor(CursorConfig::new(
                 OPERATION_CHILD_LIST_DEFAULT_LIMIT as i64,
                 OPERATION_CHILD_LIST_MAX_LIMIT,
             )),
-        |_cred, args: ParameterListArgs| async move {
+        |ctx, args: ParameterListArgs| async move {
             let operation = args.operation.as_str();
             let catalog = catalog();
             if resolve_graphql_operation(catalog, operation).is_some() {
@@ -54,6 +59,17 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
             }
             let (domain, ep) = resolve_operation(catalog, operation, None)?;
             let all = summarize_parameters(ep, &domain.defs);
+            let items = to_json(all)?.as_array().cloned().unwrap_or_default();
+            let continue_token = pagination_token::resolve_continue_token(
+                args.offset,
+                ctx.middleware.continue_token.as_deref(),
+            );
+            let (page, continuation) = pagination_token::paginate_known_collection(
+                pagination_token::filter_known_collection(items, &ctx.middleware.filter)?,
+                ctx.middleware.cursor_limit,
+                OPERATION_CHILD_LIST_MAX_LIMIT,
+                continue_token.as_deref(),
+            )?;
             let next_actions = vec![
                 next_action(
                     "api parameter get <name> --operation <operation>",
@@ -62,7 +78,9 @@ pub(super) fn list_command() -> RuntimeCommandSpec {
                 .with_param("name", NextActionParam::required())
                 .with_param("operation", required_value(ep.operation_id.clone())),
             ];
-            Ok(CommandResult::new(json!(all)).with_next_actions(next_actions))
+            Ok(CommandResult::new(json!(page))
+                .with_cursor(continuation)
+                .with_next_actions(next_actions))
         },
     )
 }
@@ -215,31 +233,31 @@ mod tests {
         let rendered: serde_json::Value =
             serde_json::from_str(&output.rendered).expect("valid json");
         assert_eq!(rendered["data"].as_array().expect("data array").len(), 5);
-        let pagination = &rendered["pagination"];
-        assert_eq!(pagination["total"], json!(26));
-        assert_eq!(pagination["offset"], json!(20));
-        assert_eq!(pagination["limit"], json!(5));
-        assert_eq!(pagination["count"], json!(5));
+        let cursor = &rendered["cursor"];
+        assert_eq!(cursor["total"], json!(26));
+        assert_eq!(cursor["limit"], json!(5));
+        assert_eq!(cursor["count"], json!(5));
         // 20 + 5 = 25 < 26, so one more remains.
-        assert_eq!(pagination["has_more"], json!(true));
+        assert_eq!(cursor["has_more"], json!(true));
+        assert_eq!(cursor["remaining"], json!(1));
         let next_actions = rendered["next_actions"].as_array().expect("next_actions");
         assert!(
-            next_actions
-                .iter()
-                .any(|a| a["command"].as_str().unwrap_or("").contains("--offset 25")),
+            next_actions.iter().any(|a| a["command"]
+                .as_str()
+                .unwrap_or("")
+                .contains("--continue \"limit:5,offset:25\"")),
             "expected an auto-generated next-page hint: {}",
             output.rendered
         );
     }
 
-    /// `--limit 0` means "all" per cli-engine's own generated help text for
-    /// `with_pagination` — must show every item, not zero. With both
-    /// `--limit`/`--offset` at their "disabled" value (0), cli-engine 0.8's
-    /// pipeline skips pagination entirely rather than reporting a page of
-    /// everything, so there's no `pagination` envelope field at all here.
+    /// The next-page action the engine advertises after a direct `--offset`
+    /// jump replays that `--offset` next to the new `--continue`. Executing it
+    /// exactly as printed must advance to the following page, not fail to
+    /// parse and not land on the same page again.
     #[tokio::test]
-    async fn parameter_list_limit_zero_means_all() {
-        let output = operation_cli()
+    async fn parameter_list_next_action_after_an_offset_jump_advances() {
+        let first = operation_cli()
             .run([
                 "gddy",
                 "api",
@@ -248,16 +266,38 @@ mod tests {
                 "--operation",
                 "get_transaction_disputes",
                 "--limit",
-                "0",
+                "5",
+                "--offset",
+                "20",
                 "--output",
                 "json",
             ])
             .await;
-        assert_eq!(output.exit_code, 0, "{}", output.rendered);
-        let rendered: serde_json::Value =
-            serde_json::from_str(&output.rendered).expect("valid json");
-        assert_eq!(rendered["data"].as_array().expect("data array").len(), 26);
-        assert!(rendered.get("pagination").is_none(), "{}", output.rendered);
+        assert_eq!(first.exit_code, 0, "{}", first.rendered);
+        let first: serde_json::Value = serde_json::from_str(&first.rendered).expect("valid json");
+        let command = first["next_actions"]
+            .as_array()
+            .and_then(|actions| {
+                actions
+                    .iter()
+                    .filter_map(|a| a["command"].as_str())
+                    .find(|c| c.contains("--continue"))
+            })
+            .expect("a next-page action");
+
+        let argv: Vec<&str> = command
+            .split_whitespace()
+            .map(|part| part.trim_matches('"'))
+            .chain(["--output", "json"])
+            .collect();
+        let second = operation_cli().run(argv).await;
+        assert_eq!(second.exit_code, 0, "{command}: {}", second.rendered);
+        let second: serde_json::Value = serde_json::from_str(&second.rendered).expect("valid json");
+
+        // 26 rows: offsets 20..25 were page one, so only offset 25 remains.
+        assert_eq!(second["data"].as_array().expect("data array").len(), 1);
+        assert_eq!(second["cursor"]["has_more"], json!(false));
+        assert_ne!(first["data"], second["data"]);
     }
 
     /// `max_limit` (`OPERATION_CHILD_LIST_MAX_LIMIT`) rejects an

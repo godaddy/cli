@@ -1,5 +1,7 @@
 use clap::builder::{PossibleValuesParser, TypedValueParser};
-use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
+use cli_engine::{
+    CliCoreError, CommandContext, CommandSpec, CursorContinuation, FlagPolicy, Stage,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -269,16 +271,77 @@ pub fn next_page_token(response: &Value) -> Option<String> {
     None
 }
 
-fn extract_query_param(url: &str, param: &str) -> Option<String> {
-    let query = url.split_once('?')?.1;
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=')
-            && k == param
-        {
-            return Some(v.to_owned());
-        }
+/// The `href` of a paged response's `links[rel=next]`, if it has one.
+pub fn next_link_href(response: &Value) -> Option<String> {
+    response
+        .get("links")?
+        .as_array()?
+        .iter()
+        .find(|link| link.get("rel").and_then(Value::as_str) == Some("next"))?
+        .get("href")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// Longest `next`-link query string accepted as a continuation; anything longer
+/// is treated as unusable rather than handed to the user as a token.
+const MAX_CURSOR_QUERY_LEN: usize = 2048;
+
+/// The query string of a paged response's `links[rel=next].href` (for example
+/// `pageToken=abc&pageSize=50`), which is everything a follow-up request needs:
+/// the collections-and-pagination standard surfaces the cursor only through
+/// that link. `None` when there is no next link, or it has no query to replay
+/// (it could not advance), or the query is unreasonably long.
+pub fn next_link_query(response: &Value) -> Option<String> {
+    let href = next_link_href(response)?;
+    let query = href.split_once('?')?.1.split('#').next()?;
+    (!query.is_empty() && query.len() <= MAX_CURSOR_QUERY_LEN).then(|| query.to_owned())
+}
+
+/// The warning for a listing that ended with pages left unread.
+pub fn incomplete_list_warning(what: &str) -> String {
+    format!("The API reports more {what} than can be displayed.")
+}
+
+/// The `items` array of a paged hosting response (empty when absent).
+pub fn page_items(response: &Value) -> Vec<Value> {
+    response
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Maps a paged hosting response's `links[rel=next]` onto the engine's cursor
+/// continuation, using the server's own `pageToken` as the `--continue` token.
+pub fn page_continuation(response: &Value) -> CursorContinuation {
+    let continuation = match next_page_token(response) {
+        Some(token) => CursorContinuation::more(token),
+        None => CursorContinuation::done(),
+    };
+    // `totalItems` is only present when the service was asked for it
+    // (`totalRequired`); leave the total absent otherwise.
+    match response.get("totalItems").and_then(Value::as_i64) {
+        Some(total) => continuation.with_total(total),
+        None => continuation,
     }
-    None
+}
+
+/// The engine's resolved `--limit` as the `pageSize` the hosting client takes.
+pub fn page_limit(cursor_limit: i64) -> Option<u32> {
+    u32::try_from(cursor_limit).ok().filter(|n| *n > 0)
+}
+
+/// The decoded value of query parameter `param` in `url`.
+///
+/// Decoded, because the value is handed to the generated client, which encodes
+/// it again when it builds the next request; passing it on still encoded would
+/// send `a%252Bb` for a cursor that is really `a%2Bb`.
+fn extract_query_param(url: &str, param: &str) -> Option<String> {
+    let query = url.split_once('?')?.1.split('#').next()?;
+    url::form_urlencoded::parse(query.as_bytes())
+        .find(|(name, _)| name == param)
+        .map(|(_, value)| value.into_owned())
 }
 
 #[cfg(test)]
@@ -375,6 +438,112 @@ mod tests {
     fn next_page_token_returns_none_when_no_links() {
         let response = json!({ "items": [] });
         assert!(next_page_token(&response).is_none());
+    }
+
+    #[test]
+    fn next_link_query_returns_the_query_of_the_next_link() {
+        let relative = json!({ "links": [
+            { "rel": "self", "href": "/v1/hosting/apps/a/domains" },
+            { "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=ab%2Bc%3D&pageSize=25" }
+        ]});
+        assert_eq!(
+            next_link_query(&relative).as_deref(),
+            Some("pageToken=ab%2Bc%3D&pageSize=25"),
+            "returned verbatim, still encoded"
+        );
+        let absolute = json!({ "links": [
+            { "rel": "next", "href": "https://api.example/v1/hosting/x?page=2&pageSize=10#frag" }
+        ]});
+        assert_eq!(
+            next_link_query(&absolute).as_deref(),
+            Some("page=2&pageSize=10")
+        );
+    }
+
+    #[test]
+    fn next_link_query_is_none_when_the_link_cannot_advance() {
+        for response in [
+            json!({ "items": [] }),
+            json!({ "links": [{ "rel": "self", "href": "/x?pageToken=t" }] }),
+            json!({ "links": [{ "rel": "next", "href": "/v1/hosting/x" }] }),
+            json!({ "links": [{ "rel": "next", "href": "/v1/hosting/x?" }] }),
+        ] {
+            assert_eq!(next_link_query(&response), None, "{response}");
+        }
+        let long = format!("/x?pageToken={}", "a".repeat(MAX_CURSOR_QUERY_LEN + 1));
+        assert_eq!(
+            next_link_query(&json!({ "links": [{ "rel": "next", "href": long }] })),
+            None
+        );
+    }
+
+    #[test]
+    fn next_page_token_is_decoded_so_it_is_not_encoded_twice() {
+        let response = json!({ "links": [{
+            "rel": "next",
+            "href": "/v1/hosting/apps?appType=NODEJS&pageToken=a%2Bb%3D%3D&pageSize=10#frag"
+        }]});
+        assert_eq!(next_page_token(&response).as_deref(), Some("a+b=="));
+        // Percent signs and spaces survive the same way.
+        let response = json!({ "links": [{
+            "rel": "next", "href": "/x?pageToken=100%25%20done"
+        }]});
+        assert_eq!(next_page_token(&response).as_deref(), Some("100% done"));
+    }
+
+    #[test]
+    fn page_items_returns_the_items_array_or_empty() {
+        assert_eq!(
+            page_items(&json!({ "items": [{ "id": "a" }, { "id": "b" }] })).len(),
+            2
+        );
+        assert!(page_items(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn page_continuation_carries_the_servers_page_token_and_is_done_without_one() {
+        let more = page_continuation(&json!({
+            "links": [{ "rel": "next", "href": "https://api.godaddy.com/v1/hosting/apps?pageToken=tok-2" }]
+        }));
+        assert_eq!(more.continue_from.as_deref(), Some("tok-2"));
+        assert_eq!(
+            page_continuation(&json!({ "items": [] })).continue_from,
+            None
+        );
+    }
+
+    #[test]
+    fn next_link_href_picks_the_next_relation_only() {
+        let response = json!({
+            "links": [
+                { "rel": "self", "href": "/v1/hosting/apps/a/domains" },
+                { "rel": "next", "href": "/v1/hosting/apps/a/domains?pageToken=tok-2" }
+            ]
+        });
+        assert_eq!(
+            next_link_href(&response).as_deref(),
+            Some("/v1/hosting/apps/a/domains?pageToken=tok-2")
+        );
+        assert_eq!(
+            next_link_href(&json!({ "links": [{ "rel": "self", "href": "/x" }] })),
+            None
+        );
+        assert_eq!(next_link_href(&json!({ "items": [] })), None);
+    }
+
+    #[test]
+    fn page_continuation_carries_total_items_only_when_the_service_sends_it() {
+        let with_total = page_continuation(&json!({ "items": [], "totalItems": 42 }));
+        assert_eq!(with_total.total, Some(42));
+        assert_eq!(page_continuation(&json!({ "items": [] })).total, None);
+    }
+
+    #[test]
+    fn page_limit_rejects_non_positive_and_oversized_values() {
+        assert_eq!(page_limit(50), Some(50));
+        assert_eq!(page_limit(0), None);
+        assert_eq!(page_limit(-1), None);
+        assert_eq!(page_limit(i64::MAX), None);
     }
 
     #[test]

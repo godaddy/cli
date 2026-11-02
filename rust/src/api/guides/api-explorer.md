@@ -63,7 +63,7 @@ gddy api parameter list --operation <operationId>
 gddy api response list --operation <operationId>
 ```
 
-Both support the standard `--limit`/`--offset` flags if there are more rows than fit on one page. To see one parameter or response's full detail on its own:
+Both support the standard `--limit`/`--continue` flags if there are more rows than fit on one page (or `--offset` to jump directly to a position). To see one parameter or response's full detail on its own:
 
 ```
 gddy api parameter get <name> --operation <operationId>
