@@ -17,6 +17,7 @@ mod output_schema;
 mod pat;
 mod payment_methods;
 mod platform;
+mod prefs;
 mod scopes;
 mod shopping;
 #[cfg(feature = "dev-portal-spec")]
@@ -83,6 +84,7 @@ async fn main() -> ExitCode {
                     .with_date(env!("GDDY_BUILD_DATE")),
             )
             .with_client_attribution(cli_engine::transport::AttributionConfig::new())
+            .with_config_schema::<prefs::Prefs>()
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_auth_extra_commands([scopes::auth_scopes_command()])
