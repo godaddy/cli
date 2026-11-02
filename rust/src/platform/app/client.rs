@@ -60,6 +60,16 @@ impl From<ClientError> for crate::error::GddyError {
             ClientError::Network(e) => {
                 Self::network(format!("network error: {e}")).with_system("applications")
             }
+            // App Registry reports a missing developer organization as a generic
+            // `ValidationError` with no dedicated code, so the message is all
+            // there is to match on.
+            ClientError::GraphQL(msg) if msg.contains("Complete onboarding first") => {
+                Self::onboarding_required(
+                    "Your GoDaddy account hasn't finished developer setup yet. \
+                    Accept the GoDaddy Developer agreements to get started.",
+                )
+                .with_system("applications")
+            }
             ClientError::GraphQL(msg) => {
                 Self::from_graphql(format!("GraphQL errors: {msg}"), "applications")
             }
