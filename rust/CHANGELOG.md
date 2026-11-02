@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.34](https://github.com/godaddy/cli/compare/v0.2.33...v0.2.34) (2026-11-02)
+
+
+### Features
+
+* **config:** add gddy config with punycode and currency preferences ([#336](https://github.com/godaddy/cli/issues/336)) ([e7b047b](https://github.com/godaddy/cli/commit/e7b047b45f8965f645dc0e9c6c7f6c53fa372eb6))
+* **platform-app:** add `app onboard` and explain accounts that haven't finished developer setup ([#343](https://github.com/godaddy/cli/issues/343)) ([7a01f77](https://github.com/godaddy/cli/commit/7a01f773efc33204d4129e00c7998fd9aad468a3))
+
+
+### Bug Fixes
+
+* **dns:** change a retained record's TTL by delete-then-create in dns set ([#352](https://github.com/godaddy/cli/issues/352)) ([46a97c5](https://github.com/godaddy/cli/commit/46a97c583f4eca5a2241c7ea440482c278a091f1))
+
+
+### Documentation
+
+* **domain:** add domain-settings guide for owned-domain management [GDDEVPLAT-481] ([#353](https://github.com/godaddy/cli/issues/353)) ([fcba0b8](https://github.com/godaddy/cli/commit/fcba0b8fcf6c49f43f0e43adaa5d99ef9be29d95))
+
 ## [0.2.33](https://github.com/godaddy/cli/compare/v0.2.32...v0.2.33) (2026-11-02)
 
 
