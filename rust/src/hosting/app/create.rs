@@ -11,7 +11,7 @@ use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
 
 #[derive(Debug, Clone, clap::Args)]
 struct AppCreateArgs {
-    /// Hosting product.
+    /// Application type (required).
     #[arg(long = "app-type", value_name = "TYPE", ignore_case = true)]
     app_type: HostingAppType,
 
@@ -122,9 +122,10 @@ fn create_err(e: ClientError, app_type: HostingAppType) -> cli_engine::CliCoreEr
 
 #[cfg(test)]
 mod tests {
-    use cli_engine::{Cli, CliConfig, Stage};
+    use cli_engine::Cli;
 
     use super::*;
+    use crate::hosting::test_support::{cli, run_hosting};
 
     fn fix_for(status: u16, issue: &str, app_type: HostingAppType) -> Option<String> {
         let err = create_err(
@@ -216,22 +217,10 @@ mod tests {
         assert!(poll_description(HostingAppType::Mhwp).contains("Coming Soon"));
     }
 
-    fn cli(mhwp: bool) -> Cli {
-        let mut config = CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
-            .with_min_stage(Stage::Beta)
-            // Unregistered provider: commands that pass parsing stop at auth.
-            .with_default_auth_provider("godaddy")
-            .with_module(crate::hosting::module());
-        if mhwp {
-            config = config.with_feature_override("hosting-mhwp", Stage::Ga);
-        }
-        Cli::new(config)
-    }
-
     async fn run(cli: &Cli, args: &[&str]) -> String {
-        let mut argv = vec!["gddy", "hosting", "app"];
+        let mut argv = vec!["app"];
         argv.extend_from_slice(args);
-        cli.run(argv).await.rendered
+        run_hosting(cli, &argv).await
     }
 
     const REJECTED: &str = "invalid value 'MHWP'";

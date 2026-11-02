@@ -12,7 +12,7 @@ use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
 #[derive(Debug, Clone, clap::Args)]
 struct SubscriptionListArgs {
-    /// Hosting product to list (WEB_HOSTING or MANAGED_WORDPRESS).
+    /// Hosting product (required).
     #[arg(long, value_name = "PRODUCT", ignore_case = true)]
     hosting_product: HostingProduct,
 
@@ -44,7 +44,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "List hosting plan subscriptions available to attach to applications. \
-             --hosting-product is required. Results are autopaginated.",
+             Results are autopaginated.",
         )
         .with_system("hosting")
         .with_tier(Tier::Read)
