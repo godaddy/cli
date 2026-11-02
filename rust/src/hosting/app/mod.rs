@@ -19,7 +19,7 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
         .with_alias("apps")
         .with_long(format!(
             "Work with hosting applications. Use --app-type on list and create to \
-             specify the product type (currently {}).",
+             specify the application type (currently {}).",
             supported_app_types(mhwp)
         )),
     )

@@ -10,8 +10,9 @@ use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{
-    client_err, currency_code, make_client, merge_context_currency, reject_response_errors,
+    client_err, make_client, merge_context_currency, reject_response_errors,
 };
+use crate::shopping::currency::CurrencyArgs;
 use crate::shopping::human::{CATALOG_SEARCH_VIEW_ID, catalog_search_response};
 use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
@@ -39,9 +40,8 @@ struct Args {
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=100))]
     limit: Option<u8>,
 
-    /// Preferred ISO 4217 currency for returned catalog prices (for example, USD or GBP).
-    #[arg(long, value_name = "CODE", value_parser = currency_code)]
-    currency: Option<String>,
+    #[command(flatten)]
+    currency: CurrencyArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -65,7 +65,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &args.category,
                 args.cursor.as_deref(),
             )?;
-            merge_context_currency(&mut request.context, args.currency.as_deref());
+            let currency = args.currency.resolve(&ctx)?;
+            merge_context_currency(&mut request.context, currency.as_deref());
             merge_pagination(&mut request, args.limit);
             let client = make_client(&ctx).await?;
             let response = decode::<SearchCatalogResponse>(

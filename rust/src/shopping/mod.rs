@@ -3,10 +3,13 @@ pub mod client;
 mod catalog;
 mod checkout;
 mod common;
+mod currency;
 mod human;
 mod money;
 mod order;
 mod product_actions;
+
+pub(crate) use common::currency_code;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 

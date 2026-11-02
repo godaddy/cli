@@ -41,7 +41,7 @@ struct InitArgs {
     #[arg(long, short = 'c', value_name = "PATH")]
     config: Option<String>,
 
-    /// Accept GoDaddy Developer agreements non-interactively when onboarding
+    /// Accept GoDaddy Developer agreements without a prompt when onboarding
     /// is still pending (required for non-TTY).
     #[arg(long)]
     accept_agreements: bool,

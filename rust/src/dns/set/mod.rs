@@ -99,7 +99,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.write.domain;
             let record_type = args.write.record_type;
             let name = args.write.name;
-            let domain_format = args.write.domain_format.form();
+            let domain_format = args.write.domain_format.form(&ctx)?;
             let replace_conflicting = args.replace_conflicting_types;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;

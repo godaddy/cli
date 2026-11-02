@@ -48,7 +48,7 @@ fn view_columns() -> Vec<TableColumn> {
                 .align(Alignment::Right)
                 .essential(true),
             TableColumn::new("firstTermPrice", "First-Term Price").align(Alignment::Right),
-            TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
+            TableColumn::new("renewalPrice", "Auto-Renewal Price").align(Alignment::Right),
             TableColumn::new("fees", "Premium Fees").essential(true),
         ]),
     ]
@@ -188,7 +188,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             domain_format.convert_fields(&mut result, &["domain"]);
             let resolved_domain = domain_format.render(&resolved_domain);
 

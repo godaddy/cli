@@ -176,7 +176,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;

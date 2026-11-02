@@ -63,10 +63,10 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("price1Year", "1yr Price")
             .align(Alignment::Right)
             .essential(true),
-        TableColumn::new("renewalPrice1Year", "1yr Renewal").align(Alignment::Right),
+        TableColumn::new("renewalPrice1Year", "1yr Auto-Renewal").align(Alignment::Right),
         TableColumn::new("fees1Year", "1yr Premium Fees"),
         TableColumn::new("price2Year", "2yr Price").align(Alignment::Right),
-        TableColumn::new("renewalPrice2Year", "2yr Renewal").align(Alignment::Right),
+        TableColumn::new("renewalPrice2Year", "2yr Auto-Renewal").align(Alignment::Right),
         TableColumn::new("fees2Year", "2yr Premium Fees"),
         TableColumn::new("currency", "Currency").essential(true),
         TableColumn::new("inventory", "Inventory"),
@@ -213,7 +213,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Ok(r) => r.into_inner(),
                 Err(e) => return Err(api_error("domain suggestion", debug, e).await),
             };
-            let domain_format = args.domain_format.form();
+            let domain_format = args.domain_format.form(&ctx)?;
             let suggestions: Vec<serde_json::Value> = resp
                 .items
                 .iter()

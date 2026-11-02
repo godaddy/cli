@@ -341,6 +341,43 @@ async fn activate_release_surfaces_graphql_errors() {
     );
 }
 
+/// An account that never accepted the developer agreements has no
+/// organization; the listing should say so and point at `app onboard` rather than
+/// show the generic GraphQL hint.
+#[tokio::test]
+async fn list_applications_without_an_organization_asks_to_complete_onboarding() {
+    use crate::error::GddyError;
+    use cli_engine::DetailedError;
+
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/v1/apps/app-registry-subgraph");
+            then.status(200).json_body(json!({
+                "errors": [{
+                    "message": "No organization found. Complete onboarding first.",
+                    "path": ["applications"],
+                    "extensions": { "code": "ValidationError" }
+                }]
+            }));
+        })
+        .await;
+
+    let err = ApplicationClient::new(server.base_url(), "test-token")
+        .list_applications()
+        .await
+        .expect_err("a missing organization should fail");
+
+    let err = GddyError::from(err);
+    assert_eq!(err.error_code(), "ONBOARDING_REQUIRED");
+    assert!(
+        err.error_fix()
+            .is_some_and(|fix| fix.contains("gddy platform app onboard")),
+        "got {:?}",
+        err.error_fix()
+    );
+}
+
 /// Distinct from `activate_release_surfaces_graphql_errors`: GraphQL
 /// reports failures as HTTP 200 with an `errors` array, but the
 /// transport itself (auth rejected, gateway down, etc.) can also fail
