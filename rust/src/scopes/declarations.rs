@@ -86,8 +86,8 @@ declare_scopes! {
             /// Delete a hosting application
             HOSTING_APPLICATION_DELETE => "hosting.application:delete",
             // Raw data access. A dedicated grant, separate from
-            // HOSTING_DEPLOYMENT_EXECUTE: authority to publish a deployment does
-            // not by itself grant raw database read/write.
+            // HOSTING_DEPLOYMENT_EXECUTE: authority to take an application live
+            // does not by itself grant raw database read/write.
             /// Open a MySQL tunnel to a Node.js or Managed WordPress app's database
             HOSTING_DATABASE_TUNNEL_EXECUTE => "hosting.database.tunnel:execute",
 

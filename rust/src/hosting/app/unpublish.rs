@@ -2,7 +2,7 @@ use cli_engine::{CommandSpec, RuntimeCommandSpec, Tier};
 
 use crate::hosting::app::common::{PublishAppIdArgs, set_publish_state};
 use crate::hosting::common::HostingAppOperation;
-use crate::scopes::HOSTING_APPLICATION_UPDATE as APP_UPDATE;
+use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<PublishAppIdArgs, _, _, _>(
@@ -17,7 +17,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[APP_UPDATE])
+            .with_scopes(&[DEPLOY_EXECUTE])
             .with_output_schema::<HostingAppOperation>(),
         |ctx, args: PublishAppIdArgs| async move { set_publish_state(&ctx, args.app_id, false).await },
     )

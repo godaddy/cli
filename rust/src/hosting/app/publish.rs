@@ -2,7 +2,7 @@ use cli_engine::{CommandSpec, RuntimeCommandSpec, Tier};
 
 use crate::hosting::app::common::{PublishAppIdArgs, set_publish_state};
 use crate::hosting::common::HostingAppOperation;
-use crate::scopes::HOSTING_APPLICATION_UPDATE as APP_UPDATE;
+use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<PublishAppIdArgs, _, _, _>(
@@ -20,7 +20,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
-            .with_scopes(&[APP_UPDATE])
+            .with_scopes(&[DEPLOY_EXECUTE])
             .with_output_schema::<HostingAppOperation>(),
         |ctx, args: PublishAppIdArgs| async move { set_publish_state(&ctx, args.app_id, true).await },
     )
@@ -29,6 +29,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
 #[cfg(test)]
 mod tests {
     use crate::hosting::test_support::{cli, run_hosting};
+
+    /// Taking a site live is the WordPress equivalent of publishing a Node.js
+    /// deployment, so both commands step up to the deployment-execute scope the
+    /// API now requires on `PUT /apps/{appId}/publish-state` — not the
+    /// application-update scope, which no longer opens that route.
+    #[test]
+    fn both_commands_declare_the_deployment_execute_scope() {
+        for spec in [
+            super::command().spec,
+            super::super::unpublish::command().spec,
+        ] {
+            let scopes = spec.metadata().scopes;
+            assert_eq!(scopes, vec!["hosting.deployment:execute".to_owned()]);
+            assert!(spec.mutates);
+        }
+    }
 
     #[tokio::test]
     async fn publish_and_unpublish_exist_only_while_mhwp_is_on() {

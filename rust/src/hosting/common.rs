@@ -72,6 +72,9 @@ output_schema!(HostingApplication {
 output_schema!(HostingAppOperation {
     "operationId": "string";
     "status": "string";
+    // CREATE_APP or SET_PUBLISH_STATE. Optional: a service that predates the
+    // field sends no `type`, and an operation without one is a creation.
+    "type": "string", optional;
     "app": "object", optional;
     "error": "object", optional;
     "createdAt": "string", optional;

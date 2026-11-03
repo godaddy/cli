@@ -5,7 +5,7 @@ use cli_engine::{CommandResult, NextActionParam};
 use crate::hosting::client::ClientError;
 use crate::hosting::common::{client_err, client_err_with_fix, error_issues, make_client};
 use crate::next_action::{next_action, required_value};
-use crate::scopes::HOSTING_APPLICATION_UPDATE as APP_UPDATE;
+use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 const NODEJS_PUBLISH_FIX: &str = "Only WordPress (MHWP) apps have a publish state. For a Node.js \
      app run: gddy hosting deployment publish --app-id <app-id>";
@@ -39,7 +39,7 @@ pub(super) async fn set_publish_state(
     app_id: String,
     published: bool,
 ) -> cli_engine::Result<CommandResult> {
-    let client = make_client(ctx, &[APP_UPDATE]).await?;
+    let client = make_client(ctx, &[DEPLOY_EXECUTE]).await?;
     let data = client
         .set_publish_state(&app_id, published)
         .await

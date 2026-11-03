@@ -15,6 +15,8 @@ gddy hosting app unpublish --app-id <app-id>
 gddy hosting operation get --operation-id <operation-id>
 ```
 
+The operation's `type` is `SET_PUBLISH_STATE` for these two commands and `CREATE_APP` for a create, so one poller tells them apart.
+
 Going live needs a plan with a free published-site slot; the free plan has none. If publishing is refused because of the plan, upgrade the plan in Airo App Builder or unpublish another site first. `hosting deployment publish` does not apply to WordPress sites.
 
 While a change is still running, repeating the same command returns that running operation; asking for the opposite state is refused until it finishes. Poll the operation, then retry.
