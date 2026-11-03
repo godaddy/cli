@@ -25,8 +25,8 @@ const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App
      from --name. It is hosted in the US. Log in to WordPress admin from Airo App Builder. \
      Take the site live with `hosting app publish` (needs a plan with a free published-site \
      slot) and back to Coming Soon with `hosting app unpublish`. \
-     For MHWP apps, use `hosting app get`, `status`, `publish` and `unpublish`; other \
-     hosting commands do not apply.";
+     For MHWP apps, use `hosting app get`, `status`, `publish` and `unpublish`. \
+     The other hosting commands are not available for WordPress sites yet.";
 
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
@@ -257,7 +257,7 @@ mod tests {
         let help = run(&cli, &["create", "--help"]).await;
         assert!(help.contains("Airo App Builder subscription"), "{help}");
         assert!(
-            help.contains("other hosting commands do not apply"),
+            help.contains("not available for WordPress sites yet"),
             "{help}"
         );
         assert!(help.contains("possible values: NODEJS, MHWP"), "{help}");

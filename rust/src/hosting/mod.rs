@@ -17,6 +17,10 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 pub fn module() -> Module {
     Module::new("Hosting", |ctx| {
         let mhwp = common::mhwp_enabled(&ctx.middleware().flag_policy);
+        // Registered here, not on the Module, so the guide is built from the same
+        // flag that decides which commands exist: it must never walk a reader
+        // into `hosting app publish` on a binary that does not register it.
+        ctx.add_guides_from_markdown([("hosting.md", common::hosting_guide(mhwp))]);
         // Only WordPress sites have a publish state; name it only while the flag is on.
         let app_line = if mhwp {
             "Hosting applications (create, inspect, update, delete, restart, publish/unpublish)"
@@ -59,8 +63,66 @@ pub fn module() -> Module {
         .with_group(subscription::group())
         .with_group(operation::group(mhwp))
     })
-    .with_guides_from_markdown([(
-        "hosting.md",
-        include_bytes!("guides/hosting.md").as_slice(),
-    )])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::common::hosting_guide;
+    use crate::hosting::test_support::{cli, run_hosting_guide};
+
+    #[test]
+    fn the_guide_is_the_node_js_guide_until_the_wordpress_flag_is_on() {
+        let off = hosting_guide(false);
+        assert_eq!(off, include_str!("guides/hosting.md"));
+        for absent in [
+            "WordPress",
+            "MHWP",
+            "app publish",
+            "app unpublish",
+            "Coming Soon",
+        ] {
+            assert!(!off.contains(absent), "flag off still mentions {absent:?}");
+        }
+
+        let on = hosting_guide(true);
+        for present in [
+            "## WordPress (MHWP) sites",
+            "gddy hosting app publish --app-id",
+            "gddy hosting app unpublish --app-id",
+            "| `hosting app publish` / `hosting app unpublish` |",
+            "Restart an environment (Node.js) |",
+        ] {
+            assert!(on.contains(present), "flag on is missing {present:?}");
+        }
+        // Spliced in once, before Other commands, and nothing was dropped.
+        assert_eq!(on.matches("## WordPress (MHWP) sites").count(), 1);
+        assert_eq!(on.matches("## Other commands").count(), 1);
+        assert!(
+            on.find("## WordPress (MHWP) sites") < on.find("## Other commands"),
+            "the WordPress section must precede Other commands"
+        );
+        assert!(!on.contains("Restart an environment |"), "{on}");
+        // Undoing both splices gives the flag-off guide back, so the WordPress
+        // text is purely additive.
+        let undone = on
+            .replace(include_str!("guides/hosting-wordpress.md"), "")
+            .replace(
+                "Restart an environment (Node.js) |\n| `hosting app publish` / \
+                 `hosting app unpublish` | Take a WordPress site live, or back to Coming Soon |",
+                "Restart an environment |",
+            );
+        assert_eq!(undone, off);
+    }
+
+    #[tokio::test]
+    async fn gddy_guide_hosting_follows_the_wordpress_flag() {
+        let off = run_hosting_guide(&cli(false)).await;
+        assert!(!off.contains("unpublish"), "{off}");
+        assert!(!off.contains("WordPress"), "{off}");
+        assert!(off.contains("Attach a plan"), "{off}");
+
+        let on = run_hosting_guide(&cli(true)).await;
+        assert!(on.contains("WordPress (MHWP) sites"), "{on}");
+        assert!(on.contains("hosting app unpublish"), "{on}");
+    }
 }
