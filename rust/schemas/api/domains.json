@@ -398,7 +398,9 @@
           "type": "integer"
         },
         "matchingType": {
-          "$ref": "#/$defs/TLSAMatchingType"
+          "$ref": "#/$defs/TLSAMatchingType",
+          "description": "TLSA matching type (RFC 6698; TLSA only). Specifies how the selected certificate material is compared to the association data. Supplying this field for any other record type is ignored.\n",
+          "example": 1
         },
         "name": {
           "description": "The DNS record name (label), relative to the zone apex. Use @ to represent the zone apex itself. Wildcards (*) are supported for A, AAAA, and CNAME records.\n",
@@ -436,7 +438,9 @@
           "type": "string"
         },
         "selector": {
-          "$ref": "#/$defs/TLSASelector"
+          "$ref": "#/$defs/TLSASelector",
+          "description": "TLSA selector (RFC 6698; TLSA only). Specifies which part of the TLS certificate is matched against the association data. Supplying this field for any other record type is ignored.\n",
+          "example": 1
         },
         "service": {
           "description": "Service name for SRV records, prefixed with an underscore (e.g. `_http`, `_smtp`). Combined with the protocol to form the record name as `_service._proto.name`.\n",
@@ -467,7 +471,9 @@
           ]
         },
         "usage": {
-          "$ref": "#/$defs/TLSAUsage"
+          "$ref": "#/$defs/TLSAUsage",
+          "description": "TLSA certificate usage (RFC 6698; TLSA only). Determines how certificate association data is interpreted during DANE authentication. Supplying this field for any other record type is ignored.\n",
+          "example": 3
         },
         "weight": {
           "description": "Relative weight for load distribution among SRV records with equal priority. Higher values increase the probability of selection. Use 0 when only one target exists at a given priority.\n",
@@ -1634,7 +1640,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"
@@ -1779,7 +1786,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "line1": {
           "description": "The first line of the address. For example, number or street.",

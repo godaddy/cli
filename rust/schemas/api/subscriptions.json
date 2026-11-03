@@ -11,7 +11,8 @@
           "x-server-pattern": "^(WEEKLY|MONTHLY|YEARLY)$"
         },
         "price": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/simple-money",
+          "description": "The price for this plan. Value must be > 0."
         },
         "pricingModel": {
           "const": "FIXED_RECURRING",
@@ -55,7 +56,8 @@
       "description": "Resource representing a Subscription Plan that can be purchased by a customer. Supports free plans, fixed recurring pricing, and trial periods.\n",
       "properties": {
         "applicationId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The ID of the GoDaddy application that owns this subscription plan. Required for application plans.\n"
         },
         "applicationType": {
           "description": "The type of the application the plan is created for. E.g. GODADDY_APP",
@@ -73,10 +75,13 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "ISO 3166-1 alpha-2 country code where this plan is available. Optional — if omitted, the plan is available in all countries. For country-specific pricing, create separate plans per country.\n"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The time (ISO-8601) at which the plan was created.",
+          "readOnly": true
         },
         "description": {
           "description": "Detailed description of what the subscription plan provides",
@@ -89,7 +94,9 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the commerce subscription plan",
+          "readOnly": true
         },
         "marketingData": {
           "additionalProperties": true,
@@ -121,7 +128,8 @@
           "type": "string"
         },
         "pricing": {
-          "$ref": "#/$defs/PricingModel"
+          "$ref": "#/$defs/PricingModel",
+          "description": "The pricing configuration for this plan. Uses pricingModel as a discriminator to determine the applicable pricing schema.\n"
         },
         "status": {
           "default": "ACTIVE",
@@ -130,7 +138,9 @@
           "x-server-pattern": "^(ACTIVE|DRAFT|DEPRECATED|DISCONTINUED)$"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The time (ISO-8601) at which the plan was last updated.",
+          "readOnly": true
         }
       },
       "required": [
@@ -198,29 +208,38 @@
       "description": "Resource representing a Subscription that can be applied at Business or Store level",
       "properties": {
         "applicationId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the godaddy application the subscription is associated with. Used only for subscription type GODADDY_APP"
         },
         "businessId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the business the subscription is applied at"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The time (in ISO-8601 format) at which the subscription was created. E.g. 2014-09-11T23:14:44Z.",
+          "readOnly": true
         },
         "customerId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Customer who purchased the subscription. Required"
         },
         "entitlementId": {
           "description": "The identifier of the entitlement, if attached to one",
           "type": "string"
         },
         "expiresAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The time (in ISO-8601 format) at which the subscription expires. E.g. 2014-09-11T23:14:44Z."
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the commerce subscription",
+          "readOnly": true
         },
         "planId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier of the subscription plan. Optional - if not provided, the system will determine the appropriate plan based on the subscriptionPlanRef and type."
         },
         "status": {
           "default": "ACTIVE",
@@ -229,7 +248,8 @@
           "x-server-pattern": "^(PENDING|ACTIVE|SUSPENDED|CANCELLED)$"
         },
         "storeId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the store if the subscription is applied at store level"
         },
         "subscriptionPlanRef": {
           "description": "The reference key of the plan or product subscribed to",
@@ -241,7 +261,9 @@
           "x-server-pattern": "^(GODADDY_ECOMM|POYNT_BUNDLE|CUSTOM|GODADDY_APP)$"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The time (in ISO-8601 format) at which the subscription was updated. E.g. 2014-09-11T23:14:44Z.",
+          "readOnly": true
         }
       },
       "required": [
@@ -340,7 +362,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

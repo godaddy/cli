@@ -289,7 +289,8 @@
             "readOnly": true
           },
           "createdAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "error": {
             "$ref": "#/components/schemas/error",
@@ -309,7 +310,8 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/OperationStatus"
+            "$ref": "#/components/schemas/OperationStatus",
+            "readOnly": true
           }
         },
         "title": "AppOperation",
@@ -320,7 +322,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "id": {
             "readOnly": true,
@@ -339,7 +342,8 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/AppStatus"
+            "$ref": "#/components/schemas/AppStatus",
+            "readOnly": true
           }
         },
         "title": "AppOperationApplication",
@@ -374,10 +378,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "appType": {
-            "$ref": "#/components/schemas/AppType"
+            "$ref": "#/components/schemas/AppType",
+            "readOnly": true
           },
           "createdAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "id": {
             "readOnly": true,
@@ -399,7 +405,8 @@
             "type": "string"
           },
           "source": {
-            "$ref": "#/components/schemas/AppSource"
+            "$ref": "#/components/schemas/AppSource",
+            "readOnly": true
           },
           "sourceDetails": {
             "$ref": "#/components/schemas/GitHubSource",
@@ -407,10 +414,12 @@
             "readOnly": true
           },
           "status": {
-            "$ref": "#/components/schemas/AppStatus"
+            "$ref": "#/components/schemas/AppStatus",
+            "readOnly": true
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "urls": {
             "properties": {
@@ -500,7 +509,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "deploymentId": {
             "readOnly": true,
@@ -532,10 +542,12 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/OperationStatus"
+            "$ref": "#/components/schemas/OperationStatus",
+            "readOnly": true
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           }
         },
         "title": "Deployment",
@@ -563,7 +575,8 @@
             "type": "string"
           },
           "domainType": {
-            "$ref": "#/components/schemas/DomainType"
+            "$ref": "#/components/schemas/DomainType",
+            "readOnly": true
           },
           "hostname": {
             "readOnly": true,
@@ -578,10 +591,12 @@
             "type": "array"
           },
           "role": {
-            "$ref": "#/components/schemas/DomainRole"
+            "$ref": "#/components/schemas/DomainRole",
+            "readOnly": true
           },
           "verificationStatus": {
-            "$ref": "#/components/schemas/DomainVerificationStatus"
+            "$ref": "#/components/schemas/DomainVerificationStatus",
+            "readOnly": true
           }
         },
         "title": "Domain",
@@ -686,7 +701,8 @@
             "type": "array"
           },
           "paidThroughDate": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "slotLimit": {
             "minimum": 0,
@@ -1025,7 +1041,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/date-time"
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
           },
           "error": {
             "$ref": "#/components/schemas/error",
@@ -1041,7 +1058,8 @@
             "type": "string"
           },
           "importType": {
-            "$ref": "#/components/schemas/ImportType"
+            "$ref": "#/components/schemas/ImportType",
+            "readOnly": true
           },
           "links": {
             "items": {
@@ -1052,7 +1070,8 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/OperationStatus"
+            "$ref": "#/components/schemas/OperationStatus",
+            "readOnly": true
           }
         },
         "title": "SourceImport",
@@ -1119,7 +1138,8 @@
           },
           "links": {
             "items": {
-              "$ref": "#/components/schemas/link-description"
+              "$ref": "#/components/schemas/link-description",
+              "readOnly": true
             },
             "nullable": true,
             "readOnly": true,

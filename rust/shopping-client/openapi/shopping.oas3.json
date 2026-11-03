@@ -632,13 +632,24 @@
         "name": "dev.ucp.shopping.checkout",
         "properties": {
           "attribution": {
-            "$ref": "#/components/schemas/attribution"
+            "$ref": "#/components/schemas/attribution",
+            "ucp_request": "optional"
           },
           "buyer": {
-            "$ref": "#/components/schemas/buyer"
+            "$ref": "#/components/schemas/buyer",
+            "ucp_request": {
+              "complete": "omit",
+              "create": "optional",
+              "update": "optional"
+            }
           },
           "context": {
-            "$ref": "#/components/schemas/context"
+            "$ref": "#/components/schemas/context",
+            "ucp_request": {
+              "complete": "omit",
+              "create": "optional",
+              "update": "optional"
+            }
           },
           "continue_url": {
             "type": "string",
@@ -653,7 +664,12 @@
             "ucp_request": "omit"
           },
           "fulfillment": {
-            "$ref": "#/components/schemas/shopping_fulfillment"
+            "$ref": "#/components/schemas/shopping_fulfillment",
+            "ucp_request": {
+              "complete": "omit",
+              "create": "optional",
+              "update": "optional"
+            }
           },
           "id": {
             "type": "string",
@@ -685,13 +701,20 @@
             "ucp_request": "omit"
           },
           "order": {
-            "$ref": "#/components/schemas/order_confirmation"
+            "$ref": "#/components/schemas/order_confirmation",
+            "ucp_request": "omit"
           },
           "payment": {
-            "$ref": "#/components/schemas/payment"
+            "$ref": "#/components/schemas/payment",
+            "ucp_request": {
+              "complete": "required",
+              "create": "optional",
+              "update": "optional"
+            }
           },
           "signals": {
-            "$ref": "#/components/schemas/signals"
+            "$ref": "#/components/schemas/signals",
+            "ucp_request": "optional"
           },
           "status": {
             "examples": [
@@ -706,10 +729,12 @@
             "ucp_request": "omit"
           },
           "totals": {
-            "$ref": "#/components/schemas/totals"
+            "$ref": "#/components/schemas/totals",
+            "ucp_request": "omit"
           },
           "ucp": {
-            "$ref": "#/components/schemas/ucp_response_checkout_schema"
+            "$ref": "#/components/schemas/ucp_response_checkout_schema",
+            "ucp_request": "omit"
           }
         },
         "title": "Checkout",
@@ -725,10 +750,12 @@
             "$ref": "#/components/schemas/ucp-refs_schema_attribution"
           },
           "consent": {
-            "$ref": "#/components/schemas/com_godaddy_shopping_checkout_input_schema_consent_acceptance"
+            "$ref": "#/components/schemas/com_godaddy_shopping_checkout_input_schema_consent_acceptance",
+            "x-sensitivity": "confidential"
           },
           "payment": {
-            "$ref": "#/components/schemas/ucp-refs_schema_payment"
+            "$ref": "#/components/schemas/ucp-refs_schema_payment",
+            "x-sensitivity": "restricted"
           },
           "signals": {
             "$ref": "#/components/schemas/ucp-refs_schema_signals"
@@ -746,13 +773,15 @@
             "$ref": "#/components/schemas/ucp-refs_schema_attribution"
           },
           "buyer": {
-            "$ref": "#/components/schemas/ucp-refs_schema_buyer"
+            "$ref": "#/components/schemas/ucp-refs_schema_buyer",
+            "x-sensitivity": "confidential"
           },
           "context": {
             "$ref": "#/components/schemas/ucp-refs_schema_context"
           },
           "fulfillment": {
-            "$ref": "#/components/schemas/ucp-refs_schema_fulfillment"
+            "$ref": "#/components/schemas/ucp-refs_schema_fulfillment",
+            "x-sensitivity": "confidential"
           },
           "line_items": {
             "items": {
@@ -761,7 +790,8 @@
             "type": "array"
           },
           "payment": {
-            "$ref": "#/components/schemas/ucp-refs_schema_payment"
+            "$ref": "#/components/schemas/ucp-refs_schema_payment",
+            "x-sensitivity": "restricted"
           },
           "signals": {
             "$ref": "#/components/schemas/ucp-refs_schema_signals"
@@ -1335,7 +1365,8 @@
             "ucp_request": "omit"
           },
           "price": {
-            "$ref": "#/components/schemas/amount"
+            "$ref": "#/components/schemas/amount",
+            "ucp_request": "omit"
           },
           "title": {
             "type": "string",
@@ -1599,7 +1630,8 @@
             "type": "array"
           },
           "attribution": {
-            "$ref": "#/components/schemas/attribution"
+            "$ref": "#/components/schemas/attribution",
+            "ucp_request": "omit"
           },
           "checkout_id": {
             "type": "string"
@@ -2099,7 +2131,8 @@
             "type": "string"
           },
           "plan": {
-            "$ref": "#/components/schemas/product-plan_schema"
+            "$ref": "#/components/schemas/product-plan_schema",
+            "ucp_request": "omit"
           },
           "product_family": {
             "minLength": 1,
@@ -2763,7 +2796,8 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/signed_amount"
+            "$ref": "#/components/schemas/signed_amount",
+            "ucp_request": "omit"
           },
           "display_text": {
             "type": "string",
@@ -3234,7 +3268,8 @@
             "ucp_request": "omit"
           },
           "input_schema": {
-            "$ref": "#/components/schemas/com_godaddy_shopping_input_schema_input_schema"
+            "$ref": "#/components/schemas/com_godaddy_shopping_input_schema_input_schema",
+            "ucp_request": "omit"
           },
           "list_price": {
             "$ref": "#/components/schemas/price"
@@ -3262,7 +3297,8 @@
             "type": "array"
           },
           "plan": {
-            "$ref": "#/components/schemas/product-plan_schema"
+            "$ref": "#/components/schemas/product-plan_schema",
+            "ucp_request": "omit"
           },
           "price": {
             "$ref": "#/components/schemas/price"
@@ -3271,7 +3307,8 @@
             "$ref": "#/components/schemas/rating"
           },
           "renewal_price": {
-            "$ref": "#/components/schemas/price"
+            "$ref": "#/components/schemas/price",
+            "ucp_request": "omit"
           },
           "seller": {
             "properties": {
