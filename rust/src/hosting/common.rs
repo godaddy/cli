@@ -213,6 +213,14 @@ impl HostingAppType {
     }
 }
 
+/// Whether `app_id` names a WordPress (MHWP) site. The edge matches the
+/// prefix case-insensitively, so this does too.
+pub fn is_mhwp_app_id(app_id: &str) -> bool {
+    app_id
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("MHWP-"))
+}
+
 /// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
 /// can stay hidden until its backend is live.
 const MHWP_FLAG: &str = "hosting-mhwp";
@@ -352,6 +360,22 @@ mod tests {
         assert!(mhwp_enabled(
             &FlagPolicy::new().with_override(MHWP_FLAG, Stage::Ga)
         ));
+    }
+
+    #[test]
+    fn is_mhwp_app_id_matches_the_prefix_case_insensitively() {
+        for id in ["MHWP-a1b2c3d4e5", "mhwp-a1b2c3d4e5", "Mhwp-x"] {
+            assert!(is_mhwp_app_id(id), "{id}");
+        }
+        for id in [
+            "NODEJS-a1b2c3d4e5",
+            "MHWP",
+            "x-MHWP-abc",
+            "",
+            "MHWPa1b2c3d4e5",
+        ] {
+            assert!(!is_mhwp_app_id(id), "{id}");
+        }
     }
 
     #[test]
