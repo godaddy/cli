@@ -23,8 +23,10 @@ struct AppCreateArgs {
 const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App Builder \
      subscription. The site starts as Coming Soon, and its WordPress title is not set \
      from --name. It is hosted in the US. Log in to WordPress admin from Airo App Builder. \
-     For MHWP apps, use `hosting app get`, `status`, `update --name`, `delete` and \
-     `hosting runtime get`; other hosting commands do not apply.";
+     Take the site live with `hosting app publish` (needs a plan with a free published-site \
+     slot) and back to Coming Soon with `hosting app unpublish`. \
+     For MHWP apps, use `hosting app get`, `status`, `publish` and `unpublish`; other \
+     hosting commands do not apply.";
 
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(

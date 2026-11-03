@@ -17,11 +17,17 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 pub fn module() -> Module {
     Module::new("Hosting", |ctx| {
         let mhwp = common::mhwp_enabled(&ctx.middleware().flag_policy);
+        // Only WordPress sites have a publish state; name it only while the flag is on.
+        let app_line = if mhwp {
+            "Hosting applications (create, inspect, update, delete, restart, publish/unpublish)"
+        } else {
+            "Hosting applications (create, inspect, update, delete, restart)"
+        };
         RuntimeGroupSpec::new(
-            GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
+            GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(format!(
                 "Work with GoDaddy hosting APIs.\n\
                  \n\
-                 • app          — Hosting applications (create, inspect, update, delete, restart)\n\
+                 • app          — {app_line}\n\
                  • deployment   — Build and deploy application source\n\
                  • source       — Import source code\n\
                  • secret       — Application secrets (create, update, delete, list)\n\
@@ -40,8 +46,8 @@ pub fn module() -> Module {
                  \n\
                  To redeploy: repeat steps 2–3, then 5.\n\
                  \n\
-                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
-            ),
+                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production)."
+            )),
         )
         .with_group(app::group(mhwp))
         .with_group(deployment::group())
@@ -51,7 +57,7 @@ pub fn module() -> Module {
         .with_group(runtime::group())
         .with_group(domain::group())
         .with_group(subscription::group())
-        .with_group(operation::group())
+        .with_group(operation::group(mhwp))
     })
     .with_guides_from_markdown([(
         "hosting.md",

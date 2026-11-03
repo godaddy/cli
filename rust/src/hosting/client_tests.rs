@@ -164,6 +164,59 @@ async fn get_app_status_hits_correct_path() {
 }
 
 #[tokio::test]
+async fn set_publish_state_puts_published_only() {
+    for published in [true, false] {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v1/hosting/apps/MHWP-a1b2c3d4e5/publish-state")
+                    .json_body(json!({ "published": published }));
+                then.status(202).json_body(json!({
+                    "operationId": "MHWP-p9x8y7z6", "status": "PENDING",
+                    "links": [{"rel": "self", "href": "/v1/hosting/app-operations/MHWP-p9x8y7z6"}]
+                }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .set_publish_state("MHWP-a1b2c3d4e5", published)
+            .await
+            .expect("set publish state");
+
+        mock.assert_async().await;
+        assert_eq!(body["operationId"], "MHWP-p9x8y7z6");
+    }
+}
+
+#[tokio::test]
+async fn set_publish_state_surfaces_the_error_body() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/v1/hosting/apps/MHWP-a1b2c3d4e5/publish-state");
+            then.status(422).json_body(json!({
+                "name": "UnprocessableEntity", "correlationId": "c1",
+                "message": "Maximum 0 published sites allowed on the current plan",
+                "details": [{"issue": "PUBLISH_LIMIT_EXCEEDED"}]
+            }));
+        })
+        .await;
+
+    let err = client(&server.base_url())
+        .set_publish_state("MHWP-a1b2c3d4e5", true)
+        .await
+        .expect_err("cap breach is an error");
+
+    let ClientError::Http { status, body } = err else {
+        unreachable!("a 422 is an HTTP error: {err:?}");
+    };
+    assert_eq!(status, 422);
+    assert!(body.contains("PUBLISH_LIMIT_EXCEEDED"), "{body}");
+}
+
+#[tokio::test]
 async fn restart_app_sends_variant_body() {
     let server = MockServer::start_async().await;
     let mock = server

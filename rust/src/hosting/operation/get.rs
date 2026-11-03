@@ -14,16 +14,24 @@ struct OperationGetArgs {
     operation_id: String,
 }
 
-pub(super) fn command() -> RuntimeCommandSpec {
+pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
+    // Only WordPress sites have a publish state; name it only while the flag is on.
+    let long = if mhwp {
+        "Poll an async operation by ID. `hosting app create`, `hosting app publish` and \
+         `hosting app unpublish` return one — `hosting deployment publish` has its own \
+         poller at `hosting deployment get`. Keep polling until status is COMPLETED or \
+         FAILED. On COMPLETED, a create's `app` field carries the created application; \
+         use `app.id` for subsequent calls. On FAILED, the `error` field describes why."
+    } else {
+        "Poll an async operation by ID. Today only `hosting app create` returns one — \
+         `hosting deployment publish` has its own poller at `hosting deployment get`. \
+         Keep polling until status is COMPLETED or FAILED. On COMPLETED, the `app` field \
+         carries the created application; use `app.id` for subsequent calls. On FAILED, \
+         the `error` field describes why."
+    };
     RuntimeCommandSpec::new_typed_with_context::<OperationGetArgs, _, _, _>(
         CommandSpec::from_args::<OperationGetArgs>("get", "Get an operation")
-            .with_long(
-                "Poll an async operation by ID. Today only `hosting app create` returns one — \
-                 `hosting deployment publish` has its own poller at `hosting deployment get`. \
-                 Keep polling until status is COMPLETED or FAILED. On COMPLETED, the `app` field \
-                 carries the created application; use `app.id` for subsequent calls. On FAILED, \
-                 the `error` field describes why.",
-            )
+            .with_long(long)
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
@@ -40,12 +48,20 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
+/// Issue codes a failed create carries when no capacity was available:
+/// `NO_CAPACITY` (Node.js) and `CAPACITY_UNAVAILABLE` (WordPress).
+const NO_CAPACITY_ISSUES: [&str; 2] = ["NO_CAPACITY", "CAPACITY_UNAVAILABLE"];
+
 /// Suggests a retry when a create failed for lack of capacity.
 fn next_actions(data: &Value) -> Vec<NextAction> {
     let no_capacity = data["status"] == "FAILED"
-        && data["error"]["details"]
-            .as_array()
-            .is_some_and(|details| details.iter().any(|d| d["issue"] == "NO_CAPACITY"));
+        && data["error"]["details"].as_array().is_some_and(|details| {
+            details.iter().any(|d| {
+                d["issue"]
+                    .as_str()
+                    .is_some_and(|issue| NO_CAPACITY_ISSUES.contains(&issue))
+            })
+        });
     if !no_capacity {
         return Vec::new();
     }
@@ -75,16 +91,21 @@ mod tests {
 
     #[test]
     fn suggests_a_retry_on_no_capacity() {
-        let actions = next_actions(&json!({
-            "operationId": "MHWP-ab12cd34",
-            "status": "FAILED",
-            "error": { "message": "No capacity.", "details": [{ "issue": "NO_CAPACITY" }] },
-            "links": []
-        }));
-        assert_eq!(actions.len(), 1);
-        assert!(actions[0].command.contains("hosting app create"));
-        assert!(actions[0].description.contains("Try again later"));
-        assert_eq!(actions[0].params["type"].value.as_deref(), Some("MHWP"));
+        for issue in ["NO_CAPACITY", "CAPACITY_UNAVAILABLE"] {
+            let actions = next_actions(&json!({
+                "operationId": "MHWP-ab12cd34",
+                "status": "FAILED",
+                "error": { "message": "No capacity.", "details": [{ "issue": issue }] },
+                "links": []
+            }));
+            assert_eq!(actions.len(), 1, "{issue}");
+            assert!(actions[0].command.contains("hosting app create"), "{issue}");
+            assert!(
+                actions[0].description.contains("Try again later"),
+                "{issue}"
+            );
+            assert_eq!(actions[0].params["type"].value.as_deref(), Some("MHWP"));
+        }
     }
 
     #[test]
