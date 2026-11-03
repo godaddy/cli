@@ -338,6 +338,45 @@ components:
 }
 
 #[test]
+fn dereference_drops_a_boolean_required_beside_a_ref_but_keeps_an_array() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let spec_path = dir.path().join("openapi.yaml");
+    fs::write(
+        &spec_path,
+        r#"openapi: '3.0.0'
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+    Holder:
+      type: object
+      properties:
+        misplaced:
+          $ref: '#/components/schemas/Item'
+          required: true
+        refined:
+          $ref: '#/components/schemas/Item'
+          required: [id]
+"#,
+    )
+    .expect("write spec");
+
+    let (result, _defs) = load_and_dereference(&spec_path, None).expect("dereference");
+    let holder = &result["components"]["schemas"]["Holder"]["properties"];
+    assert_eq!(
+        holder["misplaced"],
+        serde_json::json!({ "$ref": "#/$defs/Item" })
+    );
+    assert_eq!(
+        holder["refined"],
+        serde_json::json!({ "$ref": "#/$defs/Item", "required": ["id"] })
+    );
+}
+
+#[test]
 fn dereference_keeps_constraints_a_schema_file_adds_to_its_ref() {
     // Mirrors orders' positive-money: a file that `$ref`s a base schema and
     // tightens one of its properties.

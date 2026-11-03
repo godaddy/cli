@@ -154,7 +154,11 @@ fn lifted_ref_with_siblings(
     );
     let siblings: serde_json::Map<String, Value> = original
         .iter()
-        .filter(|(name, _)| name.as_str() != "$ref")
+        // A schema-level `required` must be an array of property names; a
+        // boolean there is the OpenAPI 2 parameter form, misplaced upstream.
+        .filter(|(name, value)| {
+            name.as_str() != "$ref" && !(name.as_str() == "required" && !value.is_array())
+        })
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
     if !siblings.is_empty()
