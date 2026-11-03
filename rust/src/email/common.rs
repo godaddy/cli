@@ -1,11 +1,33 @@
 //! Shared helpers for the `email` command group: the authenticated Email
 //! (panel-v3) API client and API-error rendering.
 
-use cli_engine::{CliCoreError, CommandContext, Result};
+use cli_engine::{CliCoreError, CommandContext, Result, StreamSender};
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::email::client::{ClientError, EmailClient};
 use crate::error::GddyError;
+
+/// Emits the terminal `{"type":"error",...}` event for a streaming command and
+/// returns the error so the caller can propagate it with `return Err(...)`.
+pub(super) async fn fail_streaming(sender: &StreamSender, err: CliCoreError) -> CliCoreError {
+    let envelope = cli_engine::build_error_envelope(&err, "email");
+    let (code, message) = envelope
+        .error
+        .map(|e| (e.code, e.message))
+        .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
+    let mut event = json!({
+        "type": "error",
+        "ok": false,
+        "error": { "code": code, "message": message },
+        "next_actions": [],
+    });
+    if let Some(fix) = envelope.fix.filter(|f| !f.is_empty()) {
+        event["fix"] = json!(fix);
+    }
+    sender.send(event).await;
+    err
+}
 
 pub(crate) async fn make_client(ctx: &CommandContext, scopes: &[&str]) -> Result<EmailClient> {
     crate::http::ensure_generated_client_transport_observer_registered();

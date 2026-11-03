@@ -4,8 +4,8 @@ use cli_engine::{
 use email_client::types;
 use serde_json::{Value, json};
 
-use crate::email::client::{ClientError, EmailClient};
-use crate::email::terms_acceptance;
+use crate::email::client::ClientError;
+use crate::email::common::fail_streaming;
 use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_READ;
@@ -28,12 +28,30 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: CheckEligibilityArgs, sender: StreamSender| async move {
             let client = match make_client(&ctx, &[EMAIL_READ]).await {
                 Ok(c) => c,
-                Err(e) => return Err(fail_check(&sender, e).await),
+                Err(e) => return Err(fail_streaming(&sender, e).await),
             };
 
-            let data = match run_eligibility_with_mca(&client, &args.email, &sender).await {
-                Ok((d, _)) => d,
-                Err(e) => return Err(fail_check(&sender, e).await),
+            let data = match client.check_eligibility(&args.email).await {
+                Ok(d) => d,
+                Err(ClientError::Http { status: 422, body })
+                    if body_has_issue(&body, "NEEDS_TITAN_PLAN")
+                        || body_has_issue(&body, "NEEDS_MICROSOFT_PLAN")
+                        || body_has_issue(&body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                {
+                    let fix = if body_has_issue(&body, "NEEDS_MICROSOFT_PLAN") {
+                        "Run: 'gddy shopping catalog search --query microsoft' \
+                         to see available Microsoft 365 email plans, select one to purchase, then retry."
+                    } else {
+                        "Run: 'gddy shopping catalog search --query titan' \
+                         to see available email plans, select one to purchase, then retry."
+                    };
+                    return Err(fail_streaming(
+                        &sender,
+                        client_err_with_fix(ClientError::Http { status: 422, body }, fix),
+                    )
+                    .await);
+                }
+                Err(e) => return Err(fail_streaming(&sender, client_err(e)).await),
             };
 
             let next_actions = eligibility_next_actions(&args.email, &data);
@@ -50,93 +68,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
     )
 }
 
-/// Runs the eligibility check, automatically handling Terms & Conditions
-/// acceptance if the API requires it.
-///
-/// When any eligible account carries a `MICROSOFT_MCA` requirement:
-/// 1. [`terms_acceptance::wait_for_acceptance`] opens the browser, streams
-///    progress events, and polls until the user clicks Accept.
-/// 2. The eligibility check is retried automatically.
-///
-/// Returns `(eligibility_data, accepted_requirement_types)` where
-/// `accepted_requirement_types` lists non-MCA requirement `type` strings that
-/// were accepted interactively. `MICROSOFT_MCA` is intentionally excluded —
-/// acceptance is recorded via browser attestation, not a consent payload flag.
-///
-/// All other errors are returned immediately.
-pub(super) async fn run_eligibility_with_mca(
-    client: &EmailClient,
-    email: &str,
-    sender: &StreamSender,
-) -> cli_engine::Result<(types::EligibilityResult, Vec<String>)> {
-    match client.check_eligibility(email).await {
-        Ok(data) => {
-            let mca_req = data
-                .eligible_accounts
-                .iter()
-                .find_map(terms_acceptance::extract_mca_requirement);
-            if let Some(req) = mca_req {
-                terms_acceptance::wait_for_acceptance(&req, client, sender).await?;
-                // Don't re-check eligibility — the backend may not immediately
-                // reflect the acceptance. MCA is recorded via attestation URL,
-                // not a consent payload flag, so accepted_types stays empty.
-                Ok((data, Vec::new()))
-            } else {
-                Ok((data, Vec::new()))
-            }
-        }
-        Err(ClientError::Http { status: 422, body })
-            if body_has_issue(&body, "NEEDS_TITAN_PLAN")
-                || body_has_issue(&body, "NEEDS_MICROSOFT_PLAN")
-                || body_has_issue(&body, "EMAIL_PLAN_NOT_AVAILABLE") =>
-        {
-            let fix = if body_has_issue(&body, "NEEDS_MICROSOFT_PLAN") {
-                "Run: 'gddy shopping catalog search --query microsoft' \
-                 to see available Microsoft 365 email plans, select one to purchase, then retry."
-            } else {
-                "Run: 'gddy shopping catalog search --query titan' \
-                 to see available email plans, select one to purchase, then retry."
-            };
-            Err(client_err_with_fix(
-                ClientError::Http { status: 422, body },
-                fix,
-            ))
-        }
-        Err(e) => Err(client_err(e)),
-    }
-}
-
-/// Builds the terminal `{"type":"error",...}` event for streaming output,
-/// using `cli_engine::build_error_envelope` so the `code`/`message`/`fix`
-/// match what a non-streaming command would have rendered.
-fn check_error_event(err: &cli_engine::CliCoreError) -> Value {
-    let envelope = cli_engine::build_error_envelope(err, "email");
-    let (code, message) = envelope
-        .error
-        .map(|e| (e.code, e.message))
-        .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
-    let mut event = json!({
-        "type": "error",
-        "ok": false,
-        "error": { "code": code, "message": message },
-        "next_actions": [],
-    });
-    if let Some(fix) = envelope.fix.filter(|f| !f.is_empty()) {
-        event["fix"] = json!(fix);
-    }
-    event
-}
-
-/// Emits the terminal error event, then returns the error so the handler can
-/// propagate it via `?` or `return Err(...)`.
-async fn fail_check(
-    sender: &StreamSender,
-    err: cli_engine::CliCoreError,
-) -> cli_engine::CliCoreError {
-    sender.send(check_error_event(&err)).await;
-    err
-}
-
 /// Points at `email create` (prefilling `--account-id` and any required
 /// `--consent` flags) only when the response names an eligible account —
 /// with no eligible account there is nothing to create. Always includes a
@@ -147,7 +78,9 @@ fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec
     if let Some(account) = data.eligible_accounts.first() {
         let mut command = "email create --email <email> --account-id <account-id>".to_owned();
         for requirement in &account.requirements {
-            command.push_str(&format!(" --consent {}", requirement.type_));
+            if requirement.type_ != "MICROSOFT_MCA" {
+                command.push_str(&format!(" --consent {}", requirement.type_));
+            }
         }
         actions.push(
             next_action(command, "Create a mailbox for this address")
@@ -162,6 +95,12 @@ fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec
     actions.push(next_action("guide email", "Learn about email accounts"));
     actions
 }
+
+// Used to silence an unused-import warning when `Value` is only referenced in
+// the error-event helper that was moved to `common`.
+const _: fn() = || {
+    let _: Value;
+};
 
 #[cfg(test)]
 mod tests {
@@ -257,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn next_actions_include_consent_flags_for_outstanding_requirements() {
+    fn next_actions_include_consent_flags_for_non_mca_requirements() {
         let data = types::EligibilityResult {
             is_eligible: true,
             eligible_accounts: vec![eligible_account(vec![types::AgreementRequirement {
@@ -272,6 +211,24 @@ mod tests {
             actions[0].command,
             "gddy email create --email <email> --account-id <account-id> --consent FREETRIAL_AUTORENEW"
         );
-        assert_eq!(actions[1].command, "gddy guide email");
+    }
+
+    #[test]
+    fn next_actions_omit_consent_flag_for_mca_requirement() {
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![types::AgreementRequirement {
+                reference: Some(
+                    "https://cdn.partner.microsoft.com/mca/?attestationid=abc".to_owned(),
+                ),
+                title: Some("Microsoft Customer Agreement".to_owned()),
+                type_: "MICROSOFT_MCA".to_owned(),
+            }])],
+        };
+        let actions = eligibility_next_actions("someone@example.com", &data);
+        assert_eq!(
+            actions[0].command, "gddy email create --email <email> --account-id <account-id>",
+            "MCA must not appear as a --consent flag — it is handled via browser attestation"
+        );
     }
 }
