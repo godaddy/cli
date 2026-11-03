@@ -70,13 +70,17 @@
       "description": "A fulfillment represents a task to fulfill one or more items from a single location for a single fulfillment mode. A Fulfillment can exist in the context of an order or be independent of one.",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the fulfillment was created in our system",
+          "readOnly": true
         },
         "destination": {
-          "$ref": "#/$defs/FulfillmentAddress"
+          "$ref": "#/$defs/FulfillmentAddress",
+          "description": "Destination address information for the fulfillment"
         },
         "detailedStatus": {
-          "$ref": "#/$defs/FulfillmentDetailedStatus"
+          "$ref": "#/$defs/FulfillmentDetailedStatus",
+          "description": "The detailed status for the fulfillment providing more granular information about the fulfillment state. This field is required for all fulfillment operations. For updates: must be present and be one of the valid detailed statuses. For creates: must be present and valid for the initial status being set (see fulfillment-constraints.json for validation rules)."
         },
         "externalId": {
           "description": "External identifier for the fulfillment",
@@ -89,7 +93,8 @@
           "type": "string"
         },
         "fulfillmentWindow": {
-          "$ref": "#/$defs/FulfillmentWindow"
+          "$ref": "#/$defs/FulfillmentWindow",
+          "description": "FulfillmentWindow object specifying the time window for fulfillment (e.g., delivery slot)."
         },
         "history": {
           "description": "List of history events associated to the fulfillment",
@@ -127,7 +132,8 @@
           "type": "string"
         },
         "mode": {
-          "$ref": "#/$defs/Mode"
+          "$ref": "#/$defs/Mode",
+          "description": "The mode for the fulfillment"
         },
         "notes": {
           "description": "List of FulfillmentNote objects, used for internal or customer-facing notes.",
@@ -142,10 +148,12 @@
           "type": "string"
         },
         "origin": {
-          "$ref": "#/$defs/FulfillmentAddress"
+          "$ref": "#/$defs/FulfillmentAddress",
+          "description": "Origin address information for the fulfillment. Typically this is the address of the warehouse or fulfillment center (e.g. Location)"
         },
         "status": {
-          "$ref": "#/$defs/FulfillmentStatus"
+          "$ref": "#/$defs/FulfillmentStatus",
+          "description": "The current status for the fulfillment"
         },
         "storeId": {
           "description": "ID of the store that the fulfillment belongs to",
@@ -160,7 +168,9 @@
           "type": "array"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the fulfillment was last updated in our system",
+          "readOnly": true
         }
       },
       "required": [
@@ -181,7 +191,8 @@
       "description": "Groups together relevant details about an address for a fulfillment",
       "properties": {
         "address": {
-          "$ref": "#/$defs/address"
+          "$ref": "#/$defs/address",
+          "description": "The address details"
         }
       },
       "required": [
@@ -365,14 +376,18 @@
           "type": "string"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "When the note was created. Used for ordering and audit.",
+          "readOnly": true
         },
         "id": {
           "description": "Unique identifier for the note. Used for referencing and editing notes.",
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "When the note was last updated. Used for audit and concurrency control.",
+          "readOnly": true
         }
       },
       "required": [
@@ -392,10 +407,13 @@
           "type": "string"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the fulfillment plan was created in our system",
+          "readOnly": true
         },
         "destination": {
-          "$ref": "#/$defs/FulfillmentAddress"
+          "$ref": "#/$defs/FulfillmentAddress",
+          "description": "Destination address information for the fulfillment plan"
         },
         "hasErrors": {
           "description": "True if any item in the plan encountered an error during inventory sync or fulfillment. This flag is set when errors are detected and is used to block further processing, trigger alerts, and surface issues for operator intervention.",
@@ -428,7 +446,8 @@
           "type": "string"
         },
         "mode": {
-          "$ref": "#/$defs/Mode"
+          "$ref": "#/$defs/Mode",
+          "description": "The mode for the fulfillment plan"
         },
         "orderId": {
           "description": "Reference to an order as defined by the Orders Service",
@@ -436,10 +455,12 @@
           "type": "string"
         },
         "origin": {
-          "$ref": "#/$defs/FulfillmentAddress"
+          "$ref": "#/$defs/FulfillmentAddress",
+          "description": "Origin address information for the fulfillment plan. Typically this is the address of the warehouse or fulfillment center (e.g. Location)"
         },
         "status": {
-          "$ref": "#/$defs/FulfillmentPlanStatus"
+          "$ref": "#/$defs/FulfillmentPlanStatus",
+          "description": "The current workflow status of the plan. Valid values: OPEN, IN_PROGRESS, COMPLETED, CANCELED (OPEN is deprecated). This field drives the fulfillment process, controls which actions are allowed, and is mapped to inventory status for external systems."
         },
         "storeId": {
           "description": "ID of the store that the fulfillment plan belongs to",
@@ -447,7 +468,9 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the fulfillment plan was last updated in our system",
+          "readOnly": true
         }
       },
       "required": [
@@ -513,7 +536,8 @@
               "type": "string"
             },
             "updatedAt": {
-              "$ref": "#/$defs/date-time"
+              "$ref": "#/$defs/date-time",
+              "description": "Timestamp of the last update to this item. Used for audit and concurrency control."
             }
           },
           "required": [
@@ -572,10 +596,12 @@
       "description": "Specifies the time window for fulfillment (e.g., delivery slot or pickup time)",
       "properties": {
         "endAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "End of the fulfillment window. Used for scheduling and SLA tracking."
         },
         "startAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "Start of the fulfillment window. Used for scheduling and SLA tracking."
         }
       },
       "required": [
@@ -597,7 +623,9 @@
       "description": "Records a event that happened to a fulfillment / fulfillment plan",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the history event was created in our system",
+          "readOnly": true
         },
         "eventName": {
           "description": "Name of the history event",
@@ -684,7 +712,8 @@
               "type": "string"
             },
             "geoCoordinates": {
-              "$ref": "#/$defs/geo-coordinates"
+              "$ref": "#/$defs/geo-coordinates",
+              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -746,7 +775,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",

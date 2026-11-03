@@ -398,7 +398,9 @@
           "type": "integer"
         },
         "matchingType": {
-          "$ref": "#/$defs/TLSAMatchingType"
+          "$ref": "#/$defs/TLSAMatchingType",
+          "description": "TLSA matching type (RFC 6698; TLSA only). Specifies how the selected certificate material is compared to the association data. Supplying this field for any other record type is ignored.\n",
+          "example": 1
         },
         "name": {
           "description": "The DNS record name (label), relative to the zone apex. Use @ to represent the zone apex itself. Wildcards (*) are supported for A, AAAA, and CNAME records.\n",
@@ -436,7 +438,9 @@
           "type": "string"
         },
         "selector": {
-          "$ref": "#/$defs/TLSASelector"
+          "$ref": "#/$defs/TLSASelector",
+          "description": "TLSA selector (RFC 6698; TLSA only). Specifies which part of the TLS certificate is matched against the association data. Supplying this field for any other record type is ignored.\n",
+          "example": 1
         },
         "service": {
           "description": "Service name for SRV records, prefixed with an underscore (e.g. `_http`, `_smtp`). Combined with the protocol to form the record name as `_service._proto.name`.\n",
@@ -467,7 +471,9 @@
           ]
         },
         "usage": {
-          "$ref": "#/$defs/TLSAUsage"
+          "$ref": "#/$defs/TLSAUsage",
+          "description": "TLSA certificate usage (RFC 6698; TLSA only). Determines how certificate association data is interpreted during DANE authentication. Supplying this field for any other record type is ignored.\n",
+          "example": 3
         },
         "weight": {
           "description": "Relative weight for load distribution among SRV records with equal priority. Higher values increase the probability of selection. Use 0 when only one target exists at a given priority.\n",
@@ -1634,7 +1640,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"
@@ -1779,7 +1786,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "line1": {
           "description": "The first line of the address. For example, number or street.",
@@ -1840,7 +1848,7 @@
     }
   },
   "baseUrl": "https://api.godaddy.com/v3/domains",
-  "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–25 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
+  "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body, except DNS records\nand forwarding, which are applied synchronously.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`,\n`forwards`) only exist in the context of a specific domain-name instance.\nThe `/check-availability` controller accepts GET (single domain) or POST\n(1–25 domains) and carries no persistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
   "endpoints": [
     {
       "description": "Returns an indicative availability result for one domain, including\nper-term pricing when available. Availability is best-effort; the\nauthoritative check is performed at quote time. This operation does\nnot persist the check — there is no check identity or poll URL.\n\nEquivalent to POST /check-availability with `domains: [domain]` and the\nsame optional criteria (`optimizeFor`, `iscCode`). The response is that\nsingle `Availability` item unwrapped for convenience — POST returns the\nsame result inside `{ items: [...] }`. Use POST when checking multiple\ndomains in one request.\n\nA domain that cannot be checked is still returned as a `200` with an\n`error` object on the body (the same per-item contract as POST); request-\nlevel failures use the `4xx` responses.\n",
@@ -3411,5 +3419,5 @@
   ],
   "name": "domains",
   "title": "Domain Lifecycle Management API",
-  "version": "3.5.0"
+  "version": "3.7.0"
 }

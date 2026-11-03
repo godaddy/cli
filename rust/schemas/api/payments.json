@@ -54,25 +54,39 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "addressResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Address verification",
+          "readOnly": true
         },
         "cardHolderNameResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Card holder name verification",
+          "readOnly": true
         },
         "cityResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of City verification",
+          "readOnly": true
         },
         "countryResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Country verification",
+          "readOnly": true
         },
         "phoneResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Phone verification",
+          "readOnly": true
         },
         "postalCodeResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Postal code verification",
+          "readOnly": true
         },
         "stateResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of State verification",
+          "readOnly": true
         }
       },
       "title": "AVS Results",
@@ -101,7 +115,8 @@
       "description": "Represents Adjustment transaction against a payment",
       "properties": {
         "newAmount": {
-          "$ref": "#/$defs/Amount"
+          "$ref": "#/$defs/Amount",
+          "description": "Adjusted transaction amount"
         }
       },
       "required": [
@@ -177,13 +192,16 @@
       "description": "Represents transaction against a payment",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/Amount"
+          "$ref": "#/$defs/Amount",
+          "description": "Transaction amount"
         },
         "clientContext": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "non-sensitive context data that can be stored and fetched by client when needed"
         },
         "context": {
-          "$ref": "#/$defs/TransactionContext"
+          "$ref": "#/$defs/TransactionContext",
+          "description": "Transaction context"
         },
         "createdAt": {
           "description": "Created time in RFC 3339 format",
@@ -197,13 +215,16 @@
           "type": "string"
         },
         "processorResponse": {
-          "$ref": "#/$defs/ProcessorResponse"
+          "$ref": "#/$defs/ProcessorResponse",
+          "description": "Processor response",
+          "readOnly": true
         },
         "status": {
           "$ref": "#/$defs/TransactionStatus"
         },
         "transactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "readOnly": true
         },
         "transactionRefNum": {
           "$ref": "#/$defs/RefNum"
@@ -240,7 +261,9 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "emvTags": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "Card EMV tags",
+          "writeOnly": true
         },
         "encrypted": {
           "default": true,
@@ -249,7 +272,8 @@
           "writeOnly": true
         },
         "entryDetails": {
-          "$ref": "#/$defs/CardEntryDetails"
+          "$ref": "#/$defs/CardEntryDetails",
+          "description": "Card entry details"
         },
         "expMonth": {
           "maximum": 12,
@@ -266,7 +290,9 @@
           "type": "string"
         },
         "interacMacDetail": {
-          "$ref": "#/$defs/InteracMac"
+          "$ref": "#/$defs/InteracMac",
+          "description": "Card Interacmac details",
+          "writeOnly": true
         },
         "keySerialNumber": {
           "description": "For DUKPT encryption",
@@ -387,7 +413,9 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "cardHolderBillingAddress": {
-          "$ref": "#/$defs/Address"
+          "$ref": "#/$defs/Address",
+          "description": "Address for AVS",
+          "writeOnly": true
         },
         "cardPin": {
           "description": "Card pin block.",
@@ -441,7 +469,9 @@
           "type": "integer"
         },
         "avsResult": {
-          "$ref": "#/$defs/AddressVerificationResult"
+          "$ref": "#/$defs/AddressVerificationResult",
+          "description": "Address verifications result",
+          "readOnly": true
         },
         "cvResult": {
           "description": "CVV verification result",
@@ -454,7 +484,9 @@
           "type": "string"
         },
         "emvTags": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "EMV tags obtained from the processor",
+          "readOnly": true
         },
         "interacMacResult": {
           "description": "Interac mac result (if interacMac is used)",
@@ -508,7 +540,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Amount currency"
         },
         "fees": {
           "description": "Fees if any",
@@ -523,7 +556,9 @@
           "type": "integer"
         },
         "tip": {
-          "$ref": "#/$defs/TipAmount"
+          "$ref": "#/$defs/TipAmount",
+          "description": "Tip amount details",
+          "nullable": true
         },
         "total": {
           "description": "Total amount",
@@ -847,7 +882,9 @@
       "description": "A monetary transfer of funds from a funding source to the recipient merchant",
       "properties": {
         "additionalProcessingInstruction": {
-          "$ref": "#/$defs/TransactionProcessingInstruction"
+          "$ref": "#/$defs/TransactionProcessingInstruction",
+          "description": "Processing instruction",
+          "writeOnly": true
         },
         "adjustments": {
           "description": "Adjustments for the payment",
@@ -858,7 +895,8 @@
           "type": "array"
         },
         "amount": {
-          "$ref": "#/$defs/DetailedAmount"
+          "$ref": "#/$defs/DetailedAmount",
+          "description": "Payment amount requested"
         },
         "authorizations": {
           "description": "Authorizations for the payment",
@@ -877,7 +915,8 @@
           "type": "array"
         },
         "clientContext": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "non-sensitive context data that can be stored and fetched by client when needed"
         },
         "createdAt": {
           "description": "Created time in RFC 3339 format",
@@ -896,7 +935,8 @@
           "$ref": "#/$defs/Id"
         },
         "netAmount": {
-          "$ref": "#/$defs/DetailedAmount"
+          "$ref": "#/$defs/DetailedAmount",
+          "description": "Current net payment amount"
         },
         "notes": {
           "description": "Notes about transaction",
@@ -955,13 +995,18 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card detail"
         },
         "cardVerificationData": {
-          "$ref": "#/$defs/CardVerificationData"
+          "$ref": "#/$defs/CardVerificationData",
+          "description": "Verification data that can be used to verify the customer information",
+          "writeOnly": true
         },
         "processingInstruction": {
-          "$ref": "#/$defs/CardProcessingInstruction"
+          "$ref": "#/$defs/CardProcessingInstruction",
+          "description": "Processing instruction to use this funding source",
+          "writeOnly": true
         }
       },
       "required": [
@@ -1012,7 +1057,9 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "verificationData": {
-          "$ref": "#/$defs/VerificationData"
+          "$ref": "#/$defs/VerificationData",
+          "description": "Verification data",
+          "writeOnly": true
         }
       },
       "title": "PaymentTokenFundingSource",
@@ -1101,10 +1148,12 @@
       "description": "Represents refund transaction against a payment",
       "properties": {
         "alternateFundingSource": {
-          "$ref": "#/$defs/FundingSource"
+          "$ref": "#/$defs/FundingSource",
+          "description": "Alternate funding source"
         },
         "parentTransactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Parent transaction id"
         }
       },
       "title": "Refund Transaction",
@@ -1136,7 +1185,9 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/Uuid"
+          "$ref": "#/$defs/Uuid",
+          "description": "Id of the signature",
+          "readOnly": true
         },
         "signature": {
           "description": "Signature data in Binary format",
@@ -1164,7 +1215,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Payment currency"
         }
       },
       "required": [
@@ -1222,7 +1274,9 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "billingAddress": {
-          "$ref": "#/$defs/Address"
+          "$ref": "#/$defs/Address",
+          "description": "Address for verification",
+          "writeOnly": true
         }
       },
       "title": "Token VerificationData",
@@ -1920,7 +1974,8 @@
         "200": {
           "description": "Adjustment Signature list",
           "schema": {
-            "$ref": "#/$defs/signatureList"
+            "$ref": "#/$defs/signatureList",
+            "title": "Adjustment Signatures"
           }
         },
         "default": {
@@ -2392,7 +2447,8 @@
         "200": {
           "description": "Authorization Signature list",
           "schema": {
-            "$ref": "#/$defs/signatureList"
+            "$ref": "#/$defs/signatureList",
+            "title": "Authorization Signatures"
           }
         },
         "default": {
@@ -3362,7 +3418,8 @@
         "200": {
           "description": "Refund Signature list",
           "schema": {
-            "$ref": "#/$defs/signatureList"
+            "$ref": "#/$defs/signatureList",
+            "title": "Refund Signatures"
           }
         },
         "default": {
@@ -3834,7 +3891,8 @@
         "200": {
           "description": "Sale Signature list",
           "schema": {
-            "$ref": "#/$defs/signatureList"
+            "$ref": "#/$defs/signatureList",
+            "title": "Sale Signatures"
           }
         },
         "default": {

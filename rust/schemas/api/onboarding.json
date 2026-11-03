@@ -391,7 +391,8 @@
               "type": "string"
             },
             "geoCoordinates": {
-              "$ref": "#/$defs/geo-coordinates"
+              "$ref": "#/$defs/geo-coordinates",
+              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -453,7 +454,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
@@ -517,7 +519,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

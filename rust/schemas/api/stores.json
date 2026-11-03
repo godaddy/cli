@@ -13,7 +13,8 @@
           "type": "string"
         },
         "featureConfig": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "Optional configs for each feature in the list."
         },
         "featureList": {
           "description": "List of features the bundle contains.",
@@ -24,7 +25,8 @@
           "type": "array"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the bundle. "
         },
         "name": {
           "description": "Name of bundle.",
@@ -117,10 +119,12 @@
       "description": "Contact Phone",
       "properties": {
         "details": {
-          "$ref": "#/$defs/phone"
+          "$ref": "#/$defs/phone",
+          "description": "Phone number details"
         },
         "type": {
-          "$ref": "#/$defs/phone-type"
+          "$ref": "#/$defs/phone-type",
+          "description": "Phone type"
         }
       },
       "required": [
@@ -188,13 +192,16 @@
       "description": "Store represent a brand under a business",
       "properties": {
         "address": {
-          "$ref": "#/$defs/address"
+          "$ref": "#/$defs/address",
+          "description": "The store's address. This may or may not be different from business address."
         },
         "attributes": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "A name/value pair list that could be persisted and later retrieved."
         },
         "businessId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The business id the store belongs to"
         },
         "createdAt": {
           "description": "The createdAt of the store.  This createdAt is generated internally during create store.",
@@ -203,10 +210,12 @@
           "type": "string"
         },
         "defaultChannelId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The default channel of the store, where uncategorized transactions are mapped to"
         },
         "defaultRetailChannelId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The default retail channel of the store, where uncategorized transactions from terminals in retail store are mapped to"
         },
         "displayName": {
           "description": "The store name (used in various displays). It is recommended to pick a different name for each store in the business.",
@@ -226,16 +235,21 @@
           "type": "array"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the store.  This id is generated internally during create business."
         },
         "ownerId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The id of the store owner."
         },
         "paymentDetails": {
-          "$ref": "#/$defs/StorePaymentDetails"
+          "$ref": "#/$defs/StorePaymentDetails",
+          "description": "The payment details of the store (if setup)",
+          "nullable": true
         },
         "phone": {
-          "$ref": "#/$defs/PhoneWithType"
+          "$ref": "#/$defs/PhoneWithType",
+          "description": "The store's phone. This may or may not be different from business phone."
         },
         "status": {
           "default": "ACTIVE",
@@ -286,7 +300,8 @@
           "type": "array"
         },
         "links": {
-          "$ref": "#/$defs/Links"
+          "$ref": "#/$defs/Links",
+          "description": "Array of HATEOAS link relations that should be used to navigate across pages of Stores"
         },
         "totalItems": {
           "description": "Total number of Stores matching the search criteria. Returned only when totalRequired is set to true.",
@@ -306,10 +321,12 @@
       "description": "Payment details for a store.",
       "properties": {
         "acquirer": {
-          "$ref": "#/$defs/Processor"
+          "$ref": "#/$defs/Processor",
+          "description": "The acquirer for this merchant."
         },
         "currency": {
-          "$ref": "#/$defs/currency-code"
+          "$ref": "#/$defs/currency-code",
+          "description": "The primary transaction currency for this store."
         },
         "externalStoreId": {
           "description": "MID (merchantId) assigned to the store by the acquirer.",
@@ -322,7 +339,8 @@
           "type": "string"
         },
         "processor": {
-          "$ref": "#/$defs/Processor"
+          "$ref": "#/$defs/Processor",
+          "description": "The processor for this merchant.  If this field is left blank it is assumed that the processor is the acquirer itself or CreditCall that happens to be our primary gateway."
         },
         "processorAdapterId": {
           "deprecated": true,
@@ -330,7 +348,8 @@
           "type": "string"
         },
         "processorData": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "The processor data for the store."
         }
       },
       "required": [
@@ -363,7 +382,8 @@
               "type": "string"
             },
             "geoCoordinates": {
-              "$ref": "#/$defs/geo-coordinates"
+              "$ref": "#/$defs/geo-coordinates",
+              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -425,7 +445,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
@@ -504,7 +525,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

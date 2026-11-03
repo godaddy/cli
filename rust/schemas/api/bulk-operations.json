@@ -6,10 +6,15 @@
       "description": "A bulk export object",
       "properties": {
         "canceledAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The canceled date of the bulk export",
+          "nullable": true,
+          "readOnly": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the bulk export",
+          "readOnly": true
         },
         "errorMessage": {
           "description": "Message from error that occurred during the bulk export",
@@ -22,10 +27,15 @@
           "type": "string"
         },
         "exportedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date of the bulk export file was exported",
+          "nullable": true,
+          "readOnly": true
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk export",
+          "readOnly": true
         },
         "query": {
           "description": "The query for the bulk export",
@@ -76,7 +86,9 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the bulk export",
+          "readOnly": true
         }
       },
       "title": "Bulk Export",
@@ -95,10 +107,13 @@
           "type": "array"
         },
         "canceledAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The canceled date of the bulk ingestion",
+          "nullable": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the bulk ingestion"
         },
         "entityType": {
           "default": "PRODUCT",
@@ -111,7 +126,9 @@
           "type": "integer"
         },
         "executedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The executed date of the bulk ingestion",
+          "nullable": true
         },
         "executedCount": {
           "default": 0,
@@ -119,7 +136,8 @@
           "type": "integer"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion"
         },
         "intent": {
           "default": "WRITE",
@@ -189,7 +207,9 @@
           "type": "object"
         },
         "parsedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The parsed date of the bulk ingestion",
+          "nullable": true
         },
         "parsedCount": {
           "default": 0,
@@ -216,10 +236,14 @@
           "type": "integer"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the bulk ingestion",
+          "nullable": true
         },
         "validatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The validated date of the bulk ingestion",
+          "nullable": true
         },
         "validatedCount": {
           "default": 0,
@@ -236,10 +260,12 @@
       "description": "A bulk ingestion item object",
       "properties": {
         "bulkIngestionId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the bulk ingestion item"
         },
         "data": {
           "description": "The data for the bulk ingestion item",
@@ -260,13 +286,18 @@
           "type": "string"
         },
         "executedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The executed date of the bulk ingestion item",
+          "nullable": true
         },
         "expiresAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The expiry date of the bulk ingestion item",
+          "nullable": true
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion item"
         },
         "index": {
           "description": "The index of the bulk ingestion item",
@@ -282,10 +313,13 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the bulk ingestion item"
         },
         "validatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The validated date of the bulk ingestion item",
+          "nullable": true
         }
       },
       "title": "Bulk Ingestion Item",
@@ -297,13 +331,16 @@
       "description": "A bulk ingestion override object",
       "properties": {
         "bulkIngestionId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the override"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion override"
         },
         "op": {
           "default": "replace",
@@ -320,7 +357,9 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the override",
+          "nullable": true
         },
         "value": {
           "description": "The value of the override",
@@ -336,13 +375,18 @@
       "description": "A bulk operation object",
       "properties": {
         "canceledAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The canceled date of the bulk operation",
+          "nullable": true
         },
         "completedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The completed date of the bulk operation",
+          "nullable": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the bulk operation"
         },
         "endCursor": {
           "description": "Optional Query-Transform-Set pagination cursor persisted while the\ntarget worker pages through query results. Used to resume discovery\nafter retries; clients typically treat this as read-only progress\nmetadata.\n",
@@ -366,7 +410,8 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk operation"
         },
         "method": {
           "default": "PATCH",
@@ -386,7 +431,8 @@
           "type": "array"
         },
         "operation": {
-          "$ref": "#/$defs/BulkOperationOperation"
+          "$ref": "#/$defs/BulkOperationOperation",
+          "description": "Optional Query-Transform-Set GraphQL operation. Present only for GraphQL\nQTS transports; omit/ignore for REST bulk operations. When present, the\nservice queries resources, applies transforms, and executes the mutation\nper item.\n"
         },
         "processedCount": {
           "default": 0,
@@ -427,7 +473,9 @@
           "type": "integer"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the bulk operation",
+          "nullable": true
         }
       },
       "title": "Bulk Operation",
@@ -873,10 +921,13 @@
           "type": "array"
         },
         "canceledAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The canceled date of the bulk ingestion",
+          "nullable": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The creation date of the bulk ingestion"
         },
         "entityType": {
           "default": "PRODUCT",
@@ -889,7 +940,9 @@
           "type": "integer"
         },
         "executedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The executed date of the bulk ingestion",
+          "nullable": true
         },
         "executedCount": {
           "default": 0,
@@ -897,7 +950,8 @@
           "type": "integer"
         },
         "id": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the bulk ingestion"
         },
         "intent": {
           "default": "WRITE",
@@ -967,7 +1021,9 @@
           "type": "object"
         },
         "parsedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The parsed date of the bulk ingestion",
+          "nullable": true
         },
         "parsedCount": {
           "default": 0,
@@ -994,10 +1050,14 @@
           "type": "integer"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The update date of the bulk ingestion",
+          "nullable": true
         },
         "validatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The validated date of the bulk ingestion",
+          "nullable": true
         },
         "validatedCount": {
           "default": 0,
@@ -1065,7 +1125,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

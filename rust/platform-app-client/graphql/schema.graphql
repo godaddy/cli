@@ -778,6 +778,37 @@ type CreateMediaUploadUrlResponse {
   uploadUrl: String!
 }
 
+"""
+Result of creating an OAuth client secret. Includes the secret value once; store it immediately — it cannot be retrieved again.
+"""
+type CreatedOauthClientSecret {
+  """OAuth client id this secret belongs to, or null when unknown."""
+  clientId: String
+
+  """Description of the secret, or null when unknown."""
+  clientSecretDescription: String
+
+  """Id of this secret (used to revoke)."""
+  clientSecretId: String!
+
+  """Display name of the secret, or null when unknown."""
+  clientSecretName: String
+
+  """
+  The secret value, returned only on create. Store it immediately — it cannot be retrieved again.
+  """
+  clientSecretValue: String!
+
+  """When this secret was created (ISO-8601), or null when unknown."""
+  createdAt: String
+
+  """When this secret was revoked (ISO-8601), or null if still active."""
+  deletedAt: String
+
+  """When this secret expires (ISO-8601), or null when unknown."""
+  expiresOn: String
+}
+
 """A date-time string in ISO 8601 format (e.g. 2022-01-01T00:00:00Z)."""
 scalar DateTime
 
@@ -935,7 +966,7 @@ type GenerateReleaseUploadUrlResponse {
 }
 
 """A JSON object scalar type."""
-scalar JSONObject
+scalar JSONObject @specifiedBy(url: "http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf")
 
 """Allowed MIME types for listing media uploads."""
 enum ListingMediaContentType {
@@ -1029,6 +1060,15 @@ type Mutation {
   createApplication(input: MutationCreateApplicationInput!): Application
 
   """
+  Create an additional OAuth client secret on the application's primary OAuth client. Returns the secret value once. Fails when the active-secret limit is reached.
+  """
+  createApplicationOauthClientSecret(
+    """The application to create a secret for."""
+    applicationId: String!
+    input: MutationCreateApplicationOauthClientSecretInput!
+  ): CreatedOauthClientSecret
+
+  """
   Create a pending listing media record and return a pre-signed S3 PUT URL.
   """
   createMediaUploadUrl(
@@ -1112,6 +1152,15 @@ type Mutation {
   ): MediaObject
 
   """
+  Revoke one OAuth client secret on the application's primary OAuth client. Cannot revoke the last active secret — create another first.
+  """
+  revokeApplicationOauthClientSecret(
+    """The application whose secret to revoke."""
+    applicationId: String!
+    input: MutationRevokeApplicationOauthClientSecretInput!
+  ): RevokedOauthClientSecret
+
+  """
   Create or update the listing for an application. Idempotent — safe to call multiple times for the same application.
   """
   setApplicationListing(
@@ -1163,6 +1212,14 @@ input MutationCreateApplicationInput {
   The public URL of the application. This is typically the URL of the application's website.
   """
   url: String
+}
+
+input MutationCreateApplicationOauthClientSecretInput {
+  """Description for the new secret. Cannot be blank."""
+  clientSecretDescription: String!
+
+  """Display name for the new secret."""
+  clientSecretName: String!
 }
 
 input MutationCreateReleaseInput {
@@ -1248,6 +1305,11 @@ input MutationGenerateReleaseUploadUrlInput {
   target: String
 }
 
+input MutationRevokeApplicationOauthClientSecretInput {
+  """Id of the secret to revoke."""
+  clientSecretId: String!
+}
+
 input MutationUpdateApplicationInput {
   """
   The authorization scopes of the application. Defines the GoDaddy permissions for the application.
@@ -1293,6 +1355,32 @@ enum NativeExtensionPlatform {
 """Represents a null value."""
 scalar Null
 
+"""
+Metadata for one OAuth client secret on an application's primary OAuth client. Secret values are never included.
+"""
+type OauthClientSecret {
+  """OAuth client id this secret belongs to, or null when unknown."""
+  clientId: String
+
+  """Description of the secret, or null when unknown."""
+  clientSecretDescription: String
+
+  """Id of this secret (used to revoke)."""
+  clientSecretId: String!
+
+  """Display name of the secret, or null when unknown."""
+  clientSecretName: String
+
+  """When this secret was created (ISO-8601), or null when unknown."""
+  createdAt: String
+
+  """When this secret was revoked (ISO-8601), or null if still active."""
+  deletedAt: String
+
+  """When this secret expires (ISO-8601), or null when unknown."""
+  expiresOn: String
+}
+
 """Direction for ordering results in queries."""
 enum OrderByDirectionEnum {
   """Sort in ascending order."""
@@ -1323,7 +1411,7 @@ type Query {
   ): Application
 
   """
-  Paginated listings. Defaults to publicly LISTED listings for active PUBLIC-distribution apps. Pass visibility filter to query owner/admin contexts.
+  Paginated listings. Defaults to publicly LISTED listings for active PUBLIC-distribution apps with an active release. Pass visibility filter to query owner/admin contexts.
   """
   applicationListings(
     after: String
@@ -1334,6 +1422,14 @@ type Query {
     first: Int
     last: Int
   ): QueryApplicationListingsConnection
+
+  """
+  List OAuth client secrets (metadata only) for an application's primary OAuth client. Requires application write access.
+  """
+  applicationOauthClientSecrets(
+    """The application whose primary OAuth client secrets to list."""
+    applicationId: String!
+  ): [OauthClientSecret!]!
 
   """
   Get paginated applications. Returns all public applications for service requests, or only applications owned by the authenticated customer's organization. Multi-org users may pass an explicit `organizationId` to select which organization's apps to list.
@@ -1593,6 +1689,12 @@ enum ReleaseUploadStatus {
 
   """File has been uploaded and is awaiting processing."""
   UPLOADED
+}
+
+"""Result of revoking an OAuth client secret."""
+type RevokedOauthClientSecret {
+  """Id of the revoked secret."""
+  clientSecretId: String!
 }
 
 """Filter for fields that are lists/sets of strings."""
