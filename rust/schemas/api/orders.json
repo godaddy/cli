@@ -41,7 +41,7 @@
       "description": "A discount can be applied at two levels: the broad order level and the individual line item level",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "appliedBeforeTax": {
           "default": false,
@@ -188,7 +188,7 @@
       "description": "A miscellaneous fee can be applied at two levels: the broad order level (shipping fee or handling cost) and the individual line item level",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "appliedBeforeTax": {
           "default": false,
@@ -550,19 +550,19 @@
               "$ref": "#/$defs/simple-money"
             },
             "discountTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "feeTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "subTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "taxTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "total": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             }
           },
           "required": [
@@ -577,7 +577,7 @@
           "$ref": "#/$defs/LineItemType"
         },
         "unitAmount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "updatedAt": {
           "$ref": "#/$defs/date-time"
@@ -600,26 +600,23 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Grouped return totals for a line item.",
       "properties": {
-        "addonsTotal": {
-          "$ref": "#/$defs/simple-money"
-        },
         "discountTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "feeTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "shippingTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "subTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "taxTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "total": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         }
       },
       "title": "LineItemReturnTotals",
@@ -1134,26 +1131,23 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "Grouped return totals for an order. Includes order level and item level adjustments in the totals.",
       "properties": {
-        "addonsTotal": {
-          "$ref": "#/$defs/simple-money"
-        },
         "discountTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "feeTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "shippingTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "subTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "taxTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "total": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         }
       },
       "title": "OrderReturnTotals",
@@ -1183,7 +1177,7 @@
           "type": "boolean"
         },
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "exempted": {
           "default": false,
@@ -1412,7 +1406,7 @@
           "type": "string"
         },
         "totalAdjustments": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "updatedAt": {
           "$ref": "#/$defs/date-time"
@@ -1431,7 +1425,7 @@
       "description": "An adjustment for a return. Can be order level or line item level.",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "createdAt": {
           "$ref": "#/$defs/date-time"
@@ -1528,7 +1522,7 @@
           "type": "string"
         },
         "totalAdjustments": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "updatedAt": {
           "$ref": "#/$defs/date-time"
@@ -1549,7 +1543,7 @@
           "description": "Base schema for return preview adjustments",
           "properties": {
             "amount": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "name": {
               "description": "The name of the adjustment",
@@ -1582,7 +1576,7 @@
                 "description": "Base schema for return preview adjustments",
                 "properties": {
                   "amount": {
-                    "$ref": "#/$defs/simple-money"
+                    "$ref": "#/$defs/positive-money"
                   },
                   "name": {
                     "description": "The name of the adjustment",
@@ -1649,7 +1643,7 @@
                       "description": "Base schema for return preview adjustments",
                       "properties": {
                         "amount": {
-                          "$ref": "#/$defs/simple-money"
+                          "$ref": "#/$defs/positive-money"
                         },
                         "name": {
                           "description": "The name of the adjustment",
@@ -1915,7 +1909,7 @@
       "description": "A shipping line details a shipping method used for an order",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "discounts": {
           "description": "Discounts applied to this shipping line",
@@ -1976,19 +1970,19 @@
           "description": "Grouped totals for a shipping line",
           "properties": {
             "discountTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "feeTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "subTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "taxTotal": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             },
             "total": {
-              "$ref": "#/$defs/simple-money"
+              "$ref": "#/$defs/positive-money"
             }
           },
           "required": [
@@ -2012,7 +2006,7 @@
       "description": "An Order Item tax can be applied at the level of an individual line item or shipping line",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "exempted": {
           "default": false,
@@ -2076,25 +2070,25 @@
           "$ref": "#/$defs/simple-money"
         },
         "discountTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "feeTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "productDiscountTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "shippingDiscountTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "shippingTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "subTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "taxTotal": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/positive-money"
         },
         "total": {
           "$ref": "#/$defs/simple-money"
@@ -2218,6 +2212,15 @@
       "maxLength": 2,
       "minLength": 2,
       "pattern": "^([A-Z]{2}|C2)$",
+      "type": "string"
+    },
+    "currency-code": {
+      "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A three-character ISO-4217 currency code.",
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency Code",
       "type": "string"
     },
     "date-time": {
@@ -2392,20 +2395,20 @@
       "pattern": "^((-?[0-9]+)|(-?([0-9]+)?[.][0-9]+))$",
       "type": "string"
     },
+    "positive-money": {
+      "$ref": "#/$defs/simple-money"
+    },
     "simple-money": {
       "$id": "https://godaddy.com/schemas/common/simple-money.v1",
       "$schema": "http://json-schema.org/draft/2020-12/schema",
       "description": "The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision.",
       "properties": {
         "currencyCode": {
-          "description": "A three-character ISO-4217 currency code.",
-          "maxLength": 3,
-          "minLength": 3,
-          "type": "string"
+          "$ref": "#/$defs/currency-code"
         },
         "value": {
           "description": "The value, which might represent intergrals for currencies like `JPY` that are not typically fractional; or, with an implied decimal fraction for currencies like `TND` that are subdivided into thousandths. For the implied number of decimal places for a currency code, see [ISO-4217 Currency Codes](https://en.wikipedia.org/wiki/ISO_4217).",
-          "minimum": 0,
+          "format": "int64",
           "type": "integer"
         }
       },
@@ -2413,7 +2416,7 @@
         "currencyCode",
         "value"
       ],
-      "title": "Simple Money with Fixed Precision",
+      "title": "Simple Money",
       "type": "object"
     }
   },
@@ -4210,5 +4213,5 @@
   ],
   "name": "orders",
   "title": "Order Service",
-  "version": "1.11.0"
+  "version": "1.12.0"
 }

@@ -23,6 +23,17 @@
       }
     },
     "parameters": {
+      "allowNameserverChange": {
+        "description": "Consent to move the whole domain to GoDaddy's nameservers when it does not already use them; forwarding only works on GoDaddy nameservers. Without it, such a request fails with 409 NAMESERVER_CHANGE_REQUIRED; it has no other effect on a domain already on GoDaddy nameservers. The domain then gets a GoDaddy DNS zone with only default records, so records from the previous DNS provider, such as MX for email, are lost. The change propagates asynchronously (watch nameServers on GET /domain-names/{domain-name}) and is not undone when the forwarding is deleted. Callers who set it to true must also hold domains.nameserver:update, whatever the domain's nameservers; without it the request fails with 403.\n",
+        "example": true,
+        "in": "query",
+        "name": "allowNameserverChange",
+        "required": false,
+        "schema": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
       "domainNamePath": {
         "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
         "example": "example.com",
@@ -39,6 +50,16 @@
         "in": "query",
         "name": "fields",
         "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "fqdnPath": {
+        "description": "The forwarded name in punycode A-label form: the domain itself (example.com), one of its subdomains (shop.example.com), or a wildcard directly on the domain (*.example.com), without a trailing dot. Matched case-insensitively.\n",
+        "example": "shop.example.com",
+        "in": "path",
+        "name": "fqdn",
+        "required": true,
         "schema": {
           "type": "string"
         }
@@ -2143,16 +2164,17 @@
     },
     "securitySchemes": {
       "oauth2": {
-        "description": "GoDaddy OAuth 2.0 access token. The scope(s) listed on each operation are enforced per-operation. A token requires at least one of the scopes listed for that operation.\n",
+        "description": "GoDaddy OAuth 2.0 access token. The scope(s) listed on each operation are enforced per-operation. A token requires at least one of the scopes listed for that operation. Some parameters require an additional scope; this is stated on the parameter and on the operation's 403 response.\n",
         "flows": {
           "authorizationCode": {
             "authorizationUrl": "https://api.godaddy.com/v2/oauth2/authorize",
             "scopes": {
               "domains.dns:update": "Create, update, and delete DNS zone records.\n",
               "domains.domain:create": "Register domains. Requires a prior quoteToken.\n",
-              "domains.domain:read": "Read domain records, availability, suggestions, quotes, and operations.\n",
-              "domains.domain:update": "Update domain-level properties such as auto-renew, transfer-lock settings, and renewing owned domains. Requires a prior quoteToken for renewal. This scope covers mutations to the domain resource itself; use resource-specific scopes for nameservers (domains.nameserver:update) and DNS records (domains.dns:update).\n",
-              "domains.nameserver:update": "Manage authoritative nameservers for a domain, including setting custom  nameservers and resetting to registry defaults.\n",
+              "domains.domain:read": "Read domain records, availability, suggestions, quotes, operations, and forwarding.\n",
+              "domains.domain:update": "Update domain-level properties such as auto-renew, transfer-lock settings, and renewing owned domains. Requires a prior quoteToken for renewal. This scope covers mutations to the domain resource itself; use resource-specific scopes for nameservers (domains.nameserver:update), DNS records (domains.dns:update), and forwarding (domains.forwarding:update).\n",
+              "domains.forwarding:update": "Create, replace, and delete forwarding for a domain and its subdomains. Setting allowNameserverChange=true, which moves the domain to GoDaddy nameservers, also requires domains.nameserver:update.\n",
+              "domains.nameserver:update": "Manage authoritative nameservers for a domain, including setting custom  nameservers and resetting to registry defaults. Also required to create or replace forwarding with allowNameserverChange=true, which moves the domain to GoDaddy nameservers.\n",
               "domains.registration-profile:create": "Create saved registration profiles.\n",
               "domains.registration-profile:delete": "Delete saved registration profiles.\n",
               "domains.registration-profile:read": "Read saved registration profiles, including the contact records stored on them.\n"
@@ -2165,9 +2187,9 @@
     }
   },
   "info": {
-    "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`) only exist\nin the context of a specific domain-name instance. The `/check-availability`\ncontroller accepts GET (single domain) or POST (1–25 domains) and carries no\npersistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
+    "description": "The GoDaddy Domain Lifecycle Management API provides comprehensive capabilities\nfor discovering, registering, managing, renewing, transferring, and reselling\ndomain names. This is major version 3, designed for agent-first interactions\nwhile remaining fully usable by direct API clients and resellers.\n\n## Namespace\n\nAll paths are under `/v3/domains/`. The namespace is `domains` (the business capability);\nthe core entity collection is `/domain-names`.\n\n## Key Conventions\n\n**Quote/execute for commercial operations.** Every commercial mutation (register,\nrenew, transfer) requires a `quoteToken` minted by the corresponding quote\ncollection endpoint. Execution without a prior quote is structurally impossible.\nThe token locks the price, resolved settings, and required legal agreements for a\n10-minute TTL. Quote calls are free, read-only, and safe to call speculatively.\n\n**Async commercial operations.** `POST /registrations`, `POST /renewals`, and\n`POST /transfers` each return `202 Accepted` with the concrete entity body\n(`Registration`, `Renewal`, or `Transfer`) and a `Location` header. Poll\n`links[rel=self]` on the returned entity until status is `COMPLETED` or `FAILED`.\nEach concrete resource is also reachable via `GET /operations/{operationId}`;\nthe `operationId` is included in the entity for clients that prefer the abstract\nview. Non-commercial mutations return a `DomainOperation` body, except DNS records\nand forwarding, which are applied synchronously.\n\n**Entity-oriented resource model.** Domains are the core entity of this API\n(exposed as `/domain-names` in the path to distinguish the resource collection\nfrom the `domains` namespace prefix). Register, renew, and transfer are\ncommercial actions executed by `POST` to their corresponding top-level\nresource collections (`/registrations`, `/renewals`, `/transfers`); each\naccepts a prior quote and returns an async entity to poll until completion.\nFor commercial execute calls, the target domain is\nexpressed in the request body, not the path. Sub-resources (`contacts`,\n`nameservers`, `privacy`, `auto-renew`, `transfer-lock`, `records`,\n`forwards`) only exist in the context of a specific domain-name instance.\nThe `/check-availability` controller accepts GET (single domain) or POST\n(1–25 domains) and carries no persistent identity.\n\n**Flat, two-level maximum.** No resource path goes deeper than\n`/{collection}/{id}/{sub-resource}` or `/{collection}/{id}/{sub-collection}/{id}`.\n\n**Reseller on-behalf-of.** Resellers pass `X-Shopper-Id`; all operations are\nthen scoped to that shopper. Absent the header, the authenticated entity's own\naccount is used.\n\n## Launch Scope (v3.0)\nStandard TLDs only. TLDs with eligibility requirements (.us, .ca, .eu) return\n`UNSUPPORTED_TLD` until Phase 2.\n",
     "title": "Domain Lifecycle Management API",
-    "version": "3.5.0",
+    "version": "3.7.0",
     "x-visibility": {
       "extent": "public"
     }
