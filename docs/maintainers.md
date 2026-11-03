@@ -60,10 +60,12 @@ The CLI embeds a catalog of upstream API specs (browsable with `gddy api ...`) a
 
 1. Get a token that can read the spec repositories in the `gdcorp-platform` org. `gh auth token` works if your account has access; CI uses a read-only GitHub App instead.
 1. From `rust/`, run `GITHUB_TOKEN=<token> cargo run -p generate-api-catalog`. Which specs are pulled is configured in [`api-catalog-sources.json`](../rust/api-catalog-sources.json).
-1. Review the diff. The generator rewrites these paths, which are exactly what the workflow compares:
+1. Review the diff. The generator rewrites these paths:
    - [`rust/schemas/api/`](../rust/schemas/api) — the embedded catalog. `manifest.json` carries a generated-at timestamp that changes on every run; the workflow ignores it, so a timestamp-only change is not drift.
-   - `rust/domains-client/openapi/domains.oas3.json` and `rust/hosting-client/openapi/hosting.oas3.json` — inputs to the generated clients.
+   - `rust/domains-client/openapi/domains.oas3.json`, `rust/hosting-client/openapi/hosting.oas3.json`, `rust/email-client/openapi/email.oas3.json` and `rust/shopping-client/openapi/shopping.oas3.json` — inputs to the generated clients.
    - `rust/platform-app-client/graphql/schema.graphql` — input to the platform app client.
+
+   The drift workflow compares only the catalog, the Domains spec and the Hosting spec, so it can pass while the other codegen specs are stale. Commit everything the generator changed, not only what the workflow flagged.
 1. Run the checks in [`AGENTS.md`](../AGENTS.md#verification-checklist-required-before-finishing-work). Generated clients are rebuilt from the updated specs, so an upstream breaking change shows up as a compile error or test failure here; fix the affected commands in the same PR.
 1. Commit the result as `fix(api-catalog): resync spec drift with ...` and name the APIs that changed (see [#321](https://github.com/godaddy/cli/pull/321)), since the commit title is surfaced in release notes.
 
