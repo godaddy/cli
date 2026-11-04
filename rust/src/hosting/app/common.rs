@@ -21,6 +21,10 @@ pub(super) struct PublishAppIdArgs {
 }
 
 fn publishable_app_id(value: &str) -> Result<String, String> {
+    // 7 is the length of the "NODEJS-" prefix. `get` rather than indexing so a
+    // shorter id, or one whose seventh byte is mid-character, falls through to
+    // the API instead of panicking. Only this prefix is judged here; every
+    // other shape is the API's call.
     if value
         .get(..7)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("NODEJS-"))
@@ -52,7 +56,7 @@ pub(super) async fn set_publish_state(
     let description = if published {
         "Poll until the site is live"
     } else {
-        "Poll until the site is back to Coming Soon"
+        "Poll until the site is behind its placeholder page"
     };
     let poll = next_action(
         "hosting operation get --operation-id <operation-id>",

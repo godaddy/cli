@@ -79,7 +79,7 @@ mod tests {
             "MHWP",
             "app publish",
             "app unpublish",
-            "Coming Soon",
+            "placeholder page",
         ] {
             assert!(!off.contains(absent), "flag off still mentions {absent:?}");
         }
@@ -108,10 +108,30 @@ mod tests {
             .replace(include_str!("guides/hosting-wordpress.md"), "")
             .replace(
                 "Restart an environment (Node.js) |\n| `hosting app publish` / \
-                 `hosting app unpublish` | Take a WordPress site live, or back to Coming Soon |",
+                 `hosting app unpublish` | Take a WordPress site live, or back to a \
+                 placeholder page |",
                 "Restart an environment |",
             );
         assert_eq!(undone, off);
+    }
+
+    /// The walkthrough has to say what the product is, not only which commands
+    /// to type: a reader who has never seen it needs to know where the content
+    /// is edited, that there is no build or deploy, and that the CLI does not
+    /// hold the WordPress password.
+    #[test]
+    fn the_wordpress_section_explains_the_product() {
+        let on = hosting_guide(true);
+        for present in [
+            "Airo App Builder subscription",
+            "WordPress admin",
+            "no source upload, no build",
+            "does not become the WordPress site title",
+            "placeholder page",
+            "### What the CLI does not do for WordPress sites",
+        ] {
+            assert!(on.contains(present), "the guide is missing {present:?}");
+        }
     }
 
     #[tokio::test]

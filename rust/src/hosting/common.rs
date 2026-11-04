@@ -219,6 +219,9 @@ impl HostingAppType {
 /// Whether `app_id` names a WordPress (MHWP) site. The edge matches the
 /// prefix case-insensitively, so this does too.
 pub fn is_mhwp_app_id(app_id: &str) -> bool {
+    // 5 is the length of the "MHWP-" prefix. `get` rather than indexing so a
+    // shorter id, or one whose fifth byte is mid-character, answers false
+    // instead of panicking.
     app_id
         .get(..5)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("MHWP-"))
@@ -265,7 +268,7 @@ const RESTART_ROW: &str =
 const WORDPRESS_RESTART_ROWS: &str = concat!(
     r"| `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment (Node.js) |",
     "\n",
-    "| `hosting app publish` / `hosting app unpublish` | Take a WordPress site live, or back to Coming Soon |",
+    "| `hosting app publish` / `hosting app unpublish` | Take a WordPress site live, or back to a placeholder page |",
 );
 
 /// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only

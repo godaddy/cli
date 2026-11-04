@@ -21,10 +21,10 @@ struct AppCreateArgs {
 }
 
 const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App Builder \
-     subscription. The site starts as Coming Soon, and its WordPress title is not set \
-     from --name. It is hosted in the US. Log in to WordPress admin from Airo App Builder. \
-     Take the site live with `hosting app publish` (needs a plan with a free published-site \
-     slot) and back to Coming Soon with `hosting app unpublish`. \
+     subscription. The site starts behind a placeholder page, and its WordPress title is \
+     not set from --name. It is hosted in the US. Log in to WordPress admin from Airo App \
+     Builder. Take the site live with `hosting app publish` (needs a plan with a free \
+     published-site slot) and back behind the placeholder with `hosting app unpublish`. \
      For MHWP apps, use `hosting app get`, `status`, `publish` and `unpublish`. \
      The other hosting commands are not available for WordPress sites yet.";
 
@@ -84,8 +84,8 @@ fn poll_description(app_type: HostingAppType) -> &'static str {
     match app_type {
         HostingAppType::Nodejs => "Poll app provisioning status",
         HostingAppType::Mhwp => {
-            "Poll app provisioning status. The WordPress site starts as Coming Soon; \
-             log in to WordPress admin from Airo App Builder"
+            "Poll app provisioning status. The WordPress site starts behind a placeholder \
+             page; log in to WordPress admin from Airo App Builder"
         }
     }
 }
@@ -216,7 +216,7 @@ mod tests {
             poll_description(HostingAppType::Nodejs),
             "Poll app provisioning status"
         );
-        assert!(poll_description(HostingAppType::Mhwp).contains("Coming Soon"));
+        assert!(poll_description(HostingAppType::Mhwp).contains("placeholder page"));
     }
 
     async fn run(cli: &Cli, args: &[&str]) -> String {

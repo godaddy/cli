@@ -9,13 +9,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<PublishAppIdArgs>("publish", "Take a WordPress site live")
             .with_long(
                 "Take an MHWP (WordPress) application live at its publish URL. WordPress sites \
-                 have no build step: the site is provisioned ready to serve and starts as \
-                 Coming Soon, and this switches it on. Returns immediately with an operation ID; \
-                 poll `hosting operation get` until status is COMPLETED or FAILED. A site that is \
-                 already live is accepted and nothing changes. Going live needs a plan with a \
-                 free published-site slot; the free plan has none. Use `hosting app unpublish` \
-                 to take the site back to Coming Soon. Node.js apps go live with \
-                 `hosting deployment publish` instead.",
+                 have no build step: the site is provisioned ready to serve and starts by \
+                 showing a placeholder page, and this switches it on. Returns immediately with \
+                 an operation ID; poll `hosting operation get` until status is COMPLETED or \
+                 FAILED. A site that is already live is accepted and nothing changes. Going live \
+                 needs a plan with a free published-site slot; the free plan has none. Use \
+                 `hosting app unpublish` to take the site back to a placeholder page. Node.js \
+                 apps go live with `hosting deployment publish` instead.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -61,10 +61,10 @@ mod tests {
             "{help}"
         );
         let help = run_hosting(&on, &["app", "publish", "--help"]).await;
-        assert!(help.contains("Coming Soon"), "{help}");
+        assert!(help.contains("placeholder page"), "{help}");
         assert!(help.contains("--app-id"), "{help}");
         let help = run_hosting(&on, &["app", "unpublish", "--help"]).await;
-        assert!(help.contains("Coming Soon"), "{help}");
+        assert!(help.contains("placeholder page"), "{help}");
         // Parses, then stops at auth: no provider is registered in tests.
         let parsed = run_hosting(&on, &["app", "publish", "--app-id", "MHWP-a1b2c3d4e5"]).await;
         assert!(parsed.contains("no provider registered"), "{parsed}");

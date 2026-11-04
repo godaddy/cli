@@ -21,8 +21,8 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     );
     if mhwp {
         long.push_str(
-            " WordPress (MHWP) sites go live with `publish` and back to Coming Soon with \
-             `unpublish`.",
+            " WordPress (MHWP) sites go live with `publish` and back to a placeholder page \
+             with `unpublish`.",
         );
     }
     let group = RuntimeGroupSpec::new(
