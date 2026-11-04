@@ -555,6 +555,7 @@ fn same_content_follows_how_the_api_stores_each_field() {
     // Hostnames: case and a trailing dot are not differences.
     assert!(same("CNAME", "Example.COM", "example.com."));
     assert!(same("ALIAS", "Example.COM", "example.com."));
+    assert!(same("ALIAS", "Example.COM", "example.com."));
     assert!(same("MX", "Mail.Example.com", "mail.example.com."));
     // CAA data and TLSA hex are case-insensitive.
     assert!(same("CAA", "Letsencrypt.org", "letsencrypt.org"));
