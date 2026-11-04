@@ -46,12 +46,13 @@ pub(crate) fn post_purchase_actions(catalog_response: &LookupResponse) -> Vec<Ne
 
 #[cfg(test)]
 mod tests {
+    use cli_engine::{Cli, CliConfig, Stage};
     use shopping_client::types::{
         CatalogLookupLookupResponse, CatalogLookupLookupResponseProductsItem, Category, Item,
         LineItem, LookupResponse,
     };
 
-    use super::{post_purchase_actions, purchased_product_ids};
+    use super::{CATEGORY_ACTIONS, post_purchase_actions, purchased_product_ids};
     use crate::shopping::client::Checkout;
 
     fn line_item(id: Option<&str>) -> LineItem {
@@ -112,6 +113,22 @@ mod tests {
         assert_eq!(actions.len(), 2);
         assert_eq!(actions[0].command, "gddy guide hosting-nodejs");
         assert_eq!(actions[1].command, "gddy guide email");
+    }
+
+    /// A renamed guide must not leave a buyer at an unknown-topic error.
+    #[tokio::test]
+    async fn post_purchase_actions_open_guides_the_cli_ships() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(crate::all_modules()),
+        );
+        for (_, command, _) in CATEGORY_ACTIONS {
+            let mut argv = vec!["gddy"];
+            argv.extend(command.split_whitespace());
+            let out = cli.run(argv).await;
+            assert_eq!(out.exit_code, 0, "gddy {command}: {}", out.rendered);
+        }
     }
 
     #[test]
