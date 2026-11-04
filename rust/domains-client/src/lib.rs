@@ -692,21 +692,15 @@ mod tests {
     }
 
     #[test]
-    fn replace_dns_record_stays_removed() {
-        // See https://github.com/godaddy/cli/issues/136 and the `NOTE:`
-        // comment above `/zones/{zone}/dns-records/{recordId}` in the
-        // vendored v3 yaml: this PUT returns 200 but silently replaces the
-        // entire dns-records collection instead of the one record. A spec
-        // sync that copies the upstream shape verbatim would reintroduce it.
+    fn replace_dns_record_is_exposed() {
+        // `dns set` replaces a retained record in place with this PUT.
         let spec = vendored_spec();
         let methods = spec["paths"]["/v3/domains/zones/{zone}/dns-records/{recordId}"]
             .as_object()
             .expect("dns-records/{recordId} path exists");
         assert!(
-            !methods.contains_key("put"),
-            "replaceDNSRecord (PUT) must stay excluded until a confirmed \
-             server-side fix and a fresh live check against a real zone with \
-             unrelated records — see godaddy/cli#136"
+            methods.contains_key("put"),
+            "replaceDNSRecord (PUT) missing"
         );
     }
 }

@@ -1,6 +1,7 @@
 //! `dns set` — replace every record for a type+name pair (destructive).
 
 use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use serde_json::Value;
 
 use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
@@ -14,24 +15,33 @@ use super::records::{ZONE_AND_NAME, verified_result};
 
 mod outcome;
 mod plan;
+mod verify;
 mod write;
 
 use outcome::{SetOutcome, dry_run_set_preview, record_label, summarize_set_outcomes};
 use plan::{SetAction, plan_set};
+use verify::verify_final_state;
 use write::{WriteRequest, apply_replace, write_with_conflict_handling};
 
-// `dns set` reconciles over v3's per-record ops; it reports how many records it
-// replaced, created, and deleted to reach the desired set.
+// `dns set` reconciles over the API's per-record ops; it reports how many records it
+// replaced, left unchanged, created, and deleted to reach the desired set.
 output_schema!(DnsSetResult {
     "domain": "string";
     "type": "string";
     "name": "string";
     "replaced": "number";
+    "unchanged": "number";
     "created": "number";
     "deleted": "number";
     "action": "string";
+    "records": "[]object", optional;
     "plan": "[]object", optional;
 });
+
+/// The fields shown when the caller doesn't pass `--fields`; anything not
+/// listed here is dropped from the output.
+const DEFAULT_FIELDS: &str =
+    "domain,type,name,replaced,unchanged,created,deleted,action,records,plan";
 
 #[derive(Debug, Clone, clap::Args)]
 struct SetArgs {
@@ -44,18 +54,26 @@ struct SetArgs {
     replace_conflicting_types: bool,
 }
 
-/// `plan` only appears on the `--dry-run` preview (the real set's success
-/// payload has no per-action breakdown), so it renders as an indented child
-/// table there instead of a raw JSON dump.
+/// `records` (what the real set left in place) and `plan` (what `--dry-run`
+/// would do) each appear on only one of the two outputs, and render as indented
+/// child tables instead of a raw JSON dump.
 fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("type", "Type"),
         TableColumn::new("name", "Name"),
         TableColumn::new("replaced", "Replaced").align(Alignment::Right),
+        TableColumn::new("unchanged", "Unchanged").align(Alignment::Right),
         TableColumn::new("created", "Created").align(Alignment::Right),
         TableColumn::new("deleted", "Deleted").align(Alignment::Right),
         TableColumn::new("action", "Action"),
+        TableColumn::new("records", "Records").nested(vec![
+            TableColumn::new("type", "Type").essential(true),
+            TableColumn::new("name", "Name"),
+            TableColumn::new("data", "Data").essential(true),
+            TableColumn::new("ttl", "TTL").align(Alignment::Right),
+            TableColumn::new("recordId", "Record ID"),
+        ]),
         TableColumn::new("plan", "Plan").nested(vec![
             TableColumn::new("action", "Action").essential(true),
             TableColumn::new("recordId", "Record ID"),
@@ -73,11 +91,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_long(
             "Replaces every DNS record for the given type+name pair with the \
             values supplied via `--data`, discarding any records that were \
-            there before. v3 has no bulk or in-place replace, so this reconciles \
-            over per-record calls: for the overlap it creates the replacement \
-            value then deletes the record it's replacing, it deletes the surplus, \
-            and it creates the shortfall (so it is not atomic — a mid-run failure \
-            is reported per record). This is destructive and irreversible — use \
+            there before. This is destructive and irreversible — use \
             `dns list --type <type> --name <name>` to review first. Use `dns add` \
             to append without removing existing records.\n\
             \n\
@@ -90,7 +104,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_system("domain")
         .with_tier(Tier::Destructive)
         .handles_dry_run(true)
-        .with_default_fields("domain,type,name,replaced,created,deleted,action,plan")
+        .with_default_fields(DEFAULT_FIELDS)
         .with_output_schema::<DnsSetResult>()
         .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
@@ -142,7 +156,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .into_cli_error());
             }
             let desired = v3_records(&name, &record_type, &data, &opts);
-            let plan = plan_set(&existing, &desired);
+            let plan = plan_set(&existing, &desired, opts.ttl);
             if ctx.dry_run() {
                 let mut preview = dry_run_set_preview(&domain, &record_type, &name, &plan);
                 domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
@@ -163,15 +177,27 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             value: &value,
                             opts: &opts,
                             replace_conflicting,
+                            replacing: None,
                             debug,
                         };
-                        let old_record = existing
+                        let old_ttl = existing
                             .iter()
-                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()));
-                        let old_detail = record_label(&existing, &record_type, &record_id);
-                        outcomes.extend(
-                            apply_replace(&client, &req, &record_id, &old_detail, old_record).await,
-                        );
+                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
+                            .map(|r| r.ttl);
+                        outcomes.extend(apply_replace(&client, &req, &record_id, old_ttl).await);
+                    }
+                    SetAction::Unchanged {
+                        record_id,
+                        data: value,
+                    } => {
+                        let mut outcome = SetOutcome::new("unchanged", value, None);
+                        if let Some(record) = existing
+                            .iter()
+                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
+                        {
+                            outcome = outcome.with_record(record.clone());
+                        }
+                        outcomes.push(outcome);
                     }
                     SetAction::Create { data: value } => {
                         let req = WriteRequest {
@@ -181,6 +207,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             value: &value,
                             opts: &opts,
                             replace_conflicting,
+                            replacing: None,
                             debug,
                         };
                         outcomes.extend(write_with_conflict_handling(&client, &req).await);
@@ -204,9 +231,32 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             }
 
-            summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
-                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
-                .map_err(super::mutate_failed)
+            let mut summary = summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
+                .map_err(super::mutate_failed)?;
+            if let Some(records) = summary.get_mut("records").and_then(Value::as_array_mut) {
+                for record in records {
+                    domain_format.convert_fields(record, &["name"]);
+                }
+            }
+            // The plan came from one earlier read, so confirm the type+name now
+            // holds exactly what was asked for before reporting success.
+            verify_final_state(
+                &client,
+                domain.as_str(),
+                &record_type,
+                &name,
+                &desired,
+                opts.ttl.is_some(),
+                debug,
+            )
+            .await?;
+            Ok(verified_result(
+                domain_format,
+                summary,
+                &domain,
+                &record_type,
+                &name,
+            ))
         },
     )
 }

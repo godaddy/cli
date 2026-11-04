@@ -25,6 +25,9 @@ pub(super) const LISTABLE_TYPES: &[&str] = &[
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
+/// The TTL range (seconds) the API accepts: 10 minutes to 24 hours.
+const MIN_TTL: i64 = 600;
+const MAX_TTL: i64 = 86_400;
 /// The output fields of a DNS write that hold the zone and the record name.
 pub(super) const ZONE_AND_NAME: &[&str] = &["domain", "name"];
 
@@ -73,6 +76,7 @@ pub(super) fn parse_list_type_arg(raw: &str) -> Result<String, String> {
 /// Optional record fields shared by `add` and `set`, including the CAA-only
 /// `flag`/`tag`, the TLSA-only `usage`/`selector`/`matching_type`, and the
 /// HTTPS/SVCB-only `parameters` (SvcParams).
+#[derive(Clone)]
 pub(super) struct RecordOptions {
     pub(super) ttl: Option<i64>,
     pub(super) priority: Option<i64>,
@@ -148,8 +152,9 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "VALUE", required = true)]
     pub(super) data: Vec<String>,
 
-    /// Time-to-live in seconds (defaults to 3600 when omitted).
-    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(i64).range(1..))]
+    /// Time-to-live in seconds, 600 (10 minutes) to 86400 (24 hours). Defaults
+    /// to 3600 when omitted; `set` keeps a record's current TTL instead.
+    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(i64).range(MIN_TTL..=MAX_TTL))]
     pub(super) ttl: Option<i64>,
 
     /// Record priority (MX, SRV, HTTPS, and SVCB only). For HTTPS/SVCB, 0
