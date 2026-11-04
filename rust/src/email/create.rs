@@ -1,12 +1,13 @@
+use std::io::Write as _;
+
 use cli_engine::{
-    CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, StreamSender, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
 use email_client::types;
-use serde_json::json;
 
 use crate::email::client::ClientError;
-use crate::email::common::fail_streaming;
 use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
+use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_CREATE;
 
@@ -71,94 +72,95 @@ fn create_next_actions(data: &types::CreateMailboxResponse) -> Vec<NextAction> {
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_streaming::<CreateArgs, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<CreateArgs, _, _, _>(
         CommandSpec::from_args::<CreateArgs>("create", "Create a new Email mailbox")
             .with_system("email")
             .with_tier(Tier::Mutate)
             .mutates(true)
             .with_json_schema::<types::CreateMailboxResponse>()
             .with_scopes(&[EMAIL_CREATE]),
-        |ctx, args: CreateArgs, sender: StreamSender| async move {
-            let client = match make_client(&ctx, &[EMAIL_CREATE]).await {
-                Ok(c) => c,
-                Err(e) => return Err(fail_streaming(&sender, e).await),
-            };
+        |ctx, args: CreateArgs| async move {
+            let client = make_client(&ctx, &[EMAIL_CREATE]).await?;
 
-            // Check eligibility first to detect and handle any MICROSOFT_MCA
-            // requirement via browser attestation before attempting creation.
-            // Eligibility errors are ignored — the create call surfaces plan
-            // issues with cleaner, action-specific messages.
+            // Check eligibility first to detect any MICROSOFT_MCA requirement.
+            // If one is present, open the acceptance URL in the browser and ask
+            // the user to re-run once accepted. Eligibility errors are ignored
+            // here — the create call will surface plan issues with clearer messages.
             if let Ok(eligibility) = client.check_eligibility(&args.email).await
                 && let Some(req) = eligibility
                     .eligible_accounts
                     .iter()
                     .find_map(super::terms_acceptance::extract_mca_requirement)
-                && let Err(e) =
-                    super::terms_acceptance::wait_for_acceptance(&req, &client, &sender).await
             {
-                return Err(fail_streaming(&sender, e).await);
+                let browser_opened = open::that(&req.acceptance_url).is_ok();
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "A browser tab was opened to accept the Microsoft Customer Agreement.\n\
+                     If it doesn't open automatically, visit:\n  {}\n\
+                     Once you accept, mailbox creation will continue automatically — \
+                     no need to re-run the command.",
+                    req.acceptance_url
+                );
+                if !browser_opened {
+                    return Err(
+                        GddyError::validation("Could not open a browser automatically.")
+                            .with_fix(
+                                "Open the URL above in a browser, accept the Microsoft \
+                         Customer Agreement, then re-run this command.",
+                            )
+                            .into_cli_error(),
+                    );
+                }
+                super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email).await?;
             }
 
             let body = request_body(&args);
-            let data = match client.create_mailbox(body).await {
-                Ok(d) => d,
-                Err(e) => {
-                    let err = match &e {
-                        ClientError::Http { status, body }
-                            if (*status == 422)
-                                && (body_has_issue(body, "NEEDS_TITAN_PLAN")
-                                    || body_has_issue(body, "NEEDS_MICROSOFT_PLAN")
-                                    || body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE")) =>
-                        {
-                            let fix = if body_has_issue(body, "NEEDS_MICROSOFT_PLAN") {
-                                "Run: 'gddy shopping catalog search --query microsoft' \
-                                 to see available Microsoft 365 email plans, select one to purchase, then retry."
-                            } else {
-                                "Run: 'gddy shopping catalog search --query titan' \
-                                 to see available email plans, select one to purchase, then retry."
-                            };
-                            client_err_with_fix(e, fix)
-                        }
-                        ClientError::Http { status, body }
-                            if *status == 422
-                                && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
-                        {
-                            client_err_with_fix(
-                                e,
-                                "Go to the GoDaddy Email dashboard \
-                                 (https://productivity.godaddy.com/addnewemail) to create the \
-                                 mailbox manually — this domain's plan doesn't support \
-                                 provisioning via this API.",
-                            )
-                        }
-                        ClientError::Http { status, .. } if *status == 400 || *status == 422 => {
-                            client_err_with_fix(
-                                e,
-                                format!(
-                                    "This looks like a business-rule failure (missing agreements \
-                                     or no eligible account). Run: gddy email check-eligibility \
-                                     --email {}",
-                                    args.email
-                                ),
-                            )
-                        }
-                        _ => client_err(e),
+            let data = client.create_mailbox(body).await.map_err(|e| match &e {
+                ClientError::Http { status, body }
+                    if (*status == 422)
+                        && (body_has_issue(body, "NEEDS_TITAN_PLAN")
+                            || body_has_issue(body, "NEEDS_MICROSOFT_PLAN")
+                            || body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE")) =>
+                {
+                    let fix = if body_has_issue(body, "NEEDS_MICROSOFT_PLAN") {
+                        "Run: 'gddy shopping catalog search --query microsoft' \
+                         to see available Microsoft 365 email plans, select one to purchase, then retry."
+                    } else {
+                        "Run: 'gddy shopping catalog search --query titan' \
+                         to see available email plans, select one to purchase, then retry."
                     };
-                    return Err(fail_streaming(&sender, err).await);
+                    client_err_with_fix(e, fix)
                 }
-            };
+                ClientError::Http { status, body }
+                    if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                {
+                    client_err_with_fix(
+                        e,
+                        "Go to the GoDaddy Email dashboard \
+                         (https://productivity.godaddy.com/addnewemail) to create the \
+                         mailbox manually — this domain's plan doesn't support \
+                         provisioning via this API.",
+                    )
+                }
+                ClientError::Http { status, .. } if *status == 400 || *status == 422 => {
+                    client_err_with_fix(
+                        e,
+                        format!(
+                            "This looks like a business-rule failure (missing agreements \
+                             or no eligible account). Run: gddy email check-eligibility \
+                             --email {}",
+                            args.email
+                        ),
+                    )
+                }
+                _ => client_err(e),
+            })?;
 
             let next_actions = create_next_actions(&data);
-            let result = serde_json::to_value(&data).unwrap_or_default();
-            sender
-                .send(json!({
-                    "type": "result",
-                    "ok": true,
-                    "result": result,
-                    "next_actions": next_actions,
-                }))
-                .await;
-            Ok(())
+            let value = serde_json::to_value(&data).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize create response: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }

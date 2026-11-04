@@ -1,11 +1,9 @@
 use cli_engine::{
-    CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, StreamSender, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
 use email_client::types;
-use serde_json::{Value, json};
 
 use crate::email::client::ClientError;
-use crate::email::common::fail_streaming;
 use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_READ;
@@ -17,53 +15,43 @@ struct CheckEligibilityArgs {
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_streaming::<CheckEligibilityArgs, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<CheckEligibilityArgs, _, _, _>(
         CommandSpec::from_args::<CheckEligibilityArgs>(
             "check-eligibility",
             "Check whether an email address is eligible for a new mailbox",
         )
         .with_system("email")
         .with_tier(Tier::Read)
+        .with_json_schema::<types::EligibilityResult>()
         .with_scopes(&[EMAIL_READ]),
-        |ctx, args: CheckEligibilityArgs, sender: StreamSender| async move {
-            let client = match make_client(&ctx, &[EMAIL_READ]).await {
-                Ok(c) => c,
-                Err(e) => return Err(fail_streaming(&sender, e).await),
-            };
-
-            let data = match client.check_eligibility(&args.email).await {
-                Ok(d) => d,
-                Err(ClientError::Http { status: 422, body })
-                    if body_has_issue(&body, "NEEDS_TITAN_PLAN")
-                        || body_has_issue(&body, "NEEDS_MICROSOFT_PLAN")
-                        || body_has_issue(&body, "EMAIL_PLAN_NOT_AVAILABLE") =>
-                {
-                    let fix = if body_has_issue(&body, "NEEDS_MICROSOFT_PLAN") {
-                        "Run: 'gddy shopping catalog search --query microsoft' \
-                         to see available Microsoft 365 email plans, select one to purchase, then retry."
-                    } else {
-                        "Run: 'gddy shopping catalog search --query titan' \
-                         to see available email plans, select one to purchase, then retry."
-                    };
-                    return Err(fail_streaming(
-                        &sender,
-                        client_err_with_fix(ClientError::Http { status: 422, body }, fix),
-                    )
-                    .await);
-                }
-                Err(e) => return Err(fail_streaming(&sender, client_err(e)).await),
-            };
-
+        |ctx, args: CheckEligibilityArgs| async move {
+            let client = make_client(&ctx, &[EMAIL_READ]).await?;
+            let data = client
+                .check_eligibility(&args.email)
+                .await
+                .map_err(|e| match &e {
+                    ClientError::Http { status, body }
+                        if (*status == 422)
+                            && (body_has_issue(body, "NEEDS_TITAN_PLAN")
+                                || body_has_issue(body, "NEEDS_MICROSOFT_PLAN")
+                                || body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE")) =>
+                    {
+                        let fix = if body_has_issue(body, "NEEDS_MICROSOFT_PLAN") {
+                            "Run: 'gddy shopping catalog search --query microsoft' \
+                             to see available Microsoft 365 email plans, select one to purchase, then retry."
+                        } else {
+                            "Run: 'gddy shopping catalog search --query titan' \
+                             to see available email plans, select one to purchase, then retry."
+                        };
+                        client_err_with_fix(e, fix)
+                    }
+                    _ => client_err(e),
+                })?;
             let next_actions = eligibility_next_actions(&args.email, &data);
-            sender
-                .send(json!({
-                    "type": "result",
-                    "ok": true,
-                    "result": data,
-                    "next_actions": next_actions,
-                }))
-                .await;
-            Ok(())
+            let value = serde_json::to_value(&data).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize eligibility result: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }
@@ -95,12 +83,6 @@ fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec
     actions.push(next_action("guide email", "Learn about email accounts"));
     actions
 }
-
-// Used to silence an unused-import warning when `Value` is only referenced in
-// the error-event helper that was moved to `common`.
-const _: fn() = || {
-    let _: Value;
-};
 
 #[cfg(test)]
 mod tests {
