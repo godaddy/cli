@@ -366,19 +366,49 @@ pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
 /// rather than a hand-maintained field list, so a future `DnsRecord` field
 /// is covered without another update here.
 pub(super) fn same_content(a: &types::DnsRecord, b: &types::DnsRecord) -> bool {
-    // `DnsRecord` is all plain String/Option/newtype fields, so this should
-    // never actually fail — falling back to a placeholder value on error
-    // would let two unrelated records that both failed to serialize compare
-    // as "equal" and silently skip a real change.
-    let strip = |r: &types::DnsRecord| {
-        let mut v = serde_json::to_value(r).expect("DnsRecord always serializes to JSON");
-        if let Some(obj) = v.as_object_mut() {
-            obj.remove("ttl");
-            obj.remove("recordId");
+    comparable(a, false) == comparable(b, false)
+}
+
+/// The content of a record as the API would hold it, for comparing two records
+/// that are meant to be the same. Drops `recordId` and, unless `compare_ttl`,
+/// `ttl`; the API stores record names lower-cased, and hostname-valued `data`
+/// lower-cased with a trailing dot (`Example.COM` comes back as `example.com.`),
+/// so those are compared in that form. CAA `data` (the API lower-cases it, URLs
+/// included) and TLSA `certificateData` (hex) are compared without case. Everything
+/// else is compared exactly — the API keeps TXT text, AAAA addresses, HTTPS/SVCB
+/// `parameters` and SRV `service`/`protocol` as written, so case in them is real.
+///
+/// Compares via JSON rather than a hand-maintained field list, so a future
+/// `DnsRecord` field is covered without another update here. `DnsRecord` is all
+/// plain String/Option/newtype fields, so serializing it should never fail —
+/// falling back to a placeholder on error would let two unrelated records that
+/// both failed to serialize compare as "equal" and silently skip a real change.
+pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value {
+    let mut value = serde_json::to_value(record).expect("DnsRecord always serializes to JSON");
+    let record_type = record.type_.as_str();
+    if let Some(fields) = value.as_object_mut() {
+        fields.remove("recordId");
+        if !compare_ttl {
+            fields.remove("ttl");
         }
-        v
-    };
-    strip(a) == strip(b)
+        if let Some(Value::String(name)) = fields.get_mut("name") {
+            *name = name.to_lowercase();
+        }
+        if let Some(Value::String(data)) = fields.get_mut("data") {
+            match record_type {
+                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
+                    *data = data.trim_end_matches('.').to_lowercase();
+                }
+                "CAA" => *data = data.to_lowercase(),
+                _ => {}
+            }
+        }
+        // Hex digits mean the same in either case.
+        if let Some(Value::String(cert)) = fields.get_mut("certificateData") {
+            *cert = cert.to_lowercase();
+        }
+    }
+    value
 }
 
 /// Types the API stores under a composed name (`_service._proto.name` for SRV,

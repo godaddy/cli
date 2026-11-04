@@ -508,6 +508,33 @@ fn merged_tlsa_data_falls_back_to_certificate_data_when_a_numeric_field_is_missi
 }
 
 #[test]
+fn same_content_follows_how_the_api_stores_each_field() {
+    let same = |ty: &str, a: &str, b: &str| {
+        same_content(
+            &v3_record("w", ty, a, &opts()),
+            &v3_record("w", ty, b, &opts()),
+        )
+    };
+    // Hostnames: case and a trailing dot are not differences.
+    assert!(same("CNAME", "Example.COM", "example.com."));
+    assert!(same("ALIAS", "Example.COM", "example.com."));
+    assert!(same("MX", "Mail.Example.com", "mail.example.com."));
+    // CAA data and TLSA hex are case-insensitive.
+    assert!(same("CAA", "Letsencrypt.org", "letsencrypt.org"));
+    // Text the API keeps as written is compared exactly.
+    assert!(!same("TXT", "Hello", "hello"));
+    assert!(!same("AAAA", "2001:DB8::1", "2001:db8::1"));
+    let mut a = opts();
+    a.parameters = Some("ech=AbCd==".to_owned());
+    let mut b = opts();
+    b.parameters = Some("ech=abcd==".to_owned());
+    assert!(!same_content(
+        &v3_record("w", "HTTPS", ".", &a),
+        &v3_record("w", "HTTPS", ".", &b)
+    ));
+}
+
+#[test]
 fn same_content_compares_every_field_except_ttl_and_record_id() {
     let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
     let mut tlsa_opts = opts();
