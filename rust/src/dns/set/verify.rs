@@ -5,9 +5,8 @@
 
 use cli_engine::CliCoreError;
 use domains_client::types;
-use serde_json::Value;
 
-use crate::dns::records::{fetch_records, record_value};
+use crate::dns::records::{comparable, fetch_records, record_value};
 
 /// What differs between the records asked for and the records now present.
 #[derive(Debug, PartialEq)]
@@ -16,33 +15,6 @@ pub(super) struct Mismatch {
     pub(super) missing: Vec<String>,
     /// Present, but not asked for.
     pub(super) unexpected: Vec<String>,
-}
-
-/// The comparable content of a record: everything but its id and its type and
-/// name (every record compared was fetched or built for the same type+name), and
-/// its TTL unless the caller set one. The API stores domain names lower-cased
-/// with a trailing dot (`Example.COM` comes back as `example.com.`), so text
-/// fields are compared in that form; TXT is left as written since its text is
-/// case-sensitive.
-fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value {
-    let mut value = serde_json::to_value(record).expect("DnsRecord always serializes to JSON");
-    let is_txt = record.type_.as_str() == "TXT";
-    if let Some(fields) = value.as_object_mut() {
-        for key in ["recordId", "type", "name"] {
-            fields.remove(key);
-        }
-        if !compare_ttl {
-            fields.remove("ttl");
-        }
-        if !is_txt {
-            for field in fields.values_mut() {
-                if let Value::String(text) = field {
-                    *text = text.trim_end_matches('.').to_lowercase();
-                }
-            }
-        }
-    }
-    value
 }
 
 /// A short human label for a record, including the fields that tell records
@@ -83,7 +55,7 @@ pub(super) fn final_set_mismatch(
     actual: &[types::DnsRecord],
     compare_ttl: bool,
 ) -> Option<Mismatch> {
-    let mut remaining: Vec<(Value, &types::DnsRecord)> = actual
+    let mut remaining: Vec<(serde_json::Value, &types::DnsRecord)> = actual
         .iter()
         .map(|r| (comparable(r, compare_ttl), r))
         .collect();
@@ -108,8 +80,8 @@ pub(super) fn final_set_mismatch(
     }
 }
 
-/// Read the type+name back and check it against `desired`. `Ok(())` when they
-/// match; otherwise a non-zero error that lists what is extra and what is
+/// Read the type+name back and check it against `desired`. `Ok` with the records
+/// as they now stand when they match; otherwise a non-zero error that lists what is extra and what is
 /// missing and leaves the zone as it is — a record that appeared in the
 /// meantime may belong to someone else, so it is reported rather than removed.
 pub(super) async fn verify_final_state(
@@ -120,7 +92,7 @@ pub(super) async fn verify_final_state(
     desired: &[types::DnsRecord],
     compare_ttl: bool,
     debug: bool,
-) -> Result<(), CliCoreError> {
+) -> Result<Vec<types::DnsRecord>, CliCoreError> {
     let review = format!("gddy dns list {domain} --type {record_type} --name {name}");
     let actual = fetch_records(client, domain, Some(record_type), Some(name), debug)
         .await
@@ -134,7 +106,7 @@ pub(super) async fn verify_final_state(
         })?;
 
     let Some(mismatch) = final_set_mismatch(desired, &actual, compare_ttl) else {
-        return Ok(());
+        return Ok(actual);
     };
     let list = |items: &[String]| {
         items

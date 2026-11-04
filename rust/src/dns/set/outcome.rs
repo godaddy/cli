@@ -5,7 +5,6 @@
 use domains_client::types;
 use serde_json::{Value, json};
 
-use super::super::list::build_list_output;
 use super::super::records::record_value;
 use super::plan::SetAction;
 
@@ -17,9 +16,6 @@ pub(super) struct SetOutcome {
     pub(super) detail: String,
     /// `Some(msg)` if the call failed.
     pub(super) error: Option<String>,
-    /// The record as the API returned it after a successful create or
-    /// replace, or as it already stood for a replace that needed no change.
-    pub(super) record: Option<types::DnsRecord>,
 }
 
 impl SetOutcome {
@@ -28,19 +24,12 @@ impl SetOutcome {
             kind,
             detail,
             error,
-            record: None,
         }
-    }
-
-    pub(super) fn with_record(mut self, record: types::DnsRecord) -> Self {
-        self.record = Some(record);
-        self
     }
 }
 
 /// Build the `set` result from the applied reconcile outcomes: `Ok(json)` with
-/// replaced/created/deleted counts and the records now in place (as `dns list`
-/// shows them) when every action succeeded, or `Err(message)`
+/// replaced/unchanged/created/deleted counts when every action succeeded, or `Err(message)`
 /// — a non-zero exit — with a per-action ✓/✗ breakdown if any failed. Pure so the
 /// success/failure decision and tallies are unit-testable.
 pub(super) fn summarize_set_outcomes(
@@ -80,10 +69,6 @@ pub(super) fn summarize_set_outcomes(
         ));
     }
 
-    let written: Vec<types::DnsRecord> = outcomes.iter().filter_map(|o| o.record.clone()).collect();
-    let records = build_list_output(&written)
-        .map_err(|e| format!("failed to serialize the resulting DNS records: {e}"))?;
-
     Ok(json!({
         "domain": domain,
         "type": record_type,
@@ -93,7 +78,6 @@ pub(super) fn summarize_set_outcomes(
         "created": created,
         "deleted": deleted,
         "action": "set",
-        "records": records,
     }))
 }
 
@@ -215,23 +199,6 @@ mod tests {
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
-    }
-
-    #[test]
-    fn summarize_set_lists_the_records_the_api_returned() {
-        let mut stored = tlsa_record("r1", "abc");
-        stored.type_ = types::DnsRecordType("A".to_owned());
-        stored.certificate_data = None;
-        stored.data = Some("9.9.9.9".to_owned());
-        let outcomes = vec![
-            SetOutcome::new("replaced", "9.9.9.9".into(), None).with_record(stored),
-            SetOutcome::new("deleted", "r3".into(), None),
-        ];
-        let v = summarize_set_outcomes("example.com", "A", "www", &outcomes).expect("all ok");
-        let records = v["records"].as_array().expect("records array");
-        assert_eq!(records.len(), 1, "a delete leaves no record behind: {v}");
-        assert_eq!(records[0]["data"], "9.9.9.9");
-        assert_eq!(records[0]["recordId"], "r1");
     }
 
     #[test]

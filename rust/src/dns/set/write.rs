@@ -30,12 +30,12 @@ pub(super) struct WriteRequest<'a> {
 }
 
 /// Send `body` as a create, or — when `req.replacing` names a record — as an
-/// in-place replace of that record. Returns the record as the API stored it.
+/// in-place replace of that record.
 async fn send_record(
     client: &domains_client::Client,
     req: &WriteRequest<'_>,
     body: types::DnsRecord,
-) -> Result<types::DnsRecord, Box<domains_client::Error<()>>> {
+) -> Result<(), Box<domains_client::Error<()>>> {
     match req.replacing {
         Some(record_id) => client
             .replace_dns_record()
@@ -44,7 +44,7 @@ async fn send_record(
             .body(body)
             .send()
             .await
-            .map(|response| response.into_inner())
+            .map(|_| ())
             .map_err(Box::new),
         None => client
             .create_dns_record()
@@ -52,7 +52,7 @@ async fn send_record(
             .body(body)
             .send()
             .await
-            .map(|response| response.into_inner())
+            .map(|_| ())
             .map_err(Box::new),
     }
 }
@@ -129,7 +129,7 @@ pub(super) async fn write_with_conflict_handling(
 
     let body = v3_record(req.name, req.record_type, req.value, req.opts);
     let err = match send_record(client, req, body).await {
-        Ok(record) => return vec![outcome(None).with_record(record)],
+        Ok(()) => return vec![outcome(None)],
         Err(e) => *e,
     };
     let domains_client::Error::UnexpectedResponse(resp) = err else {
@@ -184,7 +184,7 @@ pub(super) async fn write_with_conflict_handling(
     let mut outcomes = delete_conflicts(client, req.domain, &conflicts, req.debug).await;
     let retry_body = v3_record(req.name, req.record_type, req.value, req.opts);
     let retried = match send_record(client, req, retry_body).await {
-        Ok(record) => outcome(None).with_record(record),
+        Ok(()) => outcome(None),
         Err(e) => outcome(Some(api_error(action, req.debug, *e).await.to_string())),
     };
     outcomes.push(retried);

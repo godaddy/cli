@@ -367,6 +367,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn plan_set_treats_an_api_normalized_record_as_unchanged() {
+        // `Example.COM` is stored as `example.com.`; asking for it again is a
+        // no-op, not another replace.
+        let existing = [stored("r1", "CNAME", "example.com.", &opts())];
+        let desired = [wanted("CNAME", "Example.COM", &opts())];
+        assert_eq!(
+            plan_set(&existing, &desired, None),
+            vec![SetAction::Unchanged {
+                record_id: "r1".into(),
+                data: "Example.COM".into()
+            }]
+        );
+    }
+
     fn srv_opts() -> RecordOptions {
         RecordOptions {
             priority: Some(1),
