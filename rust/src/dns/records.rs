@@ -178,7 +178,7 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "SERVICE")]
     pub(super) service: Option<String>,
 
-    /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical).
+    /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical). Defaults to 0.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255))]
     pub(super) flag: Option<i64>,
 
@@ -290,7 +290,11 @@ pub(super) fn v3_record(
             .flatten()
             .map(types::TlsaUsage),
         data: (!is_tlsa).then(|| data.to_owned()),
-        flag: opts.flag.and_then(|n| u8::try_from(n).ok()),
+        // The API requires a flag on CAA records; 0 (non-critical) is the usual one.
+        flag: opts
+            .flag
+            .or((ty == "CAA").then_some(0))
+            .and_then(|n| u8::try_from(n).ok()),
         name: name.to_owned(),
         parameters: opts.parameters.clone(),
         port: to_u16(opts.port),
