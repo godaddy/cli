@@ -381,9 +381,19 @@ pub(super) fn same_content(a: &types::DnsRecord, b: &types::DnsRecord) -> bool {
     strip(a) == strip(b)
 }
 
+/// Types the API stores under a composed name (`_service._proto.name` for SRV,
+/// `_port._proto.name` for TLSA), while a list response shows only the short
+/// `name` plus separate fields. A server-side `name` filter for those types
+/// matches the composed form, so filtering by the short name finds nothing.
+const COMPOSITE_NAME_TYPES: &[&str] = &["SRV", "TLSA"];
+
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
 /// filters, paging through the collection (v3 list is paginated). Shared by
 /// `list`, `set`, and `delete` — the latter two need the matching records' ids.
+///
+/// For SRV and TLSA the `name` is matched here, against each record's short
+/// name, rather than sent to the API: its filter only understands the composed
+/// name, so it would return nothing for the name the record is listed under.
 pub(super) async fn fetch_records(
     client: &domains_client::Client,
     zone: &str,
@@ -391,6 +401,8 @@ pub(super) async fn fetch_records(
     name: Option<&str>,
     debug: bool,
 ) -> Result<Vec<types::DnsRecord>, CliCoreError> {
+    let match_name_here = type_.is_some_and(|t| COMPOSITE_NAME_TYPES.contains(&t));
+    let server_name = if match_name_here { None } else { name };
     let mut all = Vec::new();
     let mut page: u64 = 1;
     loop {
@@ -404,7 +416,7 @@ pub(super) async fn fetch_records(
         if let Some(t) = type_ {
             req = req.type_(types::DnsRecordType(t.to_owned()));
         }
-        if let Some(n) = name {
+        if let Some(n) = server_name {
             req = req.name(n);
         }
         let body = match req.send().await {
@@ -424,6 +436,9 @@ pub(super) async fn fetch_records(
             break;
         }
         page += 1;
+    }
+    if match_name_here && let Some(wanted) = name {
+        all.retain(|record| record.name.eq_ignore_ascii_case(wanted));
     }
     Ok(all)
 }
@@ -460,6 +475,157 @@ pub(super) fn verified_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
+    use serde_json::{Value, json};
+
+    fn client_for(server: &MockServer) -> domains_client::Client {
+        domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client")
+    }
+
+    fn srv(id: &str, name: &str, service: &str) -> Value {
+        json!({
+            "recordId": id, "type": "SRV", "name": name, "data": "t.example.com.", "ttl": 3600,
+            "priority": 1, "weight": 1, "port": 5222, "service": service, "protocol": "_tcp"
+        })
+    }
+
+    /// SRV is listed under its short name but filtered by its composed one, so
+    /// the name is matched here: no `name` goes to the API, and every record
+    /// whose listed name matches comes back, whatever its service.
+    #[tokio::test]
+    async fn fetch_records_matches_an_srv_name_client_side() {
+        let server = MockServer::start_async().await;
+        let list = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "SRV")
+                    .query_param_missing("name");
+                then.status(200).json_body(json!({
+                    "items": [
+                        srv("r1", "chat", "_xmpp"),
+                        srv("r2", "Chat", "_xmpps"),
+                        srv("r3", "other", "_sip")
+                    ],
+                    "links": []
+                }));
+            })
+            .await;
+
+        let found = fetch_records(
+            &client_for(&server),
+            "example.com",
+            Some("SRV"),
+            Some("chat"),
+            false,
+        )
+        .await
+        .expect("list");
+
+        list.assert_async().await;
+        let ids: Vec<_> = found
+            .iter()
+            .filter_map(|r| r.record_id.as_deref())
+            .collect();
+        assert_eq!(ids, ["r1", "r2"], "every service under the name, any case");
+    }
+
+    /// A TLSA name is composed the same way, so it is matched here too.
+    #[tokio::test]
+    async fn fetch_records_matches_a_tlsa_name_client_side() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "TLSA")
+                    .query_param_missing("name");
+                then.status(200).json_body(json!({
+                    "items": [
+                        { "recordId": "t1", "type": "TLSA", "name": "www", "ttl": 3600, "port": 443,
+                          "protocol": "_tcp", "usage": 3, "selector": 1, "matchingType": 1,
+                          "certificateData": "abcd" },
+                        { "recordId": "t2", "type": "TLSA", "name": "mail", "ttl": 3600, "port": 25,
+                          "protocol": "_tcp", "usage": 3, "selector": 1, "matchingType": 1,
+                          "certificateData": "abcd" }
+                    ],
+                    "links": []
+                }));
+            })
+            .await;
+
+        let found = fetch_records(
+            &client_for(&server),
+            "example.com",
+            Some("TLSA"),
+            Some("www"),
+            false,
+        )
+        .await
+        .expect("list");
+        let ids: Vec<_> = found
+            .iter()
+            .filter_map(|r| r.record_id.as_deref())
+            .collect();
+        assert_eq!(ids, ["t1"]);
+    }
+
+    /// An SRV list with no name has nothing to match, and every other type
+    /// still filters on the server.
+    #[tokio::test]
+    async fn fetch_records_keeps_server_side_filtering_everywhere_else() {
+        let server = MockServer::start_async().await;
+        let by_name = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "A")
+                    .query_param("name", "www");
+                then.status(200).json_body(json!({
+                    "items": [{ "recordId": "a1", "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600 }],
+                    "links": []
+                }));
+            })
+            .await;
+        let found = fetch_records(
+            &client_for(&server),
+            "example.com",
+            Some("A"),
+            Some("www"),
+            false,
+        )
+        .await
+        .expect("list");
+        by_name.assert_async().await;
+        assert_eq!(found.len(), 1);
+
+        let all_srv = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "SRV");
+                then.status(200)
+                    .json_body(json!({ "items": [srv("r1", "chat", "_xmpp")], "links": [] }));
+            })
+            .await;
+        let found = fetch_records(
+            &client_for(&server),
+            "example.com",
+            Some("SRV"),
+            None,
+            false,
+        )
+        .await
+        .expect("list");
+        all_srv.assert_async().await;
+        assert_eq!(found.len(), 1, "no name given, nothing to filter out");
+    }
 
     #[test]
     fn verified_result_shows_the_requested_form_of_zone_and_name() {
