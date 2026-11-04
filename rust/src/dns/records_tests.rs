@@ -136,6 +136,44 @@ fn listed_name_matches_composes_apex_names_without_a_suffix() {
     assert!(!listed_name_matches(&tlsa_apex, "_443._tcp.@"));
 }
 
+/// When one record is listed under exactly the name given, only that name's
+/// records are selected: `chat` and a record literally named `_sip._tcp.chat`
+/// are different owners, and neither selector may reach the other.
+#[tokio::test]
+async fn fetch_records_does_not_cross_owners_when_a_name_is_also_a_composed_name() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v3/domains/zones/example.com/dns-records")
+                .query_param("type", "SRV");
+            then.status(200).json_body(json!({
+                "items": [srv("r1", "chat", "_sip"), srv("r2", "_sip._tcp.chat", "_sip")],
+                "links": []
+            }));
+        })
+        .await;
+    let client = client_for(&server);
+    let ids = |found: Vec<types::DnsRecord>| -> Vec<String> {
+        found.into_iter().filter_map(|r| r.record_id).collect()
+    };
+
+    let literal = fetch_records(
+        &client,
+        "example.com",
+        Some("SRV"),
+        Some("_sip._tcp.chat"),
+        false,
+    )
+    .await
+    .expect("list");
+    assert_eq!(ids(literal), ["r2"], "the exact name wins");
+    let short = fetch_records(&client, "example.com", Some("SRV"), Some("chat"), false)
+        .await
+        .expect("list");
+    assert_eq!(ids(short), ["r1"]);
+}
+
 /// A TLSA name is composed the same way, so it is matched here too.
 #[tokio::test]
 async fn fetch_records_matches_a_tlsa_name_client_side() {

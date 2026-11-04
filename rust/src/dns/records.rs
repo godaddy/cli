@@ -438,7 +438,17 @@ pub(super) async fn fetch_records(
         page += 1;
     }
     if match_name_here && let Some(wanted) = name {
-        all.retain(|record| listed_name_matches(record, wanted));
+        // A record listed under exactly this name wins. Otherwise `chat` and a
+        // separate record named `_sip._tcp.chat` would both answer to
+        // `_sip._tcp.chat`, and a delete would reach an owner it never named.
+        if all
+            .iter()
+            .any(|record| record.name.eq_ignore_ascii_case(wanted))
+        {
+            all.retain(|record| record.name.eq_ignore_ascii_case(wanted));
+        } else {
+            all.retain(|record| listed_name_matches(record, wanted));
+        }
     }
     Ok(all)
 }
