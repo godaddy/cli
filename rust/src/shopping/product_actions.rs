@@ -10,7 +10,7 @@ use crate::next_action::next_action;
 const CATEGORY_ACTIONS: &[(&str, &str, &str)] = &[
     (
         "webHosting",
-        "guide hosting",
+        "guide hosting-nodejs",
         "Set up your Web Hosting product",
     ),
     ("email", "guide email", "Set up your Email product"),
@@ -110,7 +110,7 @@ mod tests {
         let actions = post_purchase_actions(&lookup);
 
         assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy guide hosting");
+        assert_eq!(actions[0].command, "gddy guide hosting-nodejs");
         assert_eq!(actions[1].command, "gddy guide email");
     }
 

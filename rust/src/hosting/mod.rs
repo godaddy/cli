@@ -17,10 +17,16 @@ use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 pub fn module() -> Module {
     Module::new("Hosting", |ctx| {
         let mhwp = common::mhwp_enabled(&ctx.middleware().flag_policy);
-        // Registered here, not on the Module, so the guide is built from the same
-        // flag that decides which commands exist: it must never walk a reader
-        // into `hosting app publish` on a binary that does not register it.
+        // Registered here, not on the Module, so the guides are built from the
+        // same flag that decides which commands exist: they must never walk a
+        // reader into `hosting app publish` on a binary that does not register it.
+        // One call per guide: a call sorts its files by name, which would list
+        // `hosting-nodejs` ahead of the `hosting` index.
         ctx.add_guides_from_markdown([("hosting.md", common::hosting_guide(mhwp))]);
+        ctx.add_guides_from_markdown([("hosting-nodejs.md", common::NODEJS_GUIDE)]);
+        if mhwp {
+            ctx.add_guides_from_markdown([("hosting-wordpress.md", common::WORDPRESS_GUIDE)]);
+        }
         // Only WordPress sites have a publish state; name it only while the flag is on.
         let app_line = if mhwp {
             "Hosting applications (create, inspect, update, delete, restart, publish/unpublish)"
@@ -67,52 +73,46 @@ pub fn module() -> Module {
 
 #[cfg(test)]
 mod tests {
-    use super::common::hosting_guide;
-    use crate::hosting::test_support::{cli, run_hosting_guide};
+    use super::common::{NODEJS_GUIDE, WORDPRESS_GUIDE, hosting_guide};
+    use crate::hosting::test_support::{cli, run_guide};
 
     #[test]
-    fn the_guide_is_the_node_js_guide_until_the_wordpress_flag_is_on() {
+    fn the_index_names_wordpress_only_while_its_flag_is_on() {
         let off = hosting_guide(false);
         assert_eq!(off, include_str!("guides/hosting.md"));
-        for absent in [
-            "WordPress",
-            "MHWP",
-            "app publish",
-            "app unpublish",
-            "placeholder page",
-        ] {
+        assert!(off.contains("`gddy guide hosting-nodejs`"), "{off}");
+        for absent in ["WordPress", "MHWP", "hosting-wordpress"] {
             assert!(!off.contains(absent), "flag off still mentions {absent:?}");
         }
 
         let on = hosting_guide(true);
-        for present in [
-            "## WordPress (MHWP) sites",
-            "gddy hosting app publish --app-id",
-            "gddy hosting app unpublish --app-id",
-            "| `hosting app publish` / `hosting app unpublish` |",
-            "Restart an environment (Node.js) |",
-        ] {
-            assert!(on.contains(present), "flag on is missing {present:?}");
-        }
-        // Spliced in once, before Other commands, and nothing was dropped.
-        assert_eq!(on.matches("## WordPress (MHWP) sites").count(), 1);
-        assert_eq!(on.matches("## Other commands").count(), 1);
-        assert!(
-            on.find("## WordPress (MHWP) sites") < on.find("## Other commands"),
-            "the WordPress section must precede Other commands"
+        assert_eq!(
+            on.matches("`gddy guide hosting-wordpress`").count(),
+            1,
+            "{on}"
         );
-        assert!(!on.contains("Restart an environment |"), "{on}");
-        // Undoing both splices gives the flag-off guide back, so the WordPress
-        // text is purely additive.
-        let undone = on
-            .replace(include_str!("guides/hosting-wordpress.md"), "")
-            .replace(
-                "Restart an environment (Node.js) |\n| `hosting app publish` / \
-                 `hosting app unpublish` | Take a WordPress site live, or back to a \
-                 placeholder page |",
-                "Restart an environment |",
-            );
-        assert_eq!(undone, off);
+        assert!(
+            on.find("hosting-nodejs") < on.find("hosting-wordpress"),
+            "the WordPress row must follow the Node.js row: {on}"
+        );
+        // The WordPress row is the only difference.
+        let without_row: Vec<&str> = on
+            .lines()
+            .filter(|line| !line.contains("hosting-wordpress"))
+            .collect();
+        assert_eq!(without_row, off.lines().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn the_nodejs_guide_never_mentions_wordpress() {
+        for absent in [
+            "WordPress",
+            "MHWP",
+            "hosting app publish",
+            "placeholder page",
+        ] {
+            assert!(!NODEJS_GUIDE.contains(absent), "mentions {absent:?}");
+        }
     }
 
     /// The walkthrough has to say what the product is, not only which commands
@@ -120,29 +120,48 @@ mod tests {
     /// is edited, that there is no build or deploy, and that the CLI does not
     /// hold the WordPress password.
     #[test]
-    fn the_wordpress_section_explains_the_product() {
-        let on = hosting_guide(true);
+    fn the_wordpress_guide_explains_the_product() {
         for present in [
             "Airo App Builder subscription",
             "WordPress admin",
+            "## Concepts",
             "no source upload, no build",
             "does not become the WordPress site title",
             "placeholder page",
-            "### What the CLI does not do for WordPress sites",
+            "## What the CLI does not do for WordPress sites",
         ] {
-            assert!(on.contains(present), "the guide is missing {present:?}");
+            assert!(
+                WORDPRESS_GUIDE.contains(present),
+                "the guide is missing {present:?}"
+            );
         }
     }
 
     #[tokio::test]
-    async fn gddy_guide_hosting_follows_the_wordpress_flag() {
-        let off = run_hosting_guide(&cli(false)).await;
-        assert!(!off.contains("unpublish"), "{off}");
-        assert!(!off.contains("WordPress"), "{off}");
-        assert!(off.contains("Attach a plan"), "{off}");
+    async fn gddy_guide_offers_wordpress_only_while_its_flag_is_on() {
+        let off = cli(false);
+        let topics = run_guide(&off, None).await;
+        assert!(topics.contains("hosting-nodejs"), "{topics}");
+        assert!(!topics.contains("hosting-wordpress"), "{topics}");
+        let index = run_guide(&off, Some("hosting")).await;
+        assert!(!index.contains("WordPress"), "{index}");
+        let nodejs = run_guide(&off, Some("hosting-nodejs")).await;
+        assert!(nodejs.contains("Attach a plan"), "{nodejs}");
+        let wordpress = run_guide(&off, Some("hosting-wordpress")).await;
+        assert!(!wordpress.contains("Airo App Builder"), "{wordpress}");
 
-        let on = run_hosting_guide(&cli(true)).await;
-        assert!(on.contains("WordPress (MHWP) sites"), "{on}");
-        assert!(on.contains("hosting app unpublish"), "{on}");
+        let on = cli(true);
+        let topics = run_guide(&on, None).await;
+        // Listed index first, then the product guides, by their summaries.
+        let position = |summary: &str| topics.find(summary).expect(summary);
+        assert!(
+            position("Start here for GoDaddy hosting") < position("Deploy a Node.js app")
+                && position("Deploy a Node.js app") < position("Create a managed WordPress site"),
+            "{topics}"
+        );
+        let index = run_guide(&on, Some("hosting")).await;
+        assert!(index.contains("gddy guide hosting-wordpress"), "{index}");
+        let wordpress = run_guide(&on, Some("hosting-wordpress")).await;
+        assert!(wordpress.contains("hosting app unpublish"), "{wordpress}");
     }
 }

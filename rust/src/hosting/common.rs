@@ -243,36 +243,28 @@ pub const fn supported_app_types(mhwp: bool) -> &'static str {
     if mhwp { "NODEJS, MHWP" } else { "NODEJS" }
 }
 
-/// Markdown for `gddy guide hosting`.
+/// Markdown for `gddy guide hosting`, the index of the per-product guides.
 ///
-/// The guide must not name a command the binary does not register, so the
-/// WordPress go-live walkthrough is spliced in only while the MHWP flag is on:
-/// ahead of *Other commands*, whose restart row then says which product it is
-/// for and gains a publish/unpublish row. With the flag off the text is the
-/// Node.js-only guide, byte for byte.
+/// No guide may name a command the binary does not register, so the
+/// WordPress row joins the product table only while the MHWP flag is on.
 pub fn hosting_guide(mhwp: bool) -> String {
     if !mhwp {
         return HOSTING_GUIDE.to_owned();
     }
-    HOSTING_GUIDE
-        .replacen(
-            OTHER_COMMANDS_HEADING,
-            &format!("{WORDPRESS_SECTION}{OTHER_COMMANDS_HEADING}"),
-            1,
-        )
-        .replacen(RESTART_ROW, WORDPRESS_RESTART_ROWS, 1)
+    HOSTING_GUIDE.replacen(NODEJS_ROW, &format!("{NODEJS_ROW}\n{WORDPRESS_ROW}"), 1)
 }
 
+/// Markdown for `gddy guide hosting-nodejs`.
+pub const NODEJS_GUIDE: &str = include_str!("guides/hosting-nodejs.md");
+/// Markdown for `gddy guide hosting-wordpress`; registered only while the
+/// MHWP flag is on.
+pub const WORDPRESS_GUIDE: &str = include_str!("guides/hosting-wordpress.md");
+
 const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
-const WORDPRESS_SECTION: &str = include_str!("guides/hosting-wordpress.md");
-const OTHER_COMMANDS_HEADING: &str = "## Other commands";
-const RESTART_ROW: &str =
-    r"| `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment |";
-const WORDPRESS_RESTART_ROWS: &str = concat!(
-    r"| `hosting app restart --variant <PREVIEW\|PUBLISH>` | Restart an environment (Node.js) |",
-    "\n",
-    "| `hosting app publish` / `hosting app unpublish` | Take a WordPress site live, or back to a placeholder page |",
-);
+const NODEJS_ROW: &str = "| Node.js app: upload your source, preview it, then publish \
+     | `NODEJS` | `gddy guide hosting-nodejs` |";
+const WORDPRESS_ROW: &str = "| Managed WordPress site: edit it in WordPress, no build or \
+     deploy | `MHWP` | `gddy guide hosting-wordpress` |";
 
 /// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only
 /// while its feature flag is on.
