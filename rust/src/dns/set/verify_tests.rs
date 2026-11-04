@@ -142,6 +142,35 @@ fn case_sensitive_values_are_compared_exactly() {
 }
 
 #[test]
+fn a_ttl_mismatch_names_both_ttls() {
+    let mut slow = opts();
+    slow.ttl = Some(900);
+    let desired = [v3_record("www", "A", "1.1.1.1", &slow)];
+    let actual = [stored(a("1.1.1.1"), "r1")]; // stored at the 3600 default
+    let mismatch = final_set_mismatch(&desired, &actual, true).expect("ttl differs");
+    assert_eq!(mismatch.missing, vec!["A 1.1.1.1 ttl 900".to_owned()]);
+    assert_eq!(mismatch.unexpected, vec!["A 1.1.1.1 ttl 3600".to_owned()]);
+}
+
+#[test]
+fn srv_service_and_protocol_appear_in_the_label() {
+    let mut srv = opts();
+    srv.priority = Some(1);
+    srv.weight = Some(2);
+    srv.port = Some(443);
+    srv.service = Some("_sip".to_owned());
+    srv.protocol = Some("_tcp".to_owned());
+    let desired = [v3_record("@", "SRV", "t.example.com.", &srv)];
+    let mismatch = final_set_mismatch(&desired, &[], false).expect("missing");
+    assert_eq!(
+        mismatch.missing,
+        vec![
+            "SRV priority 1 weight 2 port 443 service _sip protocol _tcp t.example.com.".to_owned()
+        ]
+    );
+}
+
+#[test]
 fn records_that_differ_only_in_a_sibling_field_are_different() {
     let mut p10 = opts();
     p10.priority = Some(10);

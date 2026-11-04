@@ -18,8 +18,10 @@ pub(super) struct Mismatch {
 }
 
 /// A short human label for a record, including the fields that tell records
-/// with the same value apart (MX priority, CAA tag, TLSA usage, …).
-fn describe(record: &types::DnsRecord) -> String {
+/// with the same value apart (MX priority, CAA tag, TLSA usage, SRV service, …),
+/// and its TTL when the TTL is part of what was compared — otherwise two records
+/// that differ only in TTL would get the same label.
+fn describe(record: &types::DnsRecord, compare_ttl: bool) -> String {
     let mut parts = vec![record.type_.as_str().to_owned()];
     let numbers = [
         ("priority", record.priority.map(u32::from)),
@@ -38,12 +40,21 @@ fn describe(record: &types::DnsRecord) -> String {
             parts.push(format!("{label} {number}"));
         }
     }
-    if let Some(tag) = &record.tag {
-        parts.push(format!("tag {tag}"));
+    for (label, text) in [
+        ("tag", &record.tag),
+        ("service", &record.service),
+        ("protocol", &record.protocol),
+    ] {
+        if let Some(text) = text {
+            parts.push(format!("{label} {text}"));
+        }
     }
     parts.push(record_value(record).unwrap_or("(no data)").to_owned());
     if let Some(parameters) = &record.parameters {
         parts.push(format!("parameters {parameters}"));
+    }
+    if compare_ttl {
+        parts.push(format!("ttl {}", record.ttl));
     }
     parts.join(" ")
 }
@@ -66,10 +77,13 @@ pub(super) fn final_set_mismatch(
             Some(i) => {
                 remaining.remove(i);
             }
-            None => missing.push(describe(want)),
+            None => missing.push(describe(want, compare_ttl)),
         }
     }
-    let unexpected: Vec<String> = remaining.iter().map(|(_, r)| describe(r)).collect();
+    let unexpected: Vec<String> = remaining
+        .iter()
+        .map(|(_, r)| describe(r, compare_ttl))
+        .collect();
     if missing.is_empty() && unexpected.is_empty() {
         None
     } else {
