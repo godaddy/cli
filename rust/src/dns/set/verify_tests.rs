@@ -1,7 +1,7 @@
 use super::*;
 use crate::dns::records::{RecordOptions, v3_record};
 use httpmock::prelude::*;
-use serde_json::json;
+use serde_json::{Value, json};
 
 fn opts() -> RecordOptions {
     RecordOptions {
@@ -103,6 +103,45 @@ fn txt_text_is_compared_exactly() {
 }
 
 #[test]
+fn case_sensitive_values_are_compared_exactly() {
+    let mut caa_opts = opts();
+    caa_opts.flag = Some(0);
+    caa_opts.tag = Some("iodef".to_owned());
+    // The API lower-cases CAA data, so a different case is not a different record...
+    let desired = [v3_record(
+        "@",
+        "CAA",
+        "https://Example.com/Report",
+        &caa_opts,
+    )];
+    let stored_caa = [stored(
+        v3_record("@", "CAA", "https://example.com/report", &caa_opts),
+        "r1",
+    )];
+    assert_eq!(final_set_mismatch(&desired, &stored_caa, false), None);
+
+    // ...but HTTPS/SVCB parameters, TXT text and AAAA text are kept as written,
+    // so a concurrent change in case there must not pass.
+    let mut ech = opts();
+    ech.priority = Some(1);
+    ech.parameters = Some("ech=AbCd==".to_owned());
+    let want = [v3_record("@", "HTTPS", "svc.example.com.", &ech)];
+    ech.parameters = Some("ech=abcd==".to_owned());
+    let have = [stored(
+        v3_record("@", "HTTPS", "svc.example.com.", &ech),
+        "r1",
+    )];
+    assert!(final_set_mismatch(&want, &have, false).is_some());
+
+    let want = [v3_record("www", "AAAA", "2001:DB8::1", &opts())];
+    let have = [stored(
+        v3_record("www", "AAAA", "2001:db8::1", &opts()),
+        "r1",
+    )];
+    assert!(final_set_mismatch(&want, &have, false).is_some());
+}
+
+#[test]
 fn records_that_differ_only_in_a_sibling_field_are_different() {
     let mut p10 = opts();
     p10.priority = Some(10);
@@ -152,7 +191,7 @@ async fn verify_passes_when_the_zone_holds_exactly_the_requested_records() {
         &server,
         json!([{ "recordId": "r1", "type": "A", "name": "www", "data": "1.1.1.1", "ttl": 3600 }]),
     );
-    verify_final_state(
+    let now = verify_final_state(
         &client_for(&server),
         "example.com",
         "A",
@@ -163,6 +202,9 @@ async fn verify_passes_when_the_zone_holds_exactly_the_requested_records() {
     )
     .await
     .expect("zone matches");
+    // The records come back as the read found them, ids and all.
+    assert_eq!(now.len(), 1);
+    assert_eq!(now[0].record_id.as_deref(), Some("r1"));
 }
 
 #[tokio::test]

@@ -68,8 +68,6 @@ async fn write_with_conflict_handling_creates_without_conflict() {
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "created");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
-    let record = outcomes[0].record.as_ref().expect("the created record");
-    assert_eq!(record.data.as_deref(), Some("1.2.3.4"));
 }
 
 #[tokio::test]
@@ -339,9 +337,6 @@ async fn apply_replace_puts_the_new_value_onto_the_old_record() {
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "replaced");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
-    let record = outcomes[0].record.as_ref().expect("the PUT's record");
-    assert_eq!(record.record_id.as_deref(), Some("old-1"));
-    assert_eq!(record.data.as_deref(), Some("9.9.9.9"));
 }
 
 /// A changed TTL on an otherwise identical record is one `PUT` — no

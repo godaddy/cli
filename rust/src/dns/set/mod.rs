@@ -7,6 +7,7 @@ use crate::domain::{api_error, make_client};
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
+use super::list::build_list_output;
 use super::records::{
     RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
     validate_svcb_fields, validate_tlsa_fields,
@@ -187,18 +188,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         outcomes.extend(apply_replace(&client, &req, &record_id, old_ttl).await);
                     }
                     SetAction::Unchanged {
-                        record_id,
                         data: value,
-                    } => {
-                        let mut outcome = SetOutcome::new("unchanged", value, None);
-                        if let Some(record) = existing
-                            .iter()
-                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
-                        {
-                            outcome = outcome.with_record(record.clone());
-                        }
-                        outcomes.push(outcome);
-                    }
+                        record_id: _,
+                    } => outcomes.push(SetOutcome::new("unchanged", value, None)),
                     SetAction::Create { data: value } => {
                         let req = WriteRequest {
                             domain: domain.as_str(),
@@ -233,14 +225,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let mut summary = summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
                 .map_err(super::mutate_failed)?;
-            if let Some(records) = summary.get_mut("records").and_then(Value::as_array_mut) {
-                for record in records {
-                    domain_format.convert_fields(record, &["name"]);
-                }
-            }
             // The plan came from one earlier read, so confirm the type+name now
-            // holds exactly what was asked for before reporting success.
-            verify_final_state(
+            // holds exactly what was asked for before reporting success, and
+            // report the records as that read found them.
+            let now = verify_final_state(
                 &client,
                 domain.as_str(),
                 &record_type,
@@ -250,6 +238,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 debug,
             )
             .await?;
+            let mut records = build_list_output(&now).map_err(|e| {
+                crate::error::GddyError::unexpected(format!(
+                    "failed to serialize the resulting DNS records: {e}"
+                ))
+                .into_cli_error()
+            })?;
+            for record in &mut records {
+                domain_format.convert_fields(record, &["name"]);
+            }
+            summary["records"] = Value::Array(records);
             Ok(verified_result(
                 domain_format,
                 summary,
