@@ -122,13 +122,13 @@ mod tests {
 
     /// The walkthrough has to say what the product is, not only which commands
     /// to type: a reader who has never seen it needs to know where the content
-    /// is edited, that there is no build or deploy, and that the CLI does not
-    /// hold the WordPress password.
+    /// is edited and how to get there, and that there is no build or deploy.
     #[test]
     fn the_wordpress_guide_explains_the_product() {
         for present in [
             "Airo App Builder subscription",
             "WordPress admin",
+            "(https://airo-builder.godaddy.com/apps)",
             "## Concepts",
             "no source upload, no build",
             "does not become the WordPress site title",

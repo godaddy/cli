@@ -12,17 +12,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  product, which the app ID's prefix names:\n\
                  \n\
                  • Node.js (NODEJS-…): builds the latest source from `hosting source upload` or \
-                 `hosting source github` and deploys it to PUBLISH, exactly as `hosting \
-                 deployment publish` does. Every run deploys again. The app must be attached to \
-                 a hosting plan first: `hosting subscription list`, then `hosting subscription \
-                 attach`. Returns a deployment ID; poll `hosting deployment get` until status is \
-                 COMPLETED or FAILED.\n\
+                 `hosting source github` and deploys it to the PUBLISH environment, exactly as \
+                 `hosting deployment publish` does. Every run deploys again. The app must be \
+                 attached to a hosting plan first, which can be done by running `hosting \
+                 subscription list` then `hosting subscription attach`. Returns a deployment ID; \
+                 poll `hosting deployment get` until the status is COMPLETED or FAILED.\n\
                  \n\
-                 • WordPress (MHWP-…): switches the site from its placeholder page to live; there \
-                 is no build step. A site that is already live is accepted and nothing changes. \
-                 Going live needs a plan with a free published-site slot; the free plan has none. \
-                 Returns an operation ID; poll `hosting operation get` until status is COMPLETED \
-                 or FAILED. `hosting app unpublish` takes the site back to its placeholder page.",
+                 • WordPress (MHWP-…): switches the site from its placeholder page to its live \
+                 content; there is no build step. Going live needs a plan with a free \
+                 published-site slot; the free plan has none. Returns an operation ID; poll \
+                 `hosting operation get` until status is COMPLETED or FAILED. `hosting app \
+                 unpublish` takes the site back to its placeholder page.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -82,25 +82,26 @@ mod tests {
 
     #[tokio::test]
     async fn help_text_names_publish_only_while_mhwp_is_on() {
-        // `hosting deployment publish` is a Node.js command and stays in every mode, so
-        // the check is for the WordPress commands themselves.
-        let screens: [&[&str]; 3] = [
-            &["--help"],
-            &["operation", "--help"],
-            &["operation", "get", "--help"],
-        ];
         let off = cli(false);
         let on = cli(true);
-        for args in screens {
-            let help = run_hosting(&off, args).await;
-            assert!(
-                !help.contains("unpublish") && !help.contains("app publish"),
-                "{args:?}: {help}"
-            );
-            let help = run_hosting(&on, args).await;
-            assert!(
-                help.contains("unpublish") || help.contains("publish/unpublish"),
-                "{args:?}: {help}"
+        // `hosting deployment publish` is a Node.js command and stays in every mode, so
+        // the check is for the WordPress commands themselves.
+        let help = run_hosting(&off, &["--help"]).await;
+        assert!(
+            !help.contains("unpublish") && !help.contains("app publish"),
+            "{help}"
+        );
+        let help = run_hosting(&on, &["--help"]).await;
+        assert!(help.contains("publish/unpublish"), "{help}");
+        // Polling an operation reads the same whichever products are on.
+        for args in [
+            &["operation", "--help"][..],
+            &["operation", "get", "--help"],
+        ] {
+            assert_eq!(
+                run_hosting(&off, args).await,
+                run_hosting(&on, args).await,
+                "{args:?}"
             );
         }
     }

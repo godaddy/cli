@@ -4,7 +4,7 @@ summary: Create a managed WordPress site and take it live or back behind a place
 
 # `gddy hosting` — managed WordPress sites
 
-Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, and switches it between live and a placeholder page. Everything inside the site — pages, posts, themes, plugins, the site title — is edited in WordPress itself, from the WordPress admin, which you reach by signing in to Airo App Builder and opening the site. The API returns no WordPress admin password, so there is no CLI route into the admin.
+Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, and switches it between live and a placeholder page. Everything inside the site — pages, posts, themes, plugins, the site title — is edited in WordPress itself, from the WordPress admin, which you reach by signing in to [Airo App Builder](https://airo-builder.godaddy.com/apps) and opening the site.
 
 ## Concepts
 
@@ -14,7 +14,7 @@ Managed WordPress on this platform is a WordPress site that lives inside an Airo
 
 **Published-site slot** — a live site uses one slot on the plan. The free plan has none.
 
-**Operation** — create, publish and unpublish return an operation ID to poll with `hosting operation get`. Its `type` is `CREATE_APP` for a create and `SET_PUBLISH_STATE` for publish and unpublish, so one poller tells them apart.
+**Operation** — create, publish and unpublish return an operation ID. Run `hosting operation get` to check the status of the operation until it reaches a `COMPLETED` or `FAILED` state.
 
 ## Create the site
 
@@ -40,8 +40,6 @@ gddy hosting operation get --operation-id <operation-id>
 Both return an operation ID to poll. Unpublishing changes nothing inside the site: the content stays in place and visitors see the placeholder page again.
 
 Going live needs a plan with a free published-site slot. If publishing is refused because of the plan, upgrade the plan in Airo App Builder or unpublish another site first. `hosting deployment publish` does not apply to WordPress sites.
-
-While a change is still running, repeating the same command returns that running operation; asking for the opposite state is refused until it finishes. Poll the operation, then retry.
 
 | Error | Meaning | Next step |
 |---|---|---|

@@ -3,8 +3,8 @@ use serde_json::json;
 
 use crate::hosting::client::ClientError;
 use crate::hosting::common::{
-    HostingAppOperation, HostingAppType, app_type_command, client_err, client_err_with_fix,
-    error_issues, make_client,
+    CREATE_APP, HostingAppOperation, HostingAppType, app_type_command, client_err,
+    client_err_with_fix, error_issues, make_client, with_operation_type,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
@@ -53,6 +53,7 @@ pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
                 .create_app(app_type.as_str(), json!({ "name": name }))
                 .await
                 .map_err(|e| create_err(e, app_type))?;
+            let data = with_operation_type(data, CREATE_APP);
 
             let operation_id = data
                 .get("operationId")

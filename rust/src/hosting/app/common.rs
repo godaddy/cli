@@ -4,7 +4,8 @@ use cli_engine::{CommandResult, NextActionParam};
 
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
-    HostingAppType, client_err, client_err_with_fix, error_issues, strip_id_prefix,
+    HostingAppType, SET_PUBLISH_STATE, client_err, client_err_with_fix, error_issues,
+    strip_id_prefix, with_operation_type,
 };
 use crate::hosting::deployment::publish::deploy;
 use crate::next_action::{next_action, required_value};
@@ -117,6 +118,7 @@ pub(super) async fn set_publish_state(
         .set_publish_state(&app_id, published)
         .await
         .map_err(|e| publish_state_err(e, published))?;
+    let data = with_operation_type(data, SET_PUBLISH_STATE);
     let operation_id = data
         .get("operationId")
         .and_then(|v| v.as_str())
@@ -362,9 +364,9 @@ mod tests {
                 when.method(PUT)
                     .path("/v1/hosting/apps/MHWP-a1b2c3d4e5/publish-state")
                     .json_body(json!({ "published": true }));
+                // No `type`: the CLI knows which kind of operation it started.
                 then.status(202).json_body(json!({
-                    "operationId": "MHWP-p9x8y7z6", "status": "PENDING",
-                    "type": "SET_PUBLISH_STATE", "links": []
+                    "operationId": "MHWP-p9x8y7z6", "status": "PENDING", "links": []
                 }));
             })
             .await;
@@ -382,6 +384,7 @@ mod tests {
         publish_state.assert_async().await;
         deployment.assert_calls_async(0).await;
         assert_eq!(result.data["operationId"], "MHWP-p9x8y7z6");
+        assert_eq!(result.data["type"], "SET_PUBLISH_STATE");
         let actions = &result.metadata.next_actions;
         assert_eq!(
             actions[0].command,

@@ -3,7 +3,9 @@ use cli_engine::{
 };
 use serde_json::Value;
 
-use crate::hosting::common::{HostingAppOperation, HostingAppType, client_err, make_client};
+use crate::hosting::common::{
+    CREATE_APP, HostingAppOperation, HostingAppType, client_err, make_client, with_operation_type,
+};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
@@ -15,26 +17,14 @@ struct OperationGetArgs {
 }
 
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
-    // Only WordPress sites have a publish state; name it only while the flag is on.
-    let long = if mhwp {
-        "Poll an async operation by ID. `hosting app create` returns one, and so do \
-         `hosting app publish` and `hosting app unpublish` for a WordPress site — publishing \
-         a Node.js app, with `hosting app publish` or `hosting deployment publish`, starts a \
-         deployment, polled at `hosting deployment get`. Keep polling until status is COMPLETED or \
-         FAILED. The `type` field says which kind of operation it is, CREATE_APP or \
-         SET_PUBLISH_STATE; an operation with no `type` is a create. On COMPLETED, a \
-         create's `app` field carries the created application; use `app.id` for \
-         subsequent calls. On FAILED, the `error` field describes why."
-    } else {
-        "Poll an async operation by ID. Today only `hosting app create` returns one — \
-         `hosting deployment publish` has its own poller at `hosting deployment get`. \
-         Keep polling until status is COMPLETED or FAILED. On COMPLETED, the `app` field \
-         carries the created application; use `app.id` for subsequent calls. On FAILED, \
-         the `error` field describes why."
-    };
     RuntimeCommandSpec::new_typed_with_context::<OperationGetArgs, _, _, _>(
         CommandSpec::from_args::<OperationGetArgs>("get", "Get an operation")
-            .with_long(long)
+            .with_long(
+                "Check the status of an asynchronous operation. To wait for an operation to \
+                 complete, re-run the command until the status is set to COMPLETED or FAILED. \
+                 Once COMPLETED, details of the operation will be shown. For FAILED operations, \
+                 the `error` field describes the cause of the failure.",
+            )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
@@ -47,6 +37,8 @@ pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
                 .get_operation(&args.operation_id)
                 .await
                 .map_err(client_err)?;
+            // The contract reads an operation without a `type` as a creation.
+            let data = with_operation_type(data, CREATE_APP);
             let next_actions = next_actions(&data, mhwp);
             Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
@@ -62,9 +54,7 @@ const NO_CAPACITY_ISSUES: [&str; 2] = ["NO_CAPACITY", "CAPACITY_UNAVAILABLE"];
 /// an operation without one is a creation — so only an explicit non-create
 /// `type` rules a creation out.
 fn is_create(data: &Value) -> bool {
-    data["type"]
-        .as_str()
-        .is_none_or(|kind| kind == "CREATE_APP")
+    data["type"].as_str().is_none_or(|kind| kind == CREATE_APP)
 }
 
 /// Suggests a retry when a create failed for lack of capacity. A failed
@@ -192,8 +182,8 @@ mod tests {
         }
     }
 
-    /// `type` is informational for the caller, so it reaches both the JSON and
-    /// the human rendering unchanged, present or absent.
+    /// `type` reaches both the JSON and the human rendering: as sent, or as a
+    /// creation when the service left it out.
     #[test]
     fn the_operation_type_is_carried_through_to_the_output() {
         let with_type = json!({
@@ -207,15 +197,18 @@ mod tests {
         assert!(rendered.contains("SET_PUBLISH_STATE"), "{rendered}");
         assert!(rendered.contains("type"), "{rendered}");
 
-        // Absent on an older service's response: nothing is invented for it.
-        let without_type = json!({
-            "operationId": "MHWP-ab12cd34",
-            "status": "IN_PROGRESS",
-            "links": []
-        });
+        // Absent on an older service's response, which the contract reads as a creation.
+        let without_type = with_operation_type(
+            json!({
+                "operationId": "NODEJS-ab12cd34",
+                "status": "IN_PROGRESS",
+                "links": []
+            }),
+            CREATE_APP,
+        );
         let rendered =
             cli_engine::render_human(&cli_engine::Envelope::success(without_type, "hosting"));
-        assert!(!rendered.contains("type"), "{rendered}");
+        assert!(rendered.contains("CREATE_APP"), "{rendered}");
     }
 
     #[test]

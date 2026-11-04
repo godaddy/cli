@@ -73,9 +73,9 @@ output_schema!(HostingApplication {
 output_schema!(HostingAppOperation {
     "operationId": "string";
     "status": "string";
-    // CREATE_APP or SET_PUBLISH_STATE. Optional: a service that predates the
-    // field sends no `type`, and an operation without one is a creation.
-    "type": "string", optional;
+    // The kind of operation, such as CREATE_APP or SET_PUBLISH_STATE;
+    // `with_operation_type` fills it in where the service leaves it out.
+    "type": "string";
     "app": "object", optional;
     "error": "object", optional;
     "createdAt": "string", optional;
@@ -247,6 +247,23 @@ impl HostingAppType {
     }
 }
 
+/// The `type` of an app operation that creates an app.
+pub const CREATE_APP: &str = "CREATE_APP";
+/// The `type` of an app operation that takes a site live or offline.
+pub const SET_PUBLISH_STATE: &str = "SET_PUBLISH_STATE";
+
+/// `operation` with its `type` set to `kind` where the service left it out,
+/// so the output always says which kind of operation it is. Anything that is
+/// not an object, such as an empty `202`, comes back unchanged.
+pub fn with_operation_type(mut operation: Value, kind: &str) -> Value {
+    if let Some(fields) = operation.as_object_mut()
+        && fields.get("type").is_none_or(Value::is_null)
+    {
+        fields.insert("type".to_owned(), Value::from(kind));
+    }
+    operation
+}
+
 /// `app_id` with `prefix` removed, or `None` if it does not start with it.
 /// The prefix matches ignoring ASCII case, as the edge does.
 pub fn strip_id_prefix<'a>(app_id: &'a str, prefix: &str) -> Option<&'a str> {
@@ -413,6 +430,26 @@ mod tests {
         ] {
             assert!(!is_mhwp_app_id(id), "{id}");
         }
+    }
+
+    #[test]
+    fn with_operation_type_fills_in_only_a_missing_type() {
+        let filled = |operation: Value| with_operation_type(operation, CREATE_APP);
+        assert_eq!(
+            filled(json!({ "operationId": "op-1" })),
+            json!({ "operationId": "op-1", "type": "CREATE_APP" })
+        );
+        assert_eq!(
+            filled(json!({ "operationId": "op-1", "type": null })),
+            json!({ "operationId": "op-1", "type": "CREATE_APP" })
+        );
+        // A kind the service sent, known or not, is kept as it is.
+        for kind in ["SET_PUBLISH_STATE", "A_FUTURE_KIND"] {
+            let operation = json!({ "operationId": "op-1", "type": kind });
+            assert_eq!(filled(operation.clone()), operation);
+        }
+        // An empty response stays empty rather than turning into an operation.
+        assert_eq!(filled(Value::Null), Value::Null);
     }
 
     #[test]
