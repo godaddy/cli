@@ -1,6 +1,6 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::client::ClientError;
+use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
     AppIdArgs, HostingDeploymentSummary, client_err, client_err_with_fix, make_client,
 };
@@ -26,27 +26,36 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[DEPLOY_EXECUTE])
             .with_output_schema::<HostingDeploymentSummary>(),
         |ctx, args: AppIdArgs| async move {
-            let app_id = args.app_id;
             let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
-            let data = client
-                .create_deployment(&app_id)
-                .await
-                .map_err(publish_err)?;
-            let deployment_id = data
-                .get("deploymentId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_owned();
-            Ok(CommandResult::new(data).with_next_actions(vec![
-                next_action(
-                    "hosting deployment get --app-id <app-id> --deployment-id <id>",
-                    "Poll until deployment completes",
-                )
-                .with_param("app-id", NextActionParam::value(app_id))
-                .with_param("deployment-id", NextActionParam::value(deployment_id)),
-            ]))
+            deploy(&client, args.app_id).await
         },
     )
+}
+
+/// Builds the app's latest imported source and rolls it out to PUBLISH: the
+/// body of `hosting deployment publish`, and of `hosting app publish` for a
+/// Node.js app.
+pub(crate) async fn deploy(
+    client: &HostingClient,
+    app_id: String,
+) -> cli_engine::Result<CommandResult> {
+    let data = client
+        .create_deployment(&app_id)
+        .await
+        .map_err(publish_err)?;
+    let deployment_id = data
+        .get("deploymentId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
+    Ok(CommandResult::new(data).with_next_actions(vec![
+        next_action(
+            "hosting deployment get --app-id <app-id> --deployment-id <id>",
+            "Poll until deployment completes",
+        )
+        .with_param("app-id", NextActionParam::value(app_id))
+        .with_param("deployment-id", NextActionParam::value(deployment_id)),
+    ]))
 }
 
 fn publish_err(e: ClientError) -> cli_engine::CliCoreError {
@@ -61,7 +70,45 @@ fn publish_err(e: ClientError) -> cli_engine::CliCoreError {
 
 #[cfg(test)]
 mod tests {
+    use httpmock::prelude::*;
+    use serde_json::json;
+
     use super::*;
+
+    #[tokio::test]
+    async fn deploy_starts_a_deployment_and_points_at_its_poller() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/hosting/apps/NODEJS-aBcDeFgHiJ/deployments");
+                then.status(202)
+                    .json_body(json!({ "deploymentId": "dep-1", "status": "PENDING" }));
+            })
+            .await;
+
+        let client = HostingClient::new(server.base_url(), "test-token");
+        let result = deploy(&client, "NODEJS-aBcDeFgHiJ".to_owned())
+            .await
+            .expect("deploy");
+
+        mock.assert_async().await;
+        assert_eq!(result.data["deploymentId"], "dep-1");
+        let actions = &result.metadata.next_actions;
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].command,
+            "gddy hosting deployment get --app-id <app-id> --deployment-id <id>"
+        );
+        assert_eq!(
+            actions[0].params["app-id"].value.as_deref(),
+            Some("NODEJS-aBcDeFgHiJ")
+        );
+        assert_eq!(
+            actions[0].params["deployment-id"].value.as_deref(),
+            Some("dep-1")
+        );
+    }
 
     #[test]
     fn publish_err_points_422_at_subscription_list() {

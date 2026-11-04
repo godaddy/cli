@@ -3,7 +3,9 @@ use cli_engine::{
 };
 use serde_json::Value;
 
-use crate::hosting::common::{HostingAppOperation, HostingAppType, client_err, make_client};
+use crate::hosting::common::{
+    CREATE_APP, HostingAppOperation, HostingAppType, client_err, make_client, with_operation_type,
+};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
@@ -14,49 +16,75 @@ struct OperationGetArgs {
     operation_id: String,
 }
 
-pub(super) fn command() -> RuntimeCommandSpec {
+pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<OperationGetArgs, _, _, _>(
         CommandSpec::from_args::<OperationGetArgs>("get", "Get an operation")
             .with_long(
-                "Poll an async operation by ID. Today only `hosting app create` returns one — \
-                 `hosting deployment publish` has its own poller at `hosting deployment get`. \
-                 Keep polling until status is COMPLETED or FAILED. On COMPLETED, the `app` field \
-                 carries the created application; use `app.id` for subsequent calls. On FAILED, \
-                 the `error` field describes why.",
+                "Check the status of an asynchronous operation. To wait for an operation to \
+                 complete, re-run the command until the status is set to COMPLETED or FAILED. \
+                 Once COMPLETED, details of the operation will be shown. For FAILED operations, \
+                 the `error` field describes the cause of the failure.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
             .with_output_schema::<HostingAppOperation>(),
-        |ctx, args: OperationGetArgs| async move {
+        // `move` so the handler owns the flag; it is a `bool`, so this costs
+        // nothing beyond the copy.
+        move |ctx, args: OperationGetArgs| async move {
             let client = make_client(&ctx, &[APP_READ]).await?;
             let data = client
                 .get_operation(&args.operation_id)
                 .await
                 .map_err(client_err)?;
-            let next_actions = next_actions(&data);
+            // The contract reads an operation without a `type` as a creation.
+            let data = with_operation_type(data, CREATE_APP);
+            let next_actions = next_actions(&data, mhwp);
             Ok(CommandResult::new(data).with_next_actions(next_actions))
         },
     )
 }
 
-/// Suggests a retry when a create failed for lack of capacity.
-fn next_actions(data: &Value) -> Vec<NextAction> {
+/// Issue codes a failed create carries when no capacity was available:
+/// `NO_CAPACITY` (Node.js) and `CAPACITY_UNAVAILABLE` (WordPress).
+const NO_CAPACITY_ISSUES: [&str; 2] = ["NO_CAPACITY", "CAPACITY_UNAVAILABLE"];
+
+/// True unless the operation says it is something other than a creation.
+/// `type` is optional on the wire — a service that predates it sends none, and
+/// an operation without one is a creation — so only an explicit non-create
+/// `type` rules a creation out.
+fn is_create(data: &Value) -> bool {
+    data["type"].as_str().is_none_or(|kind| kind == CREATE_APP)
+}
+
+/// Suggests a retry when a create failed for lack of capacity. A failed
+/// publish-state change is not retried this way: re-running the create would
+/// build a second site, and the operation carries no app id to publish again.
+///
+/// `mhwp` is the feature flag: while it is off, `--app-type MHWP` is not a
+/// value this binary accepts, so a WordPress create is left unsuggested
+/// rather than suggested in a form the caller cannot run.
+fn next_actions(data: &Value, mhwp: bool) -> Vec<NextAction> {
     let no_capacity = data["status"] == "FAILED"
-        && data["error"]["details"]
-            .as_array()
-            .is_some_and(|details| details.iter().any(|d| d["issue"] == "NO_CAPACITY"));
+        && is_create(data)
+        && data["error"]["details"].as_array().is_some_and(|details| {
+            details.iter().any(|d| {
+                d["issue"]
+                    .as_str()
+                    .is_some_and(|issue| NO_CAPACITY_ISSUES.contains(&issue))
+            })
+        });
     if !no_capacity {
         return Vec::new();
     }
-    // MHWP operation ids carry the app type as a prefix, e.g. `MHWP-ab12cd34`.
-    let app_type = data["operationId"]
-        .as_str()
-        .and_then(|id| id.split_once('-'))
-        .and_then(|(prefix, _)| clap::ValueEnum::from_str(prefix, true).ok())
-        .map_or_else(NextActionParam::required, |t: HostingAppType| {
-            NextActionParam::value(t.as_str())
-        });
+    // Operation ids carry the app type as a prefix, e.g. `MHWP-ab12cd34`.
+    let kind = data["operationId"].as_str().and_then(HostingAppType::of_id);
+    if !mhwp && kind == Some(HostingAppType::Mhwp) {
+        return Vec::new();
+    }
+    let app_type = kind.map_or_else(NextActionParam::required, |t| {
+        NextActionParam::value(t.as_str())
+    });
     vec![
         next_action(
             "hosting app create --app-type <type> --name <name>",
@@ -75,37 +103,146 @@ mod tests {
 
     #[test]
     fn suggests_a_retry_on_no_capacity() {
-        let actions = next_actions(&json!({
+        // Once with no `type` (the services that predate the field) and once
+        // with the explicit creation `type`: both are creations.
+        for kind in [None, Some("CREATE_APP")] {
+            for issue in ["NO_CAPACITY", "CAPACITY_UNAVAILABLE"] {
+                let mut data = json!({
+                    "operationId": "MHWP-ab12cd34",
+                    "status": "FAILED",
+                    "error": { "message": "No capacity.", "details": [{ "issue": issue }] },
+                    "links": []
+                });
+                if let Some(kind) = kind {
+                    data["type"] = json!(kind);
+                }
+                let actions = next_actions(&data, true);
+                assert_eq!(actions.len(), 1, "{kind:?}/{issue}");
+                assert!(
+                    actions[0].command.contains("hosting app create"),
+                    "{kind:?}/{issue}"
+                );
+                assert!(
+                    actions[0].description.contains("Try again later"),
+                    "{kind:?}/{issue}"
+                );
+                assert_eq!(actions[0].params["type"].value.as_deref(), Some("MHWP"));
+            }
+        }
+    }
+
+    /// A failed publish-state change must not be answered with "create the app
+    /// again" — the retry only makes sense for a creation.
+    #[test]
+    fn suggests_nothing_for_a_failed_publish_state_change() {
+        let actions = next_actions(
+            &json!({
+                "operationId": "MHWP-ab12cd34",
+                "type": "SET_PUBLISH_STATE",
+                "status": "FAILED",
+                "error": {
+                    "message": "No capacity.",
+                    "details": [{ "issue": "CAPACITY_UNAVAILABLE" }]
+                },
+                "links": []
+            }),
+            true,
+        );
+        assert!(actions.is_empty(), "{actions:?}");
+    }
+
+    /// With the flag off there is no `--app-type MHWP` to suggest, so a failed
+    /// WordPress create gets no retry rather than an unrunnable one. A Node.js
+    /// create is unaffected.
+    #[test]
+    fn suggests_no_wordpress_retry_while_the_flag_is_off() {
+        let failed = |operation_id: &str| {
+            json!({
+                "operationId": operation_id,
+                "status": "FAILED",
+                "error": { "message": "No capacity.", "details": [{ "issue": "NO_CAPACITY" }] },
+                "links": []
+            })
+        };
+        assert!(next_actions(&failed("MHWP-ab12cd34"), false).is_empty());
+        assert_eq!(
+            next_actions(&failed("MHWP-ab12cd34"), true)[0].params["type"]
+                .value
+                .as_deref(),
+            Some("MHWP")
+        );
+        for mhwp in [true, false] {
+            assert_eq!(
+                next_actions(&failed("NODEJS-ab12cd34"), mhwp)[0].params["type"]
+                    .value
+                    .as_deref(),
+                Some("NODEJS"),
+                "{mhwp}"
+            );
+        }
+    }
+
+    /// `type` reaches both the JSON and the human rendering: as sent, or as a
+    /// creation when the service left it out.
+    #[test]
+    fn the_operation_type_is_carried_through_to_the_output() {
+        let with_type = json!({
             "operationId": "MHWP-ab12cd34",
-            "status": "FAILED",
-            "error": { "message": "No capacity.", "details": [{ "issue": "NO_CAPACITY" }] },
+            "type": "SET_PUBLISH_STATE",
+            "status": "IN_PROGRESS",
             "links": []
-        }));
-        assert_eq!(actions.len(), 1);
-        assert!(actions[0].command.contains("hosting app create"));
-        assert!(actions[0].description.contains("Try again later"));
-        assert_eq!(actions[0].params["type"].value.as_deref(), Some("MHWP"));
+        });
+        let rendered =
+            cli_engine::render_human(&cli_engine::Envelope::success(with_type.clone(), "hosting"));
+        assert!(rendered.contains("SET_PUBLISH_STATE"), "{rendered}");
+        assert!(rendered.contains("type"), "{rendered}");
+
+        // Absent on an older service's response, which the contract reads as a creation.
+        let without_type = with_operation_type(
+            json!({
+                "operationId": "NODEJS-ab12cd34",
+                "status": "IN_PROGRESS",
+                "links": []
+            }),
+            CREATE_APP,
+        );
+        let rendered =
+            cli_engine::render_human(&cli_engine::Envelope::success(without_type, "hosting"));
+        assert!(rendered.contains("CREATE_APP"), "{rendered}");
     }
 
     #[test]
     fn suggests_nothing_for_other_outcomes() {
-        assert!(next_actions(&json!({ "status": "IN_PROGRESS", "links": [] })).is_empty());
+        assert!(next_actions(&json!({ "status": "IN_PROGRESS", "links": [] }), true).is_empty());
         assert!(
-            next_actions(&json!({
-                "status": "FAILED",
-                "error": { "message": "boom", "details": [{ "issue": "INTERNAL" }] }
-            }))
+            next_actions(
+                &json!({
+                    "status": "FAILED",
+                    "error": { "message": "boom", "details": [{ "issue": "INTERNAL" }] }
+                }),
+                true
+            )
             .is_empty()
         );
     }
 
     #[test]
     fn leaves_the_type_open_for_unprefixed_ids() {
-        let unprefixed = next_actions(&json!({
-            "operationId": "3f2a9c1e-77d0-4b1a-9c55-0e6f1a2b3c4d",
-            "status": "FAILED",
-            "error": { "message": "No capacity.", "details": [{ "issue": "NO_CAPACITY" }] }
-        }));
-        assert_eq!(unprefixed[0].params["type"].value, None);
+        // No prefix to read the product off, so the flag cannot rule it out
+        // either: the caller is asked which type to create.
+        for mhwp in [true, false] {
+            let unprefixed = next_actions(
+                &json!({
+                    "operationId": "3f2a9c1e-77d0-4b1a-9c55-0e6f1a2b3c4d",
+                    "status": "FAILED",
+                    "error": {
+                        "message": "No capacity.",
+                        "details": [{ "issue": "NO_CAPACITY" }]
+                    }
+                }),
+                mhwp,
+            );
+            assert_eq!(unprefixed[0].params["type"].value, None, "{mhwp}");
+        }
     }
 }

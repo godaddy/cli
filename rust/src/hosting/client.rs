@@ -1,6 +1,6 @@
 use hosting_client::types::{
     AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
-    HostingProduct, ImportGitHubSourceRequest, RestartRequest,
+    HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
 };
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
@@ -290,6 +290,26 @@ impl HostingClient {
     pub async fn get_app_status(&self, app_id: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
         response(client.get_app_status().app_id(app_id).send().await).await
+    }
+
+    pub async fn set_publish_state(
+        &self,
+        app_id: &str,
+        published: bool,
+    ) -> Result<Value, ClientError> {
+        let client = self.api()?;
+        response(
+            client
+                .set_publish_state()
+                .app_id(app_id)
+                .body(PublishState {
+                    published: Some(published),
+                    ..Default::default()
+                })
+                .send()
+                .await,
+        )
+        .await
     }
 
     pub async fn restart_app(&self, app_id: &str, variant: &str) -> Result<Value, ClientError> {

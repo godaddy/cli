@@ -3,8 +3,8 @@ use serde_json::json;
 
 use crate::hosting::client::ClientError;
 use crate::hosting::common::{
-    HostingAppOperation, HostingAppType, app_type_command, client_err, client_err_with_fix,
-    error_issues, make_client,
+    CREATE_APP, HostingAppOperation, HostingAppType, app_type_command, client_err,
+    client_err_with_fix, error_issues, make_client, with_operation_type,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
@@ -21,10 +21,12 @@ struct AppCreateArgs {
 }
 
 const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App Builder \
-     subscription. The site starts as Coming Soon, and its WordPress title is not set \
-     from --name. It is hosted in the US. Log in to WordPress admin from Airo App Builder. \
-     For MHWP apps, use `hosting app get`, `status`, `update --name`, `delete` and \
-     `hosting runtime get`; other hosting commands do not apply.";
+     subscription. The site starts behind a placeholder page, and its WordPress title is \
+     not set from --name. It is hosted in the US. Log in to WordPress admin from Airo App \
+     Builder. Take the site live with `hosting app publish` (needs a plan with a free \
+     published-site slot) and back behind the placeholder with `hosting app unpublish`. \
+     For MHWP apps, use `hosting app get`, `status`, `publish` and `unpublish`. \
+     The other hosting commands are not available for WordPress sites yet.";
 
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
@@ -51,6 +53,7 @@ pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
                 .create_app(app_type.as_str(), json!({ "name": name }))
                 .await
                 .map_err(|e| create_err(e, app_type))?;
+            let data = with_operation_type(data, CREATE_APP);
 
             let operation_id = data
                 .get("operationId")
@@ -82,8 +85,8 @@ fn poll_description(app_type: HostingAppType) -> &'static str {
     match app_type {
         HostingAppType::Nodejs => "Poll app provisioning status",
         HostingAppType::Mhwp => {
-            "Poll app provisioning status. The WordPress site starts as Coming Soon; \
-             log in to WordPress admin from Airo App Builder"
+            "Poll app provisioning status. The WordPress site starts behind a placeholder \
+             page; log in to WordPress admin from Airo App Builder"
         }
     }
 }
@@ -214,7 +217,7 @@ mod tests {
             poll_description(HostingAppType::Nodejs),
             "Poll app provisioning status"
         );
-        assert!(poll_description(HostingAppType::Mhwp).contains("Coming Soon"));
+        assert!(poll_description(HostingAppType::Mhwp).contains("placeholder page"));
     }
 
     async fn run(cli: &Cli, args: &[&str]) -> String {
@@ -255,7 +258,7 @@ mod tests {
         let help = run(&cli, &["create", "--help"]).await;
         assert!(help.contains("Airo App Builder subscription"), "{help}");
         assert!(
-            help.contains("other hosting commands do not apply"),
+            help.contains("not available for WordPress sites yet"),
             "{help}"
         );
         assert!(help.contains("possible values: NODEJS, MHWP"), "{help}");

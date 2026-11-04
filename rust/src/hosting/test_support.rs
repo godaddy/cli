@@ -19,6 +19,16 @@ pub(crate) async fn run_hosting(cli: &Cli, args: &[&str]) -> String {
     cli.run(argv).await.rendered
 }
 
+/// Runs `gddy guide [topic]` and returns the guide markdown as registered, or
+/// the topic list without a topic (`--output json` keeps the raw text instead
+/// of reflowing it to a width).
+pub(crate) async fn run_guide(cli: &Cli, topic: Option<&str>) -> String {
+    let mut argv = vec!["gddy", "guide"];
+    argv.extend(topic);
+    argv.extend(["--output", "json"]);
+    cli.run(argv).await.rendered
+}
+
 #[tokio::test]
 async fn required_flags_are_marked_in_help_and_enforced() {
     let cli = cli(false);
