@@ -216,15 +216,18 @@ impl HostingAppType {
     }
 }
 
-/// Whether `app_id` names a WordPress (MHWP) site. The edge matches the
-/// prefix case-insensitively, so this does too.
+pub const MHWP_ID_PREFIX: &str = "MHWP-";
+
+/// `app_id` with `prefix` removed, or `None` if it does not start with it.
+/// The prefix matches ignoring ASCII case, as the edge does.
+pub fn strip_id_prefix<'a>(app_id: &'a str, prefix: &str) -> Option<&'a str> {
+    let (head, rest) = app_id.split_at_checked(prefix.len())?;
+    head.eq_ignore_ascii_case(prefix).then_some(rest)
+}
+
+/// Whether `app_id` names a WordPress (MHWP) site.
 pub fn is_mhwp_app_id(app_id: &str) -> bool {
-    // 5 is the length of the "MHWP-" prefix. `get` rather than indexing so a
-    // shorter id, or one whose fifth byte is mid-character, answers false
-    // instead of panicking.
-    app_id
-        .get(..5)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("MHWP-"))
+    strip_id_prefix(app_id, MHWP_ID_PREFIX).is_some()
 }
 
 /// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
@@ -379,9 +382,20 @@ mod tests {
             "x-MHWP-abc",
             "",
             "MHWPa1b2c3d4e5",
+            "MHWP\u{e9}",
         ] {
             assert!(!is_mhwp_app_id(id), "{id}");
         }
+    }
+
+    #[test]
+    fn strip_id_prefix_returns_the_rest_without_slicing_mid_character() {
+        assert_eq!(strip_id_prefix("mhwp-abc", "MHWP-"), Some("abc"));
+        assert_eq!(strip_id_prefix("MHWP-", "MHWP-"), Some(""));
+        assert_eq!(strip_id_prefix("NODEJS-abc", "MHWP-"), None);
+        assert_eq!(strip_id_prefix("MHW", "MHWP-"), None);
+        // The fifth byte falls inside `é`, so there is no prefix to compare.
+        assert_eq!(strip_id_prefix("MHWP\u{e9}", "MHWP-"), None);
     }
 
     #[test]

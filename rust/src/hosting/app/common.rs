@@ -3,10 +3,13 @@
 use cli_engine::{CommandResult, NextActionParam};
 
 use crate::hosting::client::ClientError;
-use crate::hosting::common::{client_err, client_err_with_fix, error_issues, make_client};
+use crate::hosting::common::{
+    MHWP_ID_PREFIX, client_err, client_err_with_fix, error_issues, make_client, strip_id_prefix,
+};
 use crate::next_action::{next_action, required_value};
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
+const NODEJS_ID_PREFIX: &str = "NODEJS-";
 const NODEJS_PUBLISH_FIX: &str = "Only WordPress (MHWP) apps have a publish state. For a Node.js \
      app run: gddy hosting deployment publish --app-id <app-id>";
 const NODEJS_UNPUBLISH_FIX: &str = "Only WordPress (MHWP) apps have a publish state.";
@@ -21,14 +24,9 @@ pub(super) struct PublishAppIdArgs {
 }
 
 fn publishable_app_id(value: &str) -> Result<String, String> {
-    // 7 is the length of the "NODEJS-" prefix. `get` rather than indexing so a
-    // shorter id, or one whose seventh byte is mid-character, falls through
-    // instead of panicking. A Node.js id gets its own message because the
-    // caller has somewhere to go with it.
-    if value
-        .get(..7)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("NODEJS-"))
-    {
+    // A Node.js id gets its own message because the caller has somewhere to
+    // go with it.
+    if strip_id_prefix(value, NODEJS_ID_PREFIX).is_some() {
         return Err(
             "Node.js apps have no publish state. A Node.js app goes live with \
              `gddy hosting deployment publish --app-id <app-id>`."
@@ -50,17 +48,9 @@ fn publishable_app_id(value: &str) -> Result<String, String> {
 /// reaches the service, so it is refused here rather than sent out to collect
 /// a 404.
 fn is_wordpress_site_id(value: &str) -> bool {
-    let Some(body) = value
-        .get(..5)
-        .filter(|prefix| prefix.eq_ignore_ascii_case("MHWP-"))
-        .map(|_| &value[5..])
-    else {
-        return false;
-    };
-    body.len() == 10
-        && body
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    strip_id_prefix(value, MHWP_ID_PREFIX).is_some_and(|body| {
+        body.len() == 10 && body.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9'))
+    })
 }
 
 pub(super) async fn set_publish_state(
@@ -250,6 +240,10 @@ mod tests {
             "MHWP-a1b2c3d4e_",
             "x-MHWP-a1b2c3d4e5",
             "MHWP-a1b2c3d4e5/x",
+            "MHWP\u{e9}",
+            "NODEJS\u{e9}",
+            "MHWP-a1b2c3d4\u{e9}",
+            "MHWP-\u{ff41}1b2c3d4e5",
         ] {
             let err = publishable_app_id(id).expect_err(id);
             assert!(err.contains("not a WordPress site id"), "{id}: {err}");
