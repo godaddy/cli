@@ -41,7 +41,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"
@@ -147,13 +148,16 @@
       "description": "A metafield is a custom value that can be associated with a GoDaddy commerce top-level entitiy (e.g. Order).",
       "properties": {
         "archivedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield was archived."
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield was created."
         },
         "deletedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield was deleted."
         },
         "id": {
           "description": "The unique identifier for the metafield.",
@@ -183,7 +187,8 @@
           "type": "string"
         },
         "storeId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the store."
         },
         "type": {
           "description": "The type of the metafield.",
@@ -191,7 +196,8 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield was updated."
         },
         "value": {
           "description": "The value of the metafield.",
@@ -305,13 +311,16 @@
       "description": "A metafield definition describes the schema/shape of a metafield, including its type, validations, and scope.",
       "properties": {
         "archivedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield definition was archived."
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield definition was created."
         },
         "deletedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield definition was deleted."
         },
         "id": {
           "description": "The unique identifier for the metafield definition.",
@@ -338,7 +347,8 @@
           "type": "string"
         },
         "storeId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "The unique identifier for the store."
         },
         "type": {
           "description": "The type of the metafield definition. Supported values: boolean, string, stringMultiLine, number, numberDecimal, date, dateTime, json, measurement, url, reference, money, list.string, list.number, list.numberDecimal, list.measurement, list.date, list.url.",
@@ -346,7 +356,8 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the metafield definition was updated."
         },
         "validations": {
           "description": "A list of validations that should be applied to the metafield value when creating or updating a metafield.",

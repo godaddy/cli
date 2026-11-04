@@ -81,9 +81,11 @@ cargo fmt
 # Type-check only (fast)
 cargo check
 
-# Regenerate the embedded API catalog
+# Regenerate the embedded API catalog (needs access to GoDaddy's internal spec repos)
 cargo run -p generate-api-catalog
 ```
+
+If the CI "API catalog drift" check fails, see [Updating embedded API specs](docs/maintainers.md#updating-embedded-api-specs).
 
 Adding a pre-release command, or wondering why one is hidden behind the default build? See [`docs/feature-flags.md`](docs/feature-flags.md).
 

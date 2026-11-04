@@ -97,7 +97,9 @@
       "description": "An account that can be used to provision a mailbox for a given email address, returned by GET /check-mailbox-eligibility. Pass the accountId to POST /mailboxes to provision against this account.\n",
       "properties": {
         "accountId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Account ID to pass to POST /mailboxes when provisioning a mailbox.",
+          "example": "00000000-0000-0000-0000-000000000001"
         },
         "accountName": {
           "description": "Human-readable product name for the account.",
@@ -110,7 +112,8 @@
           "type": "boolean"
         },
         "mailboxType": {
-          "$ref": "#/$defs/MailboxType"
+          "$ref": "#/$defs/MailboxType",
+          "description": "Email platform type backing this account."
         },
         "requirements": {
           "description": "Agreements that must be submitted in the consents field of POST /mailboxes before a mailbox can be provisioned for this account.\n",
@@ -138,7 +141,10 @@
       "description": "An email mailbox associated with a domain owned by the authenticated account. On creation (POST /mailboxes), provide emailAddress and optionally firstName, lastName, accountId, and consents. All other fields are server-assigned and returned in responses.\n",
       "properties": {
         "accountId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Account UID from the eligibleAccounts list in GET /check-mailbox-eligibility. Defaults to the account with default: true when omitted.\n",
+          "example": "00000000-0000-0000-0000-000000000001",
+          "writeOnly": true
         },
         "consents": {
           "description": "Agreements the customer has accepted, as required by GET /check-mailbox-eligibility.\n",
@@ -154,7 +160,10 @@
           "writeOnly": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "ISO 8601 timestamp when this mailbox was provisioned. Timezone is UTC.",
+          "example": "2024-03-15T10:30:00Z",
+          "readOnly": true
         },
         "displayName": {
           "description": "Human-readable display name for the mailbox owner, used as the From name in outgoing messages. Server-derived from firstName and lastName.\n",
@@ -199,16 +208,27 @@
           "type": "array"
         },
         "mailboxId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Opaque server-assigned identifier for this mailbox. Stable for the lifetime of the mailbox.\n",
+          "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "readOnly": true
         },
         "mailboxType": {
-          "$ref": "#/$defs/MailboxType"
+          "$ref": "#/$defs/MailboxType",
+          "description": "The email service platform that backs this mailbox.",
+          "readOnly": true
         },
         "status": {
-          "$ref": "#/$defs/MailboxStatus"
+          "$ref": "#/$defs/MailboxStatus",
+          "description": "Lifecycle status of the mailbox. EXECUTING — initial state; provisioning is actively in progress, keep polling. COMPLETED — terminal success. FAILED — terminal failure. DELETED — mailbox has been deleted.\n",
+          "example": "COMPLETED",
+          "readOnly": true
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "ISO 8601 timestamp of the most recent modification to this mailbox.",
+          "example": "2024-06-01T08:00:00Z",
+          "readOnly": true
         }
       },
       "title": "Mailbox",
@@ -300,7 +320,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

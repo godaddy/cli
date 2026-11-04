@@ -18,7 +18,9 @@
           "readOnly": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "When the operation was accepted. Optional: the service does not supply it on every operation response, so clients must handle its absence.\n",
+          "readOnly": true
         },
         "error": {
           "description": "Populated when `status` is `FAILED`. Describes why the application could not be created.\n",
@@ -46,7 +48,8 @@
           "type": "string"
         },
         "status": {
-          "$ref": "#/$defs/OperationStatus"
+          "$ref": "#/$defs/OperationStatus",
+          "readOnly": true
         }
       },
       "required": [
@@ -63,12 +66,14 @@
       "description": "The creation-time view of an application, embedded in `AppOperation.app` when the operation reaches `COMPLETED`. It is a deliberate subset of `Application`: only the fields settled at creation are present. Read the full resource with `GET /apps/{appId}` — or follow `links[rel=self]` — once you need `name`, `appType`, `urls` or `updatedAt`.\n",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         },
         "id": {
           "description": "Server-assigned identifier of the created application, in the same form as `Application.id`. Use it for all subsequent calls.\n",
           "examples": [
-            "NODEJS-aBcDeFgHiJ"
+            "NODEJS-aBcDeFgHiJ",
+            "MHWP-a1b2c3d4e5"
           ],
           "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
           "readOnly": true,
@@ -92,7 +97,8 @@
           "type": "string"
         },
         "status": {
-          "$ref": "#/$defs/AppStatus"
+          "$ref": "#/$defs/AppStatus",
+          "readOnly": true
         }
       },
       "required": [
@@ -144,9 +150,10 @@
     "AppType": {
       "$id": "https://godaddy.com/schemas/hosting/enums/app-type.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The product type for a hosted application. Required on list and create operations. Each application id is prefixed with its application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier (e.g. `NODEJS-v1StcMHAbqMs`), so item-scoped requests do not require this parameter. Additional product types will be added to this enum as they come online. Clients must tolerate values not listed here.\n",
+      "description": "The product type for a hosted application. Required on list and create operations. Each application id is prefixed with its application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier (e.g. `NODEJS-v1StcMHAbqMs`, `MHWP-a1b2c3d4e5`), so item-scoped requests do not require this parameter. Additional product types will be added to this enum as they come online. Clients must tolerate values not listed here.\n",
       "examples": [
-        "NODEJS"
+        "NODEJS",
+        "MHWP"
       ],
       "title": "AppType",
       "type": "string"
@@ -157,15 +164,18 @@
       "description": "A hosted application. After creation, `status` will be `CREATING`. Poll `GET /apps/{appId}` until it reaches `ACTIVE` or `FAILED`.\n",
       "properties": {
         "appType": {
-          "$ref": "#/$defs/AppType"
+          "$ref": "#/$defs/AppType",
+          "readOnly": true
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         },
         "id": {
-          "description": "Server-assigned identifier. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then a product-specific suffix. For `NODEJS`, the suffix is a 10-character nanoid (e.g. `NODEJS-aBcDeFgHiJ`).\nThe prefix lets you identify the product type from the id without an extra lookup. Immutable.\n",
+          "description": "Server-assigned identifier. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then a product-specific suffix. For `NODEJS`, the suffix is a 10-character nanoid (e.g. `NODEJS-aBcDeFgHiJ`). For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only (e.g. `MHWP-a1b2c3d4e5`).\nThe prefix lets you identify the product type from the id without an extra lookup. Immutable.\n",
           "examples": [
-            "NODEJS-aBcDeFgHiJ"
+            "NODEJS-aBcDeFgHiJ",
+            "MHWP-a1b2c3d4e5"
           ],
           "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
           "readOnly": true,
@@ -186,7 +196,7 @@
           "type": "string"
         },
         "region": {
-          "description": "Datacenter region the application is provisioned into, in the same form as `AppOperationApplication.region`. Emitted today only on the items of `GET /apps`; omitted on `GET /apps/{appId}` and whenever the platform does not report one. Today `na` and `eu` are emitted; this is not a closed set, so treat an unlisted value as valid.\n",
+          "description": "Datacenter region the application is provisioned into, in the same form as `AppOperationApplication.region`. Emitted today only on the items of `GET /apps`; omitted on `GET /apps/{appId}` and whenever the platform does not report one. Today `na` and `eu` are emitted; this is not a closed set, so treat an unlisted value as valid. Not emitted for `MHWP` applications.\n",
           "examples": [
             "na",
             "eu"
@@ -195,7 +205,8 @@
           "type": "string"
         },
         "source": {
-          "$ref": "#/$defs/AppSource"
+          "$ref": "#/$defs/AppSource",
+          "readOnly": true
         },
         "sourceDetails": {
           "description": "Present when source is GITHUB. Null when ZIP or no import has been performed.",
@@ -210,21 +221,20 @@
           "readOnly": true
         },
         "status": {
-          "$ref": "#/$defs/AppStatus"
+          "$ref": "#/$defs/AppStatus",
+          "readOnly": true
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         },
         "urls": {
           "description": "Environment URLs assigned to this application.",
           "properties": {
             "preview": {
-              "description": "Preview environment URL.",
+              "description": "Preview environment URL. `MHWP` applications have no preview environment, so the key is omitted for them.\n",
               "format": "uri",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "publish": {
               "description": "Publish environment URL.",
@@ -357,7 +367,8 @@
       "description": "An asynchronous deployment operation. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` reaches `COMPLETED` or `FAILED`.\n",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         },
         "deploymentId": {
           "description": "Server-assigned deployment identifier.",
@@ -401,10 +412,12 @@
           "type": "array"
         },
         "status": {
-          "$ref": "#/$defs/OperationStatus"
+          "$ref": "#/$defs/OperationStatus",
+          "readOnly": true
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         }
       },
       "required": [
@@ -462,7 +475,9 @@
           "type": "string"
         },
         "domainType": {
-          "$ref": "#/$defs/DomainType"
+          "$ref": "#/$defs/DomainType",
+          "description": "How the domain was attached: `CUSTOM` for a customer-owned hostname, or `PREFIX` for a platform-managed subdomain.\n",
+          "readOnly": true
         },
         "hostname": {
           "description": "The fully-qualified domain name.",
@@ -481,10 +496,14 @@
           "type": "array"
         },
         "role": {
-          "$ref": "#/$defs/DomainRole"
+          "$ref": "#/$defs/DomainRole",
+          "description": "Whether this domain is the primary domain for the application or an additional alias.\n",
+          "readOnly": true
         },
         "verificationStatus": {
-          "$ref": "#/$defs/DomainVerificationStatus"
+          "$ref": "#/$defs/DomainVerificationStatus",
+          "description": "Current DNS verification state. `PENDING` means the domain has not yet been confirmed as pointing to this application. `ACTIVE` means DNS is verified and the domain is live. `DELETING` means removal is in progress. `FAILED` means verification did not complete. Check that the domain's A record points to `anycastIp` and that certificate validation (when required) uses `certificateValidationCname`, then try again.\n",
+          "readOnly": true
         }
       },
       "required": [
@@ -571,7 +590,8 @@
           "type": "string"
         },
         "variant": {
-          "$ref": "#/$defs/Environment"
+          "$ref": "#/$defs/Environment",
+          "description": "The environment this variant represents."
         }
       },
       "required": [
@@ -633,7 +653,8 @@
           "type": "integer"
         },
         "hostingProduct": {
-          "$ref": "#/$defs/HostingProduct"
+          "$ref": "#/$defs/HostingProduct",
+          "description": "The hosting product associated with this subscription."
         },
         "label": {
           "description": "Human-readable label for this subscription, suitable for display in a subscription picker.\n",
@@ -649,7 +670,12 @@
           "type": "array"
         },
         "paidThroughDate": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time through which this subscription is paid, as an RFC 3339 date-time. Omitted when the billing system does not report one.\n",
+          "examples": [
+            "2027-08-06T00:00:00Z"
+          ],
+          "readOnly": true
         },
         "slotLimit": {
           "description": "Total number of application slots available on this subscription.",
@@ -736,14 +762,16 @@
       "description": "A single normalized log line from an application. The v2 endpoint always returns entries in this shape; entries that cannot be mapped to the normalized level or source values are silently dropped.\n",
       "properties": {
         "level": {
-          "$ref": "#/$defs/LogLevel"
+          "$ref": "#/$defs/LogLevel",
+          "description": "Severity level of this log line."
         },
         "message": {
           "description": "The raw log content.",
           "type": "string"
         },
         "source": {
-          "$ref": "#/$defs/LogSource"
+          "$ref": "#/$defs/LogSource",
+          "description": "Origin stream of this log line."
         },
         "timestamp": {
           "$ref": "#/$defs/date-time"
@@ -937,7 +965,8 @@
     "RestartRequest": {
       "properties": {
         "variant": {
-          "$ref": "#/$defs/Environment"
+          "$ref": "#/$defs/Environment",
+          "description": "Which environment to restart."
         }
       },
       "required": [
@@ -1114,7 +1143,8 @@
       "description": "An asynchronous source-code import operation. Use `POST /apps/{appId}/imports` to start an import. Send a ZIP archive as `multipart/form-data`, or send a GitHub repository reference as `application/json`. The `importType` field in the response tells you which kind this is. Poll `GET /apps/{appId}/imports/{importId}` until `status` reaches `COMPLETED` or `FAILED`.\n",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "readOnly": true
         },
         "error": {
           "description": "Populated when `status` is `FAILED`. Describes why the import did not complete.\n",
@@ -1142,7 +1172,8 @@
           "type": "string"
         },
         "importType": {
-          "$ref": "#/$defs/ImportType"
+          "$ref": "#/$defs/ImportType",
+          "readOnly": true
         },
         "links": {
           "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the source import (`GET /apps/{appId}/imports/{importId}`), suitable as a poll target.\n",
@@ -1153,7 +1184,8 @@
           "type": "array"
         },
         "status": {
-          "$ref": "#/$defs/OperationStatus"
+          "$ref": "#/$defs/OperationStatus",
+          "readOnly": true
         }
       },
       "required": [
@@ -1172,13 +1204,16 @@
       "description": "The subscription currently attached to an application. Returned by `GET /apps/{appId}/subscription` and `PUT /apps/{appId}/subscription`.\n",
       "properties": {
         "appState": {
-          "$ref": "#/$defs/AppState"
+          "$ref": "#/$defs/AppState",
+          "description": "Which environment of the application the subscription currently backs. `PUBLISHED` once the application has been published; `PREVIEW` while only the preview environment is in use.\n"
         },
         "attachState": {
-          "$ref": "#/$defs/AttachState"
+          "$ref": "#/$defs/AttachState",
+          "description": "Current attachment state. The endpoint returns `404` only when no attachment has ever been created for this application; a lapsed attachment is still returned so clients can distinguish that state from a fresh application. `ACTIVE` and `SUSPENDED` are the only values emitted today — `CANCELLED` is reserved, see `AttachState`.\n"
         },
         "hostingProduct": {
-          "$ref": "#/$defs/HostingProduct"
+          "$ref": "#/$defs/HostingProduct",
+          "description": "The hosting product associated with the attached subscription."
         },
         "links": {
           "description": "HATEOAS navigation links for this resource. When present, `rel=self` is the canonical URL of the attachment (`GET /apps/{appId}/subscription`).\n",
@@ -1247,7 +1282,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"
@@ -1416,7 +1452,7 @@
     }
   },
   "baseUrl": "https://api.godaddy.com/v1/hosting",
-  "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
+  "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Supported product types\n\n`appType` selects the product. Each value maps to a GoDaddy hosting product:\n- `NODEJS` — Node.js hosted applications. - `MHWP` — Managed Hosting for WordPress applications.\nNot every operation applies to every product. An operation a product does not offer returns `501` with `details[].issue` `NOT_APPLICABLE`. Each operation's description states which products it serves.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
   "endpoints": [
     {
       "description": "Returns the current state of an application-creation operation. Use this as the poll target after `POST /apps` until `status` reaches `COMPLETED` or `FAILED`. On `COMPLETED`, the response includes the created `Application` with `status: ACTIVE`.\n",
@@ -1584,7 +1620,7 @@
       "summary": "List applications"
     },
     {
-      "description": "Creates a new hosted application. Because no `appId` exists until provisioning has assigned one, this endpoint returns `202 Accepted` with an `AppOperation` resource carrying an `operationId`. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`. On `COMPLETED` the operation result includes the created `Application` with `status: ACTIVE`; use its `id` for any further calls.\n\nCurrently only `NODEJS` applications can be created through this endpoint. The request body is product-specific; the fields below apply to Node.js. Support for additional product types will be documented when those paths are available.\n",
+      "description": "Creates a new hosted application. Because no `appId` exists until provisioning has assigned one, this endpoint returns `202 Accepted` with an `AppOperation` resource carrying an `operationId`. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`. On `COMPLETED` the operation result includes the created `Application` with `status: ACTIVE`; use its `id` for any further calls.\n\nCurrently only `NODEJS` and `MHWP` applications can be created through this endpoint. The request body is product-specific; the fields below apply to Node.js and MHWP. Support for additional product types will be documented when those paths are available.\n",
       "method": "POST",
       "operationId": "createApp",
       "parameters": [
@@ -1697,7 +1733,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -1752,7 +1788,7 @@
       "summary": "Get an application"
     },
     {
-      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present.\n\nOnly the `replace` operation is supported, and only against the `/name` and `/rootPath` paths. Any other op or path returns `400 Bad Request`.\n\n- `/name` — human-readable display name. String, 1–200 characters. - `/rootPath` — subdirectory within the repository to treat as\n  the application root. Write-only; not returned on the\n  `Application` resource.\n\n\nCurrently only supported for `NODEJS` applications. Additional product-specific paths will be documented when those paths are available.\n",
+      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present.\n\nOnly the `replace` operation is supported, and only against the `/name` and `/rootPath` paths. Any other op or path returns `400 Bad Request`.\n\n- `/name` — human-readable display name. String, 1–200 characters. - `/rootPath` — subdirectory within the repository to treat as\n  the application root. Write-only; not returned on the\n  `Application` resource.\n\n\nCurrently only supported for `NODEJS` and `MHWP` applications. Additional product-specific paths will be documented when those paths are available.\n",
       "method": "PATCH",
       "operationId": "updateApp",
       "parameters": [
@@ -1767,7 +1803,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -1856,7 +1892,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -1923,7 +1959,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2026,7 +2062,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2124,7 +2160,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2209,7 +2245,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2285,7 +2321,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2396,7 +2432,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2481,7 +2517,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2563,7 +2599,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2674,7 +2710,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2759,7 +2795,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -2920,7 +2956,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3025,7 +3061,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3098,7 +3134,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3183,7 +3219,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3303,7 +3339,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3379,7 +3415,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3455,7 +3491,7 @@
           }
         },
         {
-          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`.\n",
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
           "in": "path",
           "name": "appId",
           "required": true,
@@ -3618,5 +3654,5 @@
   ],
   "name": "hosting",
   "title": "Hosted Application Lifecycle Management API",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
