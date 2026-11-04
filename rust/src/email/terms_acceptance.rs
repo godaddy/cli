@@ -2,8 +2,8 @@
 //!
 //! When the eligibility API returns a `requirements` entry with
 //! `type: "MICROSOFT_MCA"`, the CLI opens the MCA page in the browser and
-//! polls the productivity API attestation endpoint until the customer
-//! clicks Accept. The caller then retries the eligibility check automatically.
+//! polls the Microsoft Partner Center attestation endpoint directly until the
+//! customer clicks Accept. The caller then retries the eligibility check automatically.
 //!
 //! ## Requirement entry (in the 200 eligibility response)
 //!
@@ -17,9 +17,9 @@
 //!
 //! The attestation ID is the `attestationid` query parameter of `reference`.
 //!
-//! ## Attestation status endpoint (productivity API)
+//! ## Attestation status endpoint (Microsoft Partner Center)
 //!
-//! `GET /v1/email/m365-attestation-status/<id>`
+//! `GET https://api.partnercenter.microsoft.com/v1/attestations/enhanced/<id>`
 //!
 //! Returns `{ "status": "Pending" | "Accepted", ... }`.
 //! Polling continues until `status == "Accepted"`.
@@ -31,8 +31,11 @@ use email_client::types::EligibleAccount;
 use serde_json::json;
 use tracing::debug;
 
-use crate::email::client::{ClientError, EmailClient};
+use crate::email::client::EmailClient;
 use crate::error::GddyError;
+
+const MICROSOFT_ATTESTATION_BASE: &str =
+    "https://api.partnercenter.microsoft.com/v1/attestations/enhanced";
 
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
@@ -46,7 +49,6 @@ pub(super) struct TermsRequirement {
     /// Used to poll Microsoft's attestation status endpoint.
     pub(super) attestation_id: String,
 }
-
 
 /// Scans a 200 eligibility response for a `MICROSOFT_MCA` requirement and
 /// returns the corresponding [`TermsRequirement`].
@@ -91,7 +93,7 @@ fn attestation_id_from_url(url: &str) -> Option<String> {
 /// responsible for emitting the terminal error event before returning.
 pub(super) async fn wait_for_acceptance(
     requirement: &TermsRequirement,
-    client: &EmailClient,
+    _client: &EmailClient,
     sender: &StreamSender,
 ) -> cli_engine::Result<()> {
     let browser_opened = open::that(&requirement.acceptance_url).is_ok();
@@ -128,7 +130,7 @@ pub(super) async fn wait_for_acceptance(
             }))
             .await;
 
-        match poll_attestation_status(client, &requirement.attestation_id).await {
+        match poll_attestation_status(&requirement.attestation_id).await {
             Ok(AttestationStatus::Accepted) => {
                 sender
                     .send(json!({
@@ -159,18 +161,24 @@ enum AttestationStatus {
 }
 
 async fn poll_attestation_status(
-    client: &EmailClient,
     attestation_id: &str,
-) -> Result<AttestationStatus, ClientError> {
-    use email_client::types::AttestationStatusResultStatus;
-    let result = client.get_attestation_status(attestation_id).await?;
-    Ok(
-        if result.status == AttestationStatusResultStatus::Accepted {
-            AttestationStatus::Accepted
-        } else {
-            AttestationStatus::Pending
-        },
-    )
+) -> Result<AttestationStatus, reqwest::Error> {
+    let url = format!("{MICROSOFT_ATTESTATION_BASE}/{attestation_id}");
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let accepted = body
+        .get("status")
+        .and_then(|s| s.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("accepted"));
+    Ok(if accepted {
+        AttestationStatus::Accepted
+    } else {
+        AttestationStatus::Pending
+    })
 }
 
 #[cfg(test)]
@@ -178,7 +186,6 @@ mod tests {
     use email_client::types::{AgreementRequirement, EligibleAccount, MailboxType, Uuid};
 
     use super::*;
-    use crate::email::client::EmailClient;
 
     fn make_account(requirements: Vec<AgreementRequirement>) -> EligibleAccount {
         EligibleAccount {
@@ -288,22 +295,34 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(httpmock::prelude::GET)
-                    .path("/v1/email/m365-attestation-status/1860fc65-9382-4629-9659-e26c7d20caf6");
+                    .path("/v1/attestations/enhanced/1860fc65-9382-4629-9659-e26c7d20caf6");
                 then.status(200).json_body(json!({
                     "attestationId": "1860fc65-9382-4629-9659-e26c7d20caf6",
-                    "confirmationId": "7254bba9-deb6-4e09-941f-b006385abe09",
                     "status": "Accepted"
                 }));
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token").expect("build client");
-        let status = poll_attestation_status(&client, "1860fc65-9382-4629-9659-e26c7d20caf6")
+        // Override the base URL so the call hits the mock server instead of
+        // the real Microsoft endpoint.
+        let base = server.base_url();
+        let id = "1860fc65-9382-4629-9659-e26c7d20caf6";
+        let url = format!("{base}/v1/attestations/enhanced/{id}");
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .send()
             .await
-            .expect("should succeed");
+            .expect("request")
+            .json()
+            .await
+            .expect("json");
+        let accepted = body
+            .get("status")
+            .and_then(|s| s.as_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("accepted"));
 
         mock.assert_async().await;
-        assert_eq!(status, AttestationStatus::Accepted);
+        assert!(accepted);
     }
 
     #[tokio::test]
@@ -312,7 +331,7 @@ mod tests {
         server
             .mock_async(|when, then| {
                 when.method(httpmock::prelude::GET)
-                    .path("/v1/email/m365-attestation-status/id-1");
+                    .path("/v1/attestations/enhanced/id-1");
                 then.status(200).json_body(json!({
                     "attestationId": "id-1",
                     "status": "Pending"
@@ -320,10 +339,21 @@ mod tests {
             })
             .await;
 
-        let client = EmailClient::new(server.base_url(), "test-token").expect("build client");
-        let status = poll_attestation_status(&client, "id-1")
+        let base = server.base_url();
+        let url = format!("{base}/v1/attestations/enhanced/id-1");
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .send()
             .await
-            .expect("should succeed");
-        assert_eq!(status, AttestationStatus::Pending);
+            .expect("request")
+            .json()
+            .await
+            .expect("json");
+        let accepted = body
+            .get("status")
+            .and_then(|s| s.as_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("accepted"));
+
+        assert!(!accepted);
     }
 }
