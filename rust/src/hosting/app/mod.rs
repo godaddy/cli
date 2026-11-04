@@ -21,8 +21,8 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     );
     if mhwp {
         long.push_str(
-            " WordPress (MHWP) sites go live with `publish` and back to a placeholder page \
-             with `unpublish`.",
+            " `publish` takes any app live; `unpublish` takes a WordPress (MHWP) site back \
+             to a placeholder page.",
         );
     }
     let group = RuntimeGroupSpec::new(
@@ -41,7 +41,8 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     .with_command(status::command())
     .with_command(restart::command());
     if mhwp {
-        // Only WordPress sites have a publish state; Node.js goes live through deployments.
+        // Both name WordPress, so they ship with its flag; Node.js keeps
+        // `deployment publish` either way.
         group
             .with_command(publish::command())
             .with_command(unpublish::command())

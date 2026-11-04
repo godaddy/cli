@@ -1,28 +1,38 @@
 use cli_engine::{CommandSpec, RuntimeCommandSpec, Tier};
 
-use crate::hosting::app::common::{PublishAppIdArgs, set_publish_state};
-use crate::hosting::common::HostingAppOperation;
+use crate::hosting::app::common::{PublishArgs, publish};
+use crate::hosting::common::{HostingAppPublish, make_client};
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
 
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_with_context::<PublishAppIdArgs, _, _, _>(
-        CommandSpec::from_args::<PublishAppIdArgs>("publish", "Take a WordPress site live")
+    RuntimeCommandSpec::new_typed_with_context::<PublishArgs, _, _, _>(
+        CommandSpec::from_args::<PublishArgs>("publish", "Take an app live")
             .with_long(
-                "Take an MHWP (WordPress) application live at its publish URL. WordPress sites \
-                 have no build step: the site is provisioned ready to serve and starts by \
-                 showing a placeholder page, and this switches it on. Returns immediately with \
-                 an operation ID; poll `hosting operation get` until status is COMPLETED or \
-                 FAILED. A site that is already live is accepted and nothing changes. Going live \
-                 needs a plan with a free published-site slot; the free plan has none. Use \
-                 `hosting app unpublish` to take the site back to a placeholder page. Node.js \
-                 apps go live with `hosting deployment publish` instead.",
+                "Take an application live at its publish URL. What that takes depends on the \
+                 product, which the app ID's prefix names:\n\
+                 \n\
+                 • Node.js (NODEJS-…): builds the latest source from `hosting source upload` or \
+                 `hosting source github` and deploys it to PUBLISH, exactly as `hosting \
+                 deployment publish` does. Every run deploys again. The app must be attached to \
+                 a hosting plan first: `hosting subscription list`, then `hosting subscription \
+                 attach`. Returns a deployment ID; poll `hosting deployment get` until status is \
+                 COMPLETED or FAILED.\n\
+                 \n\
+                 • WordPress (MHWP-…): switches the site from its placeholder page to live; there \
+                 is no build step. A site that is already live is accepted and nothing changes. \
+                 Going live needs a plan with a free published-site slot; the free plan has none. \
+                 Returns an operation ID; poll `hosting operation get` until status is COMPLETED \
+                 or FAILED. `hosting app unpublish` takes the site back to its placeholder page.",
             )
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
             .with_scopes(&[DEPLOY_EXECUTE])
-            .with_output_schema::<HostingAppOperation>(),
-        |ctx, args: PublishAppIdArgs| async move { set_publish_state(&ctx, args.app_id, true).await },
+            .with_output_schema::<HostingAppPublish>(),
+        |ctx, args: PublishArgs| async move {
+            let client = make_client(&ctx, &[DEPLOY_EXECUTE]).await?;
+            publish(&client, args.app).await
+        },
     )
 }
 

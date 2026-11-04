@@ -1,6 +1,6 @@
 mod get;
 mod list;
-mod publish;
+pub(super) mod publish;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 

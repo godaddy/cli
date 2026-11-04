@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use clap::builder::{PossibleValuesParser, TypedValueParser};
 use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
 use serde::Deserialize;
@@ -79,6 +80,20 @@ output_schema!(HostingAppOperation {
     "error": "object", optional;
     "createdAt": "string", optional;
     "links": "array";
+});
+
+// `hosting app publish` answers with what the product's own go-live call
+// returns: a deployment for a Node.js app, an operation for a WordPress site.
+output_schema!(HostingAppPublish {
+    "deploymentId": "string", optional;
+    "operationId": "string", optional;
+    "status": "string";
+    "type": "string", optional;
+    "gitHash": "string", optional;
+    "error": "object", optional;
+    "createdAt": "string", optional;
+    "updatedAt": "string", optional;
+    "links": "array", optional;
 });
 
 output_schema!(HostingApplicationStatus {
@@ -214,9 +229,23 @@ impl HostingAppType {
             Self::Mhwp => "MHWP",
         }
     }
-}
 
-pub const MHWP_ID_PREFIX: &str = "MHWP-";
+    /// The prefix that starts every app and operation id of this type.
+    pub const fn id_prefix(self) -> &'static str {
+        match self {
+            Self::Nodejs => "NODEJS-",
+            Self::Mhwp => "MHWP-",
+        }
+    }
+
+    /// The type an app or operation id names by its prefix, if any.
+    pub fn of_id(id: &str) -> Option<Self> {
+        Self::value_variants()
+            .iter()
+            .copied()
+            .find(|app_type| strip_id_prefix(id, app_type.id_prefix()).is_some())
+    }
+}
 
 /// `app_id` with `prefix` removed, or `None` if it does not start with it.
 /// The prefix matches ignoring ASCII case, as the edge does.
@@ -227,7 +256,7 @@ pub fn strip_id_prefix<'a>(app_id: &'a str, prefix: &str) -> Option<&'a str> {
 
 /// Whether `app_id` names a WordPress (MHWP) site.
 pub fn is_mhwp_app_id(app_id: &str) -> bool {
-    strip_id_prefix(app_id, MHWP_ID_PREFIX).is_some()
+    HostingAppType::of_id(app_id) == Some(HostingAppType::Mhwp)
 }
 
 /// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
@@ -245,13 +274,16 @@ pub const fn supported_app_types(mhwp: bool) -> &'static str {
 
 /// Markdown for `gddy guide hosting`, the index of the per-product guides.
 ///
-/// No guide may name a command the binary does not register, so the
-/// WordPress row joins the product table only while the MHWP flag is on.
+/// No guide may name a command the binary does not register, so the WordPress
+/// product row and the `app publish` command row join the guide only while the
+/// MHWP flag is on.
 pub fn hosting_guide(mhwp: bool) -> String {
     if !mhwp {
         return HOSTING_GUIDE.to_owned();
     }
-    HOSTING_GUIDE.replacen(NODEJS_ROW, &format!("{NODEJS_ROW}\n{WORDPRESS_ROW}"), 1)
+    HOSTING_GUIDE
+        .replacen(NODEJS_ROW, &format!("{NODEJS_ROW}\n{WORDPRESS_ROW}"), 1)
+        .replacen(STATUS_ROW, &format!("{STATUS_ROW}\n{PUBLISH_ROW}"), 1)
 }
 
 /// Markdown for `gddy guide hosting-nodejs`.
@@ -265,6 +297,9 @@ const NODEJS_ROW: &str = "| Node.js app: upload your source, preview it, then pu
      | `NODEJS` | `gddy guide hosting-nodejs` |";
 const WORDPRESS_ROW: &str = "| Managed WordPress site: edit it in WordPress, no build or \
      deploy | `MHWP` | `gddy guide hosting-wordpress` |";
+const STATUS_ROW: &str = "| `hosting app status --app-id <app-id>` | Runtime status of an app |";
+const PUBLISH_ROW: &str = "| `hosting app publish --app-id <app-id>` | Take an app live: \
+     deploy a Node.js app's latest source, or switch a WordPress site on |";
 
 /// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only
 /// while its feature flag is on.
@@ -377,6 +412,24 @@ mod tests {
             "MHWP\u{e9}",
         ] {
             assert!(!is_mhwp_app_id(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn of_id_reads_the_type_off_the_prefix() {
+        for (id, expected) in [
+            ("NODEJS-aBcDeFgHiJ", Some(HostingAppType::Nodejs)),
+            ("nodejs-x", Some(HostingAppType::Nodejs)),
+            ("MHWP-a1b2c3d4e5", Some(HostingAppType::Mhwp)),
+            ("Mhwp-ab12cd34", Some(HostingAppType::Mhwp)),
+            ("MHWP", None),
+            ("NODEJS", None),
+            ("x-MHWP-a1b2c3d4e5", None),
+            ("MHWP\u{e9}", None),
+            ("3f2a9c1e-77d0-4b1a-9c55-0e6f1a2b3c4d", None),
+            ("", None),
+        ] {
+            assert_eq!(HostingAppType::of_id(id), expected, "{id:?}");
         }
     }
 

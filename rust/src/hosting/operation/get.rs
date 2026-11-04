@@ -17,9 +17,10 @@ struct OperationGetArgs {
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     // Only WordPress sites have a publish state; name it only while the flag is on.
     let long = if mhwp {
-        "Poll an async operation by ID. `hosting app create`, `hosting app publish` and \
-         `hosting app unpublish` return one — `hosting deployment publish` has its own \
-         poller at `hosting deployment get`. Keep polling until status is COMPLETED or \
+        "Poll an async operation by ID. `hosting app create` returns one, and so do \
+         `hosting app publish` and `hosting app unpublish` for a WordPress site — publishing \
+         a Node.js app, with `hosting app publish` or `hosting deployment publish`, starts a \
+         deployment, polled at `hosting deployment get`. Keep polling until status is COMPLETED or \
          FAILED. The `type` field says which kind of operation it is, CREATE_APP or \
          SET_PUBLISH_STATE; an operation with no `type` is a create. On COMPLETED, a \
          create's `app` field carries the created application; use `app.id` for \
@@ -86,11 +87,8 @@ fn next_actions(data: &Value, mhwp: bool) -> Vec<NextAction> {
     if !no_capacity {
         return Vec::new();
     }
-    // MHWP operation ids carry the app type as a prefix, e.g. `MHWP-ab12cd34`.
-    let kind: Option<HostingAppType> = data["operationId"]
-        .as_str()
-        .and_then(|id| id.split_once('-'))
-        .and_then(|(prefix, _)| clap::ValueEnum::from_str(prefix, true).ok());
+    // Operation ids carry the app type as a prefix, e.g. `MHWP-ab12cd34`.
+    let kind = data["operationId"].as_str().and_then(HostingAppType::of_id);
     if !mhwp && kind == Some(HostingAppType::Mhwp) {
         return Vec::new();
     }

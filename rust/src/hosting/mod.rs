@@ -81,26 +81,31 @@ mod tests {
         let off = hosting_guide(false);
         assert_eq!(off, include_str!("guides/hosting.md"));
         assert!(off.contains("`gddy guide hosting-nodejs`"), "{off}");
-        for absent in ["WordPress", "MHWP", "hosting-wordpress"] {
+        for absent in ["WordPress", "MHWP", "hosting-wordpress", "app publish"] {
             assert!(!off.contains(absent), "flag off still mentions {absent:?}");
         }
 
         let on = hosting_guide(true);
-        assert_eq!(
-            on.matches("`gddy guide hosting-wordpress`").count(),
-            1,
-            "{on}"
-        );
+        for added in [
+            "`gddy guide hosting-wordpress`",
+            "`hosting app publish --app-id <app-id>`",
+        ] {
+            assert_eq!(on.matches(added).count(), 1, "{added}: {on}");
+        }
         assert!(
             on.find("hosting-nodejs") < on.find("hosting-wordpress"),
             "the WordPress row must follow the Node.js row: {on}"
         );
-        // The WordPress row is the only difference.
-        let without_row: Vec<&str> = on
+        assert!(
+            on.find("hosting app status") < on.find("hosting app publish"),
+            "the publish row must follow the status row: {on}"
+        );
+        // The two rows are the only difference.
+        let without_rows: Vec<&str> = on
             .lines()
-            .filter(|line| !line.contains("hosting-wordpress"))
+            .filter(|line| !line.contains("hosting-wordpress") && !line.contains("app publish"))
             .collect();
-        assert_eq!(without_row, off.lines().collect::<Vec<_>>());
+        assert_eq!(without_rows, off.lines().collect::<Vec<_>>());
     }
 
     #[test]
