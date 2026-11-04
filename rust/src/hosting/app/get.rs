@@ -30,6 +30,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// WordPress (MHWP) sites have no deployments, so they are not offered one.
+///
+/// Deliberately independent of the `hosting-mhwp` flag, unlike the retry hint
+/// in `operation get`: this branch only withholds a suggestion that was wrong
+/// for a WordPress id whatever the flag said, and the id reaches here because
+/// the caller already has one.
 fn next_actions(app_id: String) -> Vec<NextAction> {
     let status = next_action(
         "hosting app status --app-id <app-id>",

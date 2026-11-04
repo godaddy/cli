@@ -2,7 +2,7 @@
 
 Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, and switches it between live and a placeholder page. Everything inside the site — pages, posts, themes, plugins, the site title — is edited in WordPress itself, from the WordPress admin, which you reach by signing in to Airo App Builder and opening the site. The API returns no WordPress admin password, so there is no CLI route into the admin.
 
-How it differs from a Node.js app: there is no source upload, no build and no deployment, and no PREVIEW environment. The site is provisioned ready to serve, in the United States, and is reachable at `urls.publish` on `app get` from the moment it exists. Until it is taken live it answers with a placeholder page instead of its content. The display name you pass as `--name` labels the app in the CLI and in Airo App Builder; it does not become the WordPress site title.
+How it differs from a Node.js app: there is no source upload, no build and no deployment, and no PREVIEW environment. The site is provisioned ready to serve, in the United States, and is reachable at `urls.publish` on `app get` once creation completes. Until it is taken live it answers with a placeholder page instead of its content. The display name you pass as `--name` labels the app in the CLI and in Airo App Builder; it does not become the WordPress site title.
 
 `--app-type MHWP` appears once WordPress is enabled for your CLI.
 

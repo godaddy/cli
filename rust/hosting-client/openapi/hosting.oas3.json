@@ -354,10 +354,6 @@
       "AppOperationType": {
         "$id": "https://godaddy.com/schemas/hosting/enums/app-operation-type.v1",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "enum": [
-          "CREATE_APP",
-          "SET_PUBLISH_STATE"
-        ],
         "title": "AppOperationType",
         "type": "string"
       },

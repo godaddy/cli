@@ -319,6 +319,33 @@ async fn get_operation_hits_correct_path() {
     assert_eq!(body["operationId"], "op-1");
 }
 
+/// `AppOperationType` is an open enum in the contract, so the generated
+/// client decodes an operation kind it has never heard of instead of
+/// failing the whole response.
+#[tokio::test]
+async fn get_operation_decodes_an_unknown_operation_type() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/app-operations/op-2");
+            then.status(200).json_body(json!({
+                "operationId": "op-2",
+                "type": "DELETE_APP",
+                "status": "IN_PROGRESS",
+                "links": []
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_operation("op-2")
+        .await
+        .expect("an unlisted operation type still decodes");
+
+    mock.assert_async().await;
+    assert_eq!(body["type"], "DELETE_APP");
+}
+
 #[tokio::test]
 async fn create_import_sends_repo_and_branch() {
     let server = MockServer::start_async().await;

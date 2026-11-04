@@ -104,8 +104,8 @@
     "AppOperationType": {
       "$id": "https://godaddy.com/schemas/hosting/enums/app-operation-type.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Which kind of operation an `AppOperation` describes. `CREATE_APP` is an application creation started by `POST /apps`. `SET_PUBLISH_STATE` is a publish-state change started by `PUT /apps/{appId}/publish-state`. The member is optional on the wire: a response that omits it comes from a service that predates the field and describes a creation.\n",
-      "enum": [
+      "description": "Which kind of operation an `AppOperation` describes. `CREATE_APP` is an application creation started by `POST /apps`. `SET_PUBLISH_STATE` is a publish-state change started by `PUT /apps/{appId}/publish-state`. The member is optional on the wire: a response that omits it comes from a service that predates the field and describes a creation. Clients must tolerate values not listed here.\n",
+      "examples": [
         "CREATE_APP",
         "SET_PUBLISH_STATE"
       ],

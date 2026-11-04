@@ -22,9 +22,9 @@ pub(super) struct PublishAppIdArgs {
 
 fn publishable_app_id(value: &str) -> Result<String, String> {
     // 7 is the length of the "NODEJS-" prefix. `get` rather than indexing so a
-    // shorter id, or one whose seventh byte is mid-character, falls through to
-    // the API instead of panicking. Only this prefix is judged here; every
-    // other shape is the API's call.
+    // shorter id, or one whose seventh byte is mid-character, falls through
+    // instead of panicking. A Node.js id gets its own message because the
+    // caller has somewhere to go with it.
     if value
         .get(..7)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("NODEJS-"))
@@ -35,7 +35,32 @@ fn publishable_app_id(value: &str) -> Result<String, String> {
                 .to_owned(),
         );
     }
+    if !is_wordpress_site_id(value) {
+        return Err(
+            "not a WordPress site id; expected MHWP- followed by 10 lower-case \
+             letters or digits"
+                .to_owned(),
+        );
+    }
     Ok(value.to_owned())
+}
+
+/// The edge route's id shape, `(?i)^mhwp-[a-z0-9]{10}$`: the prefix matches
+/// case-insensitively, the ten characters after it do not. Anything else never
+/// reaches the service, so it is refused here rather than sent out to collect
+/// a 404.
+fn is_wordpress_site_id(value: &str) -> bool {
+    let Some(body) = value
+        .get(..5)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("MHWP-"))
+        .map(|_| &value[5..])
+    else {
+        return false;
+    };
+    body.len() == 10
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
 pub(super) async fn set_publish_state(
@@ -199,13 +224,36 @@ mod tests {
             let err = publishable_app_id(id).expect_err(id);
             assert!(err.contains("hosting deployment publish"), "{id}: {err}");
         }
-        assert_eq!(
-            publishable_app_id("MHWP-a1b2c3d4e5").as_deref(),
-            Ok("MHWP-a1b2c3d4e5")
-        );
-        // Only the prefix is checked locally; anything else is the API's call.
-        assert!(publishable_app_id("NODEJS").is_ok());
-        assert!(publishable_app_id("x-NODEJS-abc").is_ok());
+        // A Node.js id keeps its own message rather than the shape complaint.
+        for id in ["NODEJS-abcdefghij", "nodejs-a1b2c3d4e5"] {
+            let err = publishable_app_id(id).expect_err(id);
+            assert!(!err.contains("not a WordPress site id"), "{id}: {err}");
+        }
+    }
+
+    #[test]
+    fn publishable_app_id_accepts_only_the_edge_id_shape() {
+        // The prefix is case-insensitive at the edge, the body is not.
+        for id in ["MHWP-a1b2c3d4e5", "mhwp-a1b2c3d4e5", "Mhwp-0123456789"] {
+            assert_eq!(publishable_app_id(id).as_deref(), Ok(id));
+        }
+        for id in [
+            "",
+            "../x",
+            "NODEJS",
+            "MHWP",
+            "MHWP-",
+            "MHWP-TOOSHORT",
+            "MHWP-A1B2C3D4E5",
+            "MHWP-a1b2c3d4e",
+            "MHWP-a1b2c3d4e56",
+            "MHWP-a1b2c3d4e_",
+            "x-MHWP-a1b2c3d4e5",
+            "MHWP-a1b2c3d4e5/x",
+        ] {
+            let err = publishable_app_id(id).expect_err(id);
+            assert!(err.contains("not a WordPress site id"), "{id}: {err}");
+        }
     }
 
     #[tokio::test]

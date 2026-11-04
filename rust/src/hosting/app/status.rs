@@ -33,6 +33,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 /// WordPress (MHWP) sites have no deployments and no restart, so they are
 /// pointed back at the site's details instead.
+///
+/// Deliberately independent of the `hosting-mhwp` flag, unlike the retry hint
+/// in `operation get`: this branch only withholds suggestions that were wrong
+/// for a WordPress id whatever the flag said, and `app get` is reachable with
+/// the flag off.
 fn next_actions(app_id: String) -> Vec<NextAction> {
     if is_mhwp_app_id(&app_id) {
         return vec![
