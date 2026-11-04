@@ -65,7 +65,7 @@ gddy dns delete example.com --type A --name www
 
 Deleting something that doesn't match is a no-op success (`deleted: 0`), not an error. Preview with `--dry-run` first for anything you're not fully sure about.
 
-For `SRV` and `TLSA` records, the name does not include the service or port: `--type SRV --name chat` matches every SRV record listed under `chat`, whatever its service, so `list` or `--dry-run` first to see which will be removed.
+For `SRV` and `TLSA` records, the name does not include the service or port: `--type SRV --name chat` matches every SRV record listed under `chat`, whatever its service, so `list` or `--dry-run` first to see which will be removed. To target one service, give the full name instead, e.g. `--name _sip._tcp.chat` (for `TLSA`, `_443._tcp.www`).
 
 ## International domain names
 

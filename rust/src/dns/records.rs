@@ -438,9 +438,32 @@ pub(super) async fn fetch_records(
         page += 1;
     }
     if match_name_here && let Some(wanted) = name {
-        all.retain(|record| record.name.eq_ignore_ascii_case(wanted));
+        all.retain(|record| listed_name_matches(record, wanted));
     }
     Ok(all)
+}
+
+/// Whether `wanted` names `record`: either the short name the record is listed
+/// under, or the composed name the API itself understands (`_service._proto.name`
+/// for SRV, `_port._proto.name` for TLSA), so a selector written either way finds
+/// it. Case does not matter.
+fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
+    if record.name.eq_ignore_ascii_case(wanted) {
+        return true;
+    }
+    let composed = match record.type_.as_str() {
+        "SRV" => record
+            .service
+            .as_deref()
+            .zip(record.protocol.as_deref())
+            .map(|(service, protocol)| format!("{service}.{protocol}.{}", record.name)),
+        "TLSA" => record
+            .port
+            .zip(record.protocol.as_deref())
+            .map(|(port, protocol)| format!("_{port}.{protocol}.{}", record.name)),
+        _ => None,
+    };
+    composed.is_some_and(|composed| composed.eq_ignore_ascii_case(wanted))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
@@ -534,6 +557,61 @@ mod tests {
             .filter_map(|r| r.record_id.as_deref())
             .collect();
         assert_eq!(ids, ["r1", "r2"], "every service under the name, any case");
+    }
+
+    /// A selector written as the composed name the API understands finds the
+    /// record too, and so does a different case; a composed name for another
+    /// service does not.
+    #[tokio::test]
+    async fn fetch_records_accepts_a_composed_srv_or_tlsa_name() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/zones/example.com/dns-records")
+                    .query_param("type", "SRV");
+                then.status(200).json_body(json!({
+                    "items": [srv("r1", "chat", "_xmpp"), srv("r2", "chat", "_sip")],
+                    "links": []
+                }));
+            })
+            .await;
+        let client = client_for(&server);
+        let ids = |found: Vec<types::DnsRecord>| -> Vec<String> {
+            found.into_iter().filter_map(|r| r.record_id).collect()
+        };
+
+        let one = fetch_records(
+            &client,
+            "example.com",
+            Some("SRV"),
+            Some("_XMPP._tcp.chat"),
+            false,
+        )
+        .await
+        .expect("list");
+        assert_eq!(ids(one), ["r1"], "only the service the composed name names");
+        let none = fetch_records(
+            &client,
+            "example.com",
+            Some("SRV"),
+            Some("_ftp._tcp.chat"),
+            false,
+        )
+        .await
+        .expect("list");
+        assert!(none.is_empty());
+
+        let tlsa = types::DnsRecord {
+            type_: types::DnsRecordType("TLSA".to_owned()),
+            port: Some(443),
+            protocol: Some("_tcp".to_owned()),
+            name: "www".to_owned(),
+            ..serde_json::from_value(srv("t1", "www", "_x")).expect("record")
+        };
+        assert!(listed_name_matches(&tlsa, "_443._tcp.www"));
+        assert!(listed_name_matches(&tlsa, "www"));
+        assert!(!listed_name_matches(&tlsa, "_25._tcp.www"));
     }
 
     /// A TLSA name is composed the same way, so it is matched here too.
