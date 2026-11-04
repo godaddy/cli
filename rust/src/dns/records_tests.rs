@@ -545,6 +545,35 @@ fn merged_tlsa_data_falls_back_to_certificate_data_when_a_numeric_field_is_missi
 }
 
 #[test]
+fn a_caa_record_without_a_flag_is_non_critical() {
+    let mut caa = opts();
+    caa.tag = Some("issue".to_owned());
+    assert_eq!(v3_record("@", "CAA", "letsencrypt.org", &caa).flag, Some(0));
+    // An explicit flag wins, and other types never get one.
+    caa.flag = Some(128);
+    assert_eq!(
+        v3_record("@", "CAA", "letsencrypt.org", &caa).flag,
+        Some(128)
+    );
+    assert_eq!(v3_record("@", "A", "1.2.3.4", &opts()).flag, None);
+
+    // So an omitted --flag matches a stored flag-0 record.
+    let mut stored = v3_record("@", "CAA", "letsencrypt.org", &{
+        let mut o = opts();
+        o.flag = Some(0);
+        o.tag = Some("issue".to_owned());
+        o
+    });
+    stored.record_id = Some("r1".to_owned());
+    let mut no_flag = opts();
+    no_flag.tag = Some("issue".to_owned());
+    assert!(same_content(
+        &stored,
+        &v3_record("@", "CAA", "letsencrypt.org", &no_flag)
+    ));
+}
+
+#[test]
 fn same_content_follows_how_the_api_stores_each_field() {
     let same = |ty: &str, a: &str, b: &str| {
         same_content(
