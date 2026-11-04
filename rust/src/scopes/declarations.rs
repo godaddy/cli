@@ -38,7 +38,7 @@ declare_scopes! {
             HOSTING_APPLICATION_CREATE => "hosting.application:create",
             /// Update a hosting application
             HOSTING_APPLICATION_UPDATE => "hosting.application:update",
-            /// Trigger deployments and restarts
+            /// Trigger deployments, restarts, and publish-state changes
             HOSTING_DEPLOYMENT_EXECUTE => "hosting.deployment:execute",
             /// Read source imports for hosting applications
             HOSTING_SOURCE_READ => "hosting.source:read",

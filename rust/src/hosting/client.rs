@@ -1,6 +1,6 @@
 use hosting_client::types::{
     AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
-    HostingProduct, ImportGitHubSourceRequest, PublishStateRequest, RestartRequest,
+    HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
 };
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
@@ -302,8 +302,9 @@ impl HostingClient {
             client
                 .set_publish_state()
                 .app_id(app_id)
-                .body(PublishStateRequest {
+                .body(PublishState {
                     published: Some(published),
+                    ..Default::default()
                 })
                 .send()
                 .await,

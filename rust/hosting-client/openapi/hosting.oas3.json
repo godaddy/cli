@@ -959,15 +959,6 @@
         "title": "PublishState",
         "type": "object"
       },
-      "PublishStateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "published": {
-            "type": "boolean"
-          }
-        },
-        "type": "object"
-      },
       "RestartRequest": {
         "properties": {
           "variant": {
@@ -1320,7 +1311,7 @@
               "hosting.application:delete": "Delete applications",
               "hosting.application:read": "Read application details",
               "hosting.application:update": "Update application settings",
-              "hosting.deployment:execute": "Trigger deployments and restarts",
+              "hosting.deployment:execute": "Trigger deployments, restarts, and publish-state changes",
               "hosting.domain:read": "Read attached domains",
               "hosting.domain:write": "Attach or remove domains",
               "hosting.log:read": "Read application logs",
@@ -2292,7 +2283,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PublishStateRequest"
+                "$ref": "#/components/schemas/PublishState"
               }
             }
           },

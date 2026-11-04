@@ -976,7 +976,7 @@
           "readOnly": true
         },
         "links": {
-          "description": "HATEOAS navigation links for this resource. `rel=self` is the canonical URL of the publish state (`GET /apps/{appId}/publish-state`).\n",
+          "description": "HATEOAS navigation links for this resource. `rel=self` is the canonical URL of the publish state (`GET /apps/{appId}/publish-state`). Always present in a response; never sent in a `PUT` body.\n",
           "items": {
             "$ref": "#/$defs/link-description"
           },
@@ -984,7 +984,7 @@
           "type": "array"
         },
         "published": {
-          "description": "`true` when the application is live at `urls.publish`; `false` when it serves its Coming Soon page. The only writable field.\n",
+          "description": "`true` when the application is live at `urls.publish`; `false` when it serves its Coming Soon page. The only writable field: a `PUT` body carries `published` and nothing else.\n",
           "type": "boolean"
         },
         "updatedAt": {
@@ -994,23 +994,9 @@
         }
       },
       "required": [
-        "published",
-        "links"
-      ],
-      "title": "PublishState",
-      "type": "object"
-    },
-    "PublishStateRequest": {
-      "additionalProperties": false,
-      "properties": {
-        "published": {
-          "description": "Whether the application is live. `true` publishes, `false` takes it offline. `published` is the only field; a body with any other field is a `400`.\n",
-          "type": "boolean"
-        }
-      },
-      "required": [
         "published"
       ],
+      "title": "PublishState",
       "type": "object"
     },
     "RestartRequest": {
@@ -3068,7 +3054,7 @@
       "summary": "Get an application's publish state"
     },
     {
-      "description": "Sets the application's publish state. `{ \"published\": true }` takes the site live at `urls.publish`; `{ \"published\": false }` takes it back behind its Coming Soon page. Returns `202 Accepted` with an `AppOperation` that carries no `app`; the `Location` header and `links[rel=self]` give the poll URL. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`, then read `GET /apps/{appId}/publish-state`. A request for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n\nGoing live is subject to the subscription's plan: a plan that allows no live sites, or one whose live-site limit is reached, answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`. The limit is checked again as the change runs, so a concurrent publish that takes the last slot ends the operation `FAILED` with `error.details[].issue` `PUBLISH_LIMIT_EXCEEDED`; any other failure ends it `FAILED` with `PUBLISH_STATE_CHANGE_FAILED`. A subscription that is not active cannot take a site live and answers `403` with `details[].issue` `SUBSCRIPTION_INACTIVE`. Taking a site offline is never limited.\n\nThe request is idempotent by nature, so `Idempotency-Key` is not used. While a change for this application is still running, a `PUT` for the same state returns `202` with that running operation; a `PUT` for the opposite state is refused with `409` and `details[].issue` `PUBLISH_STATE_CHANGE_IN_PROGRESS`. Poll the running operation, then retry. The same `409` is returned for a moment while another publish-state request on the same subscription is being accepted; retry shortly.\n\nOffered for the same products as `GET /apps/{appId}/publish-state`; `NODEJS-` ids answer `501` `NOT_APPLICABLE`.\n",
+      "description": "Sets the application's publish state. `{ \"published\": true }` takes the site live at `urls.publish`; `{ \"published\": false }` takes it back behind its Coming Soon page. Returns `202 Accepted` with an `AppOperation` that carries no `app`; the `Location` header and `links[rel=self]` give the poll URL. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`, then read `GET /apps/{appId}/publish-state`. A request for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n\nThe body is a `PublishState` carrying only `published`: exactly `{ \"published\": <boolean> }`. A body that lacks `published`, whose `published` is not a boolean, or that has any other field, the read-only `firstPublishedAt`, `updatedAt` and `links` included, is a `400`.\n\nGoing live is subject to the subscription's plan: a plan that allows no live sites, or one whose live-site limit is reached, answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`. The limit is checked again as the change runs, so a concurrent publish that takes the last slot ends the operation `FAILED` with `error.details[].issue` `PUBLISH_LIMIT_EXCEEDED`; any other failure ends it `FAILED` with `PUBLISH_STATE_CHANGE_FAILED`. A subscription that is not active cannot take a site live and answers `403` with `details[].issue` `SUBSCRIPTION_INACTIVE`. Taking a site offline is never limited.\n\nThe request is idempotent by nature, so `Idempotency-Key` is not used. While a change for this application is still running, a `PUT` for the same state returns `202` with that running operation; a `PUT` for the opposite state is refused with `409` and `details[].issue` `PUBLISH_STATE_CHANGE_IN_PROGRESS`. Poll the running operation, then retry. The same `409` is returned for a moment while another publish-state request on the same subscription is being accepted; retry shortly.\n\nOffered for the same products as `GET /apps/{appId}/publish-state`; `NODEJS-` ids answer `501` `NOT_APPLICABLE`.\n",
       "method": "PUT",
       "operationId": "setPublishState",
       "parameters": [
@@ -3098,7 +3084,7 @@
         "contentType": "application/json",
         "required": true,
         "schema": {
-          "$ref": "#/$defs/PublishStateRequest"
+          "$ref": "#/$defs/PublishState"
         }
       },
       "responses": {
