@@ -285,7 +285,6 @@
         "properties": {
           "app": {
             "$ref": "#/components/schemas/AppOperationApplication",
-            "nullable": true,
             "readOnly": true
           },
           "createdAt": {
@@ -294,7 +293,6 @@
           },
           "error": {
             "$ref": "#/components/schemas/error",
-            "nullable": true,
             "readOnly": true
           },
           "links": {
@@ -311,6 +309,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/OperationStatus",
+            "readOnly": true
+          },
+          "type": {
+            "$ref": "#/components/schemas/AppOperationType",
             "readOnly": true
           }
         },
@@ -348,6 +350,16 @@
         },
         "title": "AppOperationApplication",
         "type": "object"
+      },
+      "AppOperationType": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-operation-type.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "CREATE_APP",
+          "SET_PUBLISH_STATE"
+        ],
+        "title": "AppOperationType",
+        "type": "string"
       },
       "AppSource": {
         "$id": "https://godaddy.com/schemas/hosting/enums/app-source.v1",
@@ -497,6 +509,7 @@
         "type": "string"
       },
       "CreateAppRequest": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "type": "string"
@@ -923,6 +936,42 @@
         "default": false,
         "type": "boolean"
       },
+      "PublishState": {
+        "$id": "https://godaddy.com/schemas/hosting/models/publish-state.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "firstPublishedAt": {
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/link-description"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/date-time",
+            "readOnly": true
+          }
+        },
+        "title": "PublishState",
+        "type": "object"
+      },
+      "PublishStateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "published": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "RestartRequest": {
         "properties": {
           "variant": {
@@ -1166,7 +1215,6 @@
             "type": "string"
           },
           "location": {
-            "default": "body",
             "type": "string"
           },
           "value": {
@@ -1300,7 +1348,7 @@
       "url": "https://www.godaddy.com/legal/agreements/software-license-agreement"
     },
     "title": "Hosted Application Lifecycle Management API",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -2193,6 +2241,104 @@
           }
         }
       ]
+    },
+    "/v1/hosting/apps/{appId}/publish-state": {
+      "get": {
+        "operationId": "getPublishState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishState"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.application:read"
+            ]
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "setPublishState",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOperation"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "hosting.deployment:execute"
+            ]
+          }
+        ]
+      }
     },
     "/v1/hosting/apps/{appId}/restarts": {
       "parameters": [
