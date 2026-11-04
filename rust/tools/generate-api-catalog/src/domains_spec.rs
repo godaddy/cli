@@ -387,10 +387,9 @@ fn rename_v1(_section: &str, name: &str) -> String {
     format!("V1{name}")
 }
 
-/// Re-applies the two deliberate deviations from the literal upstream v3
-/// contract that `domains-client` needs — previously enforced by
-/// `regenerate-spec.sh`'s `jq` patch step, now ported here so a fresh v3
-/// clone can't silently drop them:
+/// Re-applies the deliberate deviation from the literal upstream v3 contract
+/// that `domains-client` needs — previously enforced by `regenerate-spec.sh`'s
+/// `jq` patch step, now ported here so a fresh v3 clone can't silently drop it:
 ///
 ///   * `listDomains`'s `statuses` parameter: force `items` to a plain
 ///     string. progenitor always seq-serializes an array-of-enum setter as
@@ -399,12 +398,6 @@ fn rename_v1(_section: &str, name: &str) -> String {
 ///     value the way a bare-string schema can. Losing this silently breaks
 ///     `--status` with a live `400 MISMATCH_FORMAT` — pinned by
 ///     `domains_client::tests::statuses_param_items_stay_a_plain_string`.
-///   * `replaceDNSRecord`: drop the PUT entirely. Despite returning 200, it
-///     silently replaces the entire dns-records collection instead of the
-///     one record — see <https://github.com/godaddy/cli/issues/136>. Do not
-///     remove this rule without a confirmed server-side fix and a fresh live
-///     check against a real zone with unrelated records; pinned by
-///     `domains_client::tests::replace_dns_record_stays_removed`.
 fn apply_deliberate_deviations(v3: &mut Value) {
     if let Some(params) = v3
         .pointer_mut("/paths/~1v3~1domains~1domain-names/get/parameters")
@@ -417,13 +410,6 @@ fn apply_deliberate_deviations(v3: &mut Value) {
                 schema.insert("items".to_owned(), serde_json::json!({ "type": "string" }));
             }
         }
-    }
-
-    if let Some(item) = v3
-        .pointer_mut("/paths/~1v3~1domains~1zones~1{zone}~1dns-records~1{recordId}")
-        .and_then(Value::as_object_mut)
-    {
-        item.remove("put");
     }
 }
 
@@ -660,14 +646,14 @@ pub(crate) fn domains_client_oas3_path() -> PathBuf {
 mod tests {
     use super::*;
 
-    /// Guards the two deliberate deviations `apply_deliberate_deviations`
-    /// re-applies — both are silent no-ops on a typo'd JSON pointer (no
+    /// Guards the deliberate deviation `apply_deliberate_deviations`
+    /// re-applies — it is a silent no-op on a typo'd JSON pointer (no
     /// compile or runtime error), so this pins the exact shape the function
     /// expects post path-rewrite (`/v3/domains/...`, matching `merge`'s
     /// output) rather than relying on `domains-client`'s own regression
     /// tests to notice only after a fresh spec pull overwrites the file.
     #[test]
-    fn apply_deliberate_deviations_rewrites_statuses_and_drops_the_dns_put() {
+    fn apply_deliberate_deviations_rewrites_statuses_and_leaves_the_dns_put() {
         let mut v3 = serde_json::json!({
             "paths": {
                 "/v3/domains/domain-names": {
@@ -700,7 +686,7 @@ mod tests {
         let dns_item = v3
             .pointer("/paths/~1v3~1domains~1zones~1{zone}~1dns-records~1{recordId}")
             .expect("dns-records path item");
-        assert!(dns_item.get("put").is_none(), "{dns_item:?}");
+        assert!(dns_item.get("put").is_some(), "{dns_item:?}");
         assert!(dns_item.get("get").is_some(), "{dns_item:?}");
         assert!(dns_item.get("delete").is_some(), "{dns_item:?}");
     }

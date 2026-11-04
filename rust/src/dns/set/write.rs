@@ -1,20 +1,21 @@
-//! Per-record write execution for `dns set`: creating/deleting individual
-//! records, with the same name-exclusivity conflict handling `add` gets, plus
-//! `set`'s opt-in auto-fix and create-then-delete replace semantics.
+//! Per-record write execution for `dns set`: creating, replacing and deleting
+//! individual records, with the same name-exclusivity conflict handling `add`
+//! gets, plus `set`'s opt-in auto-fix.
 
 use domains_client::types;
 
 use crate::dns::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
-use crate::dns::records::{RecordOptions, record_value, same_content, v3_record};
+use crate::dns::records::{RecordOptions, record_value, v3_record};
 use crate::domain::{api_error, format_api_error};
 
 use super::outcome::SetOutcome;
 
-/// Context for one `set` create action, bundled to keep
+/// Context for one `set` write action, bundled to keep
 /// [`write_with_conflict_handling`]'s signature within clippy's
 /// argument-count limit.
+#[derive(Clone, Copy)]
 pub(super) struct WriteRequest<'a> {
     pub(super) domain: &'a str,
     pub(super) name: &'a str,
@@ -22,7 +23,38 @@ pub(super) struct WriteRequest<'a> {
     pub(super) value: &'a str,
     pub(super) opts: &'a RecordOptions,
     pub(super) replace_conflicting: bool,
+    /// The existing record this write replaces in place (`PUT`); `None` for a
+    /// plain create (`POST`).
+    pub(super) replacing: Option<&'a str>,
     pub(super) debug: bool,
+}
+
+/// Send `body` as a create, or — when `req.replacing` names a record — as an
+/// in-place replace of that record. Returns the record as the API stored it.
+async fn send_record(
+    client: &domains_client::Client,
+    req: &WriteRequest<'_>,
+    body: types::DnsRecord,
+) -> Result<types::DnsRecord, Box<domains_client::Error<()>>> {
+    match req.replacing {
+        Some(record_id) => client
+            .replace_dns_record()
+            .zone(req.domain)
+            .record_id(record_id)
+            .body(body)
+            .send()
+            .await
+            .map(|response| response.into_inner())
+            .map_err(Box::new),
+        None => client
+            .create_dns_record()
+            .zone(req.domain)
+            .body(body)
+            .send()
+            .await
+            .map(|response| response.into_inner())
+            .map_err(Box::new),
+    }
 }
 
 /// Delete each conflicting record — used only by `set --replace-conflicting-types`
@@ -74,37 +106,35 @@ async fn delete_conflicts(
     outcomes
 }
 
-/// Create one record for `req.value` (a surplus `--data` value, or — via
-/// [`apply_replace`] — the new half of a replace pairing), with the same
-/// name-exclusivity conflict handling `add` gets (see
-/// [`crate::dns::conflicts::describe_write_error`]) plus an opt-in auto-fix: with
-/// `--replace-conflicting-types`, a genuine `DUPLICATE_RECORD` failure deletes
-/// the conflicting record(s) and retries the write once. Returns the delete
-/// outcomes (if any) followed by the outcome for the create itself, so
-/// `outcomes.extend(...)` folds both into the same reconcile summary. The
-/// terminal outcome's `kind` is always `"created"` — [`apply_replace`]
-/// relabels it to `"replaced"` when this is the create half of a replace.
+/// Write one record for `req.value` — a create for a surplus `--data` value,
+/// or, when `req.replacing` is set (via [`apply_replace`]), an in-place replace
+/// of that record — with the same name-exclusivity conflict handling `add` gets
+/// (see [`crate::dns::conflicts::describe_write_error`]) plus an opt-in
+/// auto-fix: with `--replace-conflicting-types`, a genuine `DUPLICATE_RECORD`
+/// failure deletes the conflicting record(s) and retries the write once.
+/// Returns the delete outcomes (if any) followed by the outcome for the write
+/// itself, so `outcomes.extend(...)` folds both into the same reconcile
+/// summary. The terminal outcome's `kind` is always `"created"` —
+/// [`apply_replace`] relabels it to `"replaced"`.
 pub(super) async fn write_with_conflict_handling(
     client: &domains_client::Client,
     req: &WriteRequest<'_>,
 ) -> Vec<SetOutcome> {
-    const ACTION: &str = "creating DNS record";
+    let action = if req.replacing.is_some() {
+        "replacing DNS record"
+    } else {
+        "creating DNS record"
+    };
     let outcome = |err: Option<String>| SetOutcome::new("created", req.value.to_string(), err);
 
     let body = v3_record(req.name, req.record_type, req.value, req.opts);
-    let err = match client
-        .create_dns_record()
-        .zone(req.domain)
-        .body(body)
-        .send()
-        .await
-    {
-        Ok(_) => return vec![outcome(None)],
-        Err(e) => e,
+    let err = match send_record(client, req, body).await {
+        Ok(record) => return vec![outcome(None).with_record(record)],
+        Err(e) => *e,
     };
     let domains_client::Error::UnexpectedResponse(resp) = err else {
         return vec![outcome(Some(
-            api_error(ACTION, req.debug, err).await.to_string(),
+            api_error(action, req.debug, err).await.to_string(),
         ))];
     };
     let status = resp.status();
@@ -117,7 +147,7 @@ pub(super) async fn write_with_conflict_handling(
 
     if !duplicate_record_issue(&resp_body) {
         let msg = format_api_error(
-            ACTION,
+            action,
             status.as_u16(),
             &status.to_string(),
             &resp_body,
@@ -153,173 +183,42 @@ pub(super) async fn write_with_conflict_handling(
 
     let mut outcomes = delete_conflicts(client, req.domain, &conflicts, req.debug).await;
     let retry_body = v3_record(req.name, req.record_type, req.value, req.opts);
-    let retry_err = match client
-        .create_dns_record()
-        .zone(req.domain)
-        .body(retry_body)
-        .send()
-        .await
-    {
-        Ok(_) => None,
-        Err(e) => Some(api_error(ACTION, req.debug, e).await.to_string()),
+    let retried = match send_record(client, req, retry_body).await {
+        Ok(record) => outcome(None).with_record(record),
+        Err(e) => outcome(Some(api_error(action, req.debug, *e).await.to_string())),
     };
-    outcomes.push(outcome(retry_err));
+    outcomes.push(retried);
     outcomes
 }
 
-/// Apply one `set` "replace" reconcile action: create the new value via
-/// [`write_with_conflict_handling`], then — only if that succeeded — delete
-/// the record it's replacing. There's no atomic single-record replace in v3
-/// (see the note on `SetAction::Replace`), so this create-then-delete pair
-/// is the least-destructive way to emulate one: if the create fails, the old
-/// record is left untouched rather than risking data loss.
+/// Apply one `set` "replace" reconcile action: replace the record
+/// `old_record_id` in place with the desired value via a single `PUT`. Only
+/// called for a pairing that actually changes something —
+/// [`super::plan::plan_set`] has already set aside the ones that don't as
+/// `Unchanged`.
 ///
-/// `old_record` is the record being replaced, if known — when its content
-/// already matches the desired record (a no-op `set`, e.g. re-running the
-/// same command, or only some of several values actually changed) this is a
-/// no-op: creating the "new" value while the identical old record still
-/// exists would fail with v3's exact-duplicate `DUPLICATE_RECORD` (see
-/// [`crate::dns::conflicts::describe_duplicate_record`]), which isn't a real
-/// failure, just this pairing having nothing to do. Compares full record
-/// content ([`same_content`]), not just the value — a record type whose
-/// identity spans several fields (CAA's `flag`/`tag`, TLSA's `usage`/
-/// `selector`/`matchingType`, …) could otherwise have a field-only change
-/// wrongly skipped as a no-op. `same_content` deliberately ignores `ttl`, so
-/// an explicit `--ttl` change (checked separately here, against the *raw*
-/// `req.opts.ttl` rather than `desired.ttl`'s defaulted value, so an omitted
-/// `--ttl` never forces a replace just because the default differs from the
-/// existing record's) still counts as a real change even when the value and
-/// every other field are unchanged — but that one can't be create-then-delete
-/// (the create would be an exact duplicate of the record it replaces), so it
-/// goes through [`retime_record`] instead.
+/// A `PUT` must carry a TTL. When the caller gave no `--ttl`, the record keeps
+/// the TTL it has (`old_ttl`) rather than being reset to the default, the same
+/// as a record `set` leaves alone.
 ///
-/// Relabels the create outcome's `kind` from `"created"` to `"replaced"` so
-/// `summarize_set_outcomes`'s tallies mean what the user asked for. If the
-/// delete of the old record fails after a successful create, that's reported
-/// as an extra `"cleanup"`-kind outcome — a kind `summarize_set_outcomes`'s
-/// counts don't recognize, so it doesn't inflate replaced/created/deleted,
-/// but its `error` still fails the command and shows up in the breakdown.
+/// Relabels the write outcome's `kind` from `"created"` to `"replaced"` so
+/// `summarize_set_outcomes`'s tallies mean what the user asked for.
 pub(super) async fn apply_replace(
     client: &domains_client::Client,
     req: &WriteRequest<'_>,
     old_record_id: &str,
-    old_detail: &str,
-    old_record: Option<&types::DnsRecord>,
+    old_ttl: Option<i64>,
 ) -> Vec<SetOutcome> {
-    let desired = v3_record(req.name, req.record_type, req.value, req.opts);
-    if let Some(old) = old_record.filter(|r| same_content(r, &desired)) {
-        // Same record; only an explicit `--ttl` (not the defaulted one on
-        // `desired`) that differs from the stored one is a change.
-        return match req.opts.ttl.filter(|&t| t != old.ttl) {
-            Some(_) => retime_record(client, req, old_record_id, old_detail, old).await,
-            None => vec![SetOutcome::new("replaced", req.value.to_string(), None)],
-        };
-    }
-
-    let mut outcomes = write_with_conflict_handling(client, req).await;
-    let Some(last) = outcomes.last_mut() else {
-        return outcomes;
+    let mut opts = req.opts.clone();
+    opts.ttl = opts.ttl.or(old_ttl);
+    let req = WriteRequest {
+        opts: &opts,
+        replacing: Some(old_record_id),
+        ..*req
     };
-    last.kind = "replaced";
-    if last.error.is_some() {
-        return outcomes;
-    }
-
-    if let Err(e) = client
-        .delete_dns_record()
-        .zone(req.domain)
-        .record_id(old_record_id)
-        .send()
-        .await
-    {
-        let msg = format!(
-            "the new value was created, but the previous record ({old_detail}) could not be \
-             removed: {}; run `gddy dns list {} --type {} --name {}` to review the current \
-             state and remove it manually if it's still there",
-            api_error("deleting the previous DNS record", req.debug, e).await,
-            req.domain,
-            req.record_type,
-            req.name,
-        );
-        outcomes.push(SetOutcome::new(
-            "cleanup",
-            old_detail.to_string(),
-            Some(msg),
-        ));
-    }
-    outcomes
-}
-
-/// Change only the TTL of a record `set` is keeping. v3 identifies a record by
-/// its content, not its TTL, so creating the new-TTL record while the old one
-/// still exists fails as an exact duplicate — the old record has to be deleted
-/// first. That leaves the value missing until the create lands, so if the create
-/// fails the old record is put back unchanged and the failure reported; only if
-/// that restore fails too is a `"cleanup"` outcome added saying the record is gone.
-async fn retime_record(
-    client: &domains_client::Client,
-    req: &WriteRequest<'_>,
-    old_record_id: &str,
-    old_detail: &str,
-    old: &types::DnsRecord,
-) -> Vec<SetOutcome> {
-    let replaced = |err: Option<String>| SetOutcome::new("replaced", req.value.to_string(), err);
-
-    if let Err(e) = client
-        .delete_dns_record()
-        .zone(req.domain)
-        .record_id(old_record_id)
-        .send()
-        .await
-    {
-        return vec![replaced(Some(
-            api_error("deleting the previous DNS record", req.debug, e)
-                .await
-                .to_string(),
-        ))];
-    }
-
-    let mut outcomes = write_with_conflict_handling(client, req).await;
-    let Some(last) = outcomes.last_mut() else {
-        return outcomes;
-    };
-    last.kind = "replaced";
-    let Some(create_err) = last.error.clone() else {
-        return outcomes;
-    };
-
-    let restored = types::DnsRecord {
-        record_id: None,
-        ..old.clone()
-    };
-    match client
-        .create_dns_record()
-        .zone(req.domain)
-        .body(restored)
-        .send()
-        .await
-    {
-        Ok(_) => {
-            last.error = Some(format!(
-                "{create_err}; the previous record was left as it was"
-            ))
-        }
-        Err(e) => {
-            let msg = format!(
-                "the previous record ({old_detail}) was removed to change its TTL, the new one \
-                 could not be created, and putting it back failed: {}; run `gddy dns list {} \
-                 --type {} --name {}` and re-create it with `gddy dns add` if it's gone",
-                api_error("restoring the previous DNS record", req.debug, e).await,
-                req.domain,
-                req.record_type,
-                req.name,
-            );
-            outcomes.push(SetOutcome::new(
-                "cleanup",
-                old_detail.to_string(),
-                Some(msg),
-            ));
-        }
+    let mut outcomes = write_with_conflict_handling(client, &req).await;
+    if let Some(last) = outcomes.last_mut() {
+        last.kind = "replaced";
     }
     outcomes
 }

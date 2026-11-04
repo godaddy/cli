@@ -33,13 +33,13 @@ Without filters, `list` returns every record. `--type` narrows to one record typ
 gddy dns add example.com --type A --name www --data 192.0.2.1 --ttl 3600
 ```
 
-Pass `--data` more than once to add several records for the same type+name in one call — each becomes a separate record, and a failure on one doesn't stop the rest (the result reports created/failed counts with a per-value breakdown). `--ttl` defaults to 3600 seconds when omitted.
+Pass `--data` more than once to add several records for the same type+name in one call — each becomes a separate record. `--ttl` is in seconds, from 600 (10 minutes) to 86400 (24 hours), and defaults to 3600 when omitted.
 
 A name can hold a CNAME or other record types, never both. Adding into a name that already has the other kind fails with an error naming the conflict — see `set --replace-conflicting-types` below if you actually want to replace it.
 
 ## Replacing records (`set`, destructive)
 
-`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it. It reconciles rather than deleting and recreating everything: existing records are paired with your `--data` values, whatever's no longer in your list is deleted, and whatever's new is created. There's no atomic in-place replace in v3, so each paired value is written as a new record before the old one it's replacing is deleted — record IDs are not reused across a replace.
+`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it.
 
 ```
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all"
@@ -51,9 +51,7 @@ Preview the plan before writing:
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all" --dry-run
 ```
 
-The dry-run preview lists the planned action (replace/create/delete) per record so you can confirm it before it runs for real. `set` is not atomic — a partial failure reports how many records were replaced, created, and deleted before it happened.
-
-To also remove a conflicting CNAME (or, when setting a CNAME, any other type) at that name, add `--replace-conflicting-types`.
+The dry-run preview lists the planned action per record so you can confirm it before it runs for real.
 
 ## Deleting records
 

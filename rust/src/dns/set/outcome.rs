@@ -5,17 +5,21 @@
 use domains_client::types;
 use serde_json::{Value, json};
 
+use super::super::list::build_list_output;
 use super::super::records::record_value;
 use super::plan::SetAction;
 
 /// Outcome of one applied `set` reconcile action, for reporting.
 pub(super) struct SetOutcome {
-    /// What was attempted: `"replaced"`, `"created"`, or `"deleted"`.
+    /// What was attempted: `"replaced"`, `"unchanged"`, `"created"`, or `"deleted"`.
     pub(super) kind: &'static str,
     /// The `--data` value (replace/create) or record id (delete).
     pub(super) detail: String,
     /// `Some(msg)` if the call failed.
     pub(super) error: Option<String>,
+    /// The record as the API returned it after a successful create or
+    /// replace, or as it already stood for a replace that needed no change.
+    pub(super) record: Option<types::DnsRecord>,
 }
 
 impl SetOutcome {
@@ -24,12 +28,19 @@ impl SetOutcome {
             kind,
             detail,
             error,
+            record: None,
         }
+    }
+
+    pub(super) fn with_record(mut self, record: types::DnsRecord) -> Self {
+        self.record = Some(record);
+        self
     }
 }
 
 /// Build the `set` result from the applied reconcile outcomes: `Ok(json)` with
-/// replaced/created/deleted counts when every action succeeded, or `Err(message)`
+/// replaced/created/deleted counts and the records now in place (as `dns list`
+/// shows them) when every action succeeded, or `Err(message)`
 /// — a non-zero exit — with a per-action ✓/✗ breakdown if any failed. Pure so the
 /// success/failure decision and tallies are unit-testable.
 pub(super) fn summarize_set_outcomes(
@@ -45,7 +56,12 @@ pub(super) fn summarize_set_outcomes(
             .filter(|o| o.error.is_none() && o.kind == k)
             .count()
     };
-    let (replaced, created, deleted) = (count("replaced"), count("created"), count("deleted"));
+    let (replaced, unchanged, created, deleted) = (
+        count("replaced"),
+        count("unchanged"),
+        count("created"),
+        count("deleted"),
+    );
 
     if failed > 0 {
         let breakdown = outcomes
@@ -64,14 +80,20 @@ pub(super) fn summarize_set_outcomes(
         ));
     }
 
+    let written: Vec<types::DnsRecord> = outcomes.iter().filter_map(|o| o.record.clone()).collect();
+    let records = build_list_output(&written)
+        .map_err(|e| format!("failed to serialize the resulting DNS records: {e}"))?;
+
     Ok(json!({
         "domain": domain,
         "type": record_type,
         "name": name,
         "replaced": replaced,
+        "unchanged": unchanged,
         "created": created,
         "deleted": deleted,
         "action": "set",
+        "records": records,
     }))
 }
 
@@ -94,6 +116,9 @@ pub(super) fn dry_run_set_preview(
             SetAction::Replace { record_id, data } => {
                 json!({"action": "replace", "recordId": record_id, "data": data})
             }
+            SetAction::Unchanged { record_id, data } => {
+                json!({"action": "unchanged", "recordId": record_id, "data": data})
+            }
             SetAction::Create { data } => json!({"action": "create", "data": data}),
             SetAction::Delete { record_id } => json!({"action": "delete", "recordId": record_id}),
         })
@@ -108,6 +133,7 @@ pub(super) fn dry_run_set_preview(
         // `with_default_fields` projection instead of being silently
         // stripped down to just domain/type/name.
         "replaced": count(|a| matches!(a, SetAction::Replace { .. })),
+        "unchanged": count(|a| matches!(a, SetAction::Unchanged { .. })),
         "created": count(|a| matches!(a, SetAction::Create { .. })),
         "deleted": count(|a| matches!(a, SetAction::Delete { .. })),
         "plan": plan_json,
@@ -172,11 +198,13 @@ mod tests {
     fn summarize_set_reports_counts_and_flags_partial_failure() {
         let all_ok = vec![
             SetOutcome::new("replaced", "9.9.9.9".into(), None),
+            SetOutcome::new("unchanged", "7.7.7.7".into(), None),
             SetOutcome::new("created", "8.8.8.8".into(), None),
             SetOutcome::new("deleted", "r3".into(), None),
         ];
         let v = summarize_set_outcomes("example.com", "A", "www", &all_ok).expect("all ok");
         assert_eq!(v["replaced"], 1);
+        assert_eq!(v["unchanged"], 1);
         assert_eq!(v["created"], 1);
         assert_eq!(v["deleted"], 1);
 
@@ -187,19 +215,23 @@ mod tests {
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
+    }
 
-        // A `apply_replace`-style "cleanup" outcome (the new value was created
-        // but the old record couldn't be deleted afterward) still fails the
-        // command, but must not be double-counted into `replaced`/`deleted`
-        // since the replace itself already succeeded.
-        let replace_with_cleanup_failure = vec![
-            SetOutcome::new("replaced", "9.9.9.9".into(), None),
-            SetOutcome::new("cleanup", "A 1.2.3.4".into(), Some("still there".into())),
+    #[test]
+    fn summarize_set_lists_the_records_the_api_returned() {
+        let mut stored = tlsa_record("r1", "abc");
+        stored.type_ = types::DnsRecordType("A".to_owned());
+        stored.certificate_data = None;
+        stored.data = Some("9.9.9.9".to_owned());
+        let outcomes = vec![
+            SetOutcome::new("replaced", "9.9.9.9".into(), None).with_record(stored),
+            SetOutcome::new("deleted", "r3".into(), None),
         ];
-        let err = summarize_set_outcomes("example.com", "A", "www", &replace_with_cleanup_failure)
-            .expect_err("cleanup failure still fails the command");
-        assert!(err.contains("1 of 2"), "{err}");
-        assert!(err.contains("✗ cleanup A 1.2.3.4 — still there"), "{err}");
+        let v = summarize_set_outcomes("example.com", "A", "www", &outcomes).expect("all ok");
+        let records = v["records"].as_array().expect("records array");
+        assert_eq!(records.len(), 1, "a delete leaves no record behind: {v}");
+        assert_eq!(records[0]["data"], "9.9.9.9");
+        assert_eq!(records[0]["recordId"], "r1");
     }
 
     #[test]
@@ -209,7 +241,7 @@ mod tests {
                 record_id: "r1".into(),
                 data: "9.9.9.9".into(),
             },
-            SetAction::Replace {
+            SetAction::Unchanged {
                 record_id: "r2".into(),
                 data: "8.8.8.8".into(),
             },
@@ -218,7 +250,8 @@ mod tests {
             },
         ];
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        assert_eq!(preview["replaced"], 2);
+        assert_eq!(preview["replaced"], 1);
+        assert_eq!(preview["unchanged"], 1);
         assert_eq!(preview["created"], 0);
         assert_eq!(preview["deleted"], 1);
         assert_eq!(preview["action"], "would set");
@@ -238,10 +271,17 @@ mod tests {
             data: "9.9.9.9".into(),
         }];
         let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        let default_fields = "domain,type,name,replaced,created,deleted,action,plan";
-        let projected = cli_engine::output::filter_fields(&preview, default_fields);
+        let projected = cli_engine::output::filter_fields(&preview, super::super::DEFAULT_FIELDS);
         for field in [
-            "domain", "type", "name", "replaced", "created", "deleted", "action", "plan",
+            "domain",
+            "type",
+            "name",
+            "replaced",
+            "unchanged",
+            "created",
+            "deleted",
+            "action",
+            "plan",
         ] {
             assert!(
                 !projected[field].is_null(),

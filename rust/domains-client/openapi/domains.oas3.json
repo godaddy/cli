@@ -4069,6 +4069,117 @@
         "tags": [
           "Records"
         ]
+      },
+      "put": {
+        "description": "Fully replaces an existing DNS resource record identified by\nrecordId within the zone. All writable fields applicable to the\nrecord type must be supplied; partial updates are not supported\non this endpoint. Changes are applied synchronously.\n\nGoDaddy-managed system records (SOA and NS) are read-only. When\nrecordId refers to such a record, the request fails with\n`409 Conflict` — the record exists but cannot be modified.\n",
+        "operationId": "replaceDNSRecord",
+        "parameters": [
+          {
+            "description": "Optional client-generated request correlation identifier, propagated across services and returned in the response X-Request-Id header.\n",
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "Reseller acting on behalf of a shopper account. When present, all domain operations are scoped to the specified shopper. Absent, the authenticated entity's own account is used. Only valid for reseller OAuth tokens.\n",
+            "example": "shopper_123",
+            "in": "header",
+            "name": "X-Shopper-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The domain name in punycode A-label form (e.g., example.com). For IDNs, use the punycode representation.\n",
+            "example": "example.com",
+            "in": "path",
+            "name": "zone",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Server-assigned DNS record identifier within the zone.",
+            "example": "Aad7oqdXCms9mlJvm_m6UFYqmwjyP20H2KBmQHgttK9kGbF_TuI3knsocArQqIv5I0Kq5C0",
+            "in": "path",
+            "name": "recordId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "apexARecord": {
+                  "summary": "Replace apex A record",
+                  "value": {
+                    "data": "192.0.2.1",
+                    "name": "@",
+                    "ttl": 3600,
+                    "type": "A"
+                  }
+                },
+                "tlsaRecord": {
+                  "summary": "Replace a TLSA record (rotate to new SPKI pin)",
+                  "value": {
+                    "certificateData": "a3b4c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a",
+                    "matchingType": 1,
+                    "name": "www",
+                    "port": 443,
+                    "protocol": "_tcp",
+                    "selector": 1,
+                    "ttl": 3600,
+                    "type": "TLSA",
+                    "usage": 3
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DNSRecord"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DNSRecord"
+                }
+              }
+            },
+            "description": "DNS record replaced.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier echoed from the request or server-generated.",
+                "schema": {
+                  "$ref": "#/components/schemas/uuid"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oauth2": [
+              "domains.dns:update"
+            ]
+          }
+        ],
+        "summary": "Replace a DNS record",
+        "tags": [
+          "Records"
+        ]
       }
     }
   },
