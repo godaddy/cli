@@ -17,7 +17,7 @@ pub enum OnboardingError {
     #[error("onboarding request could not be sent")]
     Request(#[source] reqwest::Error),
     #[error("onboarding service returned HTTP {0}")]
-    Http(reqwest::StatusCode),
+    Http(StatusCode),
     #[error("developer onboarding is not enabled for this account")]
     NotEnabled,
     #[error("onboarding service returned an invalid response")]
