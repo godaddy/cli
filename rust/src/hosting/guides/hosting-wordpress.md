@@ -1,10 +1,10 @@
 ---
-summary: Create a managed WordPress site and take it live or back behind a placeholder page
+summary: Create a managed WordPress site, rename or delete it, and take it live or back behind a placeholder page
 ---
 
 # `gddy hosting` — managed WordPress sites
 
-Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, and switches it between live and a placeholder page. Everything inside the site — pages, posts, themes, plugins, the site title — is edited in WordPress itself, from the WordPress admin, which you reach by signing in to [Airo App Builder](https://airo-builder.godaddy.com/apps) and opening the site.
+Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, renames or deletes it, reads its PHP and WordPress versions, and switches it between live and a placeholder page. Everything inside the site — pages, posts, themes, plugins, the site title — is edited in WordPress itself, from the WordPress admin, which you reach by signing in to [Airo App Builder](https://airo-builder.godaddy.com/apps) and opening the site.
 
 ## Concepts
 
@@ -48,9 +48,36 @@ Going live needs a plan with a free published-site slot. If publishing is refuse
 | Change still running | A publish or unpublish for this site has not finished, or another change on this subscription is being accepted at this moment; retry shortly | `hosting operation get --operation-id <operation-id>`, then retry |
 | Service unavailable | The plan limit could not be read | Wait a moment and run the command again |
 
+## Rename the site
+
+```sh
+gddy hosting app update --app-id <app-id> --name my-site
+```
+
+`--name` is the label in the CLI and in Airo App Builder. The WordPress site title is edited in WordPress admin. Pass `--name` only. `--root-path` does not apply to a WordPress site, and a command that includes it is refused in full, including the rename. The name is 1–200 characters and cannot contain control characters or `<` or `>`.
+
+A site that is being deleted cannot be renamed. If the service is temporarily unavailable, wait a few seconds and run the command again.
+
+## Delete the site
+
+```sh
+gddy hosting app delete --app-id <app-id>
+gddy hosting app get --app-id <app-id>
+```
+
+Deletion removes the site and its content. The command returns once deletion has started. `hosting app get` shows status DELETING until the site is gone, and then reports it was not found. There is no operation to poll. If the service is temporarily unavailable, wait a few seconds and run the command again.
+
+## Read the PHP and WordPress versions
+
+```sh
+gddy hosting runtime get --app-id <app-id>
+```
+
+The response is a list of runtime and version. A WordPress site reports PHP and WORDPRESS. An empty list means no version is known yet, and that is a successful response. An older site may list WORDPRESS only.
+
 ## What the CLI does not do for WordPress sites
 
-`hosting app list`, `get`, `status`, `publish` and `unpublish` are the commands that work. Renaming, deleting and reading the runtime version are planned but not served yet. Deployments, restarts, source imports, secrets, logs, custom domains and plan attachment are not part of the WordPress product at all; the subscription is chosen for you when the site is created. WordPress content and settings are never managed from the CLI.
+`hosting app list`, `get`, `status`, `update`, `delete`, `publish`, `unpublish` and `hosting runtime get` are the commands that work. Deployments, restarts, source imports, secrets, logs, custom domains and plan attachment are not part of the WordPress product at all; the subscription is chosen for you when the site is created. WordPress content and settings are never managed from the CLI.
 
 ## See also
 

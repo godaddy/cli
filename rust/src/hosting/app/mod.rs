@@ -22,7 +22,8 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     if mhwp {
         long.push_str(
             " `publish` takes any app live; `unpublish` takes a WordPress (MHWP) site back \
-             to a placeholder page.",
+             to a placeholder page. `update` renames a WordPress site; `--root-path` does \
+             not apply to it.",
         );
     }
     let group = RuntimeGroupSpec::new(
@@ -36,8 +37,8 @@ pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     .with_command(list::command(mhwp))
     .with_command(get::command())
     .with_command(create::command(mhwp))
-    .with_command(update::command())
-    .with_command(delete::command())
+    .with_command(update::command(mhwp))
+    .with_command(delete::command(mhwp))
     .with_command(status::command())
     .with_command(restart::command());
     if mhwp {

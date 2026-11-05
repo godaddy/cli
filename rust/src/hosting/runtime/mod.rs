@@ -2,7 +2,7 @@ mod get;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
-pub(super) fn group() -> RuntimeGroupSpec {
+pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("runtime", "View application runtime configuration")
             .with_alias("runtimes")
@@ -11,5 +11,5 @@ pub(super) fn group() -> RuntimeGroupSpec {
              (e.g. runtime=nodejs, version=22).",
             ),
     )
-    .with_command(get::command())
+    .with_command(get::command(mhwp))
 }
