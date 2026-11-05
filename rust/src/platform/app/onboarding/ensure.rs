@@ -90,9 +90,7 @@ impl DetailedError for OnboardingNotEnabledError {
 /// account is not enabled, otherwise the generic message with `context`.
 fn onboarding_error(context: &str, error: OnboardingError) -> CliCoreError {
     match error {
-        OnboardingError::NotEnabled => {
-            CliCoreError::with_detailed_error(OnboardingNotEnabledError)
-        }
+        OnboardingError::NotEnabled => CliCoreError::with_detailed_error(OnboardingNotEnabledError),
         other => CliCoreError::message(format!("{context}: {other}")),
     }
 }
@@ -424,7 +422,10 @@ mod tests {
         .await
         .expect_err("not enabled");
 
-        assert!(err.to_string().contains("isn't available for your account yet"));
+        assert!(
+            err.to_string()
+                .contains("isn't available for your account yet")
+        );
     }
 
     #[tokio::test]
@@ -441,7 +442,10 @@ mod tests {
             .await
             .expect_err("not enabled");
 
-        assert!(err.to_string().contains("isn't available for your account yet"));
+        assert!(
+            err.to_string()
+                .contains("isn't available for your account yet")
+        );
     }
 
     #[tokio::test]

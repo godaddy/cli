@@ -314,7 +314,10 @@ mod tests {
             .await
             .expect_err("status must fail");
 
-        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+        assert!(matches!(
+            error,
+            OnboardingError::Http(StatusCode::FORBIDDEN)
+        ));
         assert!(!error.to_string().contains("secret backend detail"));
     }
 
@@ -333,7 +336,10 @@ mod tests {
             .await
             .expect_err("status must fail");
 
-        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+        assert!(matches!(
+            error,
+            OnboardingError::Http(StatusCode::FORBIDDEN)
+        ));
     }
 
     #[tokio::test]
@@ -355,7 +361,10 @@ mod tests {
             .await
             .expect_err("status must fail");
 
-        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+        assert!(matches!(
+            error,
+            OnboardingError::Http(StatusCode::FORBIDDEN)
+        ));
     }
 
     #[tokio::test]
