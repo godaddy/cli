@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.36](https://github.com/godaddy/cli/compare/v0.2.35...v0.2.36) (2026-11-05)
+
+
+### Features
+
+* **platform-app:** explain when developer onboarding isn't available for an account ([#364](https://github.com/godaddy/cli/issues/364)) ([8c59811](https://github.com/godaddy/cli/commit/8c59811bc0e7e80e5a266959e6729ea0f56eef73))
+
+
+### Bug Fixes
+
+* **dns:** find SRV and TLSA records by name in dns list, set and delete ([#360](https://github.com/godaddy/cli/issues/360)) ([096f8a2](https://github.com/godaddy/cli/commit/096f8a267dbb9a4ac9356e1b35f2b28b898161ad))
+
 ## [0.2.35](https://github.com/godaddy/cli/compare/v0.2.34...v0.2.35) (2026-11-05)
 
 
