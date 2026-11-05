@@ -65,6 +65,8 @@ gddy dns delete example.com --type A --name www
 
 Deleting something that doesn't match is a no-op success (`deleted: 0`), not an error. Preview with `--dry-run` first for anything you're not fully sure about.
 
+For `SRV` and `TLSA` records, the name does not include the service or port: `--type SRV --name chat` matches every SRV record listed under `chat`, whatever its service, so `list` or `--dry-run` first to see which will be removed. To target one service, give the full name instead, e.g. `--name _sip._tcp.chat` (for `TLSA`, `_443._tcp.www`).
+
 ## International domain names
 
 Domain names and record names can be typed either as Unicode (`münchen.de`) or in their encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any DNS command to show the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command. `gddy config list` shows the current value. Record values (the `--data` of a CNAME, MX or TXT record) are never converted; enter them exactly as they should be stored.

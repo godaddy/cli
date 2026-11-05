@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use clap::builder::{PossibleValuesParser, TypedValueParser};
 use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
 use serde::Deserialize;
@@ -72,10 +73,27 @@ output_schema!(HostingApplication {
 output_schema!(HostingAppOperation {
     "operationId": "string";
     "status": "string";
+    // The kind of operation, such as CREATE_APP or SET_PUBLISH_STATE;
+    // `with_operation_type` fills it in where the service leaves it out.
+    "type": "string";
     "app": "object", optional;
     "error": "object", optional;
     "createdAt": "string", optional;
     "links": "array";
+});
+
+// `hosting app publish` answers with what the product's own go-live call
+// returns: a deployment for a Node.js app, an operation for a WordPress site.
+output_schema!(HostingAppPublish {
+    "deploymentId": "string", optional;
+    "operationId": "string", optional;
+    "status": "string";
+    "type": "string", optional;
+    "gitHash": "string", optional;
+    "error": "object", optional;
+    "createdAt": "string", optional;
+    "updatedAt": "string", optional;
+    "links": "array", optional;
 });
 
 output_schema!(HostingApplicationStatus {
@@ -135,6 +153,20 @@ pub fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> CliCoreErr
         }
         other => GddyError::from(other).into_cli_error(),
     }
+}
+
+/// [`client_err`], except that a `503` on a WordPress write says to retry.
+/// The service answers `503` both when another change holds the site and when
+/// a dependency is down, and only the first sets `Retry-After`, which is not
+/// kept here, so the text has to be true for either.
+pub fn client_err_retry_on_503(e: ClientError, mhwp: bool) -> CliCoreError {
+    if mhwp && matches!(e, ClientError::Http { status: 503, .. }) {
+        return client_err_with_fix(
+            e,
+            "The service is temporarily unavailable. Wait a few seconds and run the command again.",
+        );
+    }
+    client_err(e)
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,6 +243,51 @@ impl HostingAppType {
             Self::Mhwp => "MHWP",
         }
     }
+
+    /// The prefix that starts every app and operation id of this type.
+    pub const fn id_prefix(self) -> &'static str {
+        match self {
+            Self::Nodejs => "NODEJS-",
+            Self::Mhwp => "MHWP-",
+        }
+    }
+
+    /// The type an app or operation id names by its prefix, if any.
+    pub fn of_id(id: &str) -> Option<Self> {
+        Self::value_variants()
+            .iter()
+            .copied()
+            .find(|app_type| strip_id_prefix(id, app_type.id_prefix()).is_some())
+    }
+}
+
+/// The `type` of an app operation that creates an app.
+pub const CREATE_APP: &str = "CREATE_APP";
+/// The `type` of an app operation that takes a site live or offline.
+pub const SET_PUBLISH_STATE: &str = "SET_PUBLISH_STATE";
+
+/// `operation` with its `type` set to `kind` where the service left it out,
+/// so the output always says which kind of operation it is. Anything that is
+/// not an object, such as an empty `202`, comes back unchanged.
+pub fn with_operation_type(mut operation: Value, kind: &str) -> Value {
+    if let Some(fields) = operation.as_object_mut()
+        && fields.get("type").is_none_or(Value::is_null)
+    {
+        fields.insert("type".to_owned(), Value::from(kind));
+    }
+    operation
+}
+
+/// `app_id` with `prefix` removed, or `None` if it does not start with it.
+/// The prefix matches ignoring ASCII case, as the edge does.
+pub fn strip_id_prefix<'a>(app_id: &'a str, prefix: &str) -> Option<&'a str> {
+    let (head, rest) = app_id.split_at_checked(prefix.len())?;
+    head.eq_ignore_ascii_case(prefix).then_some(rest)
+}
+
+/// Whether `app_id` names a WordPress (MHWP) site.
+pub fn is_mhwp_app_id(app_id: &str) -> bool {
+    HostingAppType::of_id(app_id) == Some(HostingAppType::Mhwp)
 }
 
 /// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
@@ -225,6 +302,35 @@ pub fn mhwp_enabled(policy: &FlagPolicy) -> bool {
 pub const fn supported_app_types(mhwp: bool) -> &'static str {
     if mhwp { "NODEJS, MHWP" } else { "NODEJS" }
 }
+
+/// Markdown for `gddy guide hosting`, the index of the per-product guides.
+///
+/// No guide may name a command the binary does not register, so the WordPress
+/// product row and the `app publish` command row join the guide only while the
+/// MHWP flag is on.
+pub fn hosting_guide(mhwp: bool) -> String {
+    if !mhwp {
+        return HOSTING_GUIDE.to_owned();
+    }
+    HOSTING_GUIDE
+        .replacen(NODEJS_ROW, &format!("{NODEJS_ROW}\n{WORDPRESS_ROW}"), 1)
+        .replacen(STATUS_ROW, &format!("{STATUS_ROW}\n{PUBLISH_ROW}"), 1)
+}
+
+/// Markdown for `gddy guide hosting-nodejs`.
+pub const NODEJS_GUIDE: &str = include_str!("guides/hosting-nodejs.md");
+/// Markdown for `gddy guide hosting-wordpress`; registered only while the
+/// MHWP flag is on.
+pub const WORDPRESS_GUIDE: &str = include_str!("guides/hosting-wordpress.md");
+
+const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
+const NODEJS_ROW: &str = "| Node.js app: upload your source, preview it, then publish \
+     | `NODEJS` | `gddy guide hosting-nodejs` |";
+const WORDPRESS_ROW: &str = "| Managed WordPress site: edit it in WordPress, no build or \
+     deploy | `MHWP` | `gddy guide hosting-wordpress` |";
+const STATUS_ROW: &str = "| `hosting app status --app-id <app-id>` | Runtime status of an app |";
+const PUBLISH_ROW: &str = "| `hosting app publish --app-id <app-id>` | Take an app live: \
+     deploy a Node.js app's latest source, or switch a WordPress site on |";
 
 /// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only
 /// while its feature flag is on.
@@ -321,6 +427,71 @@ mod tests {
         assert!(mhwp_enabled(
             &FlagPolicy::new().with_override(MHWP_FLAG, Stage::Ga)
         ));
+    }
+
+    #[test]
+    fn is_mhwp_app_id_matches_the_prefix_case_insensitively() {
+        for id in ["MHWP-a1b2c3d4e5", "mhwp-a1b2c3d4e5", "Mhwp-x"] {
+            assert!(is_mhwp_app_id(id), "{id}");
+        }
+        for id in [
+            "NODEJS-a1b2c3d4e5",
+            "MHWP",
+            "x-MHWP-abc",
+            "",
+            "MHWPa1b2c3d4e5",
+            "MHWP\u{e9}",
+        ] {
+            assert!(!is_mhwp_app_id(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn with_operation_type_fills_in_only_a_missing_type() {
+        let filled = |operation: Value| with_operation_type(operation, CREATE_APP);
+        assert_eq!(
+            filled(json!({ "operationId": "op-1" })),
+            json!({ "operationId": "op-1", "type": "CREATE_APP" })
+        );
+        assert_eq!(
+            filled(json!({ "operationId": "op-1", "type": null })),
+            json!({ "operationId": "op-1", "type": "CREATE_APP" })
+        );
+        // A kind the service sent, known or not, is kept as it is.
+        for kind in ["SET_PUBLISH_STATE", "A_FUTURE_KIND"] {
+            let operation = json!({ "operationId": "op-1", "type": kind });
+            assert_eq!(filled(operation.clone()), operation);
+        }
+        // An empty response stays empty rather than turning into an operation.
+        assert_eq!(filled(Value::Null), Value::Null);
+    }
+
+    #[test]
+    fn of_id_reads_the_type_off_the_prefix() {
+        for (id, expected) in [
+            ("NODEJS-aBcDeFgHiJ", Some(HostingAppType::Nodejs)),
+            ("nodejs-x", Some(HostingAppType::Nodejs)),
+            ("MHWP-a1b2c3d4e5", Some(HostingAppType::Mhwp)),
+            ("Mhwp-ab12cd34", Some(HostingAppType::Mhwp)),
+            ("MHWP", None),
+            ("NODEJS", None),
+            ("x-MHWP-a1b2c3d4e5", None),
+            ("MHWP\u{e9}", None),
+            ("3f2a9c1e-77d0-4b1a-9c55-0e6f1a2b3c4d", None),
+            ("", None),
+        ] {
+            assert_eq!(HostingAppType::of_id(id), expected, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn strip_id_prefix_returns_the_rest_without_slicing_mid_character() {
+        assert_eq!(strip_id_prefix("mhwp-abc", "MHWP-"), Some("abc"));
+        assert_eq!(strip_id_prefix("MHWP-", "MHWP-"), Some(""));
+        assert_eq!(strip_id_prefix("NODEJS-abc", "MHWP-"), None);
+        assert_eq!(strip_id_prefix("MHW", "MHWP-"), None);
+        // The fifth byte falls inside `é`, so there is no prefix to compare.
+        assert_eq!(strip_id_prefix("MHWP\u{e9}", "MHWP-"), None);
     }
 
     #[test]
@@ -423,6 +594,51 @@ mod tests {
         assert_eq!(
             envelope.fix.as_deref(),
             Some("Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
+        );
+    }
+
+    #[test]
+    fn a_503_on_a_wordpress_write_says_to_retry_whatever_the_cause() {
+        let unavailable = || ClientError::Http {
+            status: 503,
+            body: r#"{"message":"m","details":[{"issue":"UPSTREAM_UNAVAILABLE"}]}"#.to_owned(),
+        };
+        let fix = |e, mhwp| {
+            cli_engine::build_error_envelope(&client_err_retry_on_503(e, mhwp), "hosting").fix
+        };
+        let wordpress = fix(unavailable(), true);
+        assert!(
+            wordpress
+                .as_deref()
+                .is_some_and(|f| f.contains("temporarily unavailable") && f.contains("few seconds")),
+            "{wordpress:?}"
+        );
+        assert!(
+            !wordpress
+                .as_deref()
+                .unwrap_or("")
+                .contains("another change"),
+            "{wordpress:?}"
+        );
+        let nodejs = fix(unavailable(), false);
+        assert!(
+            nodejs
+                .as_deref()
+                .is_some_and(|f| !f.contains("temporarily unavailable")),
+            "{nodejs:?}"
+        );
+        let other = fix(
+            ClientError::Http {
+                status: 404,
+                body: r#"{"message":"m"}"#.to_owned(),
+            },
+            true,
+        );
+        assert!(
+            other
+                .as_deref()
+                .is_some_and(|f| !f.contains("temporarily unavailable")),
+            "{other:?}"
         );
     }
 

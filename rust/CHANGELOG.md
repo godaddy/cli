@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.36](https://github.com/godaddy/cli/compare/v0.2.35...v0.2.36) (2026-11-05)
+
+
+### Features
+
+* **platform-app:** explain when developer onboarding isn't available for an account ([#364](https://github.com/godaddy/cli/issues/364)) ([8c59811](https://github.com/godaddy/cli/commit/8c59811bc0e7e80e5a266959e6729ea0f56eef73))
+
+
+### Bug Fixes
+
+* **dns:** find SRV and TLSA records by name in dns list, set and delete ([#360](https://github.com/godaddy/cli/issues/360)) ([096f8a2](https://github.com/godaddy/cli/commit/096f8a267dbb9a4ac9356e1b35f2b28b898161ad))
+
+## [0.2.35](https://github.com/godaddy/cli/compare/v0.2.34...v0.2.35) (2026-11-05)
+
+
+### Features
+
+* **hosting:** add app publish and unpublish for WordPress sites ([#356](https://github.com/godaddy/cli/issues/356)) ([3e7f9ed](https://github.com/godaddy/cli/commit/3e7f9ed28a24889097d7197bfdd7375d37c0ae06))
+* **hosting:** support WordPress sites in app update, app delete and runtime get ([#363](https://github.com/godaddy/cli/issues/363)) ([4574bc6](https://github.com/godaddy/cli/commit/4574bc6390b886093246e8fa1ff9f58089d463ac))
+
+
+### Bug Fixes
+
+* **api-catalog:** resync specs and keep constraints that sit beside a $ref ([#357](https://github.com/godaddy/cli/issues/357)) ([e58f966](https://github.com/godaddy/cli/commit/e58f9668256aa64ff8e04edd7dfb1c1517524feb))
+
 ## [0.2.34](https://github.com/godaddy/cli/compare/v0.2.33...v0.2.34) (2026-11-02)
 
 

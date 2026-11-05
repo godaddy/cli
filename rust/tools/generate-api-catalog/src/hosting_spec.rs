@@ -242,6 +242,16 @@ fn relax_response_schemas(spec: &mut Value) {
     for schema in schemas.values_mut() {
         relax(schema);
     }
+    // Progenitor turns a property `default` into a value it fills in on
+    // deserialization, so an error detail the API sent without a `location`
+    // came back as `location: "body"`. Without the default the field is
+    // `Option<String>` and the CLI shows only what the API said.
+    if let Some(location) = spec
+        .pointer_mut("/components/schemas/error-details/properties/location")
+        .and_then(Value::as_object_mut)
+    {
+        location.remove("default");
+    }
 }
 
 fn relax(value: &mut Value) {
@@ -301,8 +311,39 @@ fn prune_documentation_fields(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
+    use super::relax_response_schemas;
     use crate::spec_normalize::prefix_paths;
     use serde_json::json;
+
+    #[test]
+    fn relax_drops_the_invented_error_detail_location() {
+        let mut spec = json!({
+            "components": { "schemas": {
+                "error-details": {
+                    "type": "object",
+                    "required": ["issue"],
+                    "properties": {
+                        "issue": { "type": "string" },
+                        "location": { "type": "string", "default": "body" }
+                    }
+                },
+                "Pagination_pageSize": { "type": "integer", "default": 25 }
+            } }
+        });
+        relax_response_schemas(&mut spec);
+        let location = &spec["components"]["schemas"]["error-details"]["properties"]["location"];
+        assert_eq!(location.get("default"), None, "{location}");
+        assert_eq!(location["type"], "string");
+        assert_eq!(
+            spec["components"]["schemas"]["error-details"].get("required"),
+            None
+        );
+        // Only the error-detail location is affected.
+        assert_eq!(
+            spec["components"]["schemas"]["Pagination_pageSize"]["default"],
+            25
+        );
+    }
 
     #[test]
     fn prefix_paths_nests_under_v1_hosting() {

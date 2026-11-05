@@ -3,18 +3,11 @@
     "AppOperation": {
       "$id": "https://godaddy.com/schemas/hosting/models/app-operation.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "An asynchronous application-creation operation. `POST /apps` returns this resource before an `appId` has been assigned. Poll `GET /app-operations/{operationId}` until `status` reaches `COMPLETED` or `FAILED`. On `COMPLETED`, `app` contains an `AppOperationApplication` — the creation-time subset of the created application — with `status` guaranteed to be `ACTIVE`, so the application is ready to use. Use its `id` for all subsequent calls.\n",
+      "description": "An asynchronous application operation: a creation started by `POST /apps`, or a publish-state change started by `PUT /apps/{appId}/publish-state`. Poll `GET /app-operations/{operationId}` until `status` reaches `COMPLETED` or `FAILED`. `type` says which kind of operation it is, where the service supplies it; an operation that omits `type` is a creation. For a creation, `COMPLETED` carries `app`, an `AppOperationApplication` with `status` guaranteed to be `ACTIVE`, so the application is ready to use; use its `id` for all subsequent calls. A publish-state operation carries no `app`; read `GET /apps/{appId}/publish-state` for the result.\n",
       "properties": {
         "app": {
-          "description": "The created application, in its creation-time subset shape. Present when `status` is `COMPLETED`. Null otherwise. Follow `links[rel=self]` on it, or call `GET /apps/{appId}`, for the full `Application`.\n",
-          "oneOf": [
-            {
-              "$ref": "#/$defs/AppOperationApplication"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "$ref": "#/$defs/AppOperationApplication",
+          "description": "The created application, in its creation-time subset shape. Present only for a creation operation whose `status` is `COMPLETED`. Omitted otherwise, including on every publish-state operation. Follow `links[rel=self]` on it, or call `GET /apps/{appId}`, for the full `Application`.\n",
           "readOnly": true
         },
         "createdAt": {
@@ -23,15 +16,8 @@
           "readOnly": true
         },
         "error": {
-          "description": "Populated when `status` is `FAILED`. Describes why the application could not be created.\n",
-          "oneOf": [
-            {
-              "$ref": "#/$defs/error"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "$ref": "#/$defs/error",
+          "description": "Describes why the operation failed: why the application could not be created, or why its publish state could not be changed. Omitted unless `status` is `FAILED`.\n",
           "readOnly": true
         },
         "links": {
@@ -50,6 +36,11 @@
         "status": {
           "$ref": "#/$defs/OperationStatus",
           "readOnly": true
+        },
+        "type": {
+          "$ref": "#/$defs/AppOperationType",
+          "description": "Which operation this is. Omitted by services that predate it, so treat an operation with no `type` as a creation.\n",
+          "readOnly": true
         }
       },
       "required": [
@@ -63,7 +54,7 @@
     "AppOperationApplication": {
       "$id": "https://godaddy.com/schemas/hosting/models/app-operation-application.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "The creation-time view of an application, embedded in `AppOperation.app` when the operation reaches `COMPLETED`. It is a deliberate subset of `Application`: only the fields settled at creation are present. Read the full resource with `GET /apps/{appId}` — or follow `links[rel=self]` — once you need `name`, `appType`, `urls` or `updatedAt`.\n",
+      "description": "The creation-time view of an application, embedded in `AppOperation.app` when a creation operation reaches `COMPLETED`. It is a deliberate subset of `Application`: only the fields settled at creation are present. Read the full resource with `GET /apps/{appId}` — or follow `links[rel=self]` — once you need `name`, `appType`, `urls` or `updatedAt`.\n",
       "properties": {
         "createdAt": {
           "$ref": "#/$defs/date-time",
@@ -109,6 +100,17 @@
       ],
       "title": "AppOperationApplication",
       "type": "object"
+    },
+    "AppOperationType": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-operation-type.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Which kind of operation an `AppOperation` describes. `CREATE_APP` is an application creation started by `POST /apps`. `SET_PUBLISH_STATE` is a publish-state change started by `PUT /apps/{appId}/publish-state`. The member is optional on the wire: a response that omits it comes from a service that predates the field and describes a creation. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "CREATE_APP",
+        "SET_PUBLISH_STATE"
+      ],
+      "title": "AppOperationType",
+      "type": "string"
     },
     "AppSource": {
       "$id": "https://godaddy.com/schemas/hosting/enums/app-source.v1",
@@ -348,6 +350,7 @@
       "type": "string"
     },
     "CreateAppRequest": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "description": "Human-readable display name for the application.",
@@ -962,6 +965,40 @@
       "default": false,
       "type": "boolean"
     },
+    "PublishState": {
+      "$id": "https://godaddy.com/schemas/hosting/models/publish-state.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Whether an application is live. The go-live resource for products that have no build or deploy step, such as Managed Hosting for WordPress (`MHWP`): a WordPress site is provisioned ready to serve and is taken live, or back behind its Coming Soon page, by changing this state. `GET` returns the current state. `PUT` with `{ \"published\": true }` or `{ \"published\": false }` starts the change and returns `202 Accepted`; poll the operation in `Location` and `links[rel=self]` until it is `COMPLETED` or `FAILED`. A `PUT` that asks for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n",
+      "properties": {
+        "firstPublishedAt": {
+          "$ref": "#/$defs/date-time",
+          "description": "When the application first went live. Omitted while it has never been published.\n",
+          "readOnly": true
+        },
+        "links": {
+          "description": "HATEOAS navigation links for this resource. `rel=self` is the canonical URL of the publish state (`GET /apps/{appId}/publish-state`). Always present in a response; never sent in a `PUT` body.\n",
+          "items": {
+            "$ref": "#/$defs/link-description"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "published": {
+          "description": "`true` when the application is live at `urls.publish`; `false` when it serves its Coming Soon page. The only writable field: a `PUT` body carries `published` and nothing else.\n",
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/date-time",
+          "description": "When the publish state was last updated. It advances when `published` changes and may also advance when the platform updates the state for another reason, so do not infer a change of `published` from it alone. Omitted until the state has been set at least once.\n",
+          "readOnly": true
+        }
+      },
+      "required": [
+        "published"
+      ],
+      "title": "PublishState",
+      "type": "object"
+    },
     "RestartRequest": {
       "properties": {
         "variant": {
@@ -1455,7 +1492,7 @@
   "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Supported product types\n\n`appType` selects the product. Each value maps to a GoDaddy hosting product:\n- `NODEJS` — Node.js hosted applications. - `MHWP` — Managed Hosting for WordPress applications.\nNot every operation applies to every product. An operation a product does not offer returns `501` with `details[].issue` `NOT_APPLICABLE`. Each operation's description states which products it serves.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
   "endpoints": [
     {
-      "description": "Returns the current state of an application-creation operation. Use this as the poll target after `POST /apps` until `status` reaches `COMPLETED` or `FAILED`. On `COMPLETED`, the response includes the created `Application` with `status: ACTIVE`.\n",
+      "description": "Returns the current state of an application operation: a creation started by `POST /apps`, or a publish-state change started by `PUT /apps/{appId}/publish-state`. Use this as the poll target until `status` reaches `COMPLETED` or `FAILED`. On a `COMPLETED` creation, `app` carries the created application with `status: ACTIVE`. A publish-state operation carries no `app`; read `GET /apps/{appId}/publish-state` for the result.\n",
       "method": "GET",
       "operationId": "getAppOperation",
       "parameters": [
@@ -1470,7 +1507,7 @@
           }
         },
         {
-          "description": "The operation identifier returned by `POST /apps`.",
+          "description": "The operation identifier returned by `POST /apps` or by `PUT /apps/{appId}/publish-state`.\n",
           "in": "path",
           "name": "operationId",
           "required": true,
@@ -1494,7 +1531,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1512,7 +1549,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1521,7 +1558,7 @@
       "scopes": [
         "hosting.application:read"
       ],
-      "summary": "Get an application-creation operation"
+      "summary": "Get an application operation"
     },
     {
       "description": "Returns a paginated list of applications for the authenticated user. `appType` is required. Cross-product listing will be supported in a future version.\n",
@@ -1596,7 +1633,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1608,7 +1645,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1682,7 +1719,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1706,7 +1743,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1758,7 +1795,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1776,7 +1813,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1841,7 +1878,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1865,7 +1902,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1914,7 +1951,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1932,7 +1969,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2011,7 +2048,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2035,7 +2072,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2047,7 +2084,7 @@
       "summary": "List deployments"
     },
     {
-      "description": "Builds the latest imported source and deploys it to the publish environment. Returns `202 Accepted`. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` is `COMPLETED` or `FAILED`.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): a deployment builds the imported source and publishes it through the Node.js application agent, which other hosting products do not have. Other product types return `501`.\n",
+      "description": "Builds the latest imported source and deploys it to the publish environment. Returns `202 Accepted`. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` is `COMPLETED` or `FAILED`.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): a deployment builds the imported source and publishes it through the Node.js application agent, which other hosting products do not have. Other product types return `501`.\n\nGoing live is subject to the subscription's plan: when the plan's live-site limit is reached, the request answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`, the same code `PUT /apps/{appId}/publish-state` uses for `MHWP`.\n",
       "method": "POST",
       "operationId": "createDeployment",
       "parameters": [
@@ -2103,7 +2140,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2133,7 +2170,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2194,7 +2231,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2218,7 +2255,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2270,7 +2307,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2294,7 +2331,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2369,7 +2406,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2405,7 +2442,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2466,7 +2503,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2490,7 +2527,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2548,7 +2585,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2572,7 +2609,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2647,7 +2684,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2683,7 +2720,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2744,7 +2781,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2768,7 +2805,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2905,7 +2942,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2929,7 +2966,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2939,6 +2976,183 @@
         "hosting.log:read"
       ],
       "summary": "Get application logs"
+    },
+    {
+      "description": "Returns the application's publish state: whether it is live at `urls.publish`, when it first went live and when the publish state was last updated.\n\nThis resource is offered for products that have no build or deploy step, today `MHWP`. Node.js applications go live through `POST /apps/{appId}/deployments`, so `NODEJS-` ids return `501` with `details[].issue` `NOT_APPLICABLE`.\n",
+      "method": "GET",
+      "operationId": "getPublishState",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/publish-state",
+      "responses": {
+        "200": {
+          "description": "The application's publish state.",
+          "schema": {
+            "$ref": "#/$defs/PublishState"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.application:read"
+      ],
+      "summary": "Get an application's publish state"
+    },
+    {
+      "description": "Sets the application's publish state. `{ \"published\": true }` takes the site live at `urls.publish`; `{ \"published\": false }` takes it back behind its Coming Soon page. Returns `202 Accepted` with an `AppOperation` that carries no `app`; the `Location` header and `links[rel=self]` give the poll URL. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`, then read `GET /apps/{appId}/publish-state`. A request for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n\nThe body is a `PublishState` carrying only `published`: exactly `{ \"published\": <boolean> }`. A body that lacks `published`, whose `published` is not a boolean, or that has any other field, the read-only `firstPublishedAt`, `updatedAt` and `links` included, is a `400`.\n\nGoing live is subject to the subscription's plan: a plan that allows no live sites, or one whose live-site limit is reached, answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`. The limit is checked again as the change runs, so a concurrent publish that takes the last slot ends the operation `FAILED` with `error.details[].issue` `PUBLISH_LIMIT_EXCEEDED`; any other failure ends it `FAILED` with `PUBLISH_STATE_CHANGE_FAILED`. A subscription that is not active cannot take a site live and answers `403` with `details[].issue` `SUBSCRIPTION_INACTIVE`. Taking a site offline is never limited.\n\nThe request is idempotent by nature, so `Idempotency-Key` is not used. While a change for this application is still running, a `PUT` for the same state returns `202` with that running operation; a `PUT` for the opposite state is refused with `409` and `details[].issue` `PUBLISH_STATE_CHANGE_IN_PROGRESS`. Poll the running operation, then retry. The same `409` is returned for a moment while another publish-state request on the same subscription is being accepted; retry shortly.\n\nOffered for the same products as `GET /apps/{appId}/publish-state`; `NODEJS-` ids answer `501` `NOT_APPLICABLE`.\n",
+      "method": "PUT",
+      "operationId": "setPublishState",
+      "parameters": [
+        {
+          "description": "W3C Trace Context identifier for this request. Clients should send a `traceparent` on every request so the trace can be correlated across services. See https://www.w3.org/TR/trace-context/ for the format.\n",
+          "in": "header",
+          "name": "traceparent",
+          "required": false,
+          "schema": {
+            "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Application identifier in `{PRODUCT}-{id}` form. The prefix is the application type in upper case — an upper-case letter followed by any number of upper-case letters, digits, or underscores — then a hyphen, then the identifier. For `NODEJS`, the suffix is a 10-character nanoid. Example: `NODEJS-aBcDeFgHiJ`. For `MHWP`, the suffix is a 10-character nanoid of lower-case letters and digits only. Example: `MHWP-a1b2c3d4e5`.\n",
+          "in": "path",
+          "name": "appId",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9_]*-[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/apps/{appId}/publish-state",
+      "requestBody": {
+        "contentType": "application/json",
+        "required": true,
+        "schema": {
+          "$ref": "#/$defs/PublishState"
+        }
+      },
+      "responses": {
+        "202": {
+          "description": "Publish-state change accepted. Poll `links[rel=self]` until `status` is `COMPLETED` or `FAILED`; the operation carries no `app`.",
+          "schema": {
+            "$ref": "#/$defs/AppOperation"
+          }
+        },
+        "400": {
+          "description": "The request body or parameters did not pass schema validation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "401": {
+          "description": "Authentication credentials are missing or invalid.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "403": {
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "404": {
+          "description": "The requested resource does not exist.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "409": {
+          "description": "The request conflicts with the current state of the resource.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "422": {
+          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "429": {
+          "description": "Rate limit exceeded. A `429` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available on every `429`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
+        "503": {
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        }
+      },
+      "scopes": [
+        "hosting.deployment:execute"
+      ],
+      "summary": "Set an application's publish state"
     },
     {
       "description": "Triggers a restart of the specified environment (`PREVIEW` or `PUBLISH`). Returns `202 Accepted`. Poll `GET /apps/{appId}/status` until the targeted variant reaches a stable state.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): restarts act on the `PREVIEW` and `PUBLISH` environment variants, which are specific to the Node.js runtime model. Other product types return `501`.\n",
@@ -3004,7 +3218,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3034,7 +3248,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3089,7 +3303,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3107,7 +3321,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3168,7 +3382,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3192,7 +3406,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3276,7 +3490,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3312,7 +3526,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3364,7 +3578,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3388,7 +3602,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3440,7 +3654,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3464,7 +3678,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3529,7 +3743,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3565,7 +3779,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3622,7 +3836,7 @@
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: either the access token does not carry the scope this operation requires, or the operation is disabled for this account.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3640,7 +3854,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3654,5 +3868,5 @@
   ],
   "name": "hosting",
   "title": "Hosted Application Lifecycle Management API",
-  "version": "1.1.0"
+  "version": "1.2.0"
 }

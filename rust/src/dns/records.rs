@@ -366,24 +366,64 @@ pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
 /// rather than a hand-maintained field list, so a future `DnsRecord` field
 /// is covered without another update here.
 pub(super) fn same_content(a: &types::DnsRecord, b: &types::DnsRecord) -> bool {
-    // `DnsRecord` is all plain String/Option/newtype fields, so this should
-    // never actually fail — falling back to a placeholder value on error
-    // would let two unrelated records that both failed to serialize compare
-    // as "equal" and silently skip a real change.
-    let strip = |r: &types::DnsRecord| {
-        let mut v = serde_json::to_value(r).expect("DnsRecord always serializes to JSON");
-        if let Some(obj) = v.as_object_mut() {
-            obj.remove("ttl");
-            obj.remove("recordId");
-        }
-        v
-    };
-    strip(a) == strip(b)
+    comparable(a, false) == comparable(b, false)
 }
+
+/// The content of a record as the API would hold it, for comparing two records
+/// that are meant to be the same. Drops `recordId` and, unless `compare_ttl`,
+/// `ttl`; the API stores record names lower-cased, and hostname-valued `data`
+/// lower-cased with a trailing dot (`Example.COM` comes back as `example.com.`),
+/// so those are compared in that form. CAA `data` (the API lower-cases it, URLs
+/// included) and TLSA `certificateData` (hex) are compared without case. Everything
+/// else is compared exactly — the API keeps TXT text, AAAA addresses, HTTPS/SVCB
+/// `parameters` and SRV `service`/`protocol` as written, so case in them is real.
+///
+/// Compares via JSON rather than a hand-maintained field list, so a future
+/// `DnsRecord` field is covered without another update here. `DnsRecord` is all
+/// plain String/Option/newtype fields, so serializing it should never fail —
+/// falling back to a placeholder on error would let two unrelated records that
+/// both failed to serialize compare as "equal" and silently skip a real change.
+pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value {
+    let mut value = serde_json::to_value(record).expect("DnsRecord always serializes to JSON");
+    let record_type = record.type_.as_str();
+    if let Some(fields) = value.as_object_mut() {
+        fields.remove("recordId");
+        if !compare_ttl {
+            fields.remove("ttl");
+        }
+        if let Some(Value::String(name)) = fields.get_mut("name") {
+            *name = name.to_lowercase();
+        }
+        if let Some(Value::String(data)) = fields.get_mut("data") {
+            match record_type {
+                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
+                    *data = data.trim_end_matches('.').to_lowercase();
+                }
+                "CAA" => *data = data.to_lowercase(),
+                _ => {}
+            }
+        }
+        // Hex digits mean the same in either case.
+        if let Some(Value::String(cert)) = fields.get_mut("certificateData") {
+            *cert = cert.to_lowercase();
+        }
+    }
+    value
+}
+
+/// Types the API stores under a composed name (`_service._proto.name` for SRV,
+/// `_port._proto.name` for TLSA), while a list response shows only the short
+/// `name` plus separate fields. A server-side `name` filter for those types
+/// matches the composed form, so filtering by the short name finds nothing.
+const COMPOSITE_NAME_TYPES: &[&str] = &["SRV", "TLSA"];
 
 /// List every v3 DNS record for a zone matching the optional `type`/`name`
 /// filters, paging through the collection (v3 list is paginated). Shared by
 /// `list`, `set`, and `delete` — the latter two need the matching records' ids.
+///
+/// For SRV and TLSA the `name` is matched here, against each record's short
+/// name, rather than sent to the API: its filter only understands the composed
+/// name, so it would return nothing for the name the record is listed under.
 pub(super) async fn fetch_records(
     client: &domains_client::Client,
     zone: &str,
@@ -391,6 +431,8 @@ pub(super) async fn fetch_records(
     name: Option<&str>,
     debug: bool,
 ) -> Result<Vec<types::DnsRecord>, CliCoreError> {
+    let match_name_here = type_.is_some_and(|t| COMPOSITE_NAME_TYPES.contains(&t));
+    let server_name = if match_name_here { None } else { name };
     let mut all = Vec::new();
     let mut page: u64 = 1;
     loop {
@@ -404,7 +446,7 @@ pub(super) async fn fetch_records(
         if let Some(t) = type_ {
             req = req.type_(types::DnsRecordType(t.to_owned()));
         }
-        if let Some(n) = name {
+        if let Some(n) = server_name {
             req = req.name(n);
         }
         let body = match req.send().await {
@@ -425,7 +467,48 @@ pub(super) async fn fetch_records(
         }
         page += 1;
     }
+    if match_name_here && let Some(wanted) = name {
+        // A record listed under exactly this name wins. Otherwise `chat` and a
+        // separate record named `_sip._tcp.chat` would both answer to
+        // `_sip._tcp.chat`, and a delete would reach an owner it never named.
+        if all
+            .iter()
+            .any(|record| record.name.eq_ignore_ascii_case(wanted))
+        {
+            all.retain(|record| record.name.eq_ignore_ascii_case(wanted));
+        } else {
+            all.retain(|record| listed_name_matches(record, wanted));
+        }
+    }
     Ok(all)
+}
+
+/// Whether `wanted` names `record`: either the short name the record is listed
+/// under, or the composed name the API itself understands (`_service._proto.name`
+/// for SRV, `_port._proto.name` for TLSA), so a selector written either way finds
+/// it. Case does not matter.
+fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
+    if record.name.eq_ignore_ascii_case(wanted) {
+        return true;
+    }
+    let prefix = match record.type_.as_str() {
+        "SRV" => record
+            .service
+            .as_deref()
+            .zip(record.protocol.as_deref())
+            .map(|(service, protocol)| format!("{service}.{protocol}")),
+        "TLSA" => record
+            .port
+            .zip(record.protocol.as_deref())
+            .map(|(port, protocol)| format!("_{port}.{protocol}")),
+        _ => None,
+    };
+    // At the zone apex (`@`) the composed name is the prefix alone.
+    let composed = prefix.map(|prefix| match record.name.as_str() {
+        "@" => prefix,
+        name => format!("{prefix}.{name}"),
+    });
+    composed.is_some_and(|composed| composed.eq_ignore_ascii_case(wanted))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
@@ -458,279 +541,5 @@ pub(super) fn verified_result(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn verified_result_shows_the_requested_form_of_zone_and_name() {
-        let payload = || {
-            serde_json::json!({
-                "domain": "xn--mnchen-3ya.de",
-                "name": "xn--bcher-kva",
-                "type": "A",
-            })
-        };
-        let unicode = verified_result(
-            DomainForm::Unicode,
-            payload(),
-            "xn--mnchen-3ya.de",
-            "A",
-            "xn--bcher-kva",
-        );
-        assert_eq!(unicode.data["domain"], "münchen.de");
-        assert_eq!(unicode.data["name"], "bücher");
-        let params =
-            serde_json::to_string(&unicode.metadata.next_actions).expect("next actions serialize");
-        assert!(
-            params.contains("münchen.de") && params.contains("bücher"),
-            "{params}"
-        );
-
-        let ascii = verified_result(
-            DomainForm::Punycode,
-            payload(),
-            "xn--mnchen-3ya.de",
-            "A",
-            "xn--bcher-kva",
-        );
-        assert_eq!(ascii.data["domain"], "xn--mnchen-3ya.de");
-        assert_eq!(ascii.data["name"], "xn--bcher-kva");
-    }
-
-    fn opts() -> RecordOptions {
-        RecordOptions {
-            ttl: None,
-            priority: None,
-            port: None,
-            weight: None,
-            protocol: None,
-            service: None,
-            flag: None,
-            tag: None,
-            usage: None,
-            selector: None,
-            matching_type: None,
-            parameters: None,
-        }
-    }
-
-    #[test]
-    fn parse_write_type_arg_accepts_writable_incl_caa_alias_rejects_ns_soa() {
-        assert_eq!(parse_write_type_arg("aaaa").expect("valid"), "AAAA");
-        assert_eq!(parse_write_type_arg("caa").expect("valid"), "CAA");
-        assert_eq!(parse_write_type_arg("Alias").expect("valid"), "ALIAS");
-        assert_eq!(parse_write_type_arg("https").expect("valid"), "HTTPS");
-        assert_eq!(parse_write_type_arg("svcb").expect("valid"), "SVCB");
-        assert_eq!(parse_write_type_arg("tlsa").expect("valid"), "TLSA");
-        // NS/SOA are registry-managed / read-only → rejected with a clear reason.
-        for ty in ["NS", "soa"] {
-            let err = parse_write_type_arg(ty).expect_err("read-only");
-            assert!(err.contains("managed by GoDaddy"), "got: {err}");
-        }
-        let err = parse_write_type_arg("bogus").expect_err("should reject");
-        assert!(err.contains("invalid record type"), "got: {err}");
-    }
-
-    #[test]
-    fn parse_list_type_arg_also_accepts_ns_soa() {
-        assert_eq!(parse_list_type_arg("caa").expect("valid"), "CAA");
-        assert_eq!(parse_list_type_arg("ns").expect("valid"), "NS");
-        assert_eq!(parse_list_type_arg("SOA").expect("valid"), "SOA");
-        assert!(parse_list_type_arg("bogus").is_err());
-    }
-
-    #[test]
-    fn v3_records_builds_one_per_data_value_with_default_ttl() {
-        let recs = v3_records(
-            "www",
-            "A",
-            &["1.2.3.4".to_string(), "5.6.7.8".to_string()],
-            &opts(),
-        );
-        assert_eq!(recs.len(), 2);
-        assert_eq!(recs[0].name, "www");
-        assert_eq!(recs[0].type_.as_str(), "A");
-        assert_eq!(recs[0].data.as_deref(), Some("1.2.3.4"));
-        // v3 requires a ttl; an omitted --ttl falls back to the default.
-        assert_eq!(recs[0].ttl, DEFAULT_TTL);
-        assert_eq!(recs[1].data.as_deref(), Some("5.6.7.8"));
-    }
-
-    #[test]
-    fn v3_record_carries_srv_and_caa_fields() {
-        let mut srv_opts = opts();
-        srv_opts.ttl = Some(600);
-        srv_opts.priority = Some(10);
-        srv_opts.port = Some(443);
-        srv_opts.weight = Some(5);
-        let srv = v3_record("_sip", "SRV", "sip.example.com", &srv_opts);
-        assert_eq!(srv.ttl, 600);
-        assert_eq!(srv.priority, Some(10));
-        assert_eq!(srv.port, Some(443));
-        assert_eq!(srv.weight, Some(5));
-
-        let mut caa_opts = opts();
-        caa_opts.flag = Some(128);
-        caa_opts.tag = Some("issue".to_string());
-        let caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts);
-        assert_eq!(caa.flag, Some(128));
-        assert_eq!(caa.tag.as_deref(), Some("issue"));
-    }
-
-    #[test]
-    fn caa_fields_are_required_for_caa_and_rejected_otherwise() {
-        // CAA without --tag → rejected.
-        let mut caa_no_tag = opts();
-        caa_no_tag.flag = Some(0);
-        let err = validate_caa_fields("CAA", &caa_no_tag).expect_err("CAA needs a tag");
-        assert!(err.contains("--tag"), "got: {err}");
-        // CAA with --tag → ok.
-        let mut caa = opts();
-        caa.tag = Some("issue".to_string());
-        assert!(validate_caa_fields("CAA", &caa).is_ok());
-        // --flag/--tag on a non-CAA type → rejected.
-        let mut a = opts();
-        a.tag = Some("issue".to_string());
-        let err = validate_caa_fields("A", &a).expect_err("flag/tag are CAA-only");
-        assert!(err.contains("only valid for CAA"), "got: {err}");
-        // A non-CAA type with no CAA fields → ok.
-        assert!(validate_caa_fields("A", &opts()).is_ok());
-    }
-
-    #[test]
-    fn v3_record_carries_https_svcb_and_tlsa_fields() {
-        let mut https_opts = opts();
-        https_opts.priority = Some(1);
-        https_opts.parameters = Some("alpn=h2,h3".to_string());
-        let https = v3_record("@", "HTTPS", ".", &https_opts);
-        assert_eq!(https.priority, Some(1));
-        assert_eq!(https.parameters.as_deref(), Some("alpn=h2,h3"));
-        assert_eq!(https.data.as_deref(), Some("."));
-        assert_eq!(https.certificate_data, None);
-
-        let mut tlsa_opts = opts();
-        tlsa_opts.usage = Some(3);
-        tlsa_opts.selector = Some(1);
-        tlsa_opts.matching_type = Some(1);
-        tlsa_opts.protocol = Some("_tcp".to_string());
-        tlsa_opts.port = Some(443);
-        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
-        let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
-        // TLSA doesn't use `data` — the value moves to `certificateData`.
-        assert_eq!(tlsa.data, None);
-        assert_eq!(tlsa.certificate_data.as_deref(), Some(cert));
-        assert_eq!(tlsa.usage.map(|u| u.0), Some(3));
-        assert_eq!(tlsa.selector.map(|s| s.0), Some(1));
-        assert_eq!(tlsa.matching_type.map(|m| m.0), Some(1));
-        assert_eq!(tlsa.protocol.as_deref(), Some("_tcp"));
-        assert_eq!(tlsa.port, Some(443));
-    }
-
-    #[test]
-    fn tlsa_fields_are_required_for_tlsa_and_rejected_otherwise() {
-        // --usage/--selector/--matching-type on a non-TLSA type → rejected.
-        let mut a = opts();
-        a.usage = Some(3);
-        let err = validate_tlsa_fields("A", &a).expect_err("TLSA fields are TLSA-only");
-        assert!(err.contains("only valid for TLSA"), "got: {err}");
-        // TLSA with the fields set → ok.
-        let mut tlsa = opts();
-        tlsa.usage = Some(3);
-        tlsa.selector = Some(1);
-        tlsa.matching_type = Some(1);
-        assert!(validate_tlsa_fields("TLSA", &tlsa).is_ok());
-        // A non-TLSA type with no TLSA fields → ok.
-        assert!(validate_tlsa_fields("A", &opts()).is_ok());
-    }
-
-    #[test]
-    fn svcb_parameters_are_rejected_for_other_types() {
-        let mut a = opts();
-        a.parameters = Some("alpn=h2".to_string());
-        let err = validate_svcb_fields("A", &a).expect_err("parameters are HTTPS/SVCB-only");
-        assert!(err.contains("only valid for HTTPS/SVCB"), "got: {err}");
-        assert!(validate_svcb_fields("HTTPS", &a).is_ok());
-        assert!(validate_svcb_fields("SVCB", &a).is_ok());
-        assert!(validate_svcb_fields("A", &opts()).is_ok());
-    }
-
-    #[test]
-    fn record_value_prefers_certificate_data_for_tlsa_even_if_data_is_also_set() {
-        // A record we'd never build ourselves (v3_record always nulls one of
-        // the two), but defends against the API ever returning both fields
-        // populated for a TLSA record — the certificate data must win, not
-        // whichever field happens to be checked first.
-        let mut tlsa = v3_record(
-            "www",
-            "TLSA",
-            "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971",
-            &opts(),
-        );
-        tlsa.data = Some("stale-or-unrelated".to_string());
-        assert_eq!(
-            record_value(&tlsa),
-            Some("d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971")
-        );
-
-        // Non-TLSA types are unaffected — `data` still wins.
-        let a = v3_record("www", "A", "1.2.3.4", &opts());
-        assert_eq!(record_value(&a), Some("1.2.3.4"));
-    }
-
-    #[test]
-    fn merged_tlsa_data_reconstructs_the_rfc6698_presentation_format() {
-        let mut tlsa_opts = opts();
-        tlsa_opts.usage = Some(3);
-        tlsa_opts.selector = Some(1);
-        tlsa_opts.matching_type = Some(1);
-        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
-        let tlsa = v3_record("www", "TLSA", cert, &tlsa_opts);
-        assert_eq!(merged_tlsa_data(&tlsa), format!("3 1 1 {cert}"));
-    }
-
-    /// The API's schema guarantees usage/selector/matchingType/certificateData
-    /// together for a real TLSA record, but if one is ever absent, this must
-    /// not fabricate RDATA by substituting 0 (a real, meaningful value).
-    #[test]
-    fn merged_tlsa_data_falls_back_to_certificate_data_when_a_numeric_field_is_missing() {
-        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
-        let mut tlsa = v3_record("www", "TLSA", cert, &opts());
-        // opts() has no usage/selector/matching_type set, so v3_record leaves
-        // them None — exactly the "missing field" case.
-        assert_eq!(merged_tlsa_data(&tlsa), cert);
-
-        tlsa.certificate_data = None;
-        assert_eq!(merged_tlsa_data(&tlsa), "");
-    }
-
-    #[test]
-    fn same_content_compares_every_field_except_ttl_and_record_id() {
-        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
-        let mut tlsa_opts = opts();
-        tlsa_opts.usage = Some(3);
-        tlsa_opts.selector = Some(1);
-        tlsa_opts.matching_type = Some(1);
-        tlsa_opts.ttl = Some(600);
-        let mut existing = v3_record("www", "TLSA", cert, &tlsa_opts);
-        existing.record_id = Some("r1".to_string());
-
-        // Identical content, different ttl/recordId → still the same record.
-        let desired = v3_record("www", "TLSA", cert, &tlsa_opts);
-        assert!(same_content(&existing, &desired));
-
-        // Same cert data, different usage → not the same record.
-        let mut different_usage = tlsa_opts;
-        different_usage.usage = Some(1);
-        let desired = v3_record("www", "TLSA", cert, &different_usage);
-        assert!(!same_content(&existing, &desired));
-
-        // CAA: same domain value, different tag → not the same record.
-        let mut caa_opts = opts();
-        caa_opts.tag = Some("issue".to_string());
-        let existing_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts);
-        let mut caa_opts_wild = opts();
-        caa_opts_wild.tag = Some("issuewild".to_string());
-        let desired_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts_wild);
-        assert!(!same_content(&existing_caa, &desired_caa));
-    }
-}
+#[path = "records_tests.rs"]
+mod tests;
