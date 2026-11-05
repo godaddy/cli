@@ -8,7 +8,7 @@ use std::io::{BufRead, Write};
 
 use cli_engine::{CliCoreError, DetailedError};
 
-use super::client::OnboardingClient;
+use super::client::{OnboardingClient, OnboardingError};
 use super::flow::{AgreementDecision, decide};
 use super::prompt::prompt_accept_agreements;
 use crate::environments;
@@ -53,6 +53,47 @@ impl DetailedError for AgreementsRequiredError {
 
     fn error_request_id(&self) -> Option<Cow<'static, str>> {
         None
+    }
+}
+
+/// Core rejected onboarding for this account (`403 ONBOARDING_NOT_ENABLED`):
+/// developer onboarding is limited to selected accounts for now.
+#[derive(Debug)]
+pub(crate) struct OnboardingNotEnabledError;
+
+impl Display for OnboardingNotEnabledError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(
+            "Developer onboarding isn't available for your account yet. \
+             It is currently limited to selected accounts, so applications can't be created.",
+        )
+    }
+}
+
+impl Error for OnboardingNotEnabledError {}
+
+impl DetailedError for OnboardingNotEnabledError {
+    fn error_code(&self) -> Cow<'static, str> {
+        Cow::Borrowed("ONBOARDING_NOT_ENABLED")
+    }
+
+    fn error_system(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed("applications"))
+    }
+
+    fn error_request_id(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+}
+
+/// Maps an onboarding client failure to a CLI error: a clear, coded error when the
+/// account is not enabled, otherwise the generic message with `context`.
+fn onboarding_error(context: &str, error: OnboardingError) -> CliCoreError {
+    match error {
+        OnboardingError::NotEnabled => {
+            CliCoreError::with_detailed_error(OnboardingNotEnabledError)
+        }
+        other => CliCoreError::message(format!("{context}: {other}")),
     }
 }
 
@@ -108,11 +149,7 @@ pub(crate) async fn preview_onboarding_at(
     let status = OnboardingClient::new(base_url)
         .status(token)
         .await
-        .map_err(|error| {
-            CliCoreError::message(format!(
-                "Could not check developer onboarding status: {error}"
-            ))
-        })?;
+        .map_err(|error| onboarding_error("Could not check developer onboarding status", error))?;
 
     match status.status.as_str() {
         "ACTIVE" => Ok(OnboardingPreview::AlreadyComplete {
@@ -142,9 +179,10 @@ pub(crate) async fn ensure_ready_for_app_init_at(
 ) -> Result<EnsureOutcome, CliCoreError> {
     let client = OnboardingClient::new(base_url);
     let status = client.status(token).await.map_err(|error| {
-        CliCoreError::message(format!(
-            "Could not check developer onboarding status before creating an application: {error}"
-        ))
+        onboarding_error(
+            "Could not check developer onboarding status before creating an application",
+            error,
+        )
     })?;
 
     let prompt_accepted = if status.status == "PENDING" && is_tty && !accept_agreements {
@@ -181,9 +219,10 @@ pub(crate) async fn ensure_ready_for_app_init_with(
 ) -> Result<EnsureOutcome, CliCoreError> {
     let client = OnboardingClient::new(base_url);
     let status = client.status(token).await.map_err(|error| {
-        CliCoreError::message(format!(
-            "Could not check developer onboarding status before creating an application: {error}"
-        ))
+        onboarding_error(
+            "Could not check developer onboarding status before creating an application",
+            error,
+        )
     })?;
 
     let prompt_accepted = if status.status == "PENDING" && is_tty && !accept_agreements {
@@ -224,9 +263,10 @@ async fn finish_decision(
         }),
         AgreementDecision::CompletePending => {
             let result = client.complete(token).await.map_err(|error| {
-                CliCoreError::message(format!(
-                    "Could not complete developer onboarding before creating an application: {error}"
-                ))
+                onboarding_error(
+                    "Could not complete developer onboarding before creating an application",
+                    error,
+                )
             })?;
             Ok(EnsureOutcome {
                 org_id: result.organization_id,
@@ -308,6 +348,122 @@ mod tests {
         assert!(stderr.is_empty());
         status.assert_async().await;
         assert_eq!(complete.calls_async().await, 0);
+    }
+
+    fn not_enabled_response() -> serde_json::Value {
+        json!({
+            "success": false,
+            "error": {
+                "code": "ONBOARDING_NOT_ENABLED",
+                "message": "Developer onboarding is not yet available for this account."
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn status_rejected_as_not_enabled_gives_a_clear_error_and_never_calls_cli() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(not_enabled_response());
+            })
+            .await;
+        let complete = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/cli");
+                then.status(200);
+            })
+            .await;
+
+        let err = ensure_ready_for_app_init_with(
+            "test-token",
+            &server.base_url(),
+            true,
+            false,
+            &mut Cursor::new(b""),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("not enabled");
+
+        let message = err.to_string();
+        assert!(message.contains("isn't available for your account yet"));
+        assert!(!message.contains("HTTP 403"));
+        assert!(!message.contains("test-token"));
+        assert_eq!(complete.calls_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn complete_rejected_as_not_enabled_gives_a_clear_error() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(200).json_body(json!({
+                    "success": true,
+                    "data": { "id": "org-pending", "status": "PENDING" }
+                }));
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/cli");
+                then.status(403).json_body(not_enabled_response());
+            })
+            .await;
+
+        let err = ensure_ready_for_app_init_with(
+            "test-token",
+            &server.base_url(),
+            true,
+            false,
+            &mut Cursor::new(b""),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("not enabled");
+
+        assert!(err.to_string().contains("isn't available for your account yet"));
+    }
+
+    #[tokio::test]
+    async fn preview_rejected_as_not_enabled_gives_a_clear_error() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(not_enabled_response());
+            })
+            .await;
+
+        let err = preview_onboarding_at("test-token", &server.base_url())
+            .await
+            .expect_err("not enabled");
+
+        assert!(err.to_string().contains("isn't available for your account yet"));
+    }
+
+    #[tokio::test]
+    async fn other_forbidden_responses_keep_the_generic_message() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(json!({
+                    "success": false,
+                    "error": { "code": "FORBIDDEN", "message": "nope" }
+                }));
+            })
+            .await;
+
+        let err = preview_onboarding_at("test-token", &server.base_url())
+            .await
+            .expect_err("forbidden");
+
+        let message = err.to_string();
+        assert!(message.contains("Could not check developer onboarding status"));
+        assert!(message.contains("HTTP 403"));
     }
 
     #[tokio::test]

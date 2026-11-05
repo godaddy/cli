@@ -30,3 +30,13 @@ pub(crate) struct CliData {
     pub organization_id: String,
     pub status: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ErrorEnvelope {
+    pub error: ErrorPayload,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ErrorPayload {
+    pub code: String,
+}

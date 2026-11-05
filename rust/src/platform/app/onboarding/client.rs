@@ -1,6 +1,16 @@
+use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
-use super::types::{ApiEnvelope, CliData, CliOnboardingResult, OnboardingStatus, StatusData};
+use super::types::{
+    ApiEnvelope, CliData, CliOnboardingResult, ErrorEnvelope, OnboardingStatus, StatusData,
+};
+
+/// Core's error code for a shopper that is not enabled for developer onboarding
+/// (a `403` from `/onboarding/status` or `/onboarding/cli`).
+const ONBOARDING_NOT_ENABLED_CODE: &str = "ONBOARDING_NOT_ENABLED";
+
+/// An error body larger than this is not a core error envelope; do not parse it.
+const MAX_ERROR_BODY_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum OnboardingError {
@@ -8,6 +18,8 @@ pub enum OnboardingError {
     Request(#[source] reqwest::Error),
     #[error("onboarding service returned HTTP {0}")]
     Http(reqwest::StatusCode),
+    #[error("developer onboarding is not enabled for this account")]
+    NotEnabled,
     #[error("onboarding service returned an invalid response")]
     Decode(#[source] reqwest::Error),
     #[error("onboarding service rejected the request")]
@@ -67,11 +79,35 @@ impl OnboardingClient {
             .send()
             .await
             .map_err(OnboardingError::Request)?;
-        if !response.status().is_success() {
-            return Err(OnboardingError::Http(response.status()));
+        let status = response.status();
+        if !status.is_success() {
+            return Err(error_for_status(status, response).await);
         }
 
         response.json().await.map_err(OnboardingError::Decode)
+    }
+}
+
+/// Classifies a non-success response. Only the `error.code` of a core error
+/// envelope is read, and only to recognise `ONBOARDING_NOT_ENABLED`; the body is
+/// never kept, logged or put in the error, since it may carry sensitive detail.
+async fn error_for_status(status: StatusCode, response: reqwest::Response) -> OnboardingError {
+    if status != StatusCode::FORBIDDEN {
+        return OnboardingError::Http(status);
+    }
+
+    let code = match response.bytes().await {
+        Ok(body) if body.len() <= MAX_ERROR_BODY_BYTES => {
+            serde_json::from_slice::<ErrorEnvelope>(&body)
+                .ok()
+                .map(|envelope| envelope.error.code)
+        }
+        _ => None,
+    };
+
+    match code.as_deref() {
+        Some(ONBOARDING_NOT_ENABLED_CODE) => OnboardingError::NotEnabled,
+        _ => OnboardingError::Http(status),
     }
 }
 
@@ -80,7 +116,9 @@ mod tests {
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
 
-    use super::OnboardingClient;
+    use reqwest::StatusCode;
+
+    use super::{MAX_ERROR_BODY_BYTES, OnboardingClient, OnboardingError};
     use crate::platform::app::onboarding::{CliOnboardingResult, OnboardingStatus};
 
     #[tokio::test]
@@ -186,5 +224,160 @@ mod tests {
             .await
             .expect_err("unsuccessful envelope");
         assert_eq!(error.to_string(), "onboarding service rejected the request");
+    }
+
+    fn not_enabled_body() -> serde_json::Value {
+        json!({
+            "success": false,
+            "error": {
+                "code": "ONBOARDING_NOT_ENABLED",
+                "message": "Developer onboarding is not yet available for this account."
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn status_maps_onboarding_not_enabled_forbidden() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(not_enabled_body());
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must be rejected");
+
+        assert!(matches!(error, OnboardingError::NotEnabled));
+    }
+
+    #[tokio::test]
+    async fn complete_maps_onboarding_not_enabled_forbidden() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/cli");
+                then.status(403).json_body(not_enabled_body());
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .complete("test-token")
+            .await
+            .expect_err("complete must be rejected");
+
+        assert!(matches!(error, OnboardingError::NotEnabled));
+    }
+
+    #[tokio::test]
+    async fn other_forbidden_codes_stay_generic_http_errors() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(json!({
+                    "success": false,
+                    "error": { "code": "FORBIDDEN", "message": "secret backend detail" }
+                }));
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+
+        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+        assert!(!error.to_string().contains("secret backend detail"));
+    }
+
+    #[tokio::test]
+    async fn forbidden_with_an_unparseable_body_stays_a_generic_http_error() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).body("<html>ONBOARDING_NOT_ENABLED</html>");
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+
+        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+    }
+
+    #[tokio::test]
+    async fn an_oversized_forbidden_body_is_not_parsed() {
+        let server = MockServer::start_async().await;
+        let padding = "x".repeat(MAX_ERROR_BODY_BYTES + 1);
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(json!({
+                    "success": false,
+                    "error": { "code": "ONBOARDING_NOT_ENABLED", "message": padding }
+                }));
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+
+        assert!(matches!(error, OnboardingError::Http(StatusCode::FORBIDDEN)));
+    }
+
+    #[tokio::test]
+    async fn the_not_enabled_code_only_counts_on_a_forbidden_status() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(500).json_body(not_enabled_body());
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+
+        assert!(matches!(
+            error,
+            OnboardingError::Http(StatusCode::INTERNAL_SERVER_ERROR)
+        ));
+    }
+
+    #[tokio::test]
+    async fn not_enabled_errors_do_not_include_response_body_or_token() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403).json_body(json!({
+                    "success": false,
+                    "error": {
+                        "code": "ONBOARDING_NOT_ENABLED",
+                        "message": "secret backend detail"
+                    }
+                }));
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+        let message = error.to_string();
+
+        assert!(!message.contains("secret backend detail"));
+        assert!(!message.contains("test-token"));
     }
 }
