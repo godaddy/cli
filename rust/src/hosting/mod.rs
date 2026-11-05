@@ -64,7 +64,7 @@ pub fn module() -> Module {
         .with_group(source::group())
         .with_group(secrets::group())
         .with_group(log::group())
-        .with_group(runtime::group())
+        .with_group(runtime::group(mhwp))
         .with_group(domain::group())
         .with_group(subscription::group())
         .with_group(operation::group(mhwp))
@@ -134,12 +134,20 @@ mod tests {
             "does not become the WordPress site title",
             "placeholder page",
             "## What the CLI does not do for WordPress sites",
+            "hosting app update",
+            "hosting app delete",
+            "hosting runtime get",
+            "Deployments, restarts, source imports, secrets, logs, custom domains and plan attachment",
         ] {
             assert!(
                 WORDPRESS_GUIDE.contains(present),
                 "the guide is missing {present:?}"
             );
         }
+        assert!(
+            !WORDPRESS_GUIDE.contains("planned but not served"),
+            "{WORDPRESS_GUIDE}"
+        );
     }
 
     #[tokio::test]

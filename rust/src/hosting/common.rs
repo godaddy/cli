@@ -155,6 +155,20 @@ pub fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> CliCoreErr
     }
 }
 
+/// [`client_err`], except that a `503` on a WordPress write says to retry.
+/// The service answers `503` both when another change holds the site and when
+/// a dependency is down, and only the first sets `Retry-After`, which is not
+/// kept here, so the text has to be true for either.
+pub fn client_err_retry_on_503(e: ClientError, mhwp: bool) -> CliCoreError {
+    if mhwp && matches!(e, ClientError::Http { status: 503, .. }) {
+        return client_err_with_fix(
+            e,
+            "The service is temporarily unavailable. Wait a few seconds and run the command again.",
+        );
+    }
+    client_err(e)
+}
+
 #[derive(Debug, Deserialize)]
 struct ApiErrorBody {
     message: Option<String>,
@@ -580,6 +594,51 @@ mod tests {
         assert_eq!(
             envelope.fix.as_deref(),
             Some("Run: gddy hosting subscription list --hosting-product=WEB_HOSTING")
+        );
+    }
+
+    #[test]
+    fn a_503_on_a_wordpress_write_says_to_retry_whatever_the_cause() {
+        let unavailable = || ClientError::Http {
+            status: 503,
+            body: r#"{"message":"m","details":[{"issue":"UPSTREAM_UNAVAILABLE"}]}"#.to_owned(),
+        };
+        let fix = |e, mhwp| {
+            cli_engine::build_error_envelope(&client_err_retry_on_503(e, mhwp), "hosting").fix
+        };
+        let wordpress = fix(unavailable(), true);
+        assert!(
+            wordpress
+                .as_deref()
+                .is_some_and(|f| f.contains("temporarily unavailable") && f.contains("few seconds")),
+            "{wordpress:?}"
+        );
+        assert!(
+            !wordpress
+                .as_deref()
+                .unwrap_or("")
+                .contains("another change"),
+            "{wordpress:?}"
+        );
+        let nodejs = fix(unavailable(), false);
+        assert!(
+            nodejs
+                .as_deref()
+                .is_some_and(|f| !f.contains("temporarily unavailable")),
+            "{nodejs:?}"
+        );
+        let other = fix(
+            ClientError::Http {
+                status: 404,
+                body: r#"{"message":"m"}"#.to_owned(),
+            },
+            true,
+        );
+        assert!(
+            other
+                .as_deref()
+                .is_some_and(|f| !f.contains("temporarily unavailable")),
+            "{other:?}"
         );
     }
 
